@@ -55,22 +55,22 @@ function Stepper({
       disabled={disabled}
       onClick={() => onChange(Math.min(max, Math.max(min, value + delta)))}
       style={{
-        width: 34,
-        height: 34,
+        width: 30,
+        height: 30,
         background: KBT.fillStrong,
         border: `1px solid ${KBT.border}`,
         color: KBT.cream,
         fontFamily: kbtMonoFont,
         fontWeight: 600,
-        fontSize: 15,
+        fontSize: 14,
       }}>
       {glyph}
     </button>
   );
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
       {btn('-', -step, value <= min)}
-      <Num size={22} style={{ minWidth: 64, textAlign: 'center' }}>
+      <Num size={19} style={{ minWidth: 56, textAlign: 'center' }}>
         {render ? render(value) : `${value}`}
       </Num>
       {btn('+', step, value >= max)}
@@ -93,6 +93,56 @@ function ToggleChip({
       active={on}
       onClick={onToggle}
     />
+  );
+}
+
+function TogglePlate({
+  label,
+  hint,
+  on,
+  onToggle,
+  accentColor,
+}: {
+  label: string;
+  hint: string;
+  on: boolean;
+  onToggle: () => void;
+  accentColor?: string;
+}) {
+  return (
+    <Plate
+      cutPx={14}
+      accentBar={on}
+      accentColor={accentColor}
+      innerStyle={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        padding: '10px 14px',
+        height: '100%',
+        boxSizing: 'border-box',
+      }}>
+      <div
+        style={{
+          flex: 1,
+          minWidth: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 4,
+        }}>
+        <DisplayText
+          size={17}
+          weight={700}
+          tracking={2}
+          color={on ? KBT.cream : KBT.dim}>
+          {label}
+        </DisplayText>
+        <Label size={10} tracking={1.5}>
+          {hint}
+        </Label>
+      </div>
+      <ToggleChip on={on} onToggle={onToggle} />
+    </Plate>
   );
 }
 
@@ -153,11 +203,15 @@ export function SetupScreen({
       }>
       <div style={{ display: 'flex', gap: 24, flex: 1, minHeight: 0 }}>
         <div
+          className='kbt-scroll'
           style={{
             flex: 1,
             display: 'flex',
             flexDirection: 'column',
             gap: 12,
+            minHeight: 0,
+            overflowY: 'auto',
+            overflowX: 'hidden',
           }}>
           <Label size={11}>SCORING</Label>
           {EXERCISES.map(({ key, label, hint }) => {
@@ -170,18 +224,18 @@ export function SetupScreen({
                 innerStyle={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 16,
-                  padding: '14px 18px',
+                  gap: 12,
+                  padding: '10px 14px',
                   opacity: rule.enabled ? 1 : 0.55,
                 }}>
                 <div
                   style={{
-                    width: 150,
+                    width: 170,
                     display: 'flex',
                     flexDirection: 'column',
-                    gap: 5,
+                    gap: 4,
                   }}>
-                  <DisplayText size={22} weight={700} tracking={2}>
+                  <DisplayText size={19} weight={700} tracking={2}>
                     {label}
                   </DisplayText>
                   <Label size={10} tracking={1.5}>
@@ -206,36 +260,17 @@ export function SetupScreen({
               </Plate>
             );
           })}
-          <Plate
-            cutPx={14}
-            accentBar={config.strictTechnique}
-            accentColor={KBT.amber}
-            innerStyle={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 16,
-              padding: '14px 18px',
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+              gap: 12,
             }}>
-            <div
-              style={{
-                width: 260,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 5,
-              }}>
-              <DisplayText
-                size={20}
-                weight={700}
-                tracking={2}
-                color={config.strictTechnique ? KBT.cream : KBT.dim}>
-                STRICT JUDGING
-              </DisplayText>
-              <Label size={10} tracking={1.5}>
-                sloppy reps pay half points
-              </Label>
-            </div>
-            <ToggleChip
+            <TogglePlate
+              label='STRICT JUDGING'
+              hint='sloppy reps pay half points'
               on={config.strictTechnique}
+              accentColor={KBT.amber}
               onToggle={() =>
                 onConfig({
                   ...config,
@@ -243,35 +278,9 @@ export function SetupScreen({
                 })
               }
             />
-          </Plate>
-          <Plate
-            cutPx={14}
-            accentBar={config.repScreenshots}
-            innerStyle={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 16,
-              padding: '14px 18px',
-            }}>
-            <div
-              style={{
-                width: 260,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 5,
-              }}>
-              <DisplayText
-                size={20}
-                weight={700}
-                tracking={2}
-                color={config.repScreenshots ? KBT.cream : KBT.dim}>
-                REP SCREENSHOTS
-              </DisplayText>
-              <Label size={10} tracking={1.5}>
-                AI snaps each rep at the top of the lift
-              </Label>
-            </div>
-            <ToggleChip
+            <TogglePlate
+              label='REP SCREENSHOTS'
+              hint='AI snaps each rep at the top of the lift'
               on={config.repScreenshots}
               onToggle={() =>
                 onConfig({
@@ -280,35 +289,9 @@ export function SetupScreen({
                 })
               }
             />
-          </Plate>
-          <Plate
-            cutPx={14}
-            accentBar={config.milestoneFx}
-            innerStyle={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 16,
-              padding: '14px 18px',
-            }}>
-            <div
-              style={{
-                width: 260,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 5,
-              }}>
-              <DisplayText
-                size={20}
-                weight={700}
-                tracking={2}
-                color={config.milestoneFx ? KBT.cream : KBT.dim}>
-                MILESTONE FX
-              </DisplayText>
-              <Label size={10} tracking={1.5}>
-                Every 5th rep fires an aura + camera shake on air
-              </Label>
-            </div>
-            <ToggleChip
+            <TogglePlate
+              label='MILESTONE FX'
+              hint='Every 5th rep fires an aura + camera shake on air'
               on={config.milestoneFx}
               onToggle={() =>
                 onConfig({
@@ -317,35 +300,9 @@ export function SetupScreen({
                 })
               }
             />
-          </Plate>
-          <Plate
-            cutPx={14}
-            accentBar={config.repFloatText}
-            innerStyle={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 16,
-              padding: '14px 18px',
-            }}>
-            <div
-              style={{
-                width: 260,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 5,
-              }}>
-              <DisplayText
-                size={20}
-                weight={700}
-                tracking={2}
-                color={config.repFloatText ? KBT.cream : KBT.dim}>
-                REP FLOAT TEXT
-              </DisplayText>
-              <Label size={10} tracking={1.5}>
-                Scored reps float game text up the tile
-              </Label>
-            </div>
-            <ToggleChip
+            <TogglePlate
+              label='REP FLOAT TEXT'
+              hint='Scored reps float game text up the tile'
               on={config.repFloatText}
               onToggle={() =>
                 onConfig({
@@ -354,13 +311,13 @@ export function SetupScreen({
                 })
               }
             />
-          </Plate>
+          </div>
         </div>
 
         <div
           className='kbt-scroll'
           style={{
-            width: 320,
+            width: 300,
             flexShrink: 0,
             display: 'flex',
             flexDirection: 'column',
@@ -376,10 +333,10 @@ export function SetupScreen({
             innerStyle={{
               display: 'flex',
               flexDirection: 'column',
-              gap: 10,
-              padding: '16px 18px',
+              gap: 8,
+              padding: '12px 14px',
             }}>
-            <DisplayText size={18} weight={700} tracking={2}>
+            <DisplayText size={16} weight={700} tracking={2}>
               ROUND CLOCK
             </DisplayText>
             <Stepper
@@ -403,10 +360,10 @@ export function SetupScreen({
             innerStyle={{
               display: 'flex',
               flexDirection: 'column',
-              gap: 10,
-              padding: '16px 18px',
+              gap: 8,
+              padding: '12px 14px',
             }}>
-            <DisplayText size={18} weight={700} tracking={2}>
+            <DisplayText size={16} weight={700} tracking={2}>
               LIFTERS PER HEAT
             </DisplayText>
             <div style={{ display: 'flex', gap: 10 }}>
@@ -416,7 +373,7 @@ export function SetupScreen({
                   label={String(n)}
                   active={config.heatSize === n}
                   onClick={() => onConfig({ ...config, heatSize: n })}
-                  style={{ width: 52, height: 44, fontSize: 16 }}
+                  style={{ width: 46, height: 38, fontSize: 14 }}
                 />
               ))}
             </div>
@@ -429,10 +386,10 @@ export function SetupScreen({
             innerStyle={{
               display: 'flex',
               flexDirection: 'column',
-              gap: 10,
-              padding: '16px 18px',
+              gap: 8,
+              padding: '12px 14px',
             }}>
-            <DisplayText size={18} weight={700} tracking={2}>
+            <DisplayText size={16} weight={700} tracking={2}>
               CAMERA ANGLE
             </DisplayText>
             <div style={{ display: 'flex', gap: 10 }}>
@@ -447,7 +404,7 @@ export function SetupScreen({
                   label={label}
                   active={config.cameraView === value}
                   onClick={() => onConfig({ ...config, cameraView: value })}
-                  style={{ height: 44, padding: '0 14px', fontSize: 13 }}
+                  style={{ height: 38, padding: '0 14px', fontSize: 12 }}
                 />
               ))}
             </div>
@@ -461,10 +418,10 @@ export function SetupScreen({
             innerStyle={{
               display: 'flex',
               flexDirection: 'column',
-              gap: 10,
-              padding: '16px 18px',
+              gap: 8,
+              padding: '12px 14px',
             }}>
-            <DisplayText size={18} weight={700} tracking={2}>
+            <DisplayText size={16} weight={700} tracking={2}>
               OUTPUT
             </DisplayText>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -474,7 +431,7 @@ export function SetupScreen({
                   label={label}
                   active={config.resolution === value}
                   onClick={() => onConfig({ ...config, resolution: value })}
-                  style={{ height: 44, padding: '0 14px', fontSize: 13 }}
+                  style={{ height: 38, padding: '0 14px', fontSize: 12 }}
                 />
               ))}
             </div>
@@ -482,7 +439,7 @@ export function SetupScreen({
               {`Broadcast size ${RESOLUTION_PRESETS[config.resolution].width}×${RESOLUTION_PRESETS[config.resolution].height} — set when the arena opens. HD (1080p) is the default.`}
             </Label>
           </Plate>
-          <Plate cutPx={14} innerStyle={{ padding: '14px 18px' }}>
+          <Plate cutPx={14} innerStyle={{ padding: '10px 14px' }}>
             <span
               style={{
                 fontFamily: kbtMonoFont,
