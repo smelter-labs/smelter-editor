@@ -13,6 +13,8 @@ import {
   PodiumBlock,
 } from '../kbt-kit';
 import { useArcadeKeys } from '../../duck-hunter/use-arcade-input';
+import { KbtAvatar } from '../avatar';
+import { RepShotStrip } from '../rep-shots';
 import type { KbtFeed } from '../use-kbt-feed';
 
 const CONFETTI_COLORS = [
@@ -84,6 +86,14 @@ function PodiumSpot({
       }}>
       {p ? (
         <>
+          {p.photoUrl ? (
+            <KbtAvatar
+              name={p.name}
+              color={p.color}
+              photoUrl={p.photoUrl}
+              size={place === 1 ? 96 : 72}
+            />
+          ) : null}
           <DisplayText
             size={place === 1 ? 34 : 26}
             weight={800}
@@ -94,6 +104,14 @@ function PodiumSpot({
           <Num size={place === 1 ? 34 : 26}>
             {`${p.finalScore ?? p.bestScore}`}
           </Num>
+          {place === 1 && p.repShots?.length ? (
+            <RepShotStrip
+              shots={p.repShots}
+              height={32}
+              max={4}
+              style={{ justifyContent: 'center' }}
+            />
+          ) : null}
         </>
       ) : (
         <div style={{ height: 72 }} />
@@ -212,7 +230,8 @@ export function PodiumScreen({
               <KbtButton
                 variant='solid'
                 dense
-                label='REMATCH'
+                label='BACK TO REGISTRATION'
+                sub='roster reopens — run it back'
                 active
                 onClick={onPlayAgain}
               />

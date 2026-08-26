@@ -56,6 +56,31 @@ describe('KettlebellCoachController', () => {
     expect(event.inputId).toBe(INPUT);
   });
 
+  it('maps a worker frameFile to a served screenshotUrl', () => {
+    const h = harness();
+    h.controller.handleResult(INPUT, {
+      events: [{ ...rep(1), topT: 1.02, frameFile: 'room__whip__a-s1-r0001.jpg' }],
+    });
+    const [event] = h.ofType('kettlebell_rep_completed');
+    expect(event.screenshotUrl).toBe(
+      '/kbt-rep-frames/room__whip__a-s1-r0001.jpg',
+    );
+  });
+
+  it('drops frameFile names that fail the traversal guard', () => {
+    const h = harness();
+    h.controller.handleResult(INPUT, {
+      events: [
+        { ...rep(1), frameFile: '../secrets.jpg' },
+        { ...rep(2), frameFile: 'a/b.jpg' },
+        { ...rep(3), frameFile: 'shot.png' },
+      ],
+    });
+    const reps = h.ofType('kettlebell_rep_completed');
+    expect(reps).toHaveLength(3);
+    expect(reps.every((r) => r.screenshotUrl === undefined)).toBe(true);
+  });
+
   it('fires a technique alert on 3 of the last 5 reps, then cools down', () => {
     const h = harness();
     h.controller.handleResult(INPUT, { events: [rep(1, ['squatting'])] });

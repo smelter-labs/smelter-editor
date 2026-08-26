@@ -1,13 +1,32 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Stage } from './kbt-kit';
+import { useRouter } from 'next/navigation';
+import type {
+  KbtConfig,
+  KbtMatchEvent,
+  KbtStateEvent,
+} from '@smelter-editor/types';
+import { getKbtState } from '@/app/actions/actions';
+import { RESOLUTION_PRESETS } from '@/lib/resolution';
+import {
+  DisplayText,
+  KBT,
+  KbtButton,
+  KbtStatusStrip,
+  Label,
+  Stage,
+  WarnPlate,
+  kbtMonoFont,
+} from './kbt-kit';
 import {
   DEFAULT_KBT_UI_CONFIG,
   useKbtRoom,
   type KbtUiConfig,
 } from './use-kbt-room';
 import { useKbtFeed } from './use-kbt-feed';
+import { useKbtRecording } from './use-kbt-recording';
+import { RecChip } from './recording-control';
 import { TitleScreen } from './screens/title-screen';
 import { SetupScreen } from './screens/setup-screen';
 import { RosterScreen } from './screens/roster-screen';
@@ -42,22 +61,121 @@ function loadConfig(): KbtUiConfig {
       heatDurationSec:
         typeof p.heatDurationSec === 'number' ? p.heatDurationSec : 60,
       heatSize: typeof p.heatSize === 'number' ? p.heatSize : 2,
+      // Old localStorage blobs lack the key → land on 'front' (back-compat).
+      cameraView: p.cameraView === 'side' ? 'side' : 'front',
+      repScreenshots:
+        typeof p.repScreenshots === 'boolean' ? p.repScreenshots : false,
+      // Old localStorage blobs lack the key → celebration on by default.
+      milestoneFx: typeof p.milestoneFx === 'boolean' ? p.milestoneFx : true,
+      // Old localStorage blobs lack the key → floating rep text on.
+      repFloatText:
+        typeof p.repFloatText === 'boolean' ? p.repFloatText : true,
+      // Old localStorage blobs lack the key → HD (back-compat).
+      resolution:
+        p.resolution && p.resolution in RESOLUTION_PRESETS
+          ? p.resolution
+          : DEFAULT_KBT_UI_CONFIG.resolution,
     };
   } catch {
     return DEFAULT_KBT_UI_CONFIG;
   }
 }
 
-/** The /kettlebell-tournament screen machine. */
-export function KettlebellTournamentArcade() {
-  const [screen, setScreen] = useState<Screen>('title');
-  const [config, setConfig] = useState<KbtUiConfig>(DEFAULT_KBT_UI_CONFIG);
+/** Server config (ms) → UI config (seconds). The server is the source of
+ * truth after a refresh — localStorage may belong to another session. */
+function serverConfigToUi(cfg: KbtConfig): KbtUiConfig {
+  return {
+    scoring: {
+      swing: { ...cfg.scoring.swing },
+      clean: { ...cfg.scoring.clean },
+      snatch: { ...cfg.scoring.snatch },
+    },
+    strictTechnique: cfg.strictTechnique,
+    heatDurationSec: Math.round(cfg.heatDurationMs / 1000),
+    heatSize: cfg.heatSize,
+    cameraView: cfg.cameraView === 'side' ? 'side' : 'front',
+    repScreenshots: !!cfg.repScreenshots,
+    milestoneFx: cfg.milestoneFx !== false,
+    repFloatText: cfg.repFloatText !== false,
+    // Not part of the server config — resolution is fixed at room creation,
+    // so after a refresh keep whatever this browser last picked.
+    resolution: loadConfig().resolution,
+  };
+}
 
-  const room = useKbtRoom();
+/** How long the live feed may stay down before we ask if the room is gone. */
+const FEED_DOWN_RECHECK_MS = 10_000;
+
+/**
+ * Reconstruct the host screen from a server snapshot after a refresh on
+ * /kettlebell-tournament/[roomId]. 'title'/'setup'/'results' have no server
+ * phase; the closest sensible screen is derived from the tournament phase
+ * plus the current heat's phase.
+ */
+function deriveScreen(state: KbtStateEvent, match: KbtMatchEvent): Screen {
+  if (state.tournamentPhase === 'roster') return 'roster';
+  if (state.tournamentPhase === 'podium') return 'podium';
+  // 'heats' | 'final'
+  if (
+    match.phase === 'intro' ||
+    match.phase === 'countdown' ||
+    match.phase === 'playing'
+  ) {
+    return 'heat';
+  }
+  // 'ended' skips the buzzer linger — the delayed video already aired it.
+  if (match.phase === 'ended') return 'results';
+  // idle mid-tournament: standings if anything has run, else staging roster.
+  return state.heats.some((h) => h.phase === 'ended') ? 'results' : 'roster';
+}
+
+/** The /kettlebell-tournament screen machine. */
+export function KettlebellTournamentArcade({
+  initialRoomId,
+}: {
+  initialRoomId?: string;
+}) {
+  // null = booting: rehydrating the screen from the server after a refresh.
+  const [screen, setScreen] = useState<Screen | null>(
+    initialRoomId ? null : 'title',
+  );
+  const [config, setConfig] = useState<KbtUiConfig>(DEFAULT_KBT_UI_CONFIG);
+  const router = useRouter();
+
+  const room = useKbtRoom(initialRoomId);
   const feed = useKbtFeed(room.roomId);
+  const rec = useKbtRecording(room.roomId, feed.state?.isRecording ?? false);
+
+  // Config edited locally since the last push? A refreshed host must not
+  // clobber the live server config just by clicking through to the roster.
+  const configDirtyRef = useRef(false);
+
+  // Boot on /[roomId]: once the room checks out, pick the screen from a state
+  // snapshot (and take the server's config — localStorage may be another
+  // browser's stale copy); a dead room bounces back to the plain arcade entry.
+  const bootedRef = useRef(false);
+  useEffect(() => {
+    if (!initialRoomId || bootedRef.current) return;
+    if (room.roomStatus === 'gone') {
+      bootedRef.current = true;
+      router.replace('/kettlebell-tournament');
+      return;
+    }
+    if (room.roomStatus !== 'ok' || screen !== null) return;
+    bootedRef.current = true;
+    getKbtState(initialRoomId)
+      .then(({ state, match }) => {
+        setConfig(serverConfigToUi(state.config));
+        configDirtyRef.current = false;
+        setScreen(deriveScreen(state, match));
+      })
+      .catch(() => router.replace('/kettlebell-tournament'));
+  }, [initialRoomId, room.roomStatus, screen, router]);
 
   useEffect(() => {
-    setConfig(loadConfig());
+    // With a room in the URL the boot effect hydrates config from the server.
+    if (!initialRoomId) setConfig(loadConfig());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -74,6 +192,8 @@ export function KettlebellTournamentArcade() {
   const phase = feed.match?.phase;
   const endedTimerRef = useRef<number | null>(null);
   useEffect(() => {
+    // Still booting from a snapshot — let the boot effect pick first.
+    if (screen === null) return;
     if (
       (phase === 'intro' || phase === 'countdown' || phase === 'playing') &&
       (screen === 'roster' || screen === 'results')
@@ -100,26 +220,136 @@ export function KettlebellTournamentArcade() {
     setScreen('roster');
     if (!room.roomId) {
       await room.createRoom(config);
+      configDirtyRef.current = false;
     } else {
-      await room.pushConfig(config);
+      // Only push what the host actually edited this session — a refreshed
+      // tab clicking through must not overwrite the live rules.
+      if (configDirtyRef.current) {
+        await room.pushConfig(config);
+        configDirtyRef.current = false;
+      }
       await room.control('roster');
     }
   };
 
   const exitToTitle = async () => {
+    // Save the show before the room dies — teardown would silently unregister
+    // the recording with no download. The 1.5s download timer survives the
+    // screen change (the arcade itself stays mounted).
+    if (rec.effectiveIsRecording) await rec.stopAndDownload();
     setScreen('title');
     await room.exitAndDelete();
   };
 
+  // The live feed stayed down for a while: check whether the room is gone
+  // (server restart, 30-min idle GC) so the host sees ARENA CLOSED instead
+  // of a silently frozen tournament.
+  const feedConnected = feed.connected;
+  useEffect(() => {
+    if (room.roomStatus !== 'ok' || feedConnected) return;
+    const timer = window.setInterval(() => {
+      void room.recheck();
+    }, FEED_DOWN_RECHECK_MS);
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room.roomStatus, feedConnected, room.recheck]);
+
+  const arenaClosed =
+    screen !== null &&
+    screen !== 'title' &&
+    screen !== 'setup' &&
+    room.roomStatus === 'gone';
+
   return (
     <Stage>
+      {room.roomStatus === 'ok' && !feed.connected && screen !== null ? (
+        <KbtStatusStrip position='absolute' text='FEED RECONNECTING…' />
+      ) : null}
+      {room.roomId && room.roomStatus === 'ok' && screen !== null ? (
+        <div
+          style={{
+            position: 'absolute',
+            top: 12,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 45,
+          }}>
+          <RecChip rec={rec} />
+        </div>
+      ) : null}
+      {room.lastError ? (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 18,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 50,
+            maxWidth: '80%',
+          }}>
+          <WarnPlate>{room.lastError}</WarnPlate>
+        </div>
+      ) : null}
+      {arenaClosed ? (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 55,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 18,
+            background: KBT.overlayHeavy,
+          }}>
+          <DisplayText size={34} weight={800} tracking={3} color={KBT.bad}>
+            ARENA CLOSED
+          </DisplayText>
+          <span
+            style={{
+              fontFamily: kbtMonoFont,
+              fontSize: 12,
+              letterSpacing: 0.5,
+              color: KBT.dim,
+              textAlign: 'center',
+              maxWidth: 460,
+            }}>
+            The room no longer exists on the server (restart or idle cleanup).
+            The tournament state is gone — start a fresh arena.
+          </span>
+          <KbtButton
+            label='BACK TO TITLE'
+            onClick={() => {
+              window.history.replaceState(null, '', '/kettlebell-tournament');
+              setScreen('title');
+            }}
+          />
+        </div>
+      ) : null}
+      {screen === null ? (
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+          <DisplayText size={26} weight={700} tracking={3} color={KBT.dim}>
+            RESTORING ARENA…
+          </DisplayText>
+        </div>
+      ) : null}
       {screen === 'title' ? (
         <TitleScreen onStart={() => setScreen('setup')} />
       ) : null}
       {screen === 'setup' ? (
         <SetupScreen
           config={config}
-          onConfig={setConfig}
+          onConfig={(c) => {
+            configDirtyRef.current = true;
+            setConfig(c);
+          }}
           onConfirm={() => void openRoster()}
           onBack={() => setScreen('title')}
         />
@@ -138,6 +368,11 @@ export function KettlebellTournamentArcade() {
           room={room}
           feed={feed}
           onBegin={() => void room.control('begin_heat')}
+          onForceBegin={() => void room.control('force_begin')}
+          onKick={(clientId) =>
+            void room.control('kick_player', undefined, clientId)
+          }
+          onRestart={() => void room.control('restart_heat')}
           onAbort={() => void room.control('stop_heat')}
         />
       ) : null}

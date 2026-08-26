@@ -264,6 +264,23 @@ def test_ideal_swing():
     assert snapshot["repCount"] == 10
 
 
+def test_rep_event_carries_apex_time():
+    # `topT` feeds the worker's rep-screenshot lookup: each rep event must name
+    # a plausible apex PTS — inside the run, and near the cosine cycle's crest
+    # (odd multiples of period/2, here 1.0s, 3.0s, …).
+    _, events, _ = run_swing(BOTTOM, TOP, reps=3)
+    reps = rep_events(events)
+    assert len(reps) == 3
+    period_s = 2.0
+    for i, r in enumerate(reps):
+        top_t = r["topT"]
+        assert isinstance(top_t, float)
+        expected_apex = period_s / 2 + i * period_s
+        assert abs(top_t - expected_apex) < period_s / 4, (
+            f"rep {i}: topT={top_t}, expected ≈{expected_apex}"
+        )
+
+
 def test_squatting():
     _, events, _ = run_swing(BOTTOM_SQUAT, TOP)
     reps = rep_events(events)
@@ -643,6 +660,46 @@ def test_params_update_applies():
     assert analyzer.segmenter.rep_sensitivity == 0.4
     assert analyzer.params["hingeKneeMin"] == 90
     assert analyzer.params["swingTopRule"] == DEFAULT_PARAMS["swingTopRule"]
+    assert analyzer.params["cameraView"] == "side"
+    analyzer.set_params({"cameraView": "front"})
+    assert analyzer.params["cameraView"] == "front"
+
+
+def test_front_mode_suppresses_side_only_verdicts():
+    """cameraView='front': knee/elbow/back angles are depth-axis projections,
+    so squatting / bent_arms / rounded_back must not fire — reps still count."""
+    for bottom, top in (
+        (BOTTOM_SQUAT, TOP),
+        (BOTTOM, TOP_BENT_ARMS),
+        (BOTTOM_ROUNDED, TOP),
+    ):
+        _, events, _ = run_swing(bottom, top, params={"cameraView": "front"})
+        reps = rep_events(events)
+        assert reps, "no reps segmented"
+        assert all(r["verdict"] == "correct" for r in reps), [
+            r["issues"] for r in reps
+        ]
+
+
+def test_front_mode_keeps_height_checks():
+    """Pure-height checks are view-independent and must survive front mode."""
+    _, events, _ = run_swing(BOTTOM, TOP_HIGH, params={"cameraView": "front"})
+    reps = rep_events(events)
+    assert reps, "no reps segmented"
+    assert all("too_high" in r["issues"] for r in reps), [r["issues"] for r in reps]
+
+
+def test_front_mode_keeps_soft_lockout():
+    """The snatch's only verdict reads the elbow at overhead lockout, where the
+    arm extends in the image plane in either view — front mode keeps it."""
+    _, events, _ = run_swing(
+        BOTTOM_1H, TOP_SNATCH_1H_SOFT, params={"cameraView": "front"},
+    )
+    reps = rep_events(events)
+    assert reps, "no reps segmented"
+    assert all("soft_lockout" in r["issues"] for r in reps), [
+        r["issues"] for r in reps
+    ]
 
 
 def test_reps_survive_missing_dominant_ankle():

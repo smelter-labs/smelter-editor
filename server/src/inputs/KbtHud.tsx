@@ -1,7 +1,9 @@
 import React from 'react';
 import { Image, Rescaler, Text, View } from '@swmansion/smelter';
 import type { KbtHudState, KbtHudTile } from '../app/store';
-import { kbtCasterCamRect, kbtCasterVisible } from '../app/store';
+import { barScale, kbtCasterCamRect, kbtCasterVisible } from '../app/store';
+import { KBT_EXERCISE_COLORS } from '@smelter-editor/types';
+import { KbtRepFloaters } from './KbtRepFloat';
 
 /**
  * Kettlebell Tournament broadcast chrome — a port of the approved kb_design
@@ -87,10 +89,70 @@ function Art({
   );
 }
 
+/**
+ * Square profile photo with a colored edge at design-px coords. Photos are
+ * uploaded as squares, so fill == fit; the surrounding color frame doubles
+ * as the fallback block when no photo was registered.
+ */
+function PhotoBox({
+  imageId,
+  color,
+  x,
+  y,
+  size,
+  k,
+}: {
+  imageId: string | null | undefined;
+  color: string;
+  x: number;
+  y: number;
+  size: number;
+  k: number;
+}) {
+  const s = Math.round(size * k);
+  const border = Math.max(1, Math.round(2 * k));
+  const inner = s - 2 * border;
+  return (
+    <View
+      style={{
+        top: Math.round(y * k),
+        left: Math.round(x * k),
+        width: s,
+        height: s,
+        backgroundColor: color,
+        overflow: 'hidden',
+      }}>
+      {imageId ? (
+        <View
+          style={{
+            top: border,
+            left: border,
+            width: inner,
+            height: inner,
+            overflow: 'hidden',
+          }}>
+          <Rescaler
+            style={{ width: inner, height: inner, rescaleMode: 'fill' }}>
+            <Image imageId={imageId} />
+          </Rescaler>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+/** Cap-band center below the text-box top, as a fraction of fontSize.
+ * Smelter's Text pins glyphs to the wrapper top and has no vertical align,
+ * so optical centering must offset the wrapper by font metrics. Big Shoulders
+ * Display: (asc 1971 − capHeight 1600/2) / upem 2000 ≈ 0.585. IBM Plex Mono:
+ * (asc 1025 − cap 698/2) / upem 1000 ≈ 0.68 — the MONO labels that already
+ * looked centered sat exactly at y = H/2 − 0.68·fs. All-caps strings only. */
+const CAP_CENTER: Record<string, number> = { [DISPLAY]: 0.585, [MONO]: 0.68 };
+
 /** One clipped line of text at design-px coords. */
 function Label({
   x,
-  y,
+  y = 0,
   w,
   text,
   fs,
@@ -99,9 +161,10 @@ function Label({
   font = DISPLAY,
   weight = 'bold',
   align = 'left',
+  centerIn,
 }: {
   x: number;
-  y: number;
+  y?: number;
   w: number;
   text: string;
   fs: number;
@@ -110,12 +173,17 @@ function Label({
   font?: string;
   weight?: 'normal' | 'medium' | 'semi_bold' | 'bold' | 'extra_bold';
   align?: 'left' | 'center' | 'right';
+  /** Optically center the caps within a box of this design-px height
+   * (overrides `y`). */
+  centerIn?: number;
 }) {
   const width = Math.round(w * k);
+  const top =
+    centerIn != null ? centerIn / 2 - (CAP_CENTER[font] ?? 0.585) * fs : y;
   return (
     <View
       style={{
-        top: Math.round(y * k),
+        top: Math.round(top * k),
         left: Math.round(x * k),
         width,
         height: Math.round(fs * 1.45 * k),
@@ -148,10 +216,13 @@ export function KbtTileHud({
   tile,
   scene,
   parent,
+  floatText,
 }: {
   tile: KbtHudTile;
   scene: KbtHudState['scene'];
   parent: { width: number; height: number };
+  /** config.repFloatText — floating rep text instead of the static pop. */
+  floatText: boolean;
 }) {
   // The tile spans the full output height on ≤3-wide heats; scale the plate
   // with the column so the ×4 grid gets the narrow variant at its true size.
@@ -165,7 +236,8 @@ export function KbtTileHud({
   const plateY = parent.height - plateH;
   const fs = Math.max(14, Math.round(parent.height * 0.02));
   const pad = Math.round(fs * 0.5);
-  const meta = `${tile.exercise === 'idle' ? 'READY' : tile.exercise.toUpperCase()} · ${tile.points} PTS`;
+  const bw = Math.max(3, Math.round(parent.width * 0.008));
+  const meta = tile.exercise === 'idle' ? 'READY' : tile.exercise.toUpperCase();
 
   return (
     <View
@@ -176,23 +248,30 @@ export function KbtTileHud({
         height: parent.height,
         overflow: 'hidden',
       }}>
-      {/* Rep flash: the tile edge lights in the player's color for a beat. */}
+      {/* Rep flash: the tile edge lights in the player's color for a beat.
+          The border grows outward from the View while top/left place its
+          outer edge, so inset by the border width or the right/bottom
+          strokes land past the parent and the root clip eats them (same
+          correction as SmoothedBoxes). */}
       {tile.flash ? (
         <View
           style={{
-            top: 0,
-            left: 0,
-            width: parent.width,
-            height: parent.height,
-            borderWidth: Math.max(3, Math.round(parent.width * 0.008)),
-            borderColor:
-              tile.lastRepVerdict === 'incorrect' ? BAD : tile.color,
+            top: bw,
+            left: bw,
+            width: parent.width - 2 * bw,
+            height: parent.height - 2 * bw,
+            borderWidth: bw,
+            borderColor: tile.lastRepVerdict === 'incorrect' ? BAD : tile.color,
           }}
         />
       ) : null}
-      {/* +points pop: above the grid plate; under the streak chip when the
-          scene has no per-tile plate (solo hero plate is scene-level). */}
-      {tile.flash && tile.lastRepPoints > 0 ? (
+      {/* Per-rep feedback: floating game text when enabled; otherwise the
+          static +points pop (above the grid plate; under the streak chip when
+          the scene has no per-tile plate — solo hero plate is scene-level).
+          The floaters mount unconditionally while enabled so their spawn
+          detection sees every snapshot. */}
+      {floatText ? <KbtRepFloaters tile={tile} parent={parent} /> : null}
+      {!floatText && tile.flash && tile.lastRepPoints > 0 ? (
         <View
           style={{
             top:
@@ -250,9 +329,14 @@ export function KbtTileHud({
             height: plateH,
             overflow: 'hidden',
           }}>
+          {/* 'fill', not 'fit': plateH rounding skews the box aspect off the
+              asset's, and 'fit' letterboxes that error into 1px side slivers.
+              'fill' crops the sub-pixel excess vertically instead. */}
           <Rescaler
-            style={{ width: plateW, height: plateH, rescaleMode: 'fit' }}>
-            <Image imageId={use480 ? 'kbt-grid-plate-480' : 'kbt-grid-plate-608'} />
+            style={{ width: plateW, height: plateH, rescaleMode: 'fill' }}>
+            <Image
+              imageId={use480 ? 'kbt-grid-plate-480' : 'kbt-grid-plate-608'}
+            />
           </Rescaler>
           {/* Rank digit in the accent block (0,0,48,60). */}
           <View
@@ -277,16 +361,72 @@ export function KbtTileHud({
           </View>
           {/* Coords in the asset's design px; k=s maps them into the plate's
               (content-space) footprint so they track the plate scale. */}
-          <Label x={64} y={8} w={assetW - 80} k={s}
-            text={tile.name.toUpperCase()} fs={24} weight='bold' />
-          <Label x={64} y={38} w={assetW - 80} k={s}
-            text={meta} fs={12} font={MONO} weight='normal' color={DIM} />
+          <Label
+            x={64}
+            y={8}
+            w={assetW - 296}
+            k={s}
+            text={tile.name.toUpperCase()}
+            fs={24}
+            weight='bold'
+          />
+          <Label
+            x={64}
+            y={38}
+            w={assetW - 296}
+            k={s}
+            text={meta}
+            fs={12}
+            font={MONO}
+            weight='normal'
+            color={DIM}
+          />
+          {/* Big points, spanning the name+meta band (glyphs stay above the
+              baked separator at y=60); its window starts where the name's
+              window ends, so long names clip instead of colliding. */}
+          <Label
+            x={assetW - 232}
+            y={6}
+            w={170}
+            k={s}
+            text={`${tile.points}`}
+            fs={40}
+            weight='extra_bold'
+            align='right'
+          />
+          <Label
+            x={assetW - 56}
+            y={38}
+            w={34}
+            k={s}
+            text='PTS'
+            fs={11}
+            font={MONO}
+            weight='normal'
+            color={DIM}
+          />
           {/* Giant reps below the baked REPS label (22,74). */}
-          <Label x={20} y={92} w={220} k={s}
-            text={`${tile.reps}`} fs={92} weight='extra_bold' />
-          <Label x={assetW - 160} y={130} w={138} k={s}
-            text={`${tile.rpm} RPM`} fs={16} font={MONO}
-            weight='semi_bold' color={ACCENT} align='right' />
+          <Label
+            x={20}
+            y={92}
+            w={220}
+            k={s}
+            text={`${tile.reps}`}
+            fs={92}
+            weight='extra_bold'
+          />
+          <Label
+            x={assetW - 160}
+            y={130}
+            w={138}
+            k={s}
+            text={`${tile.rpm} RPM`}
+            fs={16}
+            font={MONO}
+            weight='semi_bold'
+            color={ACCENT}
+            align='right'
+          />
         </View>
       ) : null}
       {tile.signalLost ? (
@@ -322,7 +462,8 @@ export function KbtTileHud({
 function ClockChip({ hud, k }: { hud: KbtHudState; k: number }) {
   const match = hud.match;
   if (!match) return null;
-  let label = hud.heatLabel ?? (match.final ? 'FINAL' : `HEAT ${match.heatIndex + 1}`);
+  let label =
+    hud.heatLabel ?? (match.final ? 'FINAL' : `HEAT ${match.heatIndex + 1}`);
   let clock: string;
   let clockColor = CREAM;
   if (match.phase === 'intro') {
@@ -340,10 +481,12 @@ function ClockChip({ hud, k }: { hud: KbtHudState; k: number }) {
       clockColor = ACCENT;
     }
     // Final 10s: blink keyed to the snapshot clock (applies land ~10/s).
+    // Parity of the 500ms bucket gives even 500ms on/off phases at the 10Hz
+    // cadence; `% 500 < 250` sampled at 100ms steps aliased to 200/300ms.
     if (
       match.remainingMs != null &&
       match.remainingMs <= 10_000 &&
-      match.remainingMs % 500 < 250
+      Math.floor(match.remainingMs / 500) % 2 === 0
     ) {
       clockColor = BAD;
     }
@@ -362,16 +505,42 @@ function ClockChip({ hud, k }: { hud: KbtHudState; k: number }) {
         overflow: 'visible',
       }}>
       <Art id='kbt-chip-frame' x={x} y={30} w={550} h={54} k={k} />
-      <Label x={x + 44} y={44} w={296} k={k} text={label} fs={20}
-        weight='bold' align='center' />
-      <Label x={x + 355} y={41} w={190} k={k} text={clock} fs={28}
-        font={MONO} weight='semi_bold' color={clockColor} align='center' />
+      <Label
+        x={x + 44}
+        y={44}
+        w={296}
+        k={k}
+        text={label}
+        fs={20}
+        weight='bold'
+        align='center'
+      />
+      <Label
+        x={x + 355}
+        y={41}
+        w={190}
+        k={k}
+        text={clock}
+        fs={28}
+        font={MONO}
+        weight='semi_bold'
+        color={clockColor}
+        align='center'
+      />
     </View>
   );
 }
 
 /** Giant center countdown (3·2·1) and the winner card after the buzzer. */
-function CenterStage({ hud, resolution, k }: { hud: KbtHudState; resolution: Resolution; k: number }) {
+function CenterStage({
+  hud,
+  resolution,
+  k,
+}: {
+  hud: KbtHudState;
+  resolution: Resolution;
+  k: number;
+}) {
   const match = hud.match;
   if (!match) return null;
   if (match.phase === 'countdown') {
@@ -505,15 +674,39 @@ function LobbyScene({ hud, k }: { hud: KbtHudState; k: number }) {
       <Art id='kbt-lobby-panel' x={PX} y={PY} w={450} h={620} k={k} />
       {/* QR in the panel's baked cream square (measured slot 36,92 + 13px). */}
       {lobby.qrImageId ? (
-        <Art id={lobby.qrImageId} x={PX + 49} y={PY + 105} w={144} h={144} k={k} />
+        <Art
+          id={lobby.qrImageId}
+          x={PX + 49}
+          y={PY + 105}
+          w={144}
+          h={144}
+          k={k}
+        />
       ) : null}
       {lobby.joinLabel ? (
-        <Label x={PX + 231} y={PY + 148} w={185} k={k} text={lobby.joinLabel}
-          fs={15} font={MONO} weight='semi_bold' color={ACCENT} />
+        <Label
+          x={PX + 231}
+          y={PY + 148}
+          w={185}
+          k={k}
+          text={lobby.joinLabel}
+          fs={15}
+          font={MONO}
+          weight='semi_bold'
+          color={ACCENT}
+        />
       ) : null}
       {/* Count on the baked ATHLETES CONNECTED row (divider at y 282). */}
-      <Label x={PX + 300} y={PY + 288} w={115} k={k}
-        text={`${lobby.joinedCount}`} fs={26} weight='extra_bold' align='right' />
+      <Label
+        x={PX + 300}
+        y={PY + 288}
+        w={115}
+        k={k}
+        text={`${lobby.joinedCount}`}
+        fs={26}
+        weight='extra_bold'
+        align='right'
+      />
       {lobby.joined.slice(0, 6).map((p, i) => {
         const rowY = PY + 330 + i * 42;
         return (
@@ -527,20 +720,31 @@ function LobbyScene({ hud, k }: { hud: KbtHudState; k: number }) {
               backgroundColor: '#FFFFFF0A',
               overflow: 'hidden',
             }}>
-            <View
-              style={{
-                top: Math.round(9 * k),
-                left: Math.round(10 * k),
-                width: Math.round(6 * k),
-                height: Math.round(16 * k),
-                backgroundColor: p.color,
-              }}
-            />
+            {p.photoImageId ? (
+              <PhotoBox
+                imageId={p.photoImageId}
+                color={p.color}
+                x={4}
+                y={4}
+                size={26}
+                k={k}
+              />
+            ) : (
+              <View
+                style={{
+                  top: Math.round(9 * k),
+                  left: Math.round(10 * k),
+                  width: Math.round(6 * k),
+                  height: Math.round(16 * k),
+                  backgroundColor: p.color,
+                }}
+              />
+            )}
             <View
               style={{
                 top: Math.round(5 * k),
-                left: Math.round(28 * k),
-                width: Math.round(300 * k),
+                left: Math.round((p.photoImageId ? 40 : 28) * k),
+                width: Math.round((p.photoImageId ? 288 : 300) * k),
                 height: Math.round(26 * k),
                 overflow: 'hidden',
               }}>
@@ -571,7 +775,7 @@ function LobbyScene({ hud, k }: { hud: KbtHudState; k: number }) {
   );
 }
 
-/** SOLO: hero plate (lift tag, giant reps, pace, name) + AI rep tracker. */
+/** SOLO: hero plate (lift tag, giant points, pace, name) + AI rep tracker. */
 function SoloScene({ hud, k }: { hud: KbtHudState; k: number }) {
   const tile = Object.values(hud.tiles)[0];
   if (!tile) return null;
@@ -580,11 +784,11 @@ function SoloScene({ hud, k }: { hud: KbtHudState; k: number }) {
   const TX = 1570; // tracker origin
   const TY = 720;
   const rows: { count: number; color: string }[] = [
-    { count: tile.repsByExercise.snatch, color: ACCENT },
-    { count: tile.repsByExercise.clean, color: AMBER },
-    { count: tile.repsByExercise.swing, color: GOOD },
+    { count: tile.repsByExercise.snatch, color: KBT_EXERCISE_COLORS.snatch },
+    { count: tile.repsByExercise.clean, color: KBT_EXERCISE_COLORS.clean },
+    { count: tile.repsByExercise.swing, color: KBT_EXERCISE_COLORS.swing },
   ];
-  const maxCount = Math.max(10, ...rows.map((r) => r.count));
+  const maxCount = barScale(Math.max(...rows.map((r) => r.count)));
   return (
     <View
       style={{
@@ -596,32 +800,89 @@ function SoloScene({ hud, k }: { hud: KbtHudState; k: number }) {
       }}>
       <Art id='kbt-hero-plate' x={HX} y={HY} w={420} h={320} k={k} />
       {/* Lift tag (accent block 0,0,190,42). */}
-      <Label x={HX + 20} y={HY + 7} w={160} k={k}
+      <Label
+        x={HX + 20}
+        y={HY + 7}
+        w={160}
+        k={k}
         text={tile.exercise === 'idle' ? 'READY' : tile.exercise.toUpperCase()}
-        fs={22} weight='extra_bold' color={DARK} />
-      {/* Giant reps under the baked REPS label. */}
-      <Label x={HX + 28} y={HY + 66} w={230} k={k} text={`${tile.reps}`}
-        fs={150} weight='extra_bold' />
-      {/* Pace under the baked PACE label (280,102). */}
-      <Label x={HX + 278} y={HY + 122} w={130} k={k} text={`${tile.rpm}`}
-        fs={44} weight='bold' />
-      <Label x={HX + 278} y={HY + 178} w={130} k={k} text='RPM'
-        fs={13} font={MONO} weight='normal' color={DIM} />
-      {/* Name bar (0,260,420,60). */}
-      <View
-        style={{
-          top: Math.round((HY + 278) * k),
-          left: Math.round((HX + 28) * k),
-          width: Math.round(7 * k),
-          height: Math.round(24 * k),
-          backgroundColor: tile.color,
-        }}
+        fs={22}
+        weight='extra_bold'
+        color={DARK}
       />
-      <Label x={HX + 48} y={HY + 272} w={250} k={k}
-        text={tile.name.toUpperCase()} fs={30} weight='extra_bold' />
-      <Label x={HX + 270} y={HY + 281} w={120} k={k}
-        text={`${tile.points} PTS`} fs={14} font={MONO} weight='normal'
-        color={DIM} align='right' />
+      {/* Giant points under the baked POINTS label. */}
+      <Label
+        x={HX + 28}
+        y={HY + 66}
+        w={230}
+        k={k}
+        text={`${tile.points}`}
+        fs={150}
+        weight='extra_bold'
+      />
+      {/* Pace under the baked PACE label (280,102). */}
+      <Label
+        x={HX + 278}
+        y={HY + 122}
+        w={130}
+        k={k}
+        text={`${tile.rpm}`}
+        fs={44}
+        weight='bold'
+      />
+      <Label
+        x={HX + 278}
+        y={HY + 178}
+        w={130}
+        k={k}
+        text='RPM'
+        fs={13}
+        font={MONO}
+        weight='normal'
+        color={DIM}
+      />
+      {/* Name bar (0,260,420,60). */}
+      {tile.photoImageId ? (
+        <PhotoBox
+          imageId={tile.photoImageId}
+          color={tile.color}
+          x={HX + 22}
+          y={HY + 266}
+          size={44}
+          k={k}
+        />
+      ) : (
+        <View
+          style={{
+            top: Math.round((HY + 278) * k),
+            left: Math.round((HX + 28) * k),
+            width: Math.round(7 * k),
+            height: Math.round(24 * k),
+            backgroundColor: tile.color,
+          }}
+        />
+      )}
+      <Label
+        x={HX + (tile.photoImageId ? 76 : 48)}
+        y={HY + 272}
+        w={tile.photoImageId ? 222 : 250}
+        k={k}
+        text={tile.name.toUpperCase()}
+        fs={30}
+        weight='extra_bold'
+      />
+      <Label
+        x={HX + 270}
+        y={HY + 281}
+        w={120}
+        k={k}
+        text={`${tile.reps} REPS`}
+        fs={14}
+        font={MONO}
+        weight='normal'
+        color={DIM}
+        align='right'
+      />
       {/* AI rep tracker: counts + bars next to baked SNATCH/CLEAN/SWING. */}
       <Art id='kbt-tracker-panel' x={TX} y={TY} w={280} h={290} k={k} />
       {rows.map((row, i) => (
@@ -634,9 +895,18 @@ function SoloScene({ hud, k }: { hud: KbtHudState; k: number }) {
             height: Math.round(1080 * k),
             overflow: 'visible',
           }}>
-          <Label x={TX + 140} y={TY + 50 + i * 62} w={115} k={k}
-            text={`${row.count}`} fs={24} font={MONO} weight='semi_bold'
-            color={row.color} align='right' />
+          <Label
+            x={TX + 140}
+            y={TY + 50 + i * 62}
+            w={115}
+            k={k}
+            text={`${row.count}`}
+            fs={24}
+            font={MONO}
+            weight='semi_bold'
+            color={row.color}
+            align='right'
+          />
           <View
             style={{
               top: Math.round((TY + 88 + i * 62) * k),
@@ -661,7 +931,7 @@ function BoardScene({ hud, k }: { hud: KbtHudState; k: number }) {
   if (!board) return null;
   const BX = 360;
   const BY = 210;
-  const maxPoints = Math.max(1, ...board.rows.map((r) => r.points));
+  const maxPoints = barScale(Math.max(...board.rows.map((r) => r.points)));
   return (
     <View
       style={{
@@ -672,14 +942,34 @@ function BoardScene({ hud, k }: { hud: KbtHudState; k: number }) {
         overflow: 'hidden',
       }}>
       <Art id='kbt-board-panel' x={BX} y={BY} w={1200} h={660} k={k} />
-      <Label x={BX + 600} y={BY + 58} w={555} k={k}
+      <Label
+        x={BX + 600}
+        y={BY + 58}
+        w={555}
+        k={k}
         text={`SMELTER KETTLEBELL${board.final ? ' · FINAL' : ''}`}
-        fs={16} font={MONO} weight='normal' color={DIM} align='right' />
+        fs={16}
+        font={MONO}
+        weight='normal'
+        color={DIM}
+        align='right'
+      />
       {board.rows.map((row, i) => {
         const rowY = BY + 130 + i * 62;
         return (
           <View
-            key={`${row.name}-${i}`}
+            key={row.name}
+            id={`kbt-board-row-${row.name}`}
+            // Stable per-player id + transition: rank swaps on a live board
+            // (forced 'board' during a heat) slide rows instead of teleporting.
+            transition={{
+              durationMs: 300,
+              easingFunction: {
+                functionName: 'cubic_bezier',
+                points: [0.65, 0, 0.35, 1],
+              },
+              shouldInterrupt: true,
+            }}
             style={{
               top: Math.round(rowY * k),
               left: Math.round((BX + 45) * k),
@@ -688,20 +978,45 @@ function BoardScene({ hud, k }: { hud: KbtHudState; k: number }) {
               backgroundColor: row.rank === 1 ? '#FF5A1F1A' : '#FFFFFF08',
               overflow: 'visible',
             }}>
-            <Label x={18} y={6} w={50} k={k} text={`${row.rank}`} fs={30}
+            <Label
+              x={18}
+              centerIn={52}
+              w={50}
+              k={k}
+              text={`${row.rank}`}
+              fs={30}
               weight='extra_bold'
-              color={RANK_COLORS[row.rank - 1] ?? DIM} />
-            <View
-              style={{
-                top: Math.round(15 * k),
-                left: Math.round(74 * k),
-                width: Math.round(6 * k),
-                height: Math.round(22 * k),
-                backgroundColor: row.color,
-              }}
+              color={RANK_COLORS[row.rank - 1] ?? DIM}
             />
-            <Label x={94} y={8} w={400} k={k} text={row.name.toUpperCase()}
-              fs={26} weight='bold' />
+            {row.photoImageId ? (
+              <PhotoBox
+                imageId={row.photoImageId}
+                color={row.color}
+                x={68}
+                y={6}
+                size={40}
+                k={k}
+              />
+            ) : (
+              <View
+                style={{
+                  top: Math.round(15 * k),
+                  left: Math.round(74 * k),
+                  width: Math.round(6 * k),
+                  height: Math.round(22 * k),
+                  backgroundColor: row.color,
+                }}
+              />
+            )}
+            <Label
+              x={row.photoImageId ? 122 : 94}
+              centerIn={52}
+              w={row.photoImageId ? 372 : 400}
+              k={k}
+              text={row.name.toUpperCase()}
+              fs={26}
+              weight='bold'
+            />
             <View
               style={{
                 top: Math.round(22 * k),
@@ -723,10 +1038,28 @@ function BoardScene({ hud, k }: { hud: KbtHudState; k: number }) {
                 backgroundColor: ACCENT,
               }}
             />
-            <Label x={730} y={16} w={140} k={k} text={`${row.rpm} RPM`}
-              fs={15} font={MONO} weight='normal' color={DIM} align='right' />
-            <Label x={950} y={2} w={140} k={k} text={`${row.points}`}
-              fs={34} weight='extra_bold' align='right' />
+            <Label
+              x={730}
+              centerIn={52}
+              w={140}
+              k={k}
+              text={`${row.rpm} RPM`}
+              fs={15}
+              font={MONO}
+              weight='normal'
+              color={DIM}
+              align='right'
+            />
+            <Label
+              x={950}
+              centerIn={52}
+              w={140}
+              k={k}
+              text={`${row.points}`}
+              fs={34}
+              weight='extra_bold'
+              align='right'
+            />
           </View>
         );
       })}
@@ -766,14 +1099,45 @@ function PodiumScene({ hud, k }: { hud: KbtHudState; k: number }) {
               height: Math.round(1080 * k),
               overflow: 'visible',
             }}>
-            <Art id={`kbt-podium-block-${row.rank}`} x={x} y={blockTop}
-              w={320} h={h} k={k} />
-            <Label x={x} y={blockTop - 124} w={320} k={k}
-              text={row.name.toUpperCase()} fs={30} weight='extra_bold'
-              align='center' />
-            <Label x={x} y={blockTop - 78} w={320} k={k}
-              text={`${row.points} PTS`} fs={40} weight='extra_bold'
-              color={color} align='center' />
+            <Art
+              id={`kbt-podium-block-${row.rank}`}
+              x={x}
+              y={blockTop}
+              w={320}
+              h={h}
+              k={k}
+            />
+            {row.photoImageId ? (
+              <PhotoBox
+                imageId={row.photoImageId}
+                color={color}
+                x={x + 112}
+                y={blockTop - 234}
+                size={96}
+                k={k}
+              />
+            ) : null}
+            <Label
+              x={x}
+              y={blockTop - 124}
+              w={320}
+              k={k}
+              text={row.name.toUpperCase()}
+              fs={30}
+              weight='extra_bold'
+              align='center'
+            />
+            <Label
+              x={x}
+              y={blockTop - 78}
+              w={320}
+              k={k}
+              text={`${row.points} PTS`}
+              fs={40}
+              weight='extra_bold'
+              color={color}
+              align='center'
+            />
           </View>
         );
       })}
@@ -821,10 +1185,31 @@ function CasterLowerThird({
           borderColor: '#FFFFFF2E',
         }}
       />
-      <Art id='kbt-caster-onair' x={clusterX / k} y={cam.y / k} w={130} h={36} k={k} />
-      <Art id='kbt-caster-plate' x={clusterX / k} y={cam.y / k + 36} w={470} h={88} k={k} />
-      <Label x={clusterX / k + 30} y={cam.y / k + 36 + 10} w={410} k={k}
-        text={caster.name.toUpperCase()} fs={34} weight='extra_bold' />
+      <Art
+        id='kbt-caster-onair'
+        x={clusterX / k}
+        y={cam.y / k}
+        w={130}
+        h={36}
+        k={k}
+      />
+      <Art
+        id='kbt-caster-plate'
+        x={clusterX / k}
+        y={cam.y / k + 36}
+        w={470}
+        h={88}
+        k={k}
+      />
+      <Label
+        x={clusterX / k + 30}
+        y={cam.y / k + 36 + 10}
+        w={410}
+        k={k}
+        text={caster.name.toUpperCase()}
+        fs={34}
+        weight='extra_bold'
+      />
       {hud.leader ? (
         <View
           style={{
@@ -834,14 +1219,34 @@ function CasterLowerThird({
             height: resolution.height,
             overflow: 'visible',
           }}>
-          <Art id='kbt-leader-chip' x={1920 - 70 - 300}
-            y={cam.y / k + 124 - 56} w={300} h={56} k={k} />
-          <Label x={1920 - 70 - 300 + 95} y={cam.y / k + 124 - 56 + 16}
-            w={110} k={k} text={hud.leader.name.toUpperCase()} fs={20}
-            weight='bold' />
-          <Label x={1920 - 70 - 300 + 205} y={cam.y / k + 124 - 56 + 12}
-            w={70} k={k} text={`${hud.leader.points}`} fs={28}
-            weight='extra_bold' color={ACCENT} align='right' />
+          <Art
+            id='kbt-leader-chip'
+            x={1920 - 70 - 300}
+            y={cam.y / k + 124 - 56}
+            w={300}
+            h={56}
+            k={k}
+          />
+          <Label
+            x={1920 - 70 - 300 + 95}
+            y={cam.y / k + 124 - 56 + 16}
+            w={110}
+            k={k}
+            text={hud.leader.name.toUpperCase()}
+            fs={20}
+            weight='bold'
+          />
+          <Label
+            x={1920 - 70 - 300 + 205}
+            y={cam.y / k + 124 - 56 + 12}
+            w={70}
+            k={k}
+            text={`${hud.leader.points}`}
+            fs={28}
+            weight='extra_bold'
+            color={ACCENT}
+            align='right'
+          />
         </View>
       ) : null}
     </View>
@@ -900,6 +1305,557 @@ function CasterOnAirMini({ hud, k }: { hud: KbtHudState; k: number }) {
 }
 
 /**
+ * CASTER scene: the commentator's cam fills the stage (forced from the
+ * panel); chrome is a scaled-up lower-third cluster bottom-left, reusing the
+ * baked ON AIR + name plate art. No cam frame — the tile IS the scene.
+ */
+function CasterFullScene({ hud, k }: { hud: KbtHudState; k: number }) {
+  const caster = hud.commentator;
+  if (!caster) return null;
+  const S = 1.5; // lower-third art scaled up for the fullscreen scene
+  const X = 70;
+  const PLATE_H = 88 * S;
+  const PLATE_Y = 1080 - 70 - PLATE_H;
+  const ONAIR_Y = PLATE_Y - 36 * S;
+  return (
+    <View
+      style={{
+        top: 0,
+        left: 0,
+        width: Math.round(1920 * k),
+        height: Math.round(1080 * k),
+        overflow: 'hidden',
+      }}>
+      <Art
+        id='kbt-caster-onair'
+        x={X}
+        y={ONAIR_Y}
+        w={130 * S}
+        h={36 * S}
+        k={k}
+      />
+      <Art
+        id='kbt-caster-plate'
+        x={X}
+        y={PLATE_Y}
+        w={470 * S}
+        h={PLATE_H}
+        k={k}
+      />
+      <Label
+        x={X + 30 * S}
+        y={PLATE_Y + 10 * S}
+        w={410 * S}
+        k={k}
+        text={caster.name.toUpperCase()}
+        fs={34 * S}
+        weight='extra_bold'
+      />
+    </View>
+  );
+}
+
+type KbtOverlayState = NonNullable<KbtHudState['overlay']>;
+
+/** Small mono caption + big display value, one stat cell (panel-relative). */
+function StatCell({
+  x,
+  y,
+  w,
+  caption,
+  value,
+  k,
+  color = CREAM,
+}: {
+  x: number;
+  y: number;
+  w: number;
+  caption: string;
+  value: string;
+  k: number;
+  color?: string;
+}) {
+  return (
+    <View
+      style={{
+        top: Math.round(y * k),
+        left: Math.round(x * k),
+        width: Math.round(w * k),
+        height: Math.round(64 * k),
+        overflow: 'hidden',
+      }}>
+      <Label
+        x={0}
+        y={0}
+        w={w}
+        k={k}
+        text={caption}
+        fs={12}
+        font={MONO}
+        weight='normal'
+        color={DIM}
+        align='center'
+      />
+      <Label
+        x={0}
+        y={20}
+        w={w}
+        k={k}
+        text={value}
+        fs={30}
+        weight='extra_bold'
+        color={color}
+        align='center'
+      />
+    </View>
+  );
+}
+
+/** 'LIVE' (green) vs 'LAST HEAT' (dim) source tag for stat overlays. */
+function LiveTag({
+  x,
+  y,
+  w,
+  live,
+  k,
+  align = 'left',
+}: {
+  x: number;
+  y: number;
+  w: number;
+  live: boolean;
+  k: number;
+  align?: 'left' | 'center' | 'right';
+}) {
+  return (
+    <Label
+      x={x}
+      y={y}
+      w={w}
+      k={k}
+      text={live ? '● LIVE' : 'LAST HEAT'}
+      fs={12}
+      font={MONO}
+      weight='normal'
+      color={live ? GOOD : DIM}
+      align={align}
+    />
+  );
+}
+
+/** REP CAM: the commentator's chosen apex still, right-hand panel slot. */
+function RepShotOverlay({
+  overlay,
+  k,
+}: {
+  overlay: Extract<KbtOverlayState, { kind: 'rep_shot' }>;
+  k: number;
+}) {
+  const PX = 1400;
+  const PY = 150;
+  const W = 460;
+  const PAD = 20;
+  const PHOTO = W - PAD * 2;
+  const shot = overlay.shot;
+  const issues = overlay.showVerdict ? shot.issues.slice(0, 3) : [];
+  const verdictH = overlay.showVerdict ? 40 + issues.length * 24 + 6 : 0;
+  const H = 56 + PHOTO + 96 + verdictH;
+  const metaY = 56 + PHOTO + 14;
+  return (
+    <View
+      style={{
+        top: Math.round(PY * k),
+        left: Math.round(PX * k),
+        width: Math.round(W * k),
+        height: Math.round(H * k),
+        backgroundColor: BG,
+        borderWidth: 1,
+        borderColor: ACCENT,
+        overflow: 'hidden',
+      }}>
+      <Label
+        x={PAD}
+        y={18}
+        w={200}
+        k={k}
+        text='REP CAM'
+        fs={16}
+        font={MONO}
+        weight='normal'
+        color={ACCENT}
+      />
+      <Label
+        x={W - PAD - 160}
+        y={18}
+        w={160}
+        k={k}
+        text={`${overlay.index + 1} / ${overlay.total}`}
+        fs={16}
+        font={MONO}
+        weight='normal'
+        color={DIM}
+        align='right'
+      />
+      <PhotoBox
+        imageId={shot.imageId}
+        color={overlay.player.color}
+        x={PAD}
+        y={56}
+        size={PHOTO}
+        k={k}
+      />
+      <Label
+        x={PAD}
+        y={metaY}
+        w={300}
+        k={k}
+        text={overlay.player.name.toUpperCase()}
+        fs={30}
+        weight='bold'
+      />
+      <Label
+        x={W - PAD - 120}
+        y={metaY + 6}
+        w={120}
+        k={k}
+        text={`+${shot.points} PTS`}
+        fs={16}
+        font={MONO}
+        weight='normal'
+        color={ACCENT}
+        align='right'
+      />
+      <Label
+        x={PAD}
+        y={metaY + 44}
+        w={150}
+        k={k}
+        text={shot.exercise.toUpperCase()}
+        fs={14}
+        font={MONO}
+        weight='normal'
+        color={KBT_EXERCISE_COLORS[shot.exercise]}
+      />
+      <Label
+        x={PAD + 130}
+        y={metaY + 44}
+        w={150}
+        k={k}
+        text={`REP #${shot.repIndex}`}
+        fs={14}
+        font={MONO}
+        weight='normal'
+        color={DIM}
+      />
+      {overlay.showVerdict ? (
+        <View
+          style={{
+            top: Math.round((metaY + 78) * k),
+            left: Math.round(PAD * k),
+            width: Math.round((W - PAD * 2) * k),
+            height: Math.round(verdictH * k),
+            overflow: 'hidden',
+          }}>
+          <Label
+            x={0}
+            y={0}
+            w={W - PAD * 2}
+            k={k}
+            text={shot.verdict === 'correct' ? 'CORRECT' : 'NO COUNT'}
+            fs={24}
+            weight='extra_bold'
+            color={shot.verdict === 'correct' ? GOOD : BAD}
+          />
+          {issues.map((issue, i) => (
+            <Label
+              key={issue}
+              x={0}
+              y={38 + i * 24}
+              w={W - PAD * 2}
+              k={k}
+              text={`· ${issue.toUpperCase()}`}
+              fs={14}
+              font={MONO}
+              weight='normal'
+              color={DIM}
+            />
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+/** SPOTLIGHT: one player's stat card, bottom-right (clear of the caster). */
+function SpotlightOverlay({
+  overlay,
+  k,
+}: {
+  overlay: Extract<KbtOverlayState, { kind: 'spotlight' }>;
+  k: number;
+}) {
+  const PX = 1330;
+  const PY = 770;
+  const W = 520;
+  const H = 240;
+  const side = overlay.side;
+  const cellW = (W - 40) / 4;
+  return (
+    <View
+      style={{
+        top: Math.round(PY * k),
+        left: Math.round(PX * k),
+        width: Math.round(W * k),
+        height: Math.round(H * k),
+        backgroundColor: BG,
+        borderWidth: 1,
+        borderColor: ACCENT,
+        overflow: 'hidden',
+      }}>
+      <PhotoBox
+        imageId={side.photoImageId}
+        color={side.color}
+        x={20}
+        y={20}
+        size={110}
+        k={k}
+      />
+      <Label
+        x={150}
+        y={30}
+        w={W - 170}
+        k={k}
+        text={side.name.toUpperCase()}
+        fs={38}
+        weight='extra_bold'
+      />
+      <LiveTag x={150} y={86} w={200} live={overlay.live} k={k} />
+      <StatCell
+        x={20}
+        y={150}
+        w={cellW}
+        k={k}
+        caption='POINTS'
+        value={`${side.points}`}
+        color={ACCENT}
+      />
+      <StatCell
+        x={20 + cellW}
+        y={150}
+        w={cellW}
+        k={k}
+        caption='RPM'
+        value={`${side.rpm}`}
+      />
+      <StatCell
+        x={20 + cellW * 2}
+        y={150}
+        w={cellW}
+        k={k}
+        caption={overlay.live ? 'STREAK' : 'BEST STREAK'}
+        value={`${overlay.live ? side.streak : side.bestStreak}`}
+      />
+      <StatCell
+        x={20 + cellW * 3}
+        y={150}
+        w={cellW}
+        k={k}
+        caption='ACCURACY'
+        value={
+          side.accuracy != null ? `${Math.round(side.accuracy * 100)}%` : '—'
+        }
+      />
+      {/* Player-color underline. */}
+      <View
+        style={{
+          top: Math.round((H - 4) * k),
+          left: 0,
+          width: Math.round(W * k),
+          height: Math.max(1, Math.round(4 * k)),
+          backgroundColor: side.color,
+        }}
+      />
+    </View>
+  );
+}
+
+/** HEAD-TO-HEAD: two players compared, bottom-center panel. */
+function H2hOverlay({
+  overlay,
+  k,
+}: {
+  overlay: Extract<KbtOverlayState, { kind: 'h2h' }>;
+  k: number;
+}) {
+  const PX = 460;
+  const PY = 760;
+  const W = 1000;
+  const H = 250;
+  const { a, b } = overlay;
+  const rows: { caption: string; va: number; vb: number }[] = [
+    { caption: 'POINTS', va: a.points, vb: b.points },
+    { caption: 'RPM', va: a.rpm, vb: b.rpm },
+    { caption: 'REPS', va: a.reps, vb: b.reps },
+  ];
+  // One shared axis across all rows keeps bar lengths comparable.
+  const scale = barScale(Math.max(...rows.map((r) => Math.max(r.va, r.vb))));
+  const BAR_W = 300;
+  const BAR_H = 10;
+  return (
+    <View
+      style={{
+        top: Math.round(PY * k),
+        left: Math.round(PX * k),
+        width: Math.round(W * k),
+        height: Math.round(H * k),
+        backgroundColor: BG,
+        borderWidth: 1,
+        borderColor: ACCENT,
+        overflow: 'hidden',
+      }}>
+      <PhotoBox
+        imageId={a.photoImageId}
+        color={a.color}
+        x={20}
+        y={16}
+        size={60}
+        k={k}
+      />
+      <Label
+        x={96}
+        y={26}
+        w={330}
+        k={k}
+        text={a.name.toUpperCase()}
+        fs={30}
+        weight='extra_bold'
+      />
+      <Label
+        x={430}
+        y={20}
+        w={140}
+        k={k}
+        text='VS'
+        fs={36}
+        weight='extra_bold'
+        color={ACCENT}
+        align='center'
+      />
+      <LiveTag
+        x={430}
+        y={66}
+        w={140}
+        live={overlay.live}
+        k={k}
+        align='center'
+      />
+      <PhotoBox
+        imageId={b.photoImageId}
+        color={b.color}
+        x={W - 20 - 60}
+        y={16}
+        size={60}
+        k={k}
+      />
+      <Label
+        x={W - 96 - 330}
+        y={26}
+        w={330}
+        k={k}
+        text={b.name.toUpperCase()}
+        fs={30}
+        weight='extra_bold'
+        align='right'
+      />
+      {rows.map((row, i) => {
+        const rowY = 104 + i * 46;
+        const wa = Math.round(BAR_W * Math.min(1, row.va / scale) * k);
+        const wb = Math.round(BAR_W * Math.min(1, row.vb / scale) * k);
+        const aLeads = row.va > row.vb;
+        const bLeads = row.vb > row.va;
+        return (
+          <View
+            key={row.caption}
+            style={{
+              top: Math.round(rowY * k),
+              left: 0,
+              width: Math.round(W * k),
+              height: Math.round(40 * k),
+              overflow: 'hidden',
+            }}>
+            <Label
+              x={20}
+              centerIn={40}
+              w={80}
+              k={k}
+              text={`${row.va}`}
+              fs={24}
+              weight='extra_bold'
+              color={aLeads ? ACCENT : CREAM}
+            />
+            <Label
+              x={W - 100}
+              centerIn={40}
+              w={80}
+              k={k}
+              text={`${row.vb}`}
+              fs={24}
+              weight='extra_bold'
+              color={bLeads ? ACCENT : CREAM}
+              align='right'
+            />
+            <Label
+              x={430}
+              centerIn={40}
+              w={140}
+              k={k}
+              text={row.caption}
+              fs={14}
+              font={MONO}
+              weight='normal'
+              color={DIM}
+              align='center'
+            />
+            {/* Bars grow toward the center from each player's side. */}
+            <View
+              style={{
+                top: Math.round((20 - BAR_H / 2) * k),
+                left: Math.round(430 * k) - wa - Math.round(10 * k),
+                width: wa,
+                height: Math.round(BAR_H * k),
+                backgroundColor: a.color,
+              }}
+            />
+            <View
+              style={{
+                top: Math.round((20 - BAR_H / 2) * k),
+                left: Math.round(570 * k) + Math.round(10 * k),
+                width: wb,
+                height: Math.round(BAR_H * k),
+                backgroundColor: b.color,
+              }}
+            />
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+/** Commentator overlay dispatch (single exclusive slot, all scenes but podium). */
+function CommentatorOverlay({ hud, k }: { hud: KbtHudState; k: number }) {
+  const overlay = hud.overlay;
+  if (!overlay || hud.scene === 'podium') return null;
+  if (overlay.kind === 'rep_shot') {
+    return <RepShotOverlay overlay={overlay} k={k} />;
+  }
+  if (overlay.kind === 'spotlight') {
+    return <SpotlightOverlay overlay={overlay} k={k} />;
+  }
+  return <H2hOverlay overlay={overlay} k={k} />;
+}
+
+/**
  * Scene-level tournament chrome, mounted once in the output scene above all
  * layers; per-tile chrome lives in KbtTileHud next to each input.
  */
@@ -925,7 +1881,8 @@ export function KbtMatchHud({
       {hud.scene === 'board' ? <BoardScene hud={hud} k={k} /> : null}
       {hud.scene === 'podium' ? <PodiumScene hud={hud} k={k} /> : null}
       {hud.scene === 'solo' ? <SoloScene hud={hud} k={k} /> : null}
-      {heatScene ? (
+      {hud.scene === 'caster' ? <CasterFullScene hud={hud} k={k} /> : null}
+      {heatScene || hud.scene === 'split' ? (
         <View
           style={{
             top: 0,
@@ -935,11 +1892,23 @@ export function KbtMatchHud({
             overflow: 'visible',
           }}>
           <ClockChip hud={hud} k={k} />
-          <Banner hud={hud} k={k} />
-          <CenterStage hud={hud} resolution={resolution} k={k} />
+          {/* No countdown/winner card over the split — the caster half is on
+              stage; the clock chip carries the state. */}
+          {heatScene ? (
+            <CenterStage hud={hud} resolution={resolution} k={k} />
+          ) : null}
         </View>
       ) : null}
-      {kbtCasterVisible(hud.scene) ? (
+      {/* Banner also fires over the board (commentator hype over standings);
+          lobby and podium stay clean. */}
+      {heatScene || hud.scene === 'split' || hud.scene === 'board' ? (
+        <Banner hud={hud} k={k} />
+      ) : null}
+      <CommentatorOverlay hud={hud} k={k} />
+      {/* On caster/split the commentator IS the scene — no lower-third or
+          mini chip on top of their own camera. */}
+      {hud.scene === 'caster' ||
+      hud.scene === 'split' ? null : kbtCasterVisible(hud.scene) ? (
         <CasterLowerThird hud={hud} resolution={resolution} k={k} />
       ) : (
         <CasterOnAirMini hud={hud} k={k} />

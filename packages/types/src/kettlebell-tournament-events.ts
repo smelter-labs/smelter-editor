@@ -14,8 +14,19 @@ export type KbtExerciseKey = "swing" | "clean" | "snatch";
 
 export const KBT_EXERCISE_KEYS: KbtExerciseKey[] = ["swing", "clean", "snatch"];
 
+/** Signature color per exercise (matches the broadcast HUD's rep tracker). */
+export const KBT_EXERCISE_COLORS: Record<KbtExerciseKey, string> = {
+  swing: "#38E08A",
+  clean: "#FFB800",
+  snatch: "#FF5A1F",
+};
+
 /** Scoring rule for one exercise. Disabled reps still count, but score 0. */
 export type KbtScoringRule = { enabled: boolean; points: number };
+
+/** Which way competitors stand relative to their phone camera. Side-on
+ * enables the full technique judge; facing keeps only height checks. */
+export type KbtCameraView = "front" | "side";
 
 export type KbtConfig = {
   scoring: Record<KbtExerciseKey, KbtScoringRule>;
@@ -25,6 +36,15 @@ export type KbtConfig = {
   heatDurationMs: number;
   /** Players per heat, clamped server-side to 2..4. */
   heatSize: number;
+  cameraView: KbtCameraView;
+  /** When true, the coach saves a still of each counted rep at its apex. */
+  repScreenshots: boolean;
+  /** When true, every 5th rep of an exercise fires an on-air celebration
+   * (aura in the exercise's color + tile shake). */
+  milestoneFx: boolean;
+  /** When true, every scored rep floats game-style text up the tile
+   * ("SNATCH +3", or "NO REP" on an incorrect rep). */
+  repFloatText: boolean;
 };
 
 /** Defaults: harder lifts pay more; technique is forgiving (easy to play). */
@@ -37,6 +57,10 @@ export const KBT_DEFAULT_CONFIG: KbtConfig = {
   strictTechnique: false,
   heatDurationMs: 60_000,
   heatSize: 2,
+  cameraView: "front",
+  repScreenshots: false,
+  milestoneFx: true,
+  repFloatText: true,
 };
 
 /**
@@ -57,7 +81,12 @@ export type KbtMatchAction =
   | "next_heat"
   | "start_final"
   | "podium"
-  | "reset";
+  | "reset"
+  // Recovery controls: drop a stuck participant, re-run a heat that never
+  // finished, or start despite a dead phone (host's explicit call).
+  | "kick_player"
+  | "restart_heat"
+  | "force_begin";
 
 /**
  * One heat's lifecycle: 'idle' = scheduled, not started; 'intro' = players on
@@ -65,11 +94,88 @@ export type KbtMatchAction =
  */
 export type KbtHeatPhase = "idle" | "intro" | "countdown" | "playing" | "ended";
 
+/**
+ * Broadcast scene names. lobby/solo/grid/board/podium are derived from the
+ * tournament phase; 'caster' (fullscreen commentator) and 'split'
+ * (commentator + featured lifter) only ever come from a view override.
+ */
+export type KbtSceneName =
+  | "lobby"
+  | "solo"
+  | "grid"
+  | "board"
+  | "podium"
+  | "caster"
+  | "split";
+
+/**
+ * Commentator panel view control. 'auto' returns the broadcast to the derived
+ * scene; the rest force a scene until cleared — by 'auto', by any match
+ * action, or by the referenced participant leaving.
+ */
+export type KbtViewOverride =
+  | { mode: "auto" }
+  | { mode: "caster" }
+  | { mode: "player_solo"; playerId: string }
+  | { mode: "split"; playerId: string }
+  | { mode: "grid" }
+  | { mode: "board" };
+
+/** Skeleton overlay draw mode on heat tiles (mirrors the coach model param). */
+export type KbtSkeletonMode = "off" | "lines" | "neon";
+
+export type KbtHypeBannerId =
+  | "new_leader"
+  | "final_30"
+  | "last_10"
+  | "photo_finish"
+  | "record_pace"
+  | "make_noise";
+
+/**
+ * Predefined on-air hype banners: the server renders text/color, the panel
+ * renders one button per entry. Predefined-only — no free text on air.
+ */
+export const KBT_HYPE_BANNERS: Record<
+  KbtHypeBannerId,
+  { text: string; color: string }
+> = {
+  new_leader: { text: "NEW LEADER!", color: "#FF5A1F" },
+  final_30: { text: "FINAL 30 SECONDS", color: "#FFB800" },
+  last_10: { text: "LAST 10 — EMPTY THE TANK!", color: "#FF4030" },
+  photo_finish: { text: "PHOTO FINISH!", color: "#FF5A1F" },
+  record_pace: { text: "RECORD PACE", color: "#38E08A" },
+  make_noise: { text: "MAKE SOME NOISE!", color: "#E8E4DA" },
+};
+
+/**
+ * Commentator-driven output overlay — a single exclusive slot on the program
+ * output. Replaced on every send; cleared by `{ kind: 'none' }`, by any match
+ * action, or by the referenced player leaving.
+ */
+export type KbtCommentatorOverlay =
+  | {
+      kind: "rep_shot";
+      playerId: string;
+      /** 0-based position in the player's shot list (server clamps). */
+      index: number;
+      /** Show the AI verdict + technique issues on the output. */
+      showVerdict: boolean;
+    }
+  | { kind: "spotlight"; playerId: string }
+  | { kind: "h2h"; playerIdA: string; playerIdB: string }
+  | { kind: "none" };
+
 export type KbtPlayer = {
   clientId: string;
   name: string;
   /** Hex color for this player's tile chrome + scoreboard rows. */
   color: string;
+  /**
+   * The player's control WebSocket is currently open. Absent on older
+   * servers — treat as true.
+   */
+  connected?: boolean;
   /** The phone published its camera and the WHIP input is receiving acks. */
   camConnected: boolean;
   /** The coach currently sees a pose on this player's input (intro checks). */
@@ -82,6 +188,28 @@ export type KbtPlayer = {
   finalScore: number | null;
   /** Qualification heat this player is assigned to, if heats were drawn. */
   heatIndex: number | null;
+  /**
+   * Server-relative profile photo path (`/kbt-photos/…`), content-hashed so
+   * the URL changes whenever the photo does. Absent on older servers.
+   */
+  photoUrl?: string | null;
+  /**
+   * Apex stills from this player's best qualification heat (or the final).
+   * Only present when rep screenshots were enabled during that heat.
+   */
+  repShots?: KbtRepShot[];
+};
+
+/** One saved apex still of a counted rep. */
+export type KbtRepShot = {
+  repIndex: number;
+  /** Server-relative URL (`/kbt-rep-frames/…`). */
+  url: string;
+  exercise: KbtExerciseKey;
+  verdict: "correct" | "incorrect";
+  points: number;
+  /** Technique faults the judge saw on this rep (absent on older servers). */
+  issues?: KettlebellIssueCode[];
 };
 
 /** Per-player score sheet within one heat. */
@@ -93,6 +221,9 @@ export type KbtScoreBreakdown = {
   /** Snapshot so rows survive a player disconnecting mid-tournament. */
   name: string;
   color: string;
+  photoUrl?: string | null;
+  /** Apex stills of this heat's counted reps, when rep screenshots are on. */
+  repShots?: KbtRepShot[];
 };
 
 export type KbtHeatSummary = {
@@ -105,7 +236,13 @@ export type KbtHeatSummary = {
 
 // ── Client -> Server (room WS, `kbt_` prefix) ────────────────────────────────
 
-export type KbtJoinMessage = { type: "kbt_join"; name: string };
+/**
+ * `playerKey` is the resume token from a previous `kbt_joined` reply. When it
+ * matches an existing player the join adopts that entry — even one whose old
+ * socket still looks open (a fast refresh beats the stale socket's close) —
+ * so scores and the heat slot follow the phone across refreshes.
+ */
+export type KbtJoinMessage = { type: "kbt_join"; name: string; playerKey?: string };
 /**
  * (Re)request a camera slot: the server registers a fresh WHIP input for this
  * client (retiring any previous one) and replies with `kbt_cam_offer`.
@@ -137,6 +274,8 @@ export type KbtSpectateMessage = { type: "kbt_spectate" };
 export type KbtCommentatorJoinMessage = {
   type: "kbt_commentator_join";
   name: string;
+  /** Resume token, same contract as on `kbt_join`. */
+  playerKey?: string;
 };
 /** Same offer flow as players: server replies with `kbt_cam_offer`. */
 export type KbtCommentatorCamRequestMessage = {
@@ -145,6 +284,46 @@ export type KbtCommentatorCamRequestMessage = {
   nativeHeight?: number;
 };
 export type KbtCommentatorLeaveMessage = { type: "kbt_commentator_leave" };
+/**
+ * Force/release the broadcast view (commentator panel). Ignored unless the
+ * sender is the joined commentator.
+ */
+export type KbtCommentatorViewMessage = {
+  type: "kbt_commentator_view";
+  override: KbtViewOverride;
+};
+/**
+ * Tournament flow control over the WS — same vocabulary as the host's REST
+ * match endpoint. Ignored unless the sender is the joined commentator.
+ */
+export type KbtCommentatorMatchMessage = {
+  type: "kbt_commentator_match";
+  action: KbtMatchAction;
+  heatIndex?: number;
+};
+/**
+ * Set/replace/clear the commentator's output overlay (rep cam, spotlight,
+ * head-to-head). Ignored unless the sender is the joined commentator.
+ */
+export type KbtCommentatorOverlayMessage = {
+  type: "kbt_commentator_overlay";
+  overlay: KbtCommentatorOverlay;
+};
+/** Fire a one-shot predefined hype banner on the program output. */
+export type KbtCommentatorBannerMessage = {
+  type: "kbt_commentator_banner";
+  bannerId: KbtHypeBannerId;
+};
+/** Live-switch the skeleton overlay on all heat tiles. */
+export type KbtCommentatorSkeletonMessage = {
+  type: "kbt_commentator_skeleton";
+  mode: KbtSkeletonMode;
+};
+/** Live-switch the floating rep text (config.repFloatText) mid-heat. */
+export type KbtCommentatorRepFloatMessage = {
+  type: "kbt_commentator_rep_float";
+  enabled: boolean;
+};
 
 export type KbtClientMessage =
   | KbtJoinMessage
@@ -155,7 +334,13 @@ export type KbtClientMessage =
   | KbtSpectateMessage
   | KbtCommentatorJoinMessage
   | KbtCommentatorCamRequestMessage
-  | KbtCommentatorLeaveMessage;
+  | KbtCommentatorLeaveMessage
+  | KbtCommentatorViewMessage
+  | KbtCommentatorMatchMessage
+  | KbtCommentatorOverlayMessage
+  | KbtCommentatorBannerMessage
+  | KbtCommentatorSkeletonMessage
+  | KbtCommentatorRepFloatMessage;
 
 /** Public commentator info in `kbt_state`. */
 export type KbtCommentator = {
@@ -177,6 +362,69 @@ export type KbtStateEvent = {
   currentHeatIndex: number | null;
   /** Present when a commentator joined (absent on older servers). */
   commentator?: KbtCommentator | null;
+  /** Current broadcast scene (absent on older servers). */
+  scene?: KbtSceneName;
+  /** Active view override; { mode: 'auto' } when none (absent on older servers). */
+  viewOverride?: KbtViewOverride;
+  /** Commentator output overlay; { kind: 'none' } when off (absent on older servers). */
+  commentatorOverlay?: KbtCommentatorOverlay;
+  /** Skeleton mode on heat tiles (absent on older servers — treat as 'neon'). */
+  skeletonMode?: KbtSkeletonMode;
+  /** An MP4 recording of the program output is running (absent on older servers). */
+  isRecording?: boolean;
+};
+
+/**
+ * Reply to `kbt_join` / `kbt_commentator_join`, sent only to the joiner (the
+ * playerKey is a bearer secret — never broadcast). Gives the phone its
+ * authoritative clientId plus everything it needs to resume after a refresh:
+ * jump straight back to the right wizard step, re-arm the camera, re-brief.
+ */
+export type KbtJoinedEvent = {
+  type: "kbt_joined";
+  roomId: string;
+  clientId: string;
+  /** Resume token — store it, send it with the next `kbt_join`. */
+  playerKey: string;
+  name: string;
+  role: "player" | "commentator";
+  briefed: boolean;
+  /** The server still holds a WHIP input registered for this participant. */
+  camInputActive: boolean;
+  photoUrl: string | null;
+  heatIndex: number | null;
+  /** This participant is in the currently selected heat. */
+  inCurrentHeat: boolean;
+  tournamentPhase: KbtTournamentPhase;
+  /** Phase of the current heat; 'idle' when no heat is active. */
+  heatPhase: KbtHeatPhase;
+};
+
+export type KbtErrorCode =
+  | "not_joined"
+  | "not_ready"
+  | "heat_not_idle"
+  | "heat_not_intro"
+  | "too_few_finalists"
+  | "not_commentator"
+  | "invalid_view"
+  | "invalid_overlay"
+  | "unknown_player"
+  | "no_live_camera"
+  | "bad_action";
+
+/**
+ * A rejected request, sent only to the acting client. Every silent no-op the
+ * controller used to have now emits one of these so phones and the host page
+ * can say what happened instead of appearing frozen.
+ */
+export type KbtErrorEvent = {
+  type: "kbt_error";
+  roomId: string;
+  code: KbtErrorCode;
+  /** English, display-ready. */
+  message: string;
+  context?: Record<string, string | number>;
 };
 
 /**
@@ -234,6 +482,8 @@ export type KbtRepEvent = {
   repIndex: number;
   /** Consecutive correct reps after this one (0 on an incorrect rep). */
   streak: number;
+  /** Apex still of this rep (`/kbt-rep-frames/…`), when screenshots are on. */
+  screenshotUrl?: string;
 };
 
 /** Live pose visibility for the player's own intro framing check. */
@@ -268,6 +518,8 @@ export type KbtStreakEvent = {
 
 export type KbtServerEvent =
   | KbtStateEvent
+  | KbtJoinedEvent
+  | KbtErrorEvent
   | KbtCamOfferEvent
   | KbtMatchEvent
   | KbtRepEvent

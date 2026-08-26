@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { connectWhep } from '@/lib/webrtc/whep-connect';
 import {
+  ConfirmRail,
   DisplayText,
   KBT,
   KbtButton,
@@ -12,10 +13,12 @@ import {
   PlateTitle,
   StatusDot,
   Tab,
-  cut,
-  kbtMonoFont,
+  WarnPlate,
+  useArmed,
 } from '../kbt-kit';
 import { useArcadeKeys } from '../../duck-hunter/use-arcade-input';
+import { KbtAvatar } from '../avatar';
+import { ScoreChip } from '../score-chip';
 import type { KbtFeed } from '../use-kbt-feed';
 import type { KbtRoom } from '../use-kbt-room';
 
@@ -30,34 +33,77 @@ export function HeatScreen({
   room,
   feed,
   onBegin,
+  onForceBegin,
+  onKick,
+  onRestart,
   onAbort,
 }: {
   room: KbtRoom;
   feed: KbtFeed;
   onBegin: () => void;
+  /** Start despite unready lifters (dead phone) — host's explicit override. */
+  onForceBegin?: () => void;
+  /** Drop a participant so the show can go on without them. */
+  onKick?: (clientId: string) => void;
+  /** Re-run a heat that never finished (back to a fresh intro). */
+  onRestart?: () => void;
   onAbort: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const [confirmAbort, setConfirmAbort] = useState(false);
+  const rail = useArmed(5000);
+  const kick = useArmed(3000);
+  const [feedDown, setFeedDown] = useState(false);
 
+  // WHEP with self-heal: a failed handshake or a died track used to leave a
+  // black screen forever — retry with backoff and say what's happening.
   useEffect(() => {
-    if (!room.whepUrl) return;
-    let closeConnection = () => {};
+    const whepUrl = room.whepUrl;
+    if (!whepUrl) return;
     let cancelled = false;
-    void connectWhep(room.whepUrl).then(({ stream, close }) => {
-      if (cancelled) {
-        close();
-        return;
-      }
-      closeConnection = close;
-      const vid = videoRef.current;
-      if (vid && vid.srcObject !== stream) {
-        vid.srcObject = stream;
-        vid.play().catch(() => {});
-      }
-    });
+    let closeConnection = () => {};
+    let retryTimer: number | null = null;
+    let delay = 1000;
+    const schedule = () => {
+      if (cancelled || retryTimer != null) return;
+      retryTimer = window.setTimeout(() => {
+        retryTimer = null;
+        connect();
+      }, delay);
+      delay = Math.min(8000, delay * 2);
+    };
+    const connect = () => {
+      if (cancelled) return;
+      void connectWhep(whepUrl)
+        .then(({ stream, close }) => {
+          if (cancelled) {
+            close();
+            return;
+          }
+          closeConnection = close;
+          setFeedDown(false);
+          delay = 1000;
+          const vid = videoRef.current;
+          if (vid && vid.srcObject !== stream) {
+            vid.srcObject = stream;
+            vid.play().catch(() => {});
+          }
+          stream.getVideoTracks()[0]?.addEventListener('ended', () => {
+            if (cancelled) return;
+            setFeedDown(true);
+            closeConnection();
+            schedule();
+          });
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setFeedDown(true);
+          schedule();
+        });
+    };
+    connect();
     return () => {
       cancelled = true;
+      if (retryTimer != null) window.clearTimeout(retryTimer);
       closeConnection();
     };
   }, [room.whepUrl]);
@@ -78,9 +124,11 @@ export function HeatScreen({
     (id) => players.find((p) => p.clientId === id) ?? null,
   );
   // Mirrors the server's begin_heat gate: briefing reached + live camera.
-  const allReady = heatPlayers.every((p) => p?.briefed && p?.camConnected);
+  const allReady = heatPlayers.every(
+    (p) => p?.briefed && p?.camConnected && p?.connected !== false,
+  );
   const waitingNames = heatPlayers
-    .filter((p) => !p || !p.briefed || !p.camConnected)
+    .filter((p) => !p || !p.briefed || !p.camConnected || p.connected === false)
     .map((p) => p?.name ?? '?');
   const heatLabel = match?.final
     ? 'FINAL'
@@ -89,10 +137,10 @@ export function HeatScreen({
       : 'HEAT';
 
   useArcadeKeys({
-    back: () => setConfirmAbort((c) => !c),
+    back: () => (rail.armed === 'stop' ? rail.disarm() : rail.arm('stop')),
     confirm: () => {
-      if (confirmAbort) {
-        setConfirmAbort(false);
+      if (rail.armed === 'stop') {
+        rail.disarm();
         onAbort();
       } else if (phase === 'intro' && allReady) {
         onBegin();
@@ -149,6 +197,19 @@ export function HeatScreen({
         }}
       />
 
+      {feedDown ? (
+        <div
+          className='kbt-pulse'
+          style={{
+            position: 'absolute',
+            top: 64,
+            left: '50%',
+            transform: 'translateX(-50%)',
+          }}>
+          <WarnPlate>PROGRAM FEED LOST — RECONNECTING…</WarnPlate>
+        </div>
+      ) : null}
+
       {/* Top chrome: heat label + live clock + score chips. */}
       <div
         style={{
@@ -161,7 +222,7 @@ export function HeatScreen({
           gap: 16,
           padding: '10px 16px',
           background:
-            'linear-gradient(180deg, rgba(13,14,16,0.85), rgba(13,14,16,0))',
+            'linear-gradient(180deg, rgba(13,14,16,.85), rgba(13,14,16,0))',
         }}>
         <Tab size={11}>{heatLabel}</Tab>
         <Num size={28} color={clockColor}>
@@ -169,39 +230,14 @@ export function HeatScreen({
         </Num>
         <div style={{ flex: 1 }} />
         {rows.map((r) => (
-          <div
+          <ScoreChip
             key={r.clientId}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              clipPath: cut(10),
-              background: KBT.plate,
-              border: `1px solid ${KBT.border}`,
-              padding: '5px 14px 5px 10px',
-            }}>
-            <span
-              style={{
-                width: 8,
-                height: 8,
-                background: r.color,
-                flexShrink: 0,
-              }}
-            />
-            <span
-              style={{
-                fontFamily: kbtMonoFont,
-                fontSize: 12,
-                letterSpacing: 1,
-                textTransform: 'uppercase',
-                color: KBT.cream,
-              }}>
-              {r.name}
-            </span>
-            <DisplayText size={20} weight={800}>
-              {`${r.points}`}
-            </DisplayText>
-          </div>
+            large
+            name={r.name}
+            color={r.color}
+            photoUrl={r.photoUrl}
+            points={r.points}
+          />
         ))}
       </div>
 
@@ -214,7 +250,7 @@ export function HeatScreen({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            background: 'rgba(13,14,16,0.6)',
+            background: 'rgba(13,14,16,.6)',
           }}>
           <Plate
             cutPx={22}
@@ -235,19 +271,25 @@ export function HeatScreen({
                   </Label>
                 );
               }
-              const ready = p.briefed && p.camConnected && p.poseTracked;
+              // Absent on older servers = assume connected.
+              const offline = p.connected === false;
+              const ready =
+                !offline && p.briefed && p.camConnected && p.poseTracked;
               const state: 'good' | 'warn' | 'bad' = ready
                 ? 'good'
-                : p.briefed && !p.camConnected
+                : offline || (p.briefed && !p.camConnected)
                   ? 'bad'
                   : 'warn';
-              const text = !p.briefed
-                ? 'ON THE PHONE…'
-                : !p.camConnected
-                  ? 'SIGNAL LOST'
-                  : !p.poseTracked
-                    ? 'STEP INTO FRAME'
-                    : 'READY ✓';
+              const text = offline
+                ? 'OFFLINE'
+                : !p.briefed
+                  ? 'ON THE PHONE…'
+                  : !p.camConnected
+                    ? 'SIGNAL LOST'
+                    : !p.poseTracked
+                      ? 'STEP INTO FRAME'
+                      : 'READY ✓';
+              const blocking = offline || !p.briefed || !p.camConnected;
               return (
                 <div
                   key={p.clientId}
@@ -257,13 +299,11 @@ export function HeatScreen({
                     gap: 12,
                     width: '100%',
                   }}>
-                  <span
-                    style={{
-                      width: 8,
-                      height: 8,
-                      background: p.color,
-                      flexShrink: 0,
-                    }}
+                  <KbtAvatar
+                    name={p.name}
+                    color={p.color}
+                    photoUrl={p.photoUrl}
+                    size={28}
                   />
                   <DisplayText
                     size={20}
@@ -287,6 +327,23 @@ export function HeatScreen({
                       {text}
                     </span>
                   </Label>
+                  {blocking && onKick ? (
+                    <KbtButton
+                      variant='danger'
+                      dense
+                      active={kick.armed === p.clientId}
+                      label={kick.armed === p.clientId ? 'KICK?' : 'KICK'}
+                      title={`Remove ${p.name} so the heat can start without them`}
+                      onClick={() => {
+                        if (kick.armed === p.clientId) {
+                          kick.disarm();
+                          onKick(p.clientId);
+                        } else {
+                          kick.arm(p.clientId);
+                        }
+                      }}
+                    />
+                  ) : null}
                 </div>
               );
             })}
@@ -298,9 +355,19 @@ export function HeatScreen({
               onClick={onBegin}
             />
             {!allReady ? (
-              <Label size={10} tracking={1.5} style={{ textAlign: 'center' }}>
-                {`WAITING FOR ${waitingNames.join(', ')}`}
-              </Label>
+              <>
+                <Label size={10} tracking={1.5} style={{ textAlign: 'center' }}>
+                  {`WAITING FOR ${waitingNames.join(', ')}`}
+                </Label>
+                {onForceBegin && heatPlayers.some((p) => p?.camConnected) ? (
+                  <KbtButton
+                    variant='outline'
+                    dense
+                    label='FORCE START (SKIP THE MISSING)'
+                    onClick={onForceBegin}
+                  />
+                ) : null}
+              </>
             ) : null}
             <Label size={10} tracking={1} style={{ textAlign: 'center' }}>
               AI referee is live — reps count only after the countdown.
@@ -309,54 +376,33 @@ export function HeatScreen({
         </div>
       ) : null}
 
-      {/* Bottom chrome: abort. */}
+      {/* Bottom chrome: restart / stop with the shared two-press rail. */}
       <div
         style={{
           position: 'absolute',
           left: 0,
           right: 0,
           bottom: 0,
-          display: 'flex',
-          justifyContent: 'flex-end',
-          gap: 12,
           padding: '10px 16px',
           background:
-            'linear-gradient(0deg, rgba(13,14,16,0.85), rgba(13,14,16,0))',
+            'linear-gradient(0deg, rgba(13,14,16,.85), rgba(13,14,16,0))',
         }}>
-        {confirmAbort ? (
-          <>
-            <Label
-              size={11}
-              tracking={1.5}
-              color={KBT.amber}
-              style={{ alignSelf: 'center' }}>
-              stop this heat?
-            </Label>
-            <KbtButton
-              variant='danger'
-              dense
-              label='STOP HEAT'
-              active
-              onClick={() => {
-                setConfirmAbort(false);
-                onAbort();
-              }}
-            />
-            <KbtButton
-              variant='outline'
-              dense
-              label='KEEP GOING'
-              onClick={() => setConfirmAbort(false)}
-            />
-          </>
-        ) : (
-          <KbtButton
-            variant='danger'
-            dense
-            label='ABORT'
-            onClick={() => setConfirmAbort(true)}
-          />
-        )}
+        <ConfirmRail
+          control={rail}
+          actions={[
+            ...(onRestart
+              ? [
+                  {
+                    id: 'restart',
+                    label: 'RESTART HEAT',
+                    prompt: "restart wipes this heat's reps",
+                  },
+                ]
+              : []),
+            { id: 'stop', label: 'STOP HEAT', prompt: 'stop this heat?' },
+          ]}
+          onConfirm={(id) => (id === 'stop' ? onAbort() : onRestart?.())}
+        />
       </div>
     </div>
   );

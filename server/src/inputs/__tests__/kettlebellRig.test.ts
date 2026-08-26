@@ -5,6 +5,8 @@ import {
   BONES,
   JOINT_COUNT,
   JOINT_GROUP,
+  KBT_BONE_COLOR,
+  KBT_JOINT_COLOR,
   SKELETON_PARAM_FIELDS,
   boneGroupIndex,
   buildSkeletonParams,
@@ -73,12 +75,14 @@ describe('kettlebell-skeleton uniform', () => {
     expect(SKELETON_PARAM_FIELDS).toEqual(wgslStructFields());
   });
 
-  it('builds those fields for both styles', () => {
-    for (const style of ['lines', 'neon'] as const) {
-      const params = buildSkeletonParams(pose(), style, PARENT);
-      expect(params.map((p) => p.fieldName)).toEqual(SKELETON_PARAM_FIELDS);
-      expect(params.every((p) => p.type === 'f32')).toBe(true);
-      expect(params.every((p) => Number.isFinite(p.value))).toBe(true);
+  it('builds those fields for every style, aura or not', () => {
+    for (const style of ['lines', 'neon', 'off'] as const) {
+      for (const aura of [undefined, { r: 1, g: 0.5, b: 0, i: 0.7 }]) {
+        const params = buildSkeletonParams(pose(), style, PARENT, aura);
+        expect(params.map((p) => p.fieldName)).toEqual(SKELETON_PARAM_FIELDS);
+        expect(params.every((p) => p.type === 'f32')).toBe(true);
+        expect(params.every((p) => Number.isFinite(p.value))).toBe(true);
+      }
     }
   });
 
@@ -170,6 +174,68 @@ describe('buildSkeletonParams', () => {
     const p = byName(buildSkeletonParams(joints, 'neon', PARENT));
     expect(p.head_v).toBe(0);
     expect(p.head_rad).toBe(0);
+  });
+
+  it("zeroes every rig alpha in 'off' so only the aura can draw", () => {
+    const p = byName(buildSkeletonParams(pose(), 'off', PARENT));
+    expect(p.bone_a).toBe(0);
+    expect(p.glow_a).toBe(0);
+    expect(p.joint_a).toBe(0);
+    expect(p.head_v).toBe(0);
+  });
+
+  it("restyles both palettes to cream/ember under the 'kbt' theme", () => {
+    for (const style of ['lines', 'neon'] as const) {
+      const p = byName(
+        buildSkeletonParams(pose(), style, PARENT, undefined, 'kbt'),
+      );
+      const bone = parseColor(KBT_BONE_COLOR);
+      const joint = parseColor(KBT_JOINT_COLOR);
+      // One broadcast color across all three groups, bones and joints alike
+      // (the head circle reads jnt_core_*, so it goes ember too).
+      for (const g of ['arm', 'leg', 'core'] as const) {
+        expect(p[`bone_${g}_r`]).toBeCloseTo(bone.r, 6);
+        expect(p[`bone_${g}_g`]).toBeCloseTo(bone.g, 6);
+        expect(p[`bone_${g}_b`]).toBeCloseTo(bone.b, 6);
+        expect(p[`jnt_${g}_r`]).toBeCloseTo(joint.r, 6);
+        expect(p[`jnt_${g}_g`]).toBeCloseTo(joint.g, 6);
+        expect(p[`jnt_${g}_b`]).toBeCloseTo(joint.b, 6);
+      }
+      expect(p.bone_a).toBeCloseTo(bone.a, 6);
+      expect(p.joint_a).toBeCloseTo(joint.a, 6);
+    }
+  });
+
+  it("keeps the 'default' theme byte-identical to the pre-theme output", () => {
+    // Regression pin for the standalone coach overlay: an omitted theme and
+    // an explicit 'default' must both reproduce today's palettes exactly.
+    for (const style of ['lines', 'neon', 'off'] as const) {
+      expect(buildSkeletonParams(pose(), style, PARENT)).toEqual(
+        buildSkeletonParams(pose(), style, PARENT, undefined, 'default'),
+      );
+    }
+    const neon = byName(buildSkeletonParams(pose(), 'neon', PARENT));
+    expect(neon.bone_arm_r).toBeCloseTo(0x22 / 255, 6); // cyan arms
+    const lines = byName(buildSkeletonParams(pose(), 'lines', PARENT));
+    expect(lines.bone_arm_r).toBeCloseTo(0x22 / 255, 6); // BONE_COLOR
+  });
+
+  it('passes the aura through, defaulting it off', () => {
+    const on = byName(
+      buildSkeletonParams(pose(), 'neon', PARENT, {
+        r: 0.2,
+        g: 0.4,
+        b: 0.6,
+        i: 0.8,
+      }),
+    );
+    expect(on.aura_r).toBeCloseTo(0.2, 6);
+    expect(on.aura_g).toBeCloseTo(0.4, 6);
+    expect(on.aura_b).toBeCloseTo(0.6, 6);
+    expect(on.aura_i).toBeCloseTo(0.8, 6);
+
+    const off = byName(buildSkeletonParams(pose(), 'neon', PARENT));
+    expect(off.aura_i).toBe(0);
   });
 });
 

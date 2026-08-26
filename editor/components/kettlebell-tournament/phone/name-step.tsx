@@ -1,20 +1,48 @@
 'use client';
 
-import React, { useState } from 'react';
-import { KBT, KbtButton, Label, Plate, kbtMonoFont } from '../kbt-kit';
+import React from 'react';
+import {
+  KBT,
+  KbtButton,
+  KbtTextInput,
+  Label,
+  Plate,
+  kbtMonoFont,
+} from '../kbt-kit';
 
-/** Step 2 — pick a lifter name (shown on the tile, scoreboard and podium). */
+// Lifter and commentator run the same step with role-fitted copy — the
+// commentator has no roster, no scores and no tile, just the booth.
+const NAME_COPY = {
+  lifter: {
+    label: 'LIFTER NAME',
+    placeholder: 'E.G. IRON ANIA',
+    hint: 'Your name rides your camera tile on the big screen. Reconnecting with the same name restores your scores.',
+    button: 'REGISTER',
+    sub: 'join the tournament roster',
+  },
+  commentator: {
+    label: 'COMMENTATOR NAME',
+    placeholder: 'E.G. VOICE OF STEEL',
+    hint: 'Your name badges the commentary lower-third on the broadcast. Reconnecting with the same name takes the booth back.',
+    button: 'TAKE THE MIC',
+    sub: 'claim the commentary booth',
+  },
+} as const;
+
+/** Step 2 — pick a name (lifter: tile, scoreboard, podium; commentator: booth). */
 export function NameStep({
   name,
   onName,
   onContinue,
+  variant = 'lifter',
 }: {
   name: string;
   onName: (v: string) => void;
   onContinue: () => void;
+  variant?: 'lifter' | 'commentator';
 }) {
+  const copy = NAME_COPY[variant];
   const trimmed = name.trim();
-  const [focused, setFocused] = useState(false);
   return (
     <div
       style={{
@@ -32,30 +60,13 @@ export function NameStep({
           gap: 12,
           padding: '18px 16px',
         }}>
-        <Label size={10}>LIFTER NAME</Label>
-        <input
+        <Label size={10}>{copy.label}</Label>
+        <KbtTextInput
           value={name}
-          onChange={(e) => onName(e.target.value.slice(0, 20))}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          placeholder='E.G. IRON ANIA'
+          onChange={onName}
+          placeholder={copy.placeholder}
+          maxLength={20}
           autoCapitalize='characters'
-          autoComplete='off'
-          spellCheck={false}
-          style={{
-            fontFamily: kbtMonoFont,
-            fontWeight: 500,
-            fontSize: 16,
-            letterSpacing: 2,
-            textTransform: 'uppercase',
-            color: KBT.cream,
-            background: KBT.fill,
-            border: `1px solid ${focused ? KBT.accent : KBT.border}`,
-            borderRadius: 0,
-            padding: '12px 12px',
-            outline: 'none',
-            width: '100%',
-          }}
         />
         <span
           style={{
@@ -64,15 +75,14 @@ export function NameStep({
             letterSpacing: 0.5,
             color: KBT.dim,
           }}>
-          Your name rides your camera tile on the big screen. Reconnecting with
-          the same name restores your scores.
+          {copy.hint}
         </span>
       </Plate>
       <KbtButton
         block
         variant='solid'
-        label='REGISTER'
-        sub='join the tournament roster'
+        label={copy.button}
+        sub={copy.sub}
         disabled={trimmed.length === 0}
         active={trimmed.length > 0}
         onClick={onContinue}

@@ -35,6 +35,11 @@ export type KettlebellRepCompletedEvent = {
   exercise: KettlebellExercise;
   verdict: "correct" | "incorrect";
   issues: KettlebellIssueCode[];
+  /**
+   * Server-relative still of the lifter at the rep's apex
+   * (`/kbt-rep-frames/…`). Only present when rep screenshots are enabled.
+   */
+  screenshotUrl?: string;
 };
 
 /** The classifier settled on a different exercise (post-dwell + debounce). */

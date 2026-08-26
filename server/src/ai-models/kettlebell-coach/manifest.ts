@@ -1,5 +1,6 @@
 import path from 'node:path';
 import type { ModelParamSpec } from '@smelter-editor/types';
+import { DATA_DIR } from '../../dataDir';
 import type { ModelManifest } from '../registry';
 
 const KETTLEBELL_COACH_DIR = path.join(__dirname, '.');
@@ -110,6 +111,18 @@ const KETTLEBELL_COACH_PARAMS: ModelParamSpec[] = [
     default: 'hardstyle',
   },
   {
+    type: 'select',
+    key: 'cameraView',
+    label: 'Camera view',
+    description:
+      'Side-on runs the full technique judge (hinge, arms, back). Facing the camera keeps only the height checks — depth angles are unreadable head-on.',
+    options: [
+      { value: 'side', label: 'Side-on (full judging)' },
+      { value: 'front', label: 'Facing camera (height checks only)' },
+    ],
+    default: 'side',
+  },
+  {
     key: 'hingeKneeMin',
     label: 'Hinge knee angle',
     description:
@@ -138,6 +151,18 @@ const KETTLEBELL_COACH_PARAMS: ModelParamSpec[] = [
     max: 170,
     step: 5,
     default: DEFAULT_BACK_ALIGN_MIN,
+  },
+  {
+    type: 'select',
+    key: 'captureRepFrames',
+    label: 'Rep screenshots',
+    description:
+      'Save a still of the lifter at the apex of every counted rep (served under /kbt-rep-frames). The tournament flips this per heat from its own setting.',
+    options: [
+      { value: '0', label: 'Off' },
+      { value: '1', label: 'On' },
+    ],
+    default: '0',
   },
   {
     type: 'select',
@@ -207,6 +232,10 @@ export const KETTLEBELL_COACH_MANIFEST: ModelManifest = {
     KETTLEBELL_HINGE_KNEE_MIN: String(DEFAULT_HINGE_KNEE_MIN),
     KETTLEBELL_ARM_STRAIGHT_MIN: String(DEFAULT_ARM_STRAIGHT_MIN),
     KETTLEBELL_BACK_ALIGN_MIN: String(DEFAULT_BACK_ALIGN_MIN),
+    KETTLEBELL_CAMERA_VIEW: 'side',
+    // Where the worker writes apex stills when captureRepFrames is on; Node
+    // serves them back at GET /kbt-rep-frames/:fileName.
+    KETTLEBELL_REP_FRAME_DIR: path.join(DATA_DIR, 'kbt-rep-frames'),
   },
   // Lets the UI show the debug drawBoxes toggle to preview the bell box.
   supportsBoxes: true,

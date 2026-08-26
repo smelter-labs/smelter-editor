@@ -97,13 +97,13 @@ const ASSETS = {
     </div>`],
 
   // ── SOLO hero plate, output pos: left 70, bottom 70 (y=690) ─────────
-  // Dynamic slots: lift tag text at (20,8) w160; giant reps at (30,120)
+  // Dynamic slots: lift tag text at (20,8) w160; giant points at (30,120)
   // fs150 BS800; RPM value at (280,160) BS700 32; name bar: flag (30,272)
-  // name (75,266) club right.
+  // name (75,266) reps right.
   'hero-plate': [420, 320, `
     <div style="position:absolute;left:0;top:0;width:190px;height:42px;background:${ACCENT};clip-path:polygon(0 0,calc(100% - 15px) 0,100% 100%,0 100%)"></div>
     <div style="position:absolute;left:0;top:42px;width:420px;height:218px;background:${BG};border:${BORDER}">
-      <div class="mono" style="position:absolute;left:30px;top:18px;font-size:14px;letter-spacing:3px;color:${DIM}">REPS</div>
+      <div class="mono" style="position:absolute;left:30px;top:18px;font-size:14px;letter-spacing:3px;color:${DIM}">POINTS</div>
       <div class="mono" style="position:absolute;left:280px;top:60px;font-size:12px;letter-spacing:2px;color:${DIM}">PACE</div>
     </div>
     <div style="position:absolute;left:0;top:260px;width:420px;height:60px;background:${BG2};border:${BORDER};border-top:none"></div>`],
@@ -126,8 +126,9 @@ const ASSETS = {
 
   // ── GRID plates, output pos: flush to bottom, centered per column ────
   // Dynamic slots: rank digit centered in (0,0,48,60); name at (64,10);
-  // meta at (64,38); giant reps at (22,~92) fs85; RPM right-aligned at
-  // (w-22, ~120).
+  // meta at (64,38); big PTS number right-aligned ending at (w-62, 6..55)
+  // with its PTS unit at (w-56, 38); giant reps at (22,~92) fs85; RPM
+  // right-aligned at (w-22, ~120).
   ...Object.fromEntries(
     [
       ['grid-plate-608', 608],

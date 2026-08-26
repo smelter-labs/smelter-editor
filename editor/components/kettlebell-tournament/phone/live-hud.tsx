@@ -5,6 +5,8 @@ import type { KbtMatchEvent } from '@smelter-editor/types';
 import { KETTLEBELL_ISSUE_LABELS } from '@smelter-editor/types';
 import {
   Backdrop,
+  Bar,
+  ChipButton,
   DisplayText,
   KBT,
   Label,
@@ -18,6 +20,103 @@ import type { KbtRepLogEntry } from './heat-report';
 function formatClock(ms: number): string {
   const total = Math.max(0, Math.round(ms / 1000));
   return `${Math.floor(total / 60)}:${(total % 60).toString().padStart(2, '0')}`;
+}
+
+/**
+ * Transport bar for file-camera mode: play/pause, scrub, back to start. A
+ * rig/testing affordance — scrubbing changes what the pose model sees, it
+ * does not rewind the score (reps are judged live server-side).
+ */
+function FileTransport({
+  playing,
+  positionMs,
+  durationMs,
+  onToggle,
+  onRestart,
+  onSeek,
+}: {
+  playing: boolean;
+  positionMs: number;
+  durationMs: number;
+  onToggle?: () => void;
+  onRestart?: () => void;
+  onSeek?: (ms: number) => void;
+}) {
+  const trackRef = React.useRef<HTMLDivElement | null>(null);
+
+  const seekFromPointer = (e: React.PointerEvent) => {
+    const el = trackRef.current;
+    if (!el || durationMs <= 0) return;
+    const rect = el.getBoundingClientRect();
+    const frac = Math.min(
+      1,
+      Math.max(0, (e.clientX - rect.left) / Math.max(1, rect.width)),
+    );
+    onSeek?.(frac * durationMs);
+  };
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: 12,
+        right: 12,
+        bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)',
+        zIndex: 2,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+        background: KBT.scrim,
+        border: `1px solid ${KBT.border}`,
+        padding: '8px 10px',
+      }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        {/* Tall hit area around the thin bar; pointer capture = drag-scrub. */}
+        <div
+          ref={trackRef}
+          onPointerDown={(e) => {
+            e.currentTarget.setPointerCapture(e.pointerId);
+            seekFromPointer(e);
+          }}
+          onPointerMove={(e) => {
+            if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+              seekFromPointer(e);
+            }
+          }}
+          style={{
+            flex: 1,
+            height: 24,
+            display: 'flex',
+            alignItems: 'center',
+            touchAction: 'none',
+            cursor: 'pointer',
+          }}>
+          <Bar
+            value={positionMs}
+            max={durationMs}
+            color={KBT.amber}
+            height={6}
+            style={{ width: '100%', pointerEvents: 'none' }}
+          />
+        </div>
+        <Num size={11} color={KBT.dim}>
+          {formatClock(positionMs)} / {formatClock(durationMs)}
+        </Num>
+      </div>
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+        <ChipButton
+          label={playing ? '⏸ PAUSE' : '▶ PLAY'}
+          dense
+          onClick={() => onToggle?.()}
+        />
+        <ChipButton
+          label='↺ FROM THE TOP'
+          dense
+          onClick={() => onRestart?.()}
+        />
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -39,6 +138,13 @@ export function LiveHud({
   flash,
   attachVideo,
   facing,
+  fileMode = false,
+  filePlaying = false,
+  filePositionMs = 0,
+  fileDurationMs = 0,
+  onToggleFile,
+  onRestartFile,
+  onSeekFile,
 }: {
   match: KbtMatchEvent | null;
   points: number;
@@ -50,6 +156,14 @@ export function LiveHud({
   flash: 'good' | 'bad' | null;
   attachVideo: (el: HTMLVideoElement | null) => void;
   facing: 'user' | 'environment';
+  /** File-camera transport (rig/testing) — see FileTransport. */
+  fileMode?: boolean;
+  filePlaying?: boolean;
+  filePositionMs?: number;
+  fileDurationMs?: number;
+  onToggleFile?: () => void;
+  onRestartFile?: () => void;
+  onSeekFile?: (ms: number) => void;
 }) {
   const phase = match?.phase ?? 'playing';
   const countdownN =
@@ -185,7 +299,7 @@ export function LiveHud({
               size={11}
               color={lastRep.verdict === 'incorrect' ? KBT.bad : KBT.good}>
               {lastRep.exercise.toUpperCase()}{' '}
-              {lastRep.verdict === 'incorrect' ? '✗' : '✓'}
+              {lastRep.verdict === 'incorrect' ? '✕' : '✓'}
             </Tab>
           )}
           {streak >= 3 ? (
@@ -210,6 +324,16 @@ export function LiveHud({
           ) : null}
         </div>
       </div>
+      {fileMode ? (
+        <FileTransport
+          playing={filePlaying}
+          positionMs={filePositionMs}
+          durationMs={fileDurationMs}
+          onToggle={onToggleFile}
+          onRestart={onRestartFile}
+          onSeek={onSeekFile}
+        />
+      ) : null}
     </div>
   );
 }

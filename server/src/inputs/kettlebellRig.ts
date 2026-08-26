@@ -127,6 +127,17 @@ export const NEON_GLOW: Record<BoneGroup, string> = {
   core: '#FBBF2438',
 };
 
+/**
+ * Which palette family the rig draws with. 'default' is the standalone
+ * kettlebell-coach look (cyan/violet/amber); 'kbt' restyles tournament tiles
+ * to the broadcast theme (kb_design): cream bones, ember joints — one look
+ * for every group in both styles (the glow rides the bone color, so neon
+ * gets a cream halo).
+ */
+export type SkeletonTheme = 'default' | 'kbt';
+export const KBT_BONE_COLOR = '#E8E4DADD';
+export const KBT_JOINT_COLOR = '#FF5A1FEE';
+
 export type Parent = { width: number; height: number };
 
 /** The rescale-'fill' (cover) transform the video uses, precomputed. */
@@ -184,7 +195,8 @@ export function parseColor(hex: string): {
   };
 }
 
-/** How the rig is styled — 'off' is handled by not mounting the shader. */
+/** How the rig is styled. buildSkeletonParams also accepts 'off' (all rig
+ * alphas zeroed) so the shader can stay mounted for the milestone aura alone. */
 export type SkeletonStyle = 'lines' | 'neon';
 
 /**
@@ -231,6 +243,10 @@ export const SKELETON_PARAM_FIELDS: string[] = [
   'jnt_core_r',
   'jnt_core_g',
   'jnt_core_b',
+  'aura_r',
+  'aura_g',
+  'aura_b',
+  'aura_i',
 ];
 
 /** Palette order the shader indexes with BONE_G / JOINT_G. */
@@ -251,10 +267,13 @@ const GROUP_ORDER: BoneGroup[] = ['arm', 'leg', 'core'];
  */
 export function buildSkeletonParams(
   joints: readonly (number[] | null)[],
-  style: SkeletonStyle,
+  style: SkeletonStyle | 'off',
   parent: Parent,
+  aura?: { r: number; g: number; b: number; i: number },
+  theme: SkeletonTheme = 'default',
 ): ShaderParamStructField[] {
   const neon = style === 'neon';
+  const off = style === 'off';
   const W = parent.width;
   const H = parent.height;
   const params: ShaderParamStructField[] = [];
@@ -283,25 +302,31 @@ export function buildSkeletonParams(
 
   // Bone and glow alpha are single scalars because within a style every group
   // shares one: NEON_GLOW is NEON_BONE at 0x38, and 'lines' is BONE_COLOR
-  // throughout. That is also why the shader needs no style flag.
-  const bonePalette = neon
-    ? GROUP_ORDER.map((g) => parseColor(NEON_BONE[g]))
-    : GROUP_ORDER.map(() => parseColor(BONE_COLOR));
+  // throughout. That is also why the shader needs no style flag. The 'kbt'
+  // theme uses one bone color for all groups in both styles.
+  const kbt = theme === 'kbt';
+  const bonePalette = kbt
+    ? GROUP_ORDER.map(() => parseColor(KBT_BONE_COLOR))
+    : neon
+      ? GROUP_ORDER.map((g) => parseColor(NEON_BONE[g]))
+      : GROUP_ORDER.map(() => parseColor(BONE_COLOR));
   const glowAlpha = neon ? parseColor(NEON_GLOW.core).a : 0;
-  f32('bone_a', bonePalette[0].a);
-  f32('glow_a', glowAlpha);
+  f32('bone_a', off ? 0 : bonePalette[0].a);
+  f32('glow_a', off ? 0 : glowAlpha);
 
   // Joint markers: hollow rings in neon, filled dots in lines. `hole` is the
   // inner radius; 0 fills the disc.
   const ring = Math.max(6, Math.round(thickness * 3));
   const ringBorder = Math.max(2, Math.round(thickness * 0.7));
   const dot = thickness * 2;
-  const jointPalette = neon
-    ? GROUP_ORDER.map((g) => parseColor(NEON_BONE[g]))
-    : GROUP_ORDER.map(() => parseColor(JOINT_COLOR));
+  const jointPalette = kbt
+    ? GROUP_ORDER.map(() => parseColor(KBT_JOINT_COLOR))
+    : neon
+      ? GROUP_ORDER.map((g) => parseColor(NEON_BONE[g]))
+      : GROUP_ORDER.map(() => parseColor(JOINT_COLOR));
   f32('joint_rad', (neon ? ring / 2 : dot / 2) / H);
   f32('joint_hole', neon ? (ring / 2 - ringBorder) / H : 0);
-  f32('joint_a', jointPalette[0].a);
+  f32('joint_a', off ? 0 : jointPalette[0].a);
 
   // Head circle (neon only; it stands in for the nose dot). Size comes from
   // the athlete, not the output resolution: shoulder span drives it head-on,
@@ -351,6 +376,12 @@ export function buildSkeletonParams(
       f32(`${prefix}_${group}_b`, palette[i].b);
     });
   }
+
+  // Milestone aura — always emitted so the field list stays exact.
+  f32('aura_r', aura?.r ?? 0);
+  f32('aura_g', aura?.g ?? 0);
+  f32('aura_b', aura?.b ?? 0);
+  f32('aura_i', aura?.i ?? 0);
 
   return params;
 }

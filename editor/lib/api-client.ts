@@ -25,6 +25,7 @@ import type {
   AIModelInfo,
   ShooterMatchConfig,
   ShooterMatchEvent,
+  KbtCameraView,
   KbtConfig,
   KbtExerciseKey,
   KbtMatchAction,
@@ -207,6 +208,10 @@ interface SmelterApiClient {
       strictTechnique?: boolean;
       heatDurationMs?: number;
       heatSize?: number;
+      cameraView?: KbtCameraView;
+      repScreenshots?: boolean;
+      milestoneFx?: boolean;
+      repFloatText?: boolean;
       /** Athlete join URL — the server burns it into the lobby QR. */
       joinUrl?: string;
       joinLabel?: string;
@@ -214,8 +219,13 @@ interface SmelterApiClient {
   ): Promise<KbtConfig>;
   controlKbtMatch(
     roomId: string,
-    cmd: { action: KbtMatchAction; heatIndex?: number },
-  ): Promise<{ state: KbtStateEvent; match: KbtMatchEvent }>;
+    cmd: { action: KbtMatchAction; heatIndex?: number; clientId?: string },
+  ): Promise<{
+    state: KbtStateEvent;
+    match: KbtMatchEvent;
+    /** Present when the server refused the action (status 'rejected'). */
+    error?: { code: string; message: string };
+  }>;
   getKbtState(
     roomId: string,
   ): Promise<{ state: KbtStateEvent; match: KbtMatchEvent }>;
@@ -674,6 +684,7 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       return {
         state: data.state as KbtStateEvent,
         match: data.match as KbtMatchEvent,
+        error: data.error as { code: string; message: string } | undefined,
       };
     },
 

@@ -594,6 +594,10 @@ export async function setKbtConfig(
     strictTechnique?: boolean;
     heatDurationMs?: number;
     heatSize?: number;
+    cameraView?: import('@smelter-editor/types').KbtCameraView;
+    repScreenshots?: boolean;
+    milestoneFx?: boolean;
+    repFloatText?: boolean;
     joinUrl?: string;
     joinLabel?: string;
   },
@@ -606,10 +610,12 @@ export async function controlKbtMatch(
   cmd: {
     action: import('@smelter-editor/types').KbtMatchAction;
     heatIndex?: number;
+    clientId?: string;
   },
 ): Promise<{
   state: import('@smelter-editor/types').KbtStateEvent;
   match: import('@smelter-editor/types').KbtMatchEvent;
+  error?: { code: string; message: string };
 }> {
   return (await getClient()).controlKbtMatch(roomId, cmd);
 }

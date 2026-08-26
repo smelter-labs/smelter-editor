@@ -9,7 +9,10 @@ import { KettlebellTournamentController } from '../KettlebellTournamentControlle
 
 const ROOM = 'room-1';
 
-function harness() {
+function harness(opts?: {
+  withLiveness?: boolean;
+  hasActiveRecording?: () => boolean;
+}) {
   const events: RoomEvent[] = [];
   const sent: { clientId: string; event: RoomEvent }[] = [];
   const aiCalls: {
@@ -17,10 +20,22 @@ function harness() {
     enabled: boolean;
     params?: Record<string, number | string>;
   }[] = [];
-  const layouts: { inputId: string; x: number; width: number }[][] = [];
+  const layouts: {
+    inputId: string;
+    x: number;
+    width: number;
+    transitionDurationMs?: number;
+    transitionEasing?: string;
+  }[][] = [];
   const hudApplies: (KbtHudState | null)[] = [];
   const qrCalls: string[] = [];
+  const photoRegisters: { photoPath: string; photoHash: string }[] = [];
+  const photoUnregisters: { imageId: string | null; photoPath: string }[] = [];
+  const repShotRegisters: string[] = [];
+  const repShotUnregisters: string[] = [];
   const connected = new Set<string>();
+  /** Publish-liveness set, only consulted with opts.withLiveness. */
+  const live = new Set<string>();
   let camSeq = 0;
 
   const controller = new KettlebellTournamentController(ROOM, {
@@ -42,14 +57,56 @@ function harness() {
       aiCalls.push({ inputId, enabled, params });
     },
     layoutTiles: async (tiles) => {
-      layouts.push(tiles.map(({ inputId, x, width }) => ({ inputId, x, width })));
+      // Mirror RoomState's unplaced-input auto-append hazard: a layout that
+      // omits a connected input would resurrect it fullscreen on the real
+      // output, so the fake fails fast instead of letting it pass silently.
+      for (const inputId of connected) {
+        if (!tiles.some((t) => t.inputId === inputId)) {
+          throw new Error(
+            `layoutTiles omitted connected input ${inputId} — RoomState would auto-append it on top of the stage`,
+          );
+        }
+      }
+      layouts.push(
+        tiles.map(
+          ({ inputId, x, width, transitionDurationMs, transitionEasing }) => ({
+            inputId,
+            x,
+            width,
+            ...(transitionDurationMs !== undefined
+              ? { transitionDurationMs }
+              : {}),
+            ...(transitionEasing !== undefined ? { transitionEasing } : {}),
+          }),
+        ),
+      );
     },
     isInputConnected: (inputId) => connected.has(inputId),
+    ...(opts?.withLiveness
+      ? { isInputLive: (inputId: string) => live.has(inputId) }
+      : {}),
+    ...(opts?.hasActiveRecording
+      ? { hasActiveRecording: opts.hasActiveRecording }
+      : {}),
     getResolution: () => ({ width: 1920, height: 1080 }),
     publishHud: (state) => hudApplies.push(state),
     registerJoinQr: async (url) => {
       qrCalls.push(url);
       return `kbt-qr-test-${qrCalls.length}`;
+    },
+    registerPlayerPhoto: async (photoPath, photoHash) => {
+      photoRegisters.push({ photoPath, photoHash });
+      return `kbt-photo-test-${photoHash}`;
+    },
+    unregisterPlayerPhoto: (imageId, photoPath) => {
+      photoUnregisters.push({ imageId, photoPath });
+    },
+    registerRepShotImage: async (url) => {
+      repShotRegisters.push(url);
+      return `img-${repShotRegisters.length}`;
+    },
+    unregisterRepShotImage: (imageId) => {
+      repShotUnregisters.push(imageId);
     },
   });
 
@@ -61,7 +118,23 @@ function harness() {
     layouts,
     hudApplies,
     qrCalls,
+    photoRegisters,
+    photoUnregisters,
+    repShotRegisters,
+    repShotUnregisters,
     connected,
+    live,
+    joinedFor(clientId: string) {
+      const found = [...sent]
+        .reverse()
+        .find((s) => s.clientId === clientId && s.event.type === 'kbt_joined');
+      return found?.event.type === 'kbt_joined' ? found.event : null;
+    },
+    errorsFor(clientId: string) {
+      return sent
+        .filter((s) => s.clientId === clientId && s.event.type === 'kbt_error')
+        .map((s) => s.event) as Extract<RoomEvent, { type: 'kbt_error' }>[];
+    },
     ofType<T extends RoomEvent['type']>(type: T) {
       return events.filter((e) => e.type === type) as Extract<
         RoomEvent,
@@ -69,9 +142,7 @@ function harness() {
       >[];
     },
     lastHud(): KbtHudState | null {
-      return hudApplies.length
-        ? hudApplies[hudApplies.length - 1]
-        : null;
+      return hudApplies.length ? hudApplies[hudApplies.length - 1] : null;
     },
     camOfferFor(clientId: string) {
       const offer = [...sent]
@@ -87,6 +158,7 @@ function harness() {
       exercise: KettlebellExercise = 'swing',
       verdict: 'correct' | 'incorrect' = 'correct',
       issues: KettlebellIssueCode[] = [],
+      screenshotUrl?: string,
     ) {
       controller.onCoachEvent({
         type: 'kettlebell_rep_completed',
@@ -96,6 +168,7 @@ function harness() {
         exercise,
         verdict,
         issues,
+        ...(screenshotUrl ? { screenshotUrl } : {}),
       });
     },
   };
@@ -143,6 +216,26 @@ describe('KettlebellTournamentController', () => {
     h.controller.dispose();
   });
 
+  it('mirrors the room recording flag into the state snapshot', () => {
+    let recording = false;
+    const h = harness({ hasActiveRecording: () => recording });
+    expect(h.controller.stateSnapshot().isRecording).toBe(false);
+    recording = true;
+    h.events.length = 0;
+    h.controller.notifyRecordingChanged();
+    expect(h.controller.stateSnapshot().isRecording).toBe(true);
+    // The RoomState poke pushes the flag to every panel.
+    const state = h.events.find((e) => e.type === 'kbt_state');
+    expect(state && 'isRecording' in state && state.isRecording).toBe(true);
+    h.controller.dispose();
+  });
+
+  it('defaults isRecording to false when the dep is absent (older wiring)', () => {
+    const h = harness();
+    expect(h.controller.stateSnapshot().isRecording).toBe(false);
+    h.controller.dispose();
+  });
+
   it('chunks the roster into heats and folds a trailing solo entrant', () => {
     const h = harness();
     for (let i = 1; i <= 5; i++) h.controller.join(`p${i}`, `P${i}`);
@@ -155,12 +248,100 @@ describe('KettlebellTournamentController', () => {
     h.controller.dispose();
   });
 
+  it('validates cameraView in setConfig and broadcasts it', () => {
+    const h = harness();
+    expect(h.controller.getConfig().cameraView).toBe('front');
+    h.controller.setConfig({ cameraView: 'side' });
+    expect(h.controller.getConfig().cameraView).toBe('side');
+    h.controller.setConfig({ cameraView: 'diagonal' as never });
+    expect(h.controller.getConfig().cameraView).toBe('side');
+    const states = h.ofType('kbt_state');
+    expect(states[states.length - 1].config.cameraView).toBe('side');
+    h.controller.dispose();
+  });
+
+  it('validates repScreenshots in setConfig and broadcasts it', () => {
+    const h = harness();
+    expect(h.controller.getConfig().repScreenshots).toBe(false);
+    h.controller.setConfig({ repScreenshots: true });
+    expect(h.controller.getConfig().repScreenshots).toBe(true);
+    h.controller.setConfig({ repScreenshots: 'yes' as never });
+    expect(h.controller.getConfig().repScreenshots).toBe(true);
+    const states = h.ofType('kbt_state');
+    expect(states[states.length - 1].config.repScreenshots).toBe(true);
+    h.controller.dispose();
+  });
+
+  it('validates milestoneFx in setConfig and broadcasts it', () => {
+    const h = harness();
+    expect(h.controller.getConfig().milestoneFx).toBe(true);
+    h.controller.setConfig({ milestoneFx: false });
+    expect(h.controller.getConfig().milestoneFx).toBe(false);
+    h.controller.setConfig({ milestoneFx: 'yes' as never });
+    expect(h.controller.getConfig().milestoneFx).toBe(false);
+    const states = h.ofType('kbt_state');
+    expect(states[states.length - 1].config.milestoneFx).toBe(false);
+    h.controller.dispose();
+  });
+
+  it('validates repFloatText in setConfig and carries it into HUD snapshots', async () => {
+    const h = harness();
+    expect(h.controller.getConfig().repFloatText).toBe(true);
+    h.controller.setConfig({ repFloatText: false });
+    expect(h.controller.getConfig().repFloatText).toBe(false);
+    h.controller.setConfig({ repFloatText: 'yes' as never });
+    expect(h.controller.getConfig().repFloatText).toBe(false);
+    const states = h.ofType('kbt_state');
+    expect(states[states.length - 1].config.repFloatText).toBe(false);
+    // The flag rides the held HUD snapshots the renderer reads.
+    await playingHeat(h);
+    await vi.advanceTimersByTimeAsync(3500);
+    expect(h.lastHud()!.repFloatText).toBe(false);
+    h.controller.setConfig({ repFloatText: true });
+    await vi.advanceTimersByTimeAsync(3500);
+    expect(h.lastHud()!.repFloatText).toBe(true);
+    h.controller.dispose();
+  });
+
+  it('fires the milestone fx on every 5th rep of an exercise and expires it', async () => {
+    const h = harness();
+    const { in1 } = await playingHeat(h);
+    for (let i = 1; i <= 5; i++) h.rep(in1, i, 'swing');
+    // Snapshots apply ~3s late (HUD hold): flush past FX_MS + the hold.
+    await vi.advanceTimersByTimeAsync(6500);
+
+    const withFx = h.hudApplies.filter((s) => s.tiles[in1]?.fx != null);
+    expect(withFx.length).toBeGreaterThan(0);
+    const first = withFx[0].tiles[in1].fx!;
+    expect(first.exercise).toBe('swing');
+    expect(first.color).toBe('#38E08A');
+    expect(first.p).toBeLessThan(0.2);
+    // Progress advances with the 10 Hz publishes, then the effect expires.
+    const last = withFx[withFx.length - 1].tiles[in1].fx!;
+    expect(last.p).toBeGreaterThan(first.p);
+    expect(h.lastHud()!.tiles[in1].fx ?? null).toBeNull();
+    h.controller.dispose();
+  });
+
+  it('never fires the milestone fx when milestoneFx is off', async () => {
+    const h = harness();
+    const { in1 } = await playingHeat(h);
+    h.controller.setConfig({ milestoneFx: false });
+    for (let i = 1; i <= 10; i++) h.rep(in1, i, 'swing');
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(h.hudApplies.some((s) => s.tiles[in1]?.fx != null)).toBe(false);
+    h.controller.dispose();
+  });
+
   it('arms the coach with a heat-size analysis rate on start_heat and disarms after the heat', async () => {
     const h = harness();
+    h.controller.setConfig({ cameraView: 'side', repScreenshots: true });
     const { in1 } = await playingHeat(h);
     const enables = h.aiCalls.filter((c) => c.enabled);
     expect(enables.map((c) => c.inputId)).toContain(in1);
     expect(enables[0].params?.analysisFps).toBe(14);
+    expect(enables[0].params?.cameraView).toBe('side');
+    expect(enables[0].params?.captureRepFrames).toBe(1);
     await vi.advanceTimersByTimeAsync(30_000 + 500); // AMRAP + rep grace
     const disables = h.aiCalls.filter((c) => !c.enabled);
     expect(disables.map((c) => c.inputId)).toContain(in1);
@@ -213,6 +394,52 @@ describe('KettlebellTournamentController', () => {
     const sheet = Object.values(match.scores)[0];
     expect(sheet.reps.clean).toBe(1);
     expect(sheet.incorrectReps).toBe(1);
+    h.controller.dispose();
+  });
+
+  it('carries rep screenshots into kbt_rep, the score sheet and the player after the heat', async () => {
+    const h = harness();
+    const { in1 } = await playingHeat(h);
+    h.rep(in1, 1, 'snatch', 'correct', [], '/kbt-rep-frames/a-r0001.jpg');
+    h.rep(
+      in1,
+      2,
+      'swing',
+      'incorrect',
+      ['too_low'],
+      '/kbt-rep-frames/a-r0002.jpg',
+    );
+    h.rep(in1, 3, 'swing'); // no still — must not add a shot
+    const reps = h.ofType('kbt_rep');
+    expect(reps.map((r) => r.screenshotUrl)).toEqual([
+      '/kbt-rep-frames/a-r0001.jpg',
+      '/kbt-rep-frames/a-r0002.jpg',
+      undefined,
+    ]);
+    const sheet = Object.values(h.controller.getMatchSnapshot().scores)[0];
+    expect(sheet.repShots).toEqual([
+      {
+        repIndex: 1,
+        url: '/kbt-rep-frames/a-r0001.jpg',
+        exercise: 'snatch',
+        verdict: 'correct',
+        points: 3,
+      },
+      {
+        repIndex: 2,
+        url: '/kbt-rep-frames/a-r0002.jpg',
+        exercise: 'swing',
+        verdict: 'incorrect',
+        points: 1,
+        issues: ['too_low'],
+      },
+    ]);
+    // After the heat ends the shots stick to the player (podium feed).
+    await vi.advanceTimersByTimeAsync(30_000 + 500);
+    const player = h.controller
+      .stateSnapshot()
+      .players.find((p) => p.clientId === 'p1');
+    expect(player?.repShots?.map((s) => s.repIndex)).toEqual([1, 2]);
     h.controller.dispose();
   });
 
@@ -433,6 +660,72 @@ describe('KettlebellTournamentController', () => {
     h.controller.dispose();
   });
 
+  describe('attachExternalCam (KBT_SIM mp4 cams)', () => {
+    it('adopts the input and rejects unknown players', async () => {
+      const h = harness();
+      h.controller.join('p1', 'ANIA');
+      expect(h.controller.attachExternalCam('ghost', 'room-1::mp4::x')).toBe(
+        false,
+      );
+      h.connected.add('room-1::mp4::a');
+      expect(
+        h.controller.attachExternalCam('p1', 'room-1::mp4::a', {
+          width: 720,
+          height: 1280,
+        }),
+      ).toBe(true);
+      await vi.advanceTimersByTimeAsync(1100); // cam poll
+      expect(h.controller.stateSnapshot().players[0].camConnected).toBe(true);
+      h.controller.dispose();
+    });
+
+    it('re-attach retires the previous input', async () => {
+      const h = harness();
+      h.controller.join('p1', 'ANIA');
+      await h.controller.startCamera('p1');
+      const whipId = h.camOfferFor('p1')!.inputId;
+      h.connected.add('room-1::mp4::a');
+      expect(h.controller.attachExternalCam('p1', 'room-1::mp4::a')).toBe(true);
+      await vi.advanceTimersByTimeAsync(0); // flush best-effort retire
+      expect(h.connected.has(whipId)).toBe(false); // removeInput ran
+      expect(h.aiCalls).toContainEqual({
+        inputId: whipId,
+        enabled: false,
+        params: undefined,
+      });
+      h.controller.dispose();
+    });
+
+    it('scores model reps and simulateRep through the attached input', async () => {
+      const h = harness();
+      h.controller.join('p1', 'ANIA');
+      h.controller.join('p2', 'BARTEK');
+      h.connected.add('room-1::mp4::a');
+      h.connected.add('room-1::mp4::b');
+      h.controller.attachExternalCam('p1', 'room-1::mp4::a');
+      h.controller.attachExternalCam('p2', 'room-1::mp4::b');
+      h.controller.setConfig({ heatDurationMs: 30_000, heatSize: 2 });
+      h.controller.controlMatch({ action: 'assign_heats' });
+      h.controller.controlMatch({ action: 'start_heat' });
+      await vi.advanceTimersByTimeAsync(0); // flush stageActiveHeat
+      // Staging arms the coach on the mp4 inputs like any WHIP cam.
+      expect(h.aiCalls.filter((c) => c.enabled).map((c) => c.inputId)).toEqual([
+        'room-1::mp4::a',
+        'room-1::mp4::b',
+      ]);
+      h.controller.handleMessage('p1', { type: 'kbt_briefed' });
+      h.controller.handleMessage('p2', { type: 'kbt_briefed' });
+      await vi.advanceTimersByTimeAsync(1100); // cam poll flips camConnected
+      h.controller.controlMatch({ action: 'begin_heat' });
+      await vi.advanceTimersByTimeAsync(3100); // countdown → playing
+      h.rep('room-1::mp4::a', 0);
+      expect(h.controller.simulateRep('p2', 'clean', 'correct')).toBe(true);
+      const reps = h.ofType('kbt_rep');
+      expect(reps).toHaveLength(2);
+      h.controller.dispose();
+    });
+  });
+
   // ── Broadcast scenes (kb_design port) ─────────────────────────────────────
 
   it('publishes the lobby scene in roster with the joined list and QR', async () => {
@@ -550,6 +843,211 @@ describe('KettlebellTournamentController', () => {
     h.controller.dispose();
   });
 
+  // ── Commentator view override + show control (the moderator panel) ────────
+
+  it('forces the caster scene fullscreen with an immediate HUD cut and restores AUTO', async () => {
+    const h = harness();
+    const { in1, in2 } = await playingHeat(h);
+    h.controller.joinCommentator('c1', 'MAREK');
+    await h.controller.startCommentatorCamera('c1');
+    const casterInput = h.camOfferFor('c1')!.inputId;
+    await vi.advanceTimersByTimeAsync(0); // flush restage
+
+    const applied = h.hudApplies.length;
+    h.controller.handleMessage('c1', {
+      type: 'kbt_commentator_view',
+      override: { mode: 'caster' },
+    });
+    await vi.advanceTimersByTimeAsync(0); // flush restage (no held timers!)
+
+    // The cut lands without the 3s hold…
+    expect(h.hudApplies.length).toBeGreaterThan(applied);
+    expect(h.lastHud()?.scene).toBe('caster');
+    // …the caster fills the stage exactly once (audio keeps mixing), with a
+    // hard cut on the FIRST apply that changed geometry (it grew out of the
+    // 1×1 park — no scale-up animation; the override triggers a second,
+    // geometry-identical apply whose transition value is a visual no-op)…
+    const tiles = h.layouts.find(
+      (l) => l[0]?.inputId === casterInput && l[0].width === 1920,
+    )!;
+    expect(tiles[0]).toEqual({
+      inputId: casterInput,
+      x: 0,
+      width: 1920,
+      transitionDurationMs: 0,
+    });
+    // …while the lifters stay mentioned as 1×1 parks (dropping them would
+    // let RoomState auto-append them back on top of the caster).
+    expect(
+      tiles.slice(1).map((t) => ({ inputId: t.inputId, width: t.width })),
+    ).toEqual([
+      { inputId: in1, width: 1 },
+      { inputId: in2, width: 1 },
+    ]);
+    // …and the panel gets the echo to highlight the button.
+    const states = h.ofType('kbt_state');
+    expect(states[states.length - 1].scene).toBe('caster');
+    expect(states[states.length - 1].viewOverride).toEqual({ mode: 'caster' });
+
+    h.controller.handleMessage('c1', {
+      type: 'kbt_commentator_view',
+      override: { mode: 'auto' },
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.lastHud()?.scene).toBe('grid');
+    const restored = h.layouts[h.layouts.length - 1];
+    expect(restored.map((t) => t.inputId)).toEqual(
+      expect.arrayContaining([in1, in2, casterInput]),
+    );
+    expect(restored.find((t) => t.inputId === casterInput)!.width).toBe(1); // offscreen again
+    h.controller.dispose();
+  });
+
+  it('ignores view overrides from anyone but the joined commentator', async () => {
+    const h = harness();
+    await playingHeat(h);
+    h.controller.joinCommentator('c1', 'MAREK');
+    await h.controller.startCommentatorCamera('c1');
+    h.controller.handleMessage('p1', {
+      type: 'kbt_commentator_view',
+      override: { mode: 'caster' },
+    });
+    expect(h.controller.stateSnapshot().viewOverride).toEqual({ mode: 'auto' });
+    expect(h.controller.stateSnapshot().scene).toBe('grid');
+    h.controller.dispose();
+  });
+
+  it('frames one athlete on player_solo (filtered tiles) and clears when they leave', async () => {
+    const h = harness();
+    const { in1, in2 } = await playingHeat(h);
+    h.controller.joinCommentator('c1', 'MAREK');
+    await h.controller.startCommentatorCamera('c1');
+    const casterInput = h.camOfferFor('c1')!.inputId;
+    await vi.advanceTimersByTimeAsync(0);
+
+    h.controller.handleMessage('c1', {
+      type: 'kbt_commentator_view',
+      override: { mode: 'player_solo', playerId: 'p1' },
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.lastHud()?.scene).toBe('solo');
+    expect(Object.keys(h.lastHud()?.tiles ?? {})).toEqual([in1]);
+    const tiles = h.layouts[h.layouts.length - 1];
+    expect(tiles.map((t) => t.inputId)).toEqual([in1, casterInput, in2]);
+    expect(tiles.find((t) => t.inputId === casterInput)!.width).toBe(1);
+    // The unfeatured lifter is parked at 1×1, not visible on stage.
+    expect(tiles.find((t) => t.inputId === in2)!.width).toBe(1);
+
+    h.controller.leave('p1');
+    expect(h.controller.stateSnapshot().viewOverride).toEqual({ mode: 'auto' });
+    h.controller.dispose();
+  });
+
+  it('stages caster + featured lifter side by side on split, caster exactly once', async () => {
+    const h = harness();
+    const { in1, in2 } = await playingHeat(h);
+    h.controller.joinCommentator('c1', 'MAREK');
+    await h.controller.startCommentatorCamera('c1');
+    const casterInput = h.camOfferFor('c1')!.inputId;
+    await vi.advanceTimersByTimeAsync(0);
+
+    h.controller.handleMessage('c1', {
+      type: 'kbt_commentator_view',
+      override: { mode: 'split', playerId: 'p1' },
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.lastHud()?.scene).toBe('split');
+    expect(Object.keys(h.lastHud()?.tiles ?? {})).toEqual([in1]);
+    // First apply that put the caster on stage (the override restages twice;
+    // the second apply is geometry-identical, so its transitions are no-ops).
+    const tiles = h.layouts.find(
+      (l) => l[0]?.inputId === casterInput && l[0].width === 960,
+    )!;
+    // Two 16:9 halves, the caster staged once, the other lifter parked.
+    expect(tiles.map((t) => t.inputId)).toEqual([casterInput, in1, in2]);
+    expect(tiles.filter((t) => t.inputId === casterInput)).toHaveLength(1);
+    expect(tiles[0].width).toBe(960);
+    expect(tiles[1].x).toBe(960);
+    expect(tiles[2].width).toBe(1);
+    // Transition decoration: entering from park = hard cut, staged→staged
+    // move glides, parking = hard cut (no shrink-to-dot).
+    expect(tiles[0].transitionDurationMs).toBe(0);
+    expect(tiles[1]).toMatchObject({
+      transitionDurationMs: 300,
+      transitionEasing: 'cubic_bezier_ease_in_out',
+    });
+    expect(tiles[2].transitionDurationMs).toBe(0);
+    h.controller.dispose();
+  });
+
+  it('parks off-heat lifter cams at 1×1 instead of dropping them', async () => {
+    const h = harness();
+    for (let i = 1; i <= 5; i++) h.controller.join(`p${i}`, `P${i}`);
+    await h.controller.startCamera('p1');
+    await h.controller.startCamera('p2');
+    await h.controller.startCamera('p3');
+    h.controller.setConfig({ heatDurationMs: 30_000, heatSize: 2 });
+    h.controller.controlMatch({ action: 'assign_heats' });
+    h.controller.controlMatch({ action: 'start_heat' });
+    await vi.advanceTimersByTimeAsync(0); // flush stageActiveHeat
+    const in1 = h.camOfferFor('p1')!.inputId;
+    const in2 = h.camOfferFor('p2')!.inputId;
+    const in3 = h.camOfferFor('p3')!.inputId; // heat 2 — off stage now
+    const tiles = h.layouts[h.layouts.length - 1];
+    expect(tiles.map((t) => t.inputId)).toEqual(
+      expect.arrayContaining([in1, in2, in3]),
+    );
+    expect(tiles.find((t) => t.inputId === in1)!.width).toBeGreaterThan(1);
+    expect(tiles.find((t) => t.inputId === in2)!.width).toBeGreaterThan(1);
+    expect(tiles.find((t) => t.inputId === in3)!.width).toBe(1);
+    h.controller.dispose();
+  });
+
+  it('returns the view to AUTO on every match action', async () => {
+    const h = harness();
+    await playingHeat(h);
+    h.controller.joinCommentator('c1', 'MAREK');
+    await h.controller.startCommentatorCamera('c1');
+    h.controller.handleMessage('c1', {
+      type: 'kbt_commentator_view',
+      override: { mode: 'board' },
+    });
+    expect(h.controller.stateSnapshot().viewOverride).toEqual({
+      mode: 'board',
+    });
+    h.controller.controlMatch({ action: 'stop_heat' });
+    expect(h.controller.stateSnapshot().viewOverride).toEqual({ mode: 'auto' });
+    h.controller.dispose();
+  });
+
+  it('runs match actions over kbt_commentator_match, gated on the commentator', async () => {
+    const h = harness();
+    h.controller.join('p1', 'ANIA');
+    h.controller.join('p2', 'BARTEK');
+    await h.controller.startCamera('p1');
+    await h.controller.startCamera('p2');
+    h.controller.setConfig({ heatDurationMs: 30_000, heatSize: 2 });
+    h.controller.controlMatch({ action: 'assign_heats' });
+    h.controller.controlMatch({ action: 'start_heat' });
+    h.controller.handleMessage('p1', { type: 'kbt_briefed' });
+    h.controller.handleMessage('p2', { type: 'kbt_briefed' });
+    await vi.advanceTimersByTimeAsync(1100); // cam poll flips camConnected
+    h.controller.joinCommentator('c1', 'MAREK');
+
+    h.controller.handleMessage('p1', {
+      type: 'kbt_commentator_match',
+      action: 'begin_heat',
+    });
+    expect(h.controller.getMatchSnapshot().phase).toBe('intro'); // not the commentator
+
+    h.controller.handleMessage('c1', {
+      type: 'kbt_commentator_match',
+      action: 'begin_heat',
+    });
+    expect(h.controller.getMatchSnapshot().phase).toBe('countdown');
+    h.controller.dispose();
+  });
+
   it('reports the commentator in kbt_state and clears it on leave', async () => {
     const h = harness();
     h.controller.joinCommentator('c1', 'MAREK');
@@ -563,6 +1061,538 @@ describe('KettlebellTournamentController', () => {
     h.controller.leaveCommentator('c1');
     expect(h.controller.stateSnapshot().commentator).toBeNull();
     expect(h.connected.has(inputId)).toBe(false);
+    h.controller.dispose();
+  });
+});
+
+describe('resilience: playerKey identity, error channel, host recovery', () => {
+  it('replies kbt_joined with the resume snapshot on every join', async () => {
+    const h = harness();
+    h.controller.handleMessage('p1', { type: 'kbt_join', name: 'ANIA' });
+    const joined = h.joinedFor('p1');
+    expect(joined).toMatchObject({
+      clientId: 'p1',
+      name: 'ANIA',
+      role: 'player',
+      briefed: false,
+      camInputActive: false,
+      inCurrentHeat: false,
+      tournamentPhase: 'roster',
+      heatPhase: 'idle',
+    });
+    expect(joined!.playerKey).toBeTruthy();
+    await h.controller.startCamera('p1');
+    h.controller.handleMessage('p1', { type: 'kbt_join', name: 'ANIA' });
+    expect(h.joinedFor('p1')!.camInputActive).toBe(true);
+    h.controller.dispose();
+  });
+
+  it('adopts by playerKey even while the old entry still looks connected (refresh fork)', async () => {
+    const h = harness();
+    const { in1 } = await playingHeat(h);
+    h.rep(in1, 1);
+    const key = h.joinedFor('p1')!.playerKey;
+    // Fast refresh: the new socket joins with the key BEFORE the old socket's
+    // close arrives — no !connected orphan exists to adopt by name.
+    h.controller.handleMessage('p1-refreshed', {
+      type: 'kbt_join',
+      name: 'ANIA',
+      playerKey: key,
+    });
+    let state = h.controller.stateSnapshot();
+    expect(state.players).toHaveLength(2); // ANIA + BARTEK, no duplicate
+    const adopted = state.players.find((p) => p.clientId === 'p1-refreshed');
+    expect(adopted?.name).toBe('ANIA');
+    const heat = state.heats[state.currentHeatIndex!];
+    expect(heat.playerIds).toContain('p1-refreshed');
+    expect(heat.scores['p1-refreshed'].points).toBe(1);
+    // The key survives adoption — the next refresh resumes the same entry.
+    expect(h.joinedFor('p1-refreshed')!.playerKey).toBe(key);
+    // The stale socket's late close hits a missing entry and must not touch
+    // the adopted player's state (this used to wedge the ready gate).
+    h.controller.handleMessage('p1-refreshed', { type: 'kbt_briefed' });
+    h.controller.handleDisconnect('p1');
+    state = h.controller.stateSnapshot();
+    const after = state.players.find((p) => p.clientId === 'p1-refreshed');
+    expect(after?.briefed).toBe(true);
+    expect(after?.connected).toBe(true);
+    h.controller.dispose();
+  });
+
+  it('a join with an unknown key never hijacks a same-name entry', () => {
+    const h = harness();
+    h.controller.handleMessage('p1', { type: 'kbt_join', name: 'ANIA' });
+    h.controller.handleMessage('p2', {
+      type: 'kbt_join',
+      name: 'ANIA',
+      playerKey: 'some-other-room-key',
+    });
+    const state = h.controller.stateSnapshot();
+    expect(state.players).toHaveLength(2);
+    h.controller.dispose();
+  });
+
+  it('legacy name adoption (no key) still works for disconnected entries', () => {
+    const h = harness();
+    h.controller.handleMessage('p1', { type: 'kbt_join', name: 'ANIA' });
+    h.controller.handleDisconnect('p1');
+    h.controller.handleMessage('p2', { type: 'kbt_join', name: 'ANIA' });
+    const state = h.controller.stateSnapshot();
+    expect(state.players).toHaveLength(1);
+    expect(state.players[0].clientId).toBe('p2');
+    h.controller.dispose();
+  });
+
+  it('attaches a photo by playerKey ahead of a colliding name match', () => {
+    const h = harness();
+    h.controller.handleMessage('p1', { type: 'kbt_join', name: 'ANIA' });
+    h.controller.handleMessage('p2', { type: 'kbt_join', name: 'ANIA' });
+    const keyOfP2 = h.joinedFor('p2')!.playerKey;
+    h.controller.setPlayerPhoto(
+      'ANIA',
+      {
+        photoUrl: '/kbt-photos/x.jpg',
+        photoPath: '/tmp/x.jpg',
+        photoHash: 'h1',
+      },
+      keyOfP2,
+    );
+    const state = h.controller.stateSnapshot();
+    expect(state.players.find((p) => p.clientId === 'p2')?.photoUrl).toBe(
+      '/kbt-photos/x.jpg',
+    );
+    expect(state.players.find((p) => p.clientId === 'p1')?.photoUrl).toBeNull();
+    h.controller.dispose();
+  });
+
+  it('sends kbt_error to a cam request before joining', () => {
+    const h = harness();
+    h.controller.handleMessage('ghost', { type: 'kbt_cam_request' });
+    expect(h.errorsFor('ghost').map((e) => e.code)).toContain('not_joined');
+    h.controller.dispose();
+  });
+
+  it('controlMatch returns the blocked-begin reason with offender names', async () => {
+    const h = harness();
+    h.controller.join('p1', 'ANIA');
+    h.controller.join('p2', 'BARTEK');
+    await h.controller.startCamera('p1');
+    await h.controller.startCamera('p2');
+    h.controller.setConfig({ heatDurationMs: 30_000, heatSize: 2 });
+    h.controller.controlMatch({ action: 'assign_heats' });
+    h.controller.controlMatch({ action: 'start_heat' });
+    h.controller.handleMessage('p1', { type: 'kbt_briefed' });
+    await vi.advanceTimersByTimeAsync(1100);
+    const { error } = h.controller.controlMatch({ action: 'begin_heat' });
+    expect(error?.code).toBe('not_ready');
+    expect(error?.message).toContain('BARTEK');
+    h.controller.dispose();
+  });
+
+  it('kick_player frees the ready gate so begin_heat can start', async () => {
+    const h = harness();
+    h.controller.join('p1', 'ANIA');
+    h.controller.join('p2', 'BARTEK');
+    await h.controller.startCamera('p1');
+    await h.controller.startCamera('p2');
+    h.controller.setConfig({ heatDurationMs: 30_000, heatSize: 2 });
+    h.controller.controlMatch({ action: 'assign_heats' });
+    h.controller.controlMatch({ action: 'start_heat' });
+    h.controller.handleMessage('p1', { type: 'kbt_briefed' });
+    await vi.advanceTimersByTimeAsync(1100);
+    const p2Input = h.camOfferFor('p2')!.inputId;
+    h.controller.handleDisconnect('p2'); // BARTEK's phone died for good
+    const kicked = h.controller.controlMatch({
+      action: 'kick_player',
+      clientId: 'p2',
+    });
+    expect(kicked.error).toBeUndefined();
+    expect(h.connected.has(p2Input)).toBe(false); // input retired
+    const state = h.controller.stateSnapshot();
+    expect(state.players.map((p) => p.name)).toEqual(['ANIA']);
+    expect(state.heats[0].playerIds).toEqual(['p1']);
+    h.controller.controlMatch({ action: 'begin_heat' });
+    expect(h.controller.getMatchSnapshot().phase).toBe('countdown');
+    h.controller.dispose();
+  });
+
+  it('kick_player keeps score rows of a playing heat', async () => {
+    const h = harness();
+    const { in1 } = await playingHeat(h);
+    h.rep(in1, 1);
+    h.controller.controlMatch({ action: 'kick_player', clientId: 'p1' });
+    const match = h.controller.getMatchSnapshot();
+    expect(match.scores['p1']).toBeDefined(); // snapshot row survives
+    expect(h.controller.stateSnapshot().heats[0].playerIds).not.toContain('p1');
+    h.controller.dispose();
+  });
+
+  it('restart_heat wipes the sheets and returns to a fresh intro', async () => {
+    const h = harness();
+    const { in1 } = await playingHeat(h);
+    h.rep(in1, 1);
+    const { error } = h.controller.controlMatch({ action: 'restart_heat' });
+    expect(error).toBeUndefined();
+    const match = h.controller.getMatchSnapshot();
+    expect(match.phase).toBe('intro');
+    expect(match.scores['p1'].points).toBe(0);
+    h.controller.dispose();
+  });
+
+  it('force_begin starts despite an unready player but needs one live camera', async () => {
+    const h = harness();
+    h.controller.join('p1', 'ANIA');
+    h.controller.join('p2', 'BARTEK');
+    await h.controller.startCamera('p1');
+    h.controller.setConfig({ heatDurationMs: 30_000, heatSize: 2 });
+    h.controller.controlMatch({ action: 'assign_heats' });
+    h.controller.controlMatch({ action: 'start_heat' });
+    h.controller.handleMessage('p1', { type: 'kbt_briefed' });
+    await vi.advanceTimersByTimeAsync(1100);
+    // BARTEK has no camera and never briefed — normal begin is refused…
+    expect(
+      h.controller.controlMatch({ action: 'begin_heat' }).error?.code,
+    ).toBe('not_ready');
+    // …but the host's explicit override starts the heat.
+    const forced = h.controller.controlMatch({ action: 'force_begin' });
+    expect(forced.error).toBeUndefined();
+    expect(h.controller.getMatchSnapshot().phase).toBe('countdown');
+    h.controller.dispose();
+  });
+
+  it('force_begin with zero live cameras is refused', async () => {
+    const h = harness();
+    h.controller.join('p1', 'ANIA');
+    h.controller.join('p2', 'BARTEK');
+    h.controller.setConfig({ heatDurationMs: 30_000, heatSize: 2 });
+    h.controller.controlMatch({ action: 'assign_heats' });
+    h.controller.controlMatch({ action: 'start_heat' });
+    const forced = h.controller.controlMatch({ action: 'force_begin' });
+    expect(forced.error?.code).toBe('no_live_camera');
+    expect(h.controller.getMatchSnapshot().phase).toBe('intro');
+    h.controller.dispose();
+  });
+
+  it('start_final with too few ranked players returns too_few_finalists', () => {
+    const h = harness();
+    h.controller.join('p1', 'ANIA');
+    const { error } = h.controller.controlMatch({ action: 'start_final' });
+    expect(error?.code).toBe('too_few_finalists');
+    h.controller.dispose();
+  });
+
+  it('camConnected follows publish liveness and clears poseTracked when it drops', async () => {
+    const h = harness({ withLiveness: true });
+    h.controller.join('p1', 'ANIA');
+    await h.controller.startCamera('p1');
+    const inputId = h.camOfferFor('p1')!.inputId;
+    // Registered (isInputConnected true) but never acked → not live.
+    await vi.advanceTimersByTimeAsync(1100);
+    expect(h.controller.stateSnapshot().players[0].camConnected).toBe(false);
+    h.live.add(inputId);
+    await vi.advanceTimersByTimeAsync(1100);
+    expect(h.controller.stateSnapshot().players[0].camConnected).toBe(true);
+    h.controller.onPoseSample(inputId, true);
+    await vi.advanceTimersByTimeAsync(800); // pose debounce
+    h.controller.onPoseSample(inputId, true);
+    expect(h.controller.stateSnapshot().players[0].poseTracked).toBe(true);
+    // Acks stop: camConnected drops and the stale POSE ✓ goes with it.
+    h.live.delete(inputId);
+    await vi.advanceTimersByTimeAsync(1100);
+    const p = h.controller.stateSnapshot().players[0];
+    expect(p.camConnected).toBe(false);
+    expect(p.poseTracked).toBe(false);
+    h.controller.dispose();
+  });
+
+  it('clears a player_solo override pinned to a dead camera after the grace', async () => {
+    const h = harness({ withLiveness: true });
+    h.controller.join('p1', 'ANIA');
+    await h.controller.startCamera('p1');
+    const inputId = h.camOfferFor('p1')!.inputId;
+    h.live.add(inputId);
+    h.controller.joinCommentator('c1', 'MAREK');
+    await vi.advanceTimersByTimeAsync(1100);
+    h.controller.setViewOverride('c1', {
+      mode: 'player_solo',
+      playerId: 'p1',
+    });
+    expect(h.controller.stateSnapshot().viewOverride?.mode).toBe('player_solo');
+    // Camera dies; after the 10s grace the override falls back to AUTO.
+    h.live.delete(inputId);
+    await vi.advanceTimersByTimeAsync(12_000);
+    expect(h.controller.stateSnapshot().viewOverride?.mode).toBe('auto');
+    h.controller.dispose();
+  });
+
+  // ── Commentator output overlay (rep cam / spotlight / h2h / banners) ──────
+
+  it('gates overlay, banner and skeleton messages on the joined commentator', async () => {
+    const h = harness();
+    await playingHeat(h);
+    h.controller.joinCommentator('c1', 'MAREK');
+    h.controller.handleMessage('p1', {
+      type: 'kbt_commentator_overlay',
+      overlay: { kind: 'spotlight', playerId: 'p1' },
+    });
+    h.controller.handleMessage('p1', {
+      type: 'kbt_commentator_banner',
+      bannerId: 'new_leader',
+    });
+    h.controller.handleMessage('p1', {
+      type: 'kbt_commentator_skeleton',
+      mode: 'off',
+    });
+    h.controller.handleMessage('p1', {
+      type: 'kbt_commentator_rep_float',
+      enabled: false,
+    });
+    expect(
+      h.errorsFor('p1').filter((e) => e.code === 'not_commentator'),
+    ).toHaveLength(4);
+    expect(h.controller.stateSnapshot().commentatorOverlay).toEqual({
+      kind: 'none',
+    });
+    expect(h.controller.stateSnapshot().skeletonMode).toBe('neon');
+    expect(h.controller.stateSnapshot().config.repFloatText).toBe(true);
+    h.controller.dispose();
+  });
+
+  it('fires a hype banner immediately, refuses unknown ids, expires after BANNER_MS', async () => {
+    const h = harness();
+    await playingHeat(h);
+    h.controller.joinCommentator('c1', 'MAREK');
+    const applied = h.hudApplies.length;
+    h.controller.handleMessage('c1', {
+      type: 'kbt_commentator_banner',
+      bannerId: 'new_leader',
+    });
+    // Immediate publish — no 3s hold.
+    expect(h.hudApplies.length).toBeGreaterThan(applied);
+    expect(h.lastHud()?.banner).toMatchObject({
+      kind: 'hype',
+      text: 'NEW LEADER!',
+    });
+    h.controller.handleMessage('c1', {
+      type: 'kbt_commentator_banner',
+      bannerId: 'nope',
+    });
+    expect(
+      h.errorsFor('c1').filter((e) => e.code === 'invalid_overlay'),
+    ).toHaveLength(1);
+    expect(h.lastHud()?.banner).toMatchObject({ kind: 'hype' });
+    // The 10 Hz tick keeps publishing; past the TTL the banner drops out
+    // (plus the 3s HUD hold before a held snapshot lands).
+    await vi.advanceTimersByTimeAsync(4200 + 3200);
+    expect(h.lastHud()?.banner).toBeNull();
+    h.controller.dispose();
+  });
+
+  it('spotlight tracks live scores and is cleared by a match action', async () => {
+    const h = harness();
+    const { in1 } = await playingHeat(h);
+    h.controller.joinCommentator('c1', 'MAREK');
+    h.rep(in1, 1, 'swing', 'correct');
+    h.rep(in1, 2, 'swing', 'correct');
+    h.rep(in1, 3, 'swing', 'correct');
+    h.rep(in1, 4, 'swing', 'incorrect');
+    h.controller.handleMessage('c1', {
+      type: 'kbt_commentator_overlay',
+      overlay: { kind: 'spotlight', playerId: 'p1' },
+    });
+    const hud = h.lastHud();
+    expect(hud?.overlay).toMatchObject({ kind: 'spotlight', live: true });
+    if (hud?.overlay?.kind === 'spotlight') {
+      expect(hud.overlay.side.name).toBe('ANIA');
+      expect(hud.overlay.side.reps).toBe(4);
+      expect(hud.overlay.side.accuracy).toBeCloseTo(0.75);
+      expect(hud.overlay.side.points).toBe(4);
+    }
+    // Live stats keep flowing through held tick publishes too.
+    h.rep(in1, 5, 'swing', 'correct');
+    await vi.advanceTimersByTimeAsync(3200);
+    const later = h.lastHud();
+    if (later?.overlay?.kind === 'spotlight') {
+      expect(later.overlay.side.reps).toBe(5);
+    }
+    // Every show action returns the output to a clean scene.
+    h.controller.controlMatch({ action: 'stop_heat' });
+    expect(h.controller.stateSnapshot().commentatorOverlay).toEqual({
+      kind: 'none',
+    });
+    expect(h.lastHud()?.overlay).toBeNull();
+    h.controller.dispose();
+  });
+
+  it('h2h compares two players and clears when a referenced player leaves', async () => {
+    const h = harness();
+    const { in1, in2 } = await playingHeat(h);
+    h.controller.joinCommentator('c1', 'MAREK');
+    h.rep(in1, 1, 'snatch', 'correct'); // 3 pts
+    h.rep(in2, 1, 'swing', 'correct'); // 1 pt
+    h.controller.handleMessage('c1', {
+      type: 'kbt_commentator_overlay',
+      overlay: { kind: 'h2h', playerIdA: 'p1', playerIdB: 'p2' },
+    });
+    const hud = h.lastHud();
+    expect(hud?.overlay).toMatchObject({ kind: 'h2h', live: true });
+    if (hud?.overlay?.kind === 'h2h') {
+      expect(hud.overlay.a.name).toBe('ANIA');
+      expect(hud.overlay.a.points).toBe(3);
+      expect(hud.overlay.b.name).toBe('BARTEK');
+      expect(hud.overlay.b.points).toBe(1);
+    }
+    // Same player on both sides is refused.
+    h.controller.handleMessage('c1', {
+      type: 'kbt_commentator_overlay',
+      overlay: { kind: 'h2h', playerIdA: 'p1', playerIdB: 'p1' },
+    });
+    expect(
+      h.errorsFor('c1').filter((e) => e.code === 'invalid_overlay'),
+    ).toHaveLength(1);
+    h.controller.leave('p2');
+    expect(h.controller.stateSnapshot().commentatorOverlay).toEqual({
+      kind: 'none',
+    });
+    h.controller.dispose();
+  });
+
+  it('rep cam persists issues, clamps the index, and resolves engine images', async () => {
+    const h = harness();
+    const { in1 } = await playingHeat(h);
+    h.controller.joinCommentator('c1', 'MAREK');
+    h.rep(in1, 1, 'swing', 'correct', [], '/kbt-rep-frames/a.jpg');
+    h.rep(
+      in1,
+      2,
+      'snatch',
+      'incorrect',
+      ['bent_arms'],
+      '/kbt-rep-frames/b.jpg',
+    );
+    // Issues ride the persisted shot, not just the live kbt_rep event.
+    const scores = h.controller.getMatchSnapshot().scores;
+    expect(scores['p1'].repShots).toHaveLength(2);
+    expect(scores['p1'].repShots![1].issues).toEqual(['bent_arms']);
+    // No shots → refused.
+    h.controller.handleMessage('c1', {
+      type: 'kbt_commentator_overlay',
+      overlay: {
+        kind: 'rep_shot',
+        playerId: 'p2',
+        index: 0,
+        showVerdict: true,
+      },
+    });
+    expect(
+      h.errorsFor('c1').filter((e) => e.code === 'invalid_overlay'),
+    ).toHaveLength(1);
+    // Out-of-range index clamps to the newest shot.
+    h.controller.handleMessage('c1', {
+      type: 'kbt_commentator_overlay',
+      overlay: {
+        kind: 'rep_shot',
+        playerId: 'p1',
+        index: 99,
+        showVerdict: true,
+      },
+    });
+    await vi.advanceTimersByTimeAsync(0); // flush registration → re-cut
+    const hud = h.lastHud();
+    expect(hud?.overlay?.kind).toBe('rep_shot');
+    if (hud?.overlay?.kind === 'rep_shot') {
+      expect(hud.overlay.index).toBe(1);
+      expect(hud.overlay.total).toBe(2);
+      expect(hud.overlay.shot.imageId).toBe('img-1');
+      expect(hud.overlay.shot.verdict).toBe('incorrect');
+      // Snapshot carries display-ready labels, not codes.
+      expect(hud.overlay.shot.issues).toEqual(['Arms bent during upswing']);
+    }
+    // The neighbor got pre-registered for instant stepping.
+    expect(h.repShotRegisters).toEqual([
+      '/kbt-rep-frames/b.jpg',
+      '/kbt-rep-frames/a.jpg',
+    ]);
+    // Clearing drops the overlay from both snapshots.
+    h.controller.handleMessage('c1', {
+      type: 'kbt_commentator_overlay',
+      overlay: { kind: 'none' },
+    });
+    expect(h.lastHud()?.overlay).toBeNull();
+    expect(h.controller.stateSnapshot().commentatorOverlay).toEqual({
+      kind: 'none',
+    });
+    h.controller.dispose();
+    expect(h.repShotUnregisters).toEqual(['img-1', 'img-2']);
+  });
+
+  it('skeleton toggle re-pushes FULL coach params live and sticks for later heats', async () => {
+    const h = harness();
+    await playingHeat(h);
+    h.controller.joinCommentator('c1', 'MAREK');
+    // Heat staging already carries the mode (params replace wholesale).
+    const staged = h.aiCalls.filter((c) => c.enabled);
+    expect(staged.length).toBeGreaterThan(0);
+    for (const call of staged) {
+      expect(call.params?.skeleton).toBe('neon');
+    }
+    h.aiCalls.length = 0;
+    h.controller.handleMessage('c1', {
+      type: 'kbt_commentator_skeleton',
+      mode: 'off',
+    });
+    // One live re-push per heat player, with the complete param set — a
+    // partial push would silently reset fps/cameraView/captureRepFrames.
+    expect(h.aiCalls).toHaveLength(2);
+    for (const call of h.aiCalls) {
+      expect(call.enabled).toBe(true);
+      expect(call.params).toMatchObject({
+        skeleton: 'off',
+        analysisFps: 14,
+        cameraView: 'front',
+        captureRepFrames: 0,
+      });
+    }
+    expect(h.controller.stateSnapshot().skeletonMode).toBe('off');
+    // Unknown mode → refused, mode unchanged.
+    h.controller.handleMessage('c1', {
+      type: 'kbt_commentator_skeleton',
+      mode: 'sparkles',
+    });
+    expect(
+      h.errorsFor('c1').filter((e) => e.code === 'invalid_overlay'),
+    ).toHaveLength(1);
+    expect(h.controller.stateSnapshot().skeletonMode).toBe('off');
+    h.controller.dispose();
+  });
+
+  it('commentator rep-text toggle flips config.repFloatText and reaches the HUD', async () => {
+    const h = harness();
+    await playingHeat(h);
+    h.controller.joinCommentator('c1', 'MAREK');
+    h.controller.handleMessage('c1', {
+      type: 'kbt_commentator_rep_float',
+      enabled: false,
+    });
+    expect(h.controller.stateSnapshot().config.repFloatText).toBe(false);
+    // The toggle publishes a held snapshot immediately (no rep needed).
+    await vi.advanceTimersByTimeAsync(3500);
+    expect(h.lastHud()!.repFloatText).toBe(false);
+    // Non-boolean payload → refused, config unchanged.
+    h.controller.handleMessage('c1', {
+      type: 'kbt_commentator_rep_float',
+      enabled: 'nope' as never,
+    });
+    expect(
+      h.errorsFor('c1').filter((e) => e.code === 'invalid_overlay'),
+    ).toHaveLength(1);
+    expect(h.controller.stateSnapshot().config.repFloatText).toBe(false);
+    h.controller.handleMessage('c1', {
+      type: 'kbt_commentator_rep_float',
+      enabled: true,
+    });
+    await vi.advanceTimersByTimeAsync(3500);
+    expect(h.lastHud()!.repFloatText).toBe(true);
     h.controller.dispose();
   });
 });

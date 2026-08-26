@@ -44,6 +44,8 @@ struct BaseShaderParameters {
 //                     rendered head + 2*border across, off-center by border.
 //   head_v          - 0 hides the head circle and un-hides the nose dot
 //   bone_*/jnt_*    - palette per body part, indexed 0 arm, 1 leg, 2 core
+//   aura_r/g/b      - milestone aura color (every-5th-rep celebration)
+//   aura_i          - aura intensity 0..1; 0 disables the whole aura pass
 struct ShaderOptions {
     j0_x: f32, j0_y: f32, j0_v: f32,
     j1_x: f32, j1_y: f32, j1_v: f32,
@@ -80,6 +82,8 @@ struct ShaderOptions {
     jnt_arm_r: f32, jnt_arm_g: f32, jnt_arm_b: f32,
     jnt_leg_r: f32, jnt_leg_g: f32, jnt_leg_b: f32,
     jnt_core_r: f32, jnt_core_g: f32, jnt_core_b: f32,
+    aura_r: f32, aura_g: f32, aura_b: f32,
+    aura_i: f32,
 };
 
 @group(0) @binding(0) var textures: binding_array<texture_2d<f32>, 16>;
@@ -144,6 +148,37 @@ fn joint_color(group: i32) -> vec3<f32> {
         case 1: { return vec3(shader_options.jnt_leg_r, shader_options.jnt_leg_g, shader_options.jnt_leg_b); }
         default: { return vec3(shader_options.jnt_core_r, shader_options.jnt_core_g, shader_options.jnt_core_b); }
     }
+}
+
+// Value noise (from haunter-aura.wgsl) — displaces the aura's iso-line so it
+// reads as flame licking the rig, not a uniform outline.
+fn hash21(p: vec2<f32>) -> f32 {
+    var q = fract(p * vec2(123.34, 456.21));
+    q = q + vec2(dot(q, q + vec2(45.32, 45.32)));
+    return fract(q.x * q.y);
+}
+
+fn vnoise(p: vec2<f32>) -> f32 {
+    let i = floor(p);
+    let f = fract(p);
+    let u = f * f * (3.0 - 2.0 * f);
+    let a = hash21(i);
+    let b = hash21(i + vec2(1.0, 0.0));
+    let c = hash21(i + vec2(0.0, 1.0));
+    let d = hash21(i + vec2(1.0, 1.0));
+    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+
+fn fbm(p: vec2<f32>) -> f32 {
+    var v: f32 = 0.0;
+    var amp: f32 = 0.5;
+    var q = p;
+    for (var i: i32 = 0; i < 3; i = i + 1) {
+        v = v + amp * vnoise(q);
+        q = q * 2.03 + vec2(17.0, 9.0);
+        amp = amp * 0.5;
+    }
+    return v;
 }
 
 /// Distance from point p to line segment ab.
@@ -235,6 +270,43 @@ fn draw_bones(acc_in: vec4<f32>, p: vec2<f32>, res: vec2<f32>, hw: f32, feather:
     return acc;
 }
 
+/// Distance (px) from p to the rig: min over the bone segments plus the neck,
+/// with the same visibility guards as draw_bones. 1e6 when nothing is visible.
+fn rig_dist(p: vec2<f32>, res: vec2<f32>) -> f32 {
+    var d = 1000000.0;
+    for (var i = 0; i < 12; i = i + 1) {
+        let ja = joint(BONE_A[i]);
+        let jb = joint(BONE_B[i]);
+        if ja.z < 0.5 || jb.z < 0.5 {
+            continue;
+        }
+        d = min(d, dist_to_segment(p, ja.xy * res, jb.xy * res));
+    }
+    let nose = joint(0);
+    let ls = joint(5);
+    let rs = joint(6);
+    if nose.z >= 0.5 && ls.z >= 0.5 && rs.z >= 0.5 {
+        d = min(d, dist_to_segment(p, nose.xy * res, (ls.xy + rs.xy) * 0.5 * res));
+    }
+    return d;
+}
+
+/// Milestone aura: a flame-displaced iso-line around the rig plus an outer
+/// glow, in the exercise's color, faded by aura_i (eased on the CPU side).
+fn draw_aura(acc_in: vec4<f32>, p: vec2<f32>, res: vec2<f32>, t: f32) -> vec4<f32> {
+    let body_r = 0.055 * res.y;
+    let d = rig_dist(p, res) - body_r;
+    if d > body_r * 4.0 {
+        return acc_in;
+    }
+    let n = fbm(p * (6.0 / min(res.x, res.y)) + vec2(t * 0.4, -t * 0.6));
+    let dd = d + (n - 0.5) * body_r * 0.8;
+    let rim = 1.0 - smoothstep(0.0, body_r * 0.35, abs(dd));
+    let glow = exp(-max(dd, 0.0) / (body_r * 0.9));
+    let aura = vec3(shader_options.aura_r, shader_options.aura_g, shader_options.aura_b);
+    return over(acc_in, aura, clamp((rim * 0.9 + glow * 0.5) * shader_options.aura_i, 0.0, 1.0));
+}
+
 fn draw_joints(acc_in: vec4<f32>, p: vec2<f32>, res: vec2<f32>) -> vec4<f32> {
     var acc = acc_in;
     let rad = shader_options.joint_rad * res.y;
@@ -270,6 +342,11 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let p = uv * res;
 
     var acc = vec4(0.0, 0.0, 0.0, 0.0);
+
+    // Milestone aura sits under the skeleton so the rig stays crisp on top.
+    if shader_options.aura_i > 0.001 {
+        acc = draw_aura(acc, p, res, base_params.time);
+    }
 
     // Same four layers, in the same order, as the Views this replaces.
     let glow_hw = shader_options.glow_w * res.y;

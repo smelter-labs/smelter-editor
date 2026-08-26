@@ -6,8 +6,11 @@ swapped for an ML classifier behind the same TechniqueAnalyzer interface.
 
 Coordinates are normalized to the frame (0..1, y grows DOWNWARD — smaller y is
 physically higher). Keypoints follow the 17-point COCO order YOLO-pose emits.
-All heuristics assume a roughly side-on camera; that limitation is surfaced in
-the manifest param descriptions.
+Heuristics default to a roughly side-on camera (cameraView='side'); with
+cameraView='front' the depth-dependent judge checks (squatting, bent_arms,
+rounded_back) are disabled because their 2D projected angles are unreadable
+head-on. Rep counting and classification are height-based and work in both
+views.
 """
 
 from __future__ import annotations
@@ -50,6 +53,9 @@ DEFAULT_PARAMS: dict[str, Any] = {
     "hingeKneeMin": 110.0,
     "armStraightMin": 150.0,
     "backAlignMin": 140.0,
+    # 'side' (full judging) or 'front' (height checks only). Anything else
+    # behaves as 'side' — the safe legacy default.
+    "cameraView": "side",
 }
 
 # Longest gap the pacing param is allowed to ask for. A hand-edited config
@@ -815,12 +821,22 @@ def judge_swing_rep(
     """Score one segmented swing rep → ('correct'|'incorrect', issue codes)."""
     issues: list[str] = []
 
+    # Head-on, knee/elbow/back angles are 2D projections of motion that
+    # happens along the depth axis — a straight-armed front-view swing folds
+    # the projected elbow to ~78 deg (see the FRONT_* test fixtures). Only the
+    # pure height comparisons survive a front-facing camera.
+    front = str(params.get("cameraView", "side")) == "front"
+
     knee = rep.get("bottom_knee")
-    if knee is not None and knee < float(params["hingeKneeMin"]):
+    if not front and knee is not None and knee < float(params["hingeKneeMin"]):
         issues.append("squatting")
 
     min_elbow = rep.get("min_elbow")
-    if min_elbow is not None and min_elbow < float(params["armStraightMin"]):
+    if (
+        not front
+        and min_elbow is not None
+        and min_elbow < float(params["armStraightMin"])
+    ):
         issues.append("bent_arms")
 
     # 'hardstyle' polices both ends of the arc, 'overhead-ok' allows American
@@ -837,7 +853,7 @@ def judge_swing_rep(
             issues.append("too_low")
 
     back = rep.get("bottom_back")
-    if back is not None and back < float(params["backAlignMin"]):
+    if not front and back is not None and back < float(params["backAlignMin"]):
         issues.append("rounded_back")
 
     return ("incorrect" if issues else "correct", issues)
@@ -1059,6 +1075,9 @@ class TechniqueAnalyzer:
                     "issues": issues,
                     "exercise": exercise,
                     "duration": duration,
+                    # Apex PTS — the worker looks up the matching buffered
+                    # frame for the rep-screenshot feature.
+                    "topT": round(float(rep.get("top_t", 0.0)), 3),
                 }
             )
         return self._snapshot(t, events)

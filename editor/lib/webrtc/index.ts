@@ -54,7 +54,14 @@ export function setCodecPreference(
 
   const pattern = CODEC_MIME[codec];
   const preferred = caps.codecs.filter((c) => pattern.test(c.mimeType));
-  const rest = caps.codecs.filter((c) => !pattern.test(c.mimeType));
+  // Rival video codecs must be EXCLUDED, not just deprioritized: the remote
+  // answerer picks by its own registry order (smelter answers H264 whenever
+  // the offer contains it), which silently defeats an explicit codec choice —
+  // and a local-preference/answer mismatch can stall Chrome's encoder
+  // outright. Keep only RTP infrastructure entries (rtx/red/fec) alongside.
+  const infra = caps.codecs.filter(
+    (c) => !/video\/(H264|H265|VP8|VP9|AV1)/i.test(c.mimeType),
+  );
 
   let ordered = preferred;
   if (codec === 'h264' && !/Firefox/i.test(navigator.userAgent)) {
@@ -69,7 +76,7 @@ export function setCodecPreference(
 
   if (ordered.length) {
     try {
-      transceiver.setCodecPreferences([...ordered, ...rest]);
+      transceiver.setCodecPreferences([...ordered, ...infra]);
     } catch {}
   }
 }

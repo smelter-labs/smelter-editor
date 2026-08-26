@@ -9,6 +9,8 @@ import {
   getStoredClientServerUrl,
 } from '@/lib/server-url';
 import {
+  ChipButton,
+  ChipLink,
   DisplayText,
   FooterHint,
   Frame,
@@ -21,8 +23,10 @@ import {
   StatusDot,
   Tab,
   kbtMonoFont,
+  useArmed,
 } from '../kbt-kit';
 import { useArcadeKeys } from '../../duck-hunter/use-arcade-input';
+import { KbtAvatar } from '../avatar';
 import type { KbtFeed } from '../use-kbt-feed';
 import type { KbtRoom } from '../use-kbt-room';
 
@@ -35,7 +39,21 @@ function defaultPublicBase(): string {
   );
 }
 
-function PlayerRow({ p, mark }: { p: KbtPlayer; mark?: string }) {
+function PlayerRow({
+  p,
+  mark,
+  kickArmed = false,
+  onKick,
+}: {
+  p: KbtPlayer;
+  mark?: string;
+  /** First press arms (KICK?), second within the window kicks. */
+  kickArmed?: boolean;
+  /** Small ✕ that drops this participant (host recovery control). */
+  onKick?: (clientId: string) => void;
+}) {
+  // Absent on older servers = assume connected.
+  const offline = p.connected === false;
   return (
     <div
       style={{
@@ -43,8 +61,11 @@ function PlayerRow({ p, mark }: { p: KbtPlayer; mark?: string }) {
         alignItems: 'center',
         gap: 12,
       }}>
-      <span
-        style={{ width: 8, height: 8, background: p.color, flexShrink: 0 }}
+      <KbtAvatar
+        name={p.name}
+        color={p.color}
+        photoUrl={p.photoUrl}
+        size={28}
       />
       <DisplayText
         size={20}
@@ -55,6 +76,7 @@ function PlayerRow({ p, mark }: { p: KbtPlayer; mark?: string }) {
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           whiteSpace: 'nowrap',
+          opacity: offline ? 0.55 : 1,
         }}>
         {p.name}
       </DisplayText>
@@ -64,15 +86,25 @@ function PlayerRow({ p, mark }: { p: KbtPlayer; mark?: string }) {
         </Label>
       ) : null}
       <StatusDot
-        state={p.camConnected ? 'good' : 'warn'}
-        pulse={!p.camConnected}
+        state={offline ? 'bad' : p.camConnected ? 'good' : 'warn'}
+        pulse={!offline && !p.camConnected}
       />
       <Label
         size={10}
         tracking={1.5}
-        color={p.camConnected ? KBT.good : KBT.amber}>
-        {p.camConnected ? 'CAM ✓' : 'NO CAM'}
+        color={offline ? KBT.bad : p.camConnected ? KBT.good : KBT.amber}>
+        {offline ? 'OFFLINE' : p.camConnected ? 'CAM ✓' : 'NO CAM'}
       </Label>
+      {onKick ? (
+        <ChipButton
+          label={kickArmed ? 'KICK?' : '✕'}
+          dense
+          tone='danger'
+          active={kickArmed}
+          title={`Remove ${p.name} from the tournament`}
+          onClick={() => onKick(p.clientId)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -97,7 +129,7 @@ export function RosterScreen({
   onBack: () => void;
 }) {
   const [base, setBase] = useState('');
-  const [baseFocused, setBaseFocused] = useState(false);
+  const kick = useArmed(3000);
 
   useEffect(() => {
     const saved = window.localStorage.getItem(PUBLIC_BASE_KEY);
@@ -117,6 +149,35 @@ export function RosterScreen({
     if (!liftUrl) return '';
     return liftUrl.replace('/lift', '/commentate');
   }, [liftUrl]);
+
+  // Desktop moderator panel (webcam + view switching + show control) —
+  // copy-paste link, since a computer doesn't scan QRs.
+  const panelUrl = useMemo(() => {
+    const b = base.trim().replace(/\/+$/, '');
+    if (!b || !room.roomId) return '';
+    const url = `${b}/kettlebell-tournament/panel/${encodeURIComponent(room.roomId)}`;
+    const api = getStoredClientServerUrl() ?? getPublicDefaultServerUrl();
+    return api ? `${url}?server=${encodeURIComponent(api)}` : url;
+  }, [base, room.roomId]);
+
+  const [panelCopyState, setPanelCopyState] = useState<
+    'idle' | 'copied' | 'failed'
+  >('idle');
+  const copyPanelUrl = () => {
+    if (!panelUrl) return;
+    void navigator.clipboard
+      .writeText(panelUrl)
+      .then(() => {
+        setPanelCopyState('copied');
+        window.setTimeout(() => setPanelCopyState('idle'), 2000);
+      })
+      .catch(() => {
+        // Insecure LAN origins have no clipboard API — say so, the visible
+        // URL above is the hand-copy fallback.
+        setPanelCopyState('failed');
+        window.setTimeout(() => setPanelCopyState('idle'), 2500);
+      });
+  };
 
   // The server can't know the public page base — push the join URL down so
   // the broadcast's lobby scene can burn in its own QR.
@@ -217,6 +278,8 @@ export function RosterScreen({
             gap: 12,
             padding: '16px 18px',
             height: '100%',
+            minHeight: 0,
+            overflowY: 'auto',
           }}>
           <PlateTitle>JOIN THE TOURNAMENT</PlateTitle>
           {liftUrl ? (
@@ -261,19 +324,16 @@ export function RosterScreen({
               setBase(e.target.value);
               window.localStorage.setItem(PUBLIC_BASE_KEY, e.target.value);
             }}
-            onFocus={() => setBaseFocused(true)}
-            onBlur={() => setBaseFocused(false)}
             placeholder='public page base (https://…)'
+            className='kbt-input'
             style={{
               width: '100%',
               fontFamily: kbtMonoFont,
               fontSize: 11,
               color: KBT.cream,
               background: KBT.fill,
-              border: `1px solid ${baseFocused ? KBT.accent : KBT.border}`,
-              borderRadius: 0,
+              border: `1px solid ${KBT.border}`,
               padding: '8px 10px',
-              outline: 'none',
             }}
           />
           <div
@@ -296,6 +356,7 @@ export function RosterScreen({
             style={{
               alignSelf: 'stretch',
               height: 1,
+              flexShrink: 0,
               background: KBT.border,
             }}
           />
@@ -351,6 +412,52 @@ export function RosterScreen({
               )}
             </div>
           </div>
+          {/* Desktop moderator panel: same slot, plus view/show control. */}
+          <div
+            style={{
+              alignSelf: 'stretch',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8,
+            }}>
+            <Label size={9} tracking={1.5}>
+              DESKTOP PANEL — CAM + SHOW CONTROL
+            </Label>
+            {/* Visible URL: hand-copy fallback when the clipboard API is
+                unavailable (insecure LAN origins). */}
+            <div
+              style={{
+                fontFamily: kbtMonoFont,
+                fontSize: 9,
+                letterSpacing: 0.5,
+                color: KBT.dim,
+                wordBreak: 'break-all',
+              }}>
+              {panelUrl || 'the panel link appears when the arena is up'}
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {panelUrl ? (
+                <ChipLink dense label='OPEN PANEL ↗' href={panelUrl} />
+              ) : null}
+              <ChipButton
+                dense
+                active={panelCopyState === 'copied'}
+                label={
+                  panelCopyState === 'copied'
+                    ? 'COPIED ✓'
+                    : panelCopyState === 'failed'
+                      ? 'COPY FAILED'
+                      : 'COPY LINK'
+                }
+                style={
+                  panelCopyState === 'failed'
+                    ? { color: KBT.bad, borderColor: 'rgba(255,64,48,.5)' }
+                    : undefined
+                }
+                onClick={copyPanelUrl}
+              />
+            </div>
+          </div>
         </Plate>
 
         {/* Roster */}
@@ -363,6 +470,8 @@ export function RosterScreen({
             gap: 14,
             padding: '16px 18px',
             height: '100%',
+            minHeight: 0,
+            overflowY: 'auto',
           }}>
           <PlateTitle>
             {`ROSTER — ${players.length} LIFTER${players.length === 1 ? '' : 'S'}`}
@@ -379,6 +488,15 @@ export function RosterScreen({
                 mark={
                   p.heatIndex != null ? `HEAT ${p.heatIndex + 1}` : undefined
                 }
+                kickArmed={kick.armed === p.clientId}
+                onKick={(clientId) => {
+                  if (kick.armed === clientId) {
+                    kick.disarm();
+                    void room.control('kick_player', undefined, clientId);
+                  } else {
+                    kick.arm(clientId);
+                  }
+                }}
               />
             ))
           )}

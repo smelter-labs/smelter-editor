@@ -193,3 +193,27 @@ export function getEffectiveClientServerUrl(): string {
 export function toWsUrl(httpUrl: string): string {
   return normalizeServerUrl(httpUrl).replace(/^http/, 'ws');
 }
+
+export function remoteOrigin(): string | null {
+  if (typeof window === 'undefined') return null;
+  const o = window.location.origin;
+  return /(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])/.test(o) ? null : o;
+}
+
+/**
+ * Media endpoints (WHIP/WHEP) come from the server, which may only know its
+ * loopback address — graft the path onto a base this client can actually
+ * reach (explicit ?server=, the public default, or the page's own origin).
+ */
+export function resolveMediaUrl(url: string): string {
+  const base =
+    getStoredClientServerUrl() ?? getPublicDefaultServerUrl() ?? remoteOrigin();
+  if (!base) return url;
+  try {
+    const u = new URL(url);
+    if (!isLoopbackHost(u.hostname)) return url;
+    return base + u.pathname + u.search;
+  } catch {
+    return url;
+  }
+}

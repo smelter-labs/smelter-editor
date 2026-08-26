@@ -3,6 +3,7 @@
 import React from 'react';
 import type { KbtPlayer, KbtStateEvent } from '@smelter-editor/types';
 import {
+  ChipButton,
   DisplayText,
   KBT,
   Label,
@@ -10,13 +11,16 @@ import {
   Plate,
   PlateTitle,
   StatusDot,
+  WarnPlate,
   kbtMonoFont,
 } from '../kbt-kit';
+import { KbtAvatar } from '../avatar';
 
 function Row({
   left,
   right,
   color,
+  photoUrl,
   dim,
   rightNum = false,
   camState,
@@ -24,6 +28,8 @@ function Row({
   left: string;
   right: string;
   color?: string;
+  /** Profile photo — swaps the color square for a small avatar. */
+  photoUrl?: string | null;
   dim?: boolean;
   /** Render the right side as a mono numeral (scores). */
   rightNum?: boolean;
@@ -50,14 +56,23 @@ function Row({
           overflow: 'hidden',
           minWidth: 0,
         }}>
-        <span
-          style={{
-            width: 8,
-            height: 8,
-            background: color ?? KBT.cream,
-            flexShrink: 0,
-          }}
-        />
+        {photoUrl ? (
+          <KbtAvatar
+            name={left}
+            color={color ?? KBT.cream}
+            photoUrl={photoUrl}
+            size={20}
+          />
+        ) : (
+          <span
+            style={{
+              width: 8,
+              height: 8,
+              background: color ?? KBT.cream,
+              flexShrink: 0,
+            }}
+          />
+        )}
         <span
           style={{
             overflow: 'hidden',
@@ -102,6 +117,14 @@ export function ReadyStep({
   fullBody,
   inMyIntro,
   camOn,
+  live,
+  publishing = false,
+  onRetryPublish,
+  fileMode,
+  filePlaying,
+  sendFps,
+  onToggleFile,
+  onRestartFile,
   facing,
   attachVideo,
 }: {
@@ -114,6 +137,19 @@ export function ReadyStep({
   /** My heat is staged (intro) — show the framing check prominently. */
   inMyIntro: boolean;
   camOn: boolean;
+  /** The WHIP publish is up (false with camOn = stream not reaching the arena). */
+  live?: boolean;
+  /** A republish is in flight — the retry chip goes quiet meanwhile. */
+  publishing?: boolean;
+  /** Manual republish fallback when the self-heal loop isn't enough. */
+  onRetryPublish?: () => void;
+  /** The "camera" is a looping recording — offer playback controls. */
+  fileMode?: boolean;
+  filePlaying?: boolean;
+  /** Outbound video fps while publishing (0 = nothing leaves the phone). */
+  sendFps?: number | null;
+  onToggleFile?: () => void;
+  onRestartFile?: () => void;
   facing: 'user' | 'environment';
   attachVideo: (el: HTMLVideoElement | null) => void;
 }) {
@@ -135,6 +171,8 @@ export function ReadyStep({
   );
 
   const poseOk = poseTracked && fullBody;
+  // Host-chosen lifter orientation; absent field (older server) = front.
+  const sideOn = state?.config?.cameraView === 'side';
 
   return (
     <div
@@ -182,7 +220,9 @@ export function ReadyStep({
             {!poseTracked
               ? 'Stand back until your whole body is tracked on your tile.'
               : fullBody
-                ? 'The AI sees you. Grab the bell and await the countdown.'
+                ? sideOn
+                  ? 'The AI sees you. Turn SIDE-ON to the camera, grab the bell and await the countdown.'
+                  : 'The AI sees you. Grab the bell and await the countdown.'
                 : 'Head to toe must fit — move the phone or step back.'}
           </span>
         </Plate>
@@ -250,7 +290,7 @@ export function ReadyStep({
             style={{
               position: 'absolute',
               inset: '4% 12%',
-              border: '2px dashed rgba(232,228,218,.5)',
+              border: `2px dashed ${KBT.dim}`,
               pointerEvents: 'none',
             }}
           />
@@ -273,18 +313,102 @@ export function ReadyStep({
                   color={poseOk ? KBT.good : KBT.amber}
                   style={{
                     display: 'inline-block',
-                    background: 'rgba(13,14,16,.7)',
+                    background: KBT.scrim,
                     padding: '5px 9px',
                   }}>
                   {!poseTracked
                     ? 'STEP INTO FRAME'
                     : fullBody
-                      ? 'POSE LOCKED ✓'
+                      ? sideOn
+                        ? 'POSE LOCKED ✓ — LIFT SIDE-ON'
+                        : 'POSE LOCKED ✓'
                       : 'BACK UP — WHOLE BODY IN FRAME'}
                 </Label>
               </span>
             </div>
           ) : null}
+          {fileMode ? (
+            <div
+              style={{
+                position: 'absolute',
+                top: 8,
+                right: 8,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-end',
+                gap: 4,
+                pointerEvents: 'none',
+              }}>
+              <div style={{ background: KBT.scrim, padding: '4px 8px' }}>
+                <Label
+                  size={9}
+                  tracking={2}
+                  color={filePlaying === false ? KBT.amber : KBT.cream}>
+                  {filePlaying === false ? 'PAUSED' : 'RECORDING'}
+                </Label>
+              </div>
+              {/* A paused clip legitimately encodes nothing — the PAUSED chip
+                  already says so, so only report fps while playing. */}
+              {sendFps != null && filePlaying !== false ? (
+                <div
+                  style={{
+                    background: KBT.scrim,
+                    padding: '4px 8px',
+                  }}>
+                  <Label
+                    size={9}
+                    tracking={2}
+                    color={sendFps > 0 ? KBT.good : KBT.bad}>
+                    {sendFps > 0 ? `SENDING ${sendFps} FPS` : 'NO SIGNAL OUT'}
+                  </Label>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {camOn && live === false ? (
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+            flexShrink: 0,
+          }}>
+          <WarnPlate>
+            VIDEO NOT REACHING THE ARENA — reconnecting; if it doesn&apos;t come
+            back, go live again.
+          </WarnPlate>
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <ChipButton
+              label={publishing ? 'RECONNECTING…' : '⟳ GO LIVE AGAIN'}
+              dense
+              disabled={publishing}
+              onClick={() => onRetryPublish?.()}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {fileMode && camOn ? (
+        <div
+          style={{
+            display: 'flex',
+            gap: 8,
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}>
+          <ChipButton
+            label={filePlaying ? '⏸ PAUSE' : '▶ PLAY'}
+            dense
+            onClick={() => onToggleFile?.()}
+          />
+          <ChipButton
+            label='↺ FROM THE TOP'
+            dense
+            onClick={() => onRestartFile?.()}
+          />
         </div>
       ) : null}
 
@@ -308,6 +432,7 @@ export function ReadyStep({
               left={p.name + (p.clientId === me?.clientId ? ' (YOU)' : '')}
               right={p.camConnected ? 'CAM ✓' : 'NO CAM'}
               color={p.color}
+              photoUrl={p.photoUrl}
               dim={!p.camConnected}
               camState={p.camConnected ? 'good' : 'idle'}
             />
@@ -331,6 +456,7 @@ export function ReadyStep({
               left={`${i + 1}. ${p.name}`}
               right={`${p.finalScore ?? p.bestScore}`}
               color={p.color}
+              photoUrl={p.photoUrl}
               dim={p.bestScore === 0 && p.finalScore == null}
               rightNum
             />

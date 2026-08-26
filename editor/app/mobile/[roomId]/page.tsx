@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Camera, Crosshair, Eye, Home } from 'lucide-react';
+import { Camera, Crosshair, Dumbbell, Eye, Home, Mic } from 'lucide-react';
 
 import type { RoomState } from '@/lib/types';
 import { getRoomInfo } from '@/app/actions/actions';
@@ -73,6 +73,16 @@ export default function MobileJoinPage() {
   const handleShootGhosts = () => {
     if (!roomId) return;
     router.push(`/mobile/${encodeURIComponent(roomId as string)}/shoot`);
+  };
+
+  const handleCommentate = () => {
+    if (!roomId) return;
+    router.push(`/mobile/${encodeURIComponent(roomId as string)}/commentate`);
+  };
+
+  const handleLift = () => {
+    if (!roomId) return;
+    router.push(`/mobile/${encodeURIComponent(roomId as string)}/lift`);
   };
 
   if (loading) {
@@ -147,9 +157,39 @@ export default function MobileJoinPage() {
                 <Crosshair className='w-6 h-6 text-[#00f3ff]' />
               </div>
               <div className='flex-1 min-w-0'>
-                <div className='text-lg font-semibold'>Duck Hunter 🦆</div>
+                <div className='text-lg font-semibold'>Duck Hunter</div>
                 <div className='text-sm text-neutral-400'>
                   Aim with your phone&apos;s gyroscope and shoot the ducks.
+                </div>
+              </div>
+            </button>
+
+            <button
+              onClick={handleLift}
+              className='group flex items-center gap-4 p-5 border border-neutral-800 rounded-lg bg-neutral-900/40 hover:border-[#00f3ff] hover:bg-neutral-900/60 transition-colors cursor-pointer text-left'>
+              <div className='shrink-0 w-12 h-12 rounded-full bg-neutral-800 flex items-center justify-center group-hover:bg-[#00f3ff]/10'>
+                <Dumbbell className='w-6 h-6 text-[#00f3ff]' />
+              </div>
+              <div className='flex-1 min-w-0'>
+                <div className='text-lg font-semibold'>Kettlebell Lifter</div>
+                <div className='text-sm text-neutral-400'>
+                  Lift on camera — the AI referee counts your reps.
+                </div>
+              </div>
+            </button>
+
+            <button
+              onClick={handleCommentate}
+              className='group flex items-center gap-4 p-5 border border-neutral-800 rounded-lg bg-neutral-900/40 hover:border-[#00f3ff] hover:bg-neutral-900/60 transition-colors cursor-pointer text-left'>
+              <div className='shrink-0 w-12 h-12 rounded-full bg-neutral-800 flex items-center justify-center group-hover:bg-[#00f3ff]/10'>
+                <Mic className='w-6 h-6 text-[#00f3ff]' />
+              </div>
+              <div className='flex-1 min-w-0'>
+                <div className='text-lg font-semibold'>
+                  Kettlebell Commentator
+                </div>
+                <div className='text-sm text-neutral-400'>
+                  Join the tournament booth — your voice goes on air.
                 </div>
               </div>
             </button>

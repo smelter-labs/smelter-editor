@@ -13,7 +13,15 @@ type WorkerEvent = {
   issues?: string[];
   exercise?: string;
   prev?: string;
+  /** PTS (seconds) of the rep's apex, as seen by the analyzer. */
+  topT?: number;
+  /** Bare file name of the apex still the worker saved (kbt-rep-frames). */
+  frameFile?: string;
 };
+
+// Worker-produced apex-still names: sanitized inputId + session + rep index,
+// bare file name only. Anything else (path separators, dots) is dropped.
+const FRAME_FILE_RE = /^[A-Za-z0-9_-]+\.jpg$/;
 
 /** The slice of the worker result payload this controller consumes. */
 export type KettlebellResultData = {
@@ -135,6 +143,11 @@ export class KettlebellCoachController {
       EXERCISES.includes(event.exercise ?? '') ? event.exercise : 'swing'
     ) as KettlebellExercise;
 
+    const screenshotUrl =
+      typeof event.frameFile === 'string' && FRAME_FILE_RE.test(event.frameFile)
+        ? `/kbt-rep-frames/${event.frameFile}`
+        : undefined;
+
     this.broadcast(this.roomId, {
       type: 'kettlebell_rep_completed',
       roomId: this.roomId,
@@ -143,6 +156,7 @@ export class KettlebellCoachController {
       exercise,
       verdict: event.verdict === 'incorrect' ? 'incorrect' : 'correct',
       issues,
+      ...(screenshotUrl ? { screenshotUrl } : {}),
     });
 
     state.recentRepIssues.push(issues);

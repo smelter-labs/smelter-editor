@@ -83,7 +83,10 @@ export type RoomStore = {
   setBuildingBoxes: (inputId: string, boxes: BuildingBoxes | null) => void;
   setCarAdBoxes: (inputId: string, boxes: CarAdBoxes | null) => void;
   setCarHueBoxes: (inputId: string, boxes: CarHueBoxes | null) => void;
-  setKettlebell: (inputId: string, state: KettlebellOverlayState | null) => void;
+  setKettlebell: (
+    inputId: string,
+    state: KettlebellOverlayState | null,
+  ) => void;
   setShooter: (shooter: ShooterOverlay | null) => void;
   setKbTournament: (state: KbtHudState | null) => void;
 } & Partial<ViewportProperties>;
@@ -336,6 +339,8 @@ export type KbtHudTile = {
   clientId: string;
   name: string;
   color: string;
+  /** Registered engine image id of the player's profile photo, if any. */
+  photoImageId?: string | null;
   points: number;
   /** Total reps this heat (all exercises, scored or not). */
   reps: number;
@@ -357,6 +362,16 @@ export type KbtHudTile = {
   flash: boolean;
   lastRepVerdict: 'correct' | 'incorrect' | null;
   lastRepPoints: number;
+  /**
+   * Every-5th-rep celebration (aura + tile shake). `p` is the effect's
+   * progress (0..1) at snapshot time — snapshot-relative like `flash`; the
+   * renderer smooths locally between the ~10 Hz snapshots.
+   */
+  fx?: {
+    exercise: 'swing' | 'clean' | 'snatch';
+    color: string;
+    p: number;
+  } | null;
   /** The player's WHIP input stopped acking mid-heat. */
   signalLost?: boolean;
 };
@@ -379,18 +394,44 @@ export type KbtHudMatch = {
  * Which broadcast scene the tournament chrome renders (kb_design port):
  * 'lobby' = roster QR panel, 'solo' = single-athlete heat with the hero
  * plate + rep tracker, 'grid' = 2-4 athletes with per-column plates,
- * 'board' = standings between heats, 'podium' = final results.
+ * 'board' = standings between heats, 'podium' = final results,
+ * 'caster' = fullscreen commentator cam, 'split' = commentator + featured
+ * lifter side by side (the last two only via the commentator's view override).
  */
-export type KbtHudScene = 'lobby' | 'solo' | 'grid' | 'board' | 'podium';
+export type KbtHudScene =
+  | 'lobby'
+  | 'solo'
+  | 'grid'
+  | 'board'
+  | 'podium'
+  | 'caster'
+  | 'split';
 
 export type KbtBoardRow = {
   rank: number;
   name: string;
   color: string;
+  photoImageId?: string | null;
   points: number;
   reps: number;
   rpm: number;
 };
+
+/**
+ * Off-stage parking rect: a 1×1 pixel in the bottom-left corner. Inputs laid
+ * here stay in the layer (audio in the mix, decoder warm) without any
+ * visible video. Used for the audio-only commentator and for player cams
+ * that are off-stage — every known input must always be mentioned in the
+ * layout, or RoomState's unplaced-input auto-append resurrects it fullscreen.
+ */
+export function kbtParkRect(resolution: { width: number; height: number }): {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+} {
+  return { x: 0, y: resolution.height - 1, width: 1, height: 1 };
+}
 
 /**
  * Where the commentator's camera tile sits on the output — the controller
@@ -401,13 +442,14 @@ export function kbtCasterCamRect(
   resolution: { width: number; height: number },
   visible: boolean,
 ): { x: number; y: number; width: number; height: number } {
-  if (!visible) return { x: 0, y: resolution.height - 1, width: 1, height: 1 };
+  if (!visible) return kbtParkRect(resolution);
   const k = resolution.height / 1080;
   const h = Math.round(124 * k);
   return {
     x: Math.round(70 * k),
     y: resolution.height - Math.round(70 * k) - h,
-    width: Math.round(72 * k),
+    // Landscape 16:9 tile (laptop webcam) at the lower-third height.
+    width: Math.round(220 * k),
     height: h,
   };
 }
@@ -416,6 +458,15 @@ export function kbtCasterCamRect(
  * Heats are audio-only; the podium keeps its blocks clear too. */
 export function kbtCasterVisible(scene: KbtHudScene): boolean {
   return scene === 'lobby' || scene === 'board';
+}
+
+/**
+ * Bar-chart denominator rounded up to the next `step`. A raw max shrinks
+ * every bar the moment the leader scores (the denominator grows per rep);
+ * stepping it makes rescales rare and read as a deliberate axis change.
+ */
+export function barScale(max: number, step = 10): number {
+  return Math.max(step, Math.ceil(max / step) * step);
 }
 
 /** Kettlebell Tournament overlay state burned into the broadcast. */
@@ -432,14 +483,25 @@ export type KbtHudState = {
     qrImageId: string | null;
     /** Short human-readable join address under SCAN OR VISIT. */
     joinLabel: string | null;
-    joined: { name: string; color: string; camConnected: boolean }[];
+    joined: {
+      name: string;
+      color: string;
+      camConnected: boolean;
+      photoImageId?: string | null;
+    }[];
     joinedCount: number;
   } | null;
   /** Standings scene payload (between heats / after stop). */
   board: { rows: KbtBoardRow[]; final: boolean } | null;
   /** Podium scene payload (rows ordered rank 1..3). */
   podium: {
-    rows: { rank: number; name: string; color: string; points: number }[];
+    rows: {
+      rank: number;
+      name: string;
+      color: string;
+      points: number;
+      photoImageId?: string | null;
+    }[];
   } | null;
   /** Commentator lower-third (null until one joins). */
   commentator: {
@@ -449,14 +511,56 @@ export type KbtHudState = {
   } | null;
   /** Current leader (heat leader during play, standings leader otherwise). */
   leader: { name: string; points: number } | null;
-  /** Short-lived celebration banner (lead change / streak). */
+  /** Short-lived celebration banner (lead change / streak / commentator hype). */
   banner: {
-    kind: 'lead_change' | 'streak';
+    kind: 'lead_change' | 'streak' | 'hype';
     text: string;
     color: string;
     at: number;
   } | null;
+  /** Commentator-driven overlay (single exclusive slot; identity lives in the
+   * controller, data is recomputed into this snapshot every publish). */
+  overlay: KbtCommentatorHudOverlay | null;
+  /** Floating rep text feature flag (config.repFloatText); the renderer
+   * treats a missing value as on. */
+  repFloatText?: boolean;
 };
+
+/** One player's stat block for spotlight / head-to-head overlays. */
+export type KbtStatSide = {
+  name: string;
+  color: string;
+  photoImageId: string | null;
+  points: number;
+  rpm: number;
+  reps: number;
+  streak: number;
+  bestStreak: number;
+  /** Correct-rep ratio 0..1; null when the player has no reps yet. */
+  accuracy: number | null;
+};
+
+export type KbtCommentatorHudOverlay =
+  | {
+      kind: 'rep_shot';
+      player: { name: string; color: string };
+      shot: {
+        /** Registered engine image; null while registering or file missing. */
+        imageId: string | null;
+        repIndex: number;
+        exercise: 'swing' | 'clean' | 'snatch';
+        verdict: 'correct' | 'incorrect';
+        points: number;
+        /** Display-ready issue labels, pre-mapped server-side. */
+        issues: string[];
+      };
+      /** 0-based position in the player's shot list. */
+      index: number;
+      total: number;
+      showVerdict: boolean;
+    }
+  | { kind: 'spotlight'; side: KbtStatSide; live: boolean }
+  | { kind: 'h2h'; a: KbtStatSide; b: KbtStatSide; live: boolean };
 
 /** Ghost Shooter overlay state rendered on the target (ghost-enabled) input. */
 export type ShooterOverlay = {

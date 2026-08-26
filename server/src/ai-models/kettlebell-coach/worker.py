@@ -31,14 +31,21 @@ import contextlib
 import json
 import logging
 import os
+import re
 import sys
 import threading
 import time
 import uuid
+from collections import deque
 from dataclasses import dataclass, field
 
 import numpy as np
 import websockets
+
+try:  # only needed for rep screenshots; the analyzer itself never touches it
+    import cv2
+except Exception:  # noqa: BLE001
+    cv2 = None
 from smelter import list_channels
 from smelter.aio import subscribe_video_channel
 
@@ -75,6 +82,85 @@ IMGSZ = int(os.environ.get("KETTLEBELL_IMGSZ", "640"))
 # per-joint threshold; keypoints below it are still sent with their conf).
 POSE_CONF = 0.25
 
+# ── Rep screenshots (apex stills) ────────────────────────────────────────────
+# The rep completes 0.3-1.0s AFTER the bell's apex, so a short pts-keyed ring
+# of recent (downscaled) frames always still holds the apex frame when the
+# `rep_completed` event fires; we look up the nearest frame to the event's
+# `topT` and write it as a JPEG for Node to serve.
+REP_FRAME_DIR = os.environ.get("KETTLEBELL_REP_FRAME_DIR", "")
+REP_FRAME_MAX_W = 480
+REP_FRAME_BUF_LEN = 32  # ≈2s at 16 analysis fps
+REP_FRAME_JPEG_QUALITY = 80
+# Hand height is EMA-smoothed (SMOOTH_TAU_S), so topT trails the visual apex
+# by about one frame — bias the lookup slightly earlier.
+REP_FRAME_EMA_LAG_S = 0.04
+# No frame within this distance of topT means the buffer was reset (stream
+# restart) — better no still than a wrong one.
+REP_FRAME_MATCH_TOL_S = 0.5
+# Runaway guard per analyzer session, far above any real heat's rep count.
+REP_FRAME_MAX_WRITES = 1000
+
+
+def _capture_enabled(params: dict) -> bool:
+    v = params.get("captureRepFrames")
+    return str(v).strip().lower() in ("1", "true", "on")
+
+
+def _buffer_rep_frame(state: "InputState", t: float, rgb) -> None:
+    h, w = rgb.shape[:2]
+    if w > REP_FRAME_MAX_W:
+        small = cv2.resize(
+            rgb,
+            (REP_FRAME_MAX_W, max(1, round(h * REP_FRAME_MAX_W / w))),
+            interpolation=cv2.INTER_AREA,
+        )
+    else:
+        small = rgb.copy()
+    state.frame_buf.append((t, small))
+
+
+def _encode_rep_frame(path: str, rgb) -> bool:
+    """JPEG-encode and write one buffered frame (runs in a thread)."""
+    bgr = np.ascontiguousarray(rgb[:, :, ::-1])
+    ok, buf = cv2.imencode(
+        ".jpg", bgr, [int(cv2.IMWRITE_JPEG_QUALITY), REP_FRAME_JPEG_QUALITY]
+    )
+    if not ok:
+        return False
+    os.makedirs(REP_FRAME_DIR, exist_ok=True)
+    with open(path, "wb") as f:
+        f.write(buf.tobytes())
+    return True
+
+
+async def _attach_rep_frames(input_id: str, state: "InputState", events: list) -> None:
+    """For each fresh rep_completed event, save the buffered frame nearest the
+    rep's apex and stamp the event with the saved file's name."""
+    for event in events:
+        if event.get("type") != "rep_completed":
+            continue
+        top_t = event.get("topT")
+        if not isinstance(top_t, (int, float)) or not state.frame_buf:
+            continue
+        if state.frames_written >= REP_FRAME_MAX_WRITES:
+            continue
+        target = float(top_t) - REP_FRAME_EMA_LAG_S
+        pts, rgb = min(state.frame_buf, key=lambda p: abs(p[0] - target))
+        if abs(pts - target) > REP_FRAME_MATCH_TOL_S:
+            continue
+        safe_input = re.sub(r"[^A-Za-z0-9_-]", "_", input_id)
+        name = f"{safe_input}-{state.session}-r{int(event.get('index', 0)):04d}.jpg"
+        try:
+            ok = await asyncio.to_thread(
+                _encode_rep_frame, os.path.join(REP_FRAME_DIR, name), rgb
+            )
+        except Exception as err:  # noqa: BLE001
+            log.warning("Rep frame write failed for %s: %s", input_id, err)
+            continue
+        if ok:
+            state.frames_written += 1
+            event["frameFile"] = name
+
 
 @dataclass
 class InputState:
@@ -94,6 +180,10 @@ class InputState:
     # Discrete events held while the Node WS is down, flushed with the next
     # successful emission so none are lost.
     pending_events: list = field(default_factory=list)
+    # Recent (pts, downscaled-RGB) frames for apex-still lookup (rep
+    # screenshots). Only fed while `captureRepFrames` is on for this input.
+    frame_buf: deque = field(default_factory=lambda: deque(maxlen=REP_FRAME_BUF_LEN))
+    frames_written: int = 0
 
 
 active_inputs: dict[str, InputState] = {}
@@ -431,6 +521,11 @@ async def _run_detector_loop(input_id: str) -> int:
             # bell pass both read it after this frame's buffer may have been
             # recycled by the SDK.
             rgb = np.ascontiguousarray(rgba[:, :, :3])
+            capture = (
+                cv2 is not None and bool(REP_FRAME_DIR) and _capture_enabled(params)
+            )
+            if capture:
+                _buffer_rep_frame(state, frame.pts_seconds, rgb)
             pose_kpts = await asyncio.to_thread(detect_pose, rgb, params)
 
             # Analysis is cheap — run it on the loop, per analyzed frame. Time
@@ -466,6 +561,10 @@ async def _run_detector_loop(input_id: str) -> int:
                 else None
             )
             snapshot = state.analyzer.update(t, pose_kpts, kb_center)
+            if capture and snapshot["events"]:
+                # Stamps `frameFile` onto rep_completed events in place, so it
+                # also survives the pending_events hold while Node's WS is down.
+                await _attach_rep_frames(input_id, state, snapshot["events"])
             state.pending_events.extend(snapshot["events"])
 
             if ws_connection is None:
@@ -557,6 +656,9 @@ def pause_detector(input_id: str) -> None:
     state.tracker = KettlebellTracker()
     state.analyzed_frames = 0
     state.pending_events = []
+    # A restarted stream gets a fresh PTS base — buffered pts are meaningless.
+    state.frame_buf.clear()
+    state.frames_written = 0
     state.session = uuid.uuid4().hex[:12]
 
 

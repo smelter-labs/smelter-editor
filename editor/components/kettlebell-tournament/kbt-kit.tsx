@@ -21,6 +21,12 @@ export const KBT = {
   dark: '#0D0E10',
   plate: 'rgba(13,14,16,.94)',
   plate2: 'rgba(24,26,30,.94)',
+  /** Chip scrim floated over live video (fps badges, framing hints). */
+  scrim: 'rgba(13,14,16,.7)',
+  /** Full-width strips/toasts over UI. */
+  overlay: 'rgba(13,14,16,.92)',
+  /** Near-opaque veil (arena closed etc.). */
+  overlayHeavy: 'rgba(13,14,16,.96)',
   page: '#101114',
   border: 'rgba(255,255,255,.09)',
   borderStrong: 'rgba(255,255,255,.12)',
@@ -201,9 +207,7 @@ export function PlateTitle({
 }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-      <span
-        style={{ width: 8, height: 8, background: color, flexShrink: 0 }}
-      />
+      <span style={{ width: 8, height: 8, background: color, flexShrink: 0 }} />
       <span
         style={{
           fontFamily: displayFont,
@@ -371,8 +375,10 @@ export function KbtButton({
   block = false,
   active = false,
   disabled = false,
+  locked = false,
   dense = false,
   onClick,
+  title,
   style,
 }: {
   label: string;
@@ -383,8 +389,12 @@ export function KbtButton({
   /** Pulse — the "press me" affordance. */
   active?: boolean;
   disabled?: boolean;
+  /** Soft lock: momentarily unresponsive (a sibling action is in flight)
+   *  without the "broken" 0.4 disabled dim. */
+  locked?: boolean;
   dense?: boolean;
   onClick?: () => void;
+  title?: string;
   style?: React.CSSProperties;
 }) {
   const bg =
@@ -405,10 +415,18 @@ export function KbtButton({
     <button
       type='button'
       className={`kbt-btn${active && !disabled ? ' kbt-pulse' : ''}`}
+      data-variant={variant}
+      data-locked={locked && !disabled ? '' : undefined}
       disabled={disabled}
       onClick={onClick}
-      style={{ display: block ? 'block' : undefined, width: block ? '100%' : undefined, ...style }}>
+      title={title}
+      style={{
+        display: block ? 'block' : undefined,
+        width: block ? '100%' : undefined,
+        ...style,
+      }}>
       <span
+        className='kbt-btn-face'
         style={{
           display: 'flex',
           flexDirection: 'column',
@@ -418,6 +436,7 @@ export function KbtButton({
           background: bg,
           border: `1px solid ${borderColor}`,
           padding: dense ? '9px 16px' : '13px 22px',
+          color: fg,
         }}>
         <span
           style={{
@@ -454,24 +473,58 @@ export function ChipButton({
   label,
   active = false,
   dense = false,
+  disabled = false,
+  tone = 'default',
+  leading,
   onClick,
+  title,
   style,
 }: {
   label: string;
   active?: boolean;
   dense?: boolean;
+  disabled?: boolean;
+  /** `danger` reads red — destructive chips (kick etc.). */
+  tone?: 'default' | 'danger';
+  /** Rendered inside the chip before the label (avatar etc.) so the whole
+   *  visual unit is one click target. */
+  leading?: React.ReactNode;
   onClick?: () => void;
+  title?: string;
   style?: React.CSSProperties;
 }) {
+  const danger = tone === 'danger';
+  // Danger chips arm to solid red, default chips select to solid ember.
+  const bg = active
+    ? danger
+      ? KBT.bad
+      : KBT.accent
+    : danger
+      ? 'rgba(255,64,48,.14)'
+      : KBT.fillStrong;
+  const borderColor = active
+    ? danger
+      ? KBT.bad
+      : KBT.accent
+    : danger
+      ? 'rgba(255,64,48,.5)'
+      : KBT.border;
+  const fg = active ? KBT.dark : danger ? KBT.bad : KBT.cream;
   return (
     <button
       type='button'
-      className='kbt-btn'
+      className={`kbt-btn${active ? (danger ? ' kbt-pulse' : '') : ' kbt-sweep'}`}
+      data-variant='chip'
+      disabled={disabled}
       onClick={onClick}
+      title={title}
       style={{
-        background: active ? KBT.accent : KBT.fillStrong,
-        border: `1px solid ${active ? KBT.accent : KBT.border}`,
-        color: active ? KBT.dark : KBT.cream,
+        display: leading != null ? 'inline-flex' : undefined,
+        alignItems: leading != null ? 'center' : undefined,
+        gap: leading != null ? 6 : undefined,
+        background: bg,
+        border: `1px solid ${borderColor}`,
+        color: fg,
         fontFamily: kbtMonoFont,
         fontWeight: 600,
         fontSize: dense ? 10 : 11,
@@ -481,8 +534,50 @@ export function ChipButton({
         whiteSpace: 'nowrap',
         ...style,
       }}>
+      {leading}
       {label}
     </button>
+  );
+}
+
+/** ChipButton's anchor twin — opens in a new tab (cmd-click etc. all work). */
+export function ChipLink({
+  label,
+  href,
+  active = false,
+  dense = false,
+  style,
+}: {
+  label: string;
+  href: string;
+  active?: boolean;
+  dense?: boolean;
+  style?: React.CSSProperties;
+}) {
+  return (
+    <a
+      href={href}
+      target='_blank'
+      rel='noopener noreferrer'
+      className={`kbt-btn${active ? '' : ' kbt-sweep'}`}
+      data-variant='chip'
+      style={{
+        display: 'inline-block',
+        background: active ? KBT.accent : KBT.fillStrong,
+        border: `1px solid ${active ? KBT.accent : KBT.border}`,
+        color: active ? KBT.dark : KBT.cream,
+        fontFamily: kbtMonoFont,
+        fontWeight: 600,
+        fontSize: dense ? 10 : 11,
+        letterSpacing: 1.5,
+        textTransform: 'uppercase',
+        textDecoration: 'none',
+        padding: dense ? '6px 9px' : '9px 12px',
+        whiteSpace: 'nowrap',
+        ...style,
+      }}>
+      {label}
+    </a>
   );
 }
 
@@ -546,7 +641,9 @@ export function Bar({
         background: 'rgba(255,255,255,.07)',
         ...style,
       }}>
-      <div style={{ width: `${pct * 100}%`, height: '100%', background: color }} />
+      <div
+        style={{ width: `${pct * 100}%`, height: '100%', background: color }}
+      />
     </div>
   );
 }
@@ -680,6 +777,284 @@ export function WarnPlate({ children }: { children: React.ReactNode }) {
         color: KBT.amber,
       }}>
       {children}
+    </div>
+  );
+}
+
+/* --------------------------- form controls --------------------------- */
+
+/** Labeled dropdown in the kit voice — hover/focus handled by `.kbt-input`. */
+export function KbtSelect({
+  label,
+  value,
+  onChange,
+  children,
+  style,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  children: React.ReactNode;
+  style?: React.CSSProperties;
+}) {
+  return (
+    <label
+      style={{
+        flex: 1,
+        minWidth: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 4,
+        ...style,
+      }}>
+      <Label size={9} tracking={2}>
+        {label}
+      </Label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className='kbt-input'
+        style={{
+          width: '100%',
+          fontFamily: kbtMonoFont,
+          fontSize: 11,
+          color: KBT.cream,
+          background: KBT.fill,
+          border: `1px solid ${KBT.border}`,
+          padding: '7px 8px',
+          cursor: 'pointer',
+        }}>
+        {children}
+      </select>
+    </label>
+  );
+}
+
+/** Text input in the kit voice — focus swaps the border to ember via CSS. */
+export function KbtTextInput({
+  value,
+  onChange,
+  placeholder,
+  maxLength,
+  autoCapitalize,
+  style,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  maxLength?: number;
+  autoCapitalize?: string;
+  style?: React.CSSProperties;
+}) {
+  return (
+    <input
+      value={value}
+      onChange={(e) =>
+        onChange(
+          maxLength != null
+            ? e.target.value.slice(0, maxLength)
+            : e.target.value,
+        )
+      }
+      placeholder={placeholder}
+      autoCapitalize={autoCapitalize}
+      autoComplete='off'
+      spellCheck={false}
+      className='kbt-input'
+      style={{
+        fontFamily: kbtMonoFont,
+        fontWeight: 500,
+        fontSize: 16,
+        letterSpacing: 2,
+        textTransform: 'uppercase',
+        color: KBT.cream,
+        background: KBT.fill,
+        border: `1px solid ${KBT.border}`,
+        padding: '12px 12px',
+        width: '100%',
+        ...style,
+      }}
+    />
+  );
+}
+
+/* --------------------------- confirm rail --------------------------- */
+
+/** Two-press arm state with an auto-disarm window. */
+export function useArmed(timeoutMs = 5000): {
+  armed: string | null;
+  arm: (id: string) => void;
+  disarm: () => void;
+} {
+  const [armed, setArmed] = useState<string | null>(null);
+  const timerRef = React.useRef<number | null>(null);
+  const disarm = React.useCallback(() => {
+    if (timerRef.current != null) window.clearTimeout(timerRef.current);
+    timerRef.current = null;
+    setArmed(null);
+  }, []);
+  const arm = React.useCallback(
+    (id: string) => {
+      setArmed(id);
+      if (timerRef.current != null) window.clearTimeout(timerRef.current);
+      timerRef.current = window.setTimeout(() => {
+        timerRef.current = null;
+        setArmed(null);
+      }, timeoutMs);
+    },
+    [timeoutMs],
+  );
+  useEffect(() => disarm, [disarm]);
+  return { armed, arm, disarm };
+}
+
+export type ConfirmAction = {
+  id: string;
+  label: string;
+  /** Echoes the trigger verbatim unless the confirm needs its own words. */
+  confirmLabel?: string;
+  prompt: string;
+  sub?: string;
+};
+
+/**
+ * Destructive-action rail with the arcade's two-press confirm: arming shows
+ * the prompt + confirming button and an amber bar that drains over the
+ * disarm window, then the rail snaps back on its own.
+ */
+export function ConfirmRail({
+  actions,
+  onConfirm,
+  timeoutMs = 5000,
+  align = 'flex-end',
+  control,
+}: {
+  actions: ConfirmAction[];
+  onConfirm: (id: string) => void;
+  timeoutMs?: number;
+  align?: React.CSSProperties['justifyContent'];
+  /** Pass your own useArmed when keyboard shortcuts also arm/fire the rail. */
+  control?: ReturnType<typeof useArmed>;
+}) {
+  const internal = useArmed(timeoutMs);
+  const { armed, arm, disarm } = control ?? internal;
+  const armedAction = actions.find((a) => a.id === armed) ?? null;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: align,
+          gap: 10,
+          minHeight: 40,
+        }}>
+        {armedAction ? (
+          <>
+            <Label size={10} tracking={1.5} color={KBT.amber}>
+              {armedAction.prompt}
+            </Label>
+            <KbtButton
+              variant='danger'
+              dense
+              active
+              label={armedAction.confirmLabel ?? armedAction.label}
+              onClick={() => {
+                disarm();
+                onConfirm(armedAction.id);
+              }}
+            />
+            <KbtButton
+              variant='outline'
+              dense
+              label='KEEP GOING'
+              onClick={disarm}
+            />
+          </>
+        ) : (
+          actions.map((a) => (
+            <KbtButton
+              key={a.id}
+              variant='danger'
+              dense
+              label={a.label}
+              sub={a.sub}
+              onClick={() => arm(a.id)}
+            />
+          ))
+        )}
+      </div>
+      {armedAction ? (
+        <div
+          key={armedAction.id}
+          className='kbt-disarm-bar'
+          style={{ '--kbt-disarm-ms': `${timeoutMs}ms` } as React.CSSProperties}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Slim fixed connection-status strip pinned to the top edge — the phone's
+ * one honest voice while something is being repaired ("RECONNECTING…",
+ * "RESTORING VIDEO…"). Tappable when a manual retry makes sense.
+ */
+export function KbtStatusStrip({
+  text,
+  tone = 'amber',
+  onTap,
+  position = 'fixed',
+}: {
+  text: string;
+  tone?: 'amber' | 'bad' | 'good';
+  onTap?: () => void;
+  /** `absolute` lets the strip pin inside a scaled Stage instead of the viewport. */
+  position?: 'fixed' | 'absolute';
+}) {
+  const color =
+    tone === 'bad' ? KBT.bad : tone === 'good' ? KBT.good : KBT.amber;
+  const stripStyle: React.CSSProperties = {
+    position,
+    top: 0,
+    left: 0,
+    right: 0,
+    width: '100%',
+    zIndex: 60,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    padding: '7px 12px',
+    background: KBT.overlay,
+    borderBottom: `2px solid ${color}`,
+    fontFamily: kbtMonoFont,
+    fontSize: 11,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color,
+  };
+  const dot = <span style={{ width: 6, height: 6, background: color }} />;
+  if (onTap) {
+    return (
+      <button
+        type='button'
+        onClick={onTap}
+        className='kbt-btn kbt-pulse kbt-strip'
+        style={stripStyle}>
+        {dot}
+        {text}
+      </button>
+    );
+  }
+  return (
+    <div
+      role='status'
+      aria-live='polite'
+      className='kbt-pulse'
+      style={stripStyle}>
+      {dot}
+      {text}
     </div>
   );
 }
@@ -893,7 +1268,8 @@ function BootRow({ label, state }: { label: string; state: RowState }) {
         fontSize: 12,
         letterSpacing: 2,
         textTransform: 'uppercase',
-        color: state === 'ok' ? KBT.good : state === 'fail' ? KBT.bad : KBT.cream,
+        color:
+          state === 'ok' ? KBT.good : state === 'fail' ? KBT.bad : KBT.cream,
       }}>
       <StatusDot
         state={state === 'ok' ? 'good' : state === 'fail' ? 'bad' : 'warn'}
@@ -927,7 +1303,11 @@ export function KbtConnectStep({
   onRetry: () => void;
 }) {
   const roomRow: RowState =
-    roomStatus === 'ok' ? 'ok' : roomStatus === 'not-found' ? 'fail' : 'pending';
+    roomStatus === 'ok'
+      ? 'ok'
+      : roomStatus === 'not-found'
+        ? 'fail'
+        : 'pending';
   const wsRow: RowState = wsConnected
     ? 'ok'
     : wsError && !wsError.startsWith('connecting')

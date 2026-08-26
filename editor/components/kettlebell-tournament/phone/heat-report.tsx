@@ -94,7 +94,7 @@ export function HeatReport({
           }}>
           <span style={{ color: KBT.good }}>✓ {correct} GOOD</span>
           <span style={{ color: incorrect > 0 ? KBT.bad : KBT.dim }}>
-            ✗ {incorrect} FAULTED
+            ✕ {incorrect} FAULTED
           </span>
         </div>
       </Plate>
@@ -160,8 +160,10 @@ export function HeatReport({
           repLog.map((rep, i) => {
             const bad = rep.verdict === 'incorrect';
             return (
+              // repIndex can repeat within one report (the counter may
+              // reset mid-heat), so key by row position instead.
               <div
-                key={rep.repIndex}
+                key={i}
                 style={{
                   display: 'flex',
                   flexDirection: 'column',
@@ -209,7 +211,7 @@ export function HeatReport({
                         color: bad ? KBT.bad : KBT.good,
                         fontWeight: 600,
                       }}>
-                      {bad ? '✗' : '✓'}
+                      {bad ? '✕' : '✓'}
                     </span>
                   </span>
                 </div>

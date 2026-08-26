@@ -17,6 +17,8 @@ import {
   rankColor,
 } from '../kbt-kit';
 import { useArcadeKeys } from '../../duck-hunter/use-arcade-input';
+import { KbtAvatar } from '../avatar';
+import { RepShotStrip } from '../rep-shots';
 import type { KbtFeed } from '../use-kbt-feed';
 
 function ScoreRow({
@@ -44,13 +46,11 @@ function ScoreRow({
         <Num size={18} color={rankColor(rank - 1)} style={{ width: 30 }}>
           {`${rank}.`}
         </Num>
-        <span
-          style={{
-            width: 8,
-            height: 8,
-            background: sheet.color,
-            flexShrink: 0,
-          }}
+        <KbtAvatar
+          name={sheet.name}
+          color={sheet.color}
+          photoUrl={sheet.photoUrl}
+          size={30}
         />
         <DisplayText
           size={22}
@@ -83,6 +83,9 @@ function ScoreRow({
         color={winner ? KBT.accent : 'rgba(232,228,218,.35)'}
         height={4}
       />
+      {sheet.repShots?.length ? (
+        <RepShotStrip shots={sheet.repShots} height={36} max={10} />
+      ) : null}
     </Plate>
   );
 }
@@ -158,7 +161,7 @@ export function ResultsScreen({
                 <KbtButton
                   variant={hasNextHeat ? 'outline' : 'solid'}
                   dense
-                  label='RUN THE FINAL'
+                  label='START THE FINAL'
                   active={!hasNextHeat}
                   onClick={onStartFinal}
                 />
@@ -241,13 +244,11 @@ export function ResultsScreen({
                   <Num size={13} color={rankColor(i)} style={{ width: 24 }}>
                     {`${i + 1}.`}
                   </Num>
-                  <span
-                    style={{
-                      width: 8,
-                      height: 8,
-                      background: p.color,
-                      flexShrink: 0,
-                    }}
+                  <KbtAvatar
+                    name={p.name}
+                    color={p.color}
+                    photoUrl={p.photoUrl}
+                    size={22}
                   />
                   <span
                     style={{
