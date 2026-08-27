@@ -56,6 +56,7 @@ function harness(opts?: {
     setKettlebellCoach: async (inputId, enabled, params) => {
       aiCalls.push({ inputId, enabled, params });
     },
+    setAnimTickMs: () => {},
     layoutTiles: async (tiles) => {
       // Mirror RoomState's unplaced-input auto-append hazard: a layout that
       // omits a connected input would resurrect it fullscreen on the real

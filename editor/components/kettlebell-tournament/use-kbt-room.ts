@@ -5,7 +5,9 @@ import type {
   KbtCameraView,
   KbtExerciseKey,
   KbtMatchAction,
+  KbtPerfConfig,
 } from '@smelter-editor/types';
+import { KBT_DEFAULT_CONFIG } from '@smelter-editor/types';
 import {
   controlKbtMatch,
   createNewRoom,
@@ -33,7 +35,38 @@ export type KbtUiConfig = {
   countIncorrectReps: boolean;
   /** Broadcast output size — applied at room creation, fixed afterwards. */
   resolution: ResolutionPreset;
+  /** Performance knobs (same units as the server config). */
+  perf: KbtPerfConfig;
 };
+
+/** Coerce an untrusted perf blob (old localStorage, server echo) to a valid
+ * KbtPerfConfig, falling back to defaults per field. */
+export function sanitizeKbtPerf(
+  p?: Partial<KbtPerfConfig> | null,
+): KbtPerfConfig {
+  return {
+    analysisFpsOverride:
+      typeof p?.analysisFpsOverride === 'number' &&
+      Number.isFinite(p.analysisFpsOverride)
+        ? Math.round(Math.min(16, Math.max(8, p.analysisFpsOverride)))
+        : null,
+    animTickHz:
+      p?.animTickHz === 30 || p?.animTickHz === 15 ? p.animTickHz : 60,
+    hudPublishHz:
+      p?.hudPublishHz === 5 || p?.hudPublishHz === 2 ? p.hudPublishHz : 10,
+    recordingPreset:
+      p?.recordingPreset === 'superfast' ||
+      p?.recordingPreset === 'veryfast' ||
+      p?.recordingPreset === 'fast' ||
+      p?.recordingPreset === 'medium'
+        ? p.recordingPreset
+        : 'ultrafast',
+    recordingScale:
+      p?.recordingScale === 0.75 || p?.recordingScale === 0.5
+        ? p.recordingScale
+        : 1,
+  };
+}
 
 export const DEFAULT_KBT_UI_CONFIG: KbtUiConfig = {
   scoring: {
@@ -50,6 +83,7 @@ export const DEFAULT_KBT_UI_CONFIG: KbtUiConfig = {
   repFloatText: true,
   countIncorrectReps: true,
   resolution: '1080p',
+  perf: { ...KBT_DEFAULT_CONFIG.perf },
 };
 
 export type KbtRoom = {
@@ -144,6 +178,7 @@ export function useKbtRoom(initialRoomId?: string): KbtRoom {
         milestoneFx: cfg.milestoneFx,
         repFloatText: cfg.repFloatText,
         countIncorrectReps: cfg.countIncorrectReps,
+        perf: cfg.perf,
       });
     },
     [roomId],

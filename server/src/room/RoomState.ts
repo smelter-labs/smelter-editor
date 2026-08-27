@@ -62,10 +62,12 @@ import type {
   KbtConfig,
   KbtExerciseKey,
   KbtMatchEvent,
+  KbtPerfConfig,
   KbtStateEvent,
   KettlebellExercise,
 } from '@smelter-editor/types';
 import { config } from '../config';
+import type { FfmpegH264Preset } from '../config';
 import { roomEventBus } from '../core/roomEventBus';
 import {
   DEFAULT_HAUNTER_COUNT,
@@ -241,6 +243,11 @@ export class RoomState {
 
   private readonly inputManager: InputManager;
   private readonly recordingController: RecordingController;
+  /** Encoder options for the NEXT recording, from the KBT perf config. */
+  private recordingOptions: {
+    preset?: FfmpegH264Preset;
+    resolutionScale?: number;
+  } = {};
   private readonly motionController: MotionController;
   private readonly aiController: RoomAIController;
   private readonly captionsController: CaptionsController;
@@ -438,6 +445,7 @@ export class RoomState {
           false,
           params,
         ),
+      setAnimTickMs: (ms) => this.output.store.getState().setAnimTickMs(ms),
       layoutTiles: (tiles) =>
         this.updateLayers([
           {
@@ -1110,7 +1118,7 @@ export class RoomState {
 
   public async startRecording(): Promise<{ fileName: string }> {
     const result = await this.mutex.runExclusive(() =>
-      this.recordingController.startRecording(),
+      this.recordingController.startRecording(this.recordingOptions),
     );
     // On failure the throw above skips this — state didn't change.
     this.kbTournament.notifyRecordingChanged();
@@ -1764,10 +1772,18 @@ export class RoomState {
     milestoneFx?: boolean;
     repFloatText?: boolean;
     countIncorrectReps?: boolean;
+    perf?: Partial<KbtPerfConfig>;
     joinUrl?: string;
     joinLabel?: string;
   }): KbtConfig {
-    return this.kbTournament.setConfig(cfg);
+    const config = this.kbTournament.setConfig(cfg);
+    // Recording knobs are read at the next record start (the active recording
+    // keeps the encoder it started with).
+    this.recordingOptions = {
+      preset: config.perf.recordingPreset,
+      resolutionScale: config.perf.recordingScale,
+    };
+    return config;
   }
 
   /**

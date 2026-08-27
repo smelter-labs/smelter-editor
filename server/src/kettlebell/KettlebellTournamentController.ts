@@ -9,6 +9,7 @@ import type {
   KbtHypeBannerId,
   KbtMatchAction,
   KbtMatchEvent,
+  KbtPerfConfig,
   KbtPlayer,
   KbtRepShot,
   KbtScoreBreakdown,
@@ -89,6 +90,8 @@ export type KbtControllerDeps = {
     enabled: boolean,
     params?: Record<string, number | string>,
   ) => Promise<void>;
+  /** Set the overlay animation ticker interval on the room's scene store. */
+  setAnimTickMs: (ms: number) => void;
   /** Replace the output layout with these tiles (manual positions). */
   layoutTiles: (tiles: KbtStageTile[]) => Promise<void>;
   /** WHIP input is currently connected (registered with the engine). */
@@ -1284,23 +1287,34 @@ export class KettlebellTournamentController {
       return;
     }
     this.skeletonMode = raw;
-    // Re-push the full coach params to every staged player — params replace
-    // wholesale on the worker, so a partial push would reset fps/view/frames.
+    this.repushCoachParams();
+    this.deps.broadcast(this.stateSnapshot());
+  }
+
+  /** Re-push the full coach params to every staged player of a live heat —
+   * params replace wholesale on the worker, so a partial push would reset
+   * fps/view/frames. No-op outside a live heat. */
+  private repushCoachParams(): void {
     const heat = this.activeHeat();
-    if (heat && heat.phase !== 'ended') {
-      const fps = analysisFpsFor(heat.playerIds.length);
-      for (const id of heat.playerIds) {
-        const p = this.players.get(id);
-        if (p?.inputId) {
-          void this.deps
-            .setKettlebellCoach(p.inputId, true, this.coachParams(fps))
-            .catch((err) =>
-              console.error(`[kbt] skeleton push failed for ${p.inputId}`, err),
-            );
-        }
+    if (!heat || heat.phase === 'ended') return;
+    const fps = this.effectiveAnalysisFps(heat.playerIds.length);
+    for (const id of heat.playerIds) {
+      const p = this.players.get(id);
+      if (p?.inputId) {
+        void this.deps
+          .setKettlebellCoach(p.inputId, true, this.coachParams(fps))
+          .catch((err) =>
+            console.error(`[kbt] coach param push failed for ${p.inputId}`, err),
+          );
       }
     }
-    this.deps.broadcast(this.stateSnapshot());
+  }
+
+  /** Heat-size analysis rate, unless the perf config pins one. */
+  private effectiveAnalysisFps(playerCount: number): number {
+    return (
+      this.config.perf.analysisFpsOverride ?? analysisFpsFor(playerCount)
+    );
   }
 
   setRepFloatText(clientId: string, raw: unknown): void {
@@ -1727,6 +1741,9 @@ export class KettlebellTournamentController {
     repFloatText?: boolean;
     /** When false, incorrect reps add no reps and no points. */
     countIncorrectReps?: boolean;
+    /** Performance knobs; live ones apply immediately, recording ones from
+     * the next recording start. */
+    perf?: Partial<KbtPerfConfig>;
     /** Athlete join URL — becomes the lobby scene's on-air QR. */
     joinUrl?: string;
     /** Short human-readable address shown next to the QR (defaults to the
@@ -1802,8 +1819,58 @@ export class KettlebellTournamentController {
     if (typeof cfg.countIncorrectReps === 'boolean') {
       this.config.countIncorrectReps = cfg.countIncorrectReps;
     }
+    if (cfg.perf) this.applyPerfConfig(cfg.perf);
     this.broadcastState();
     return structuredClone(this.config);
+  }
+
+  private applyPerfConfig(patch: Partial<KbtPerfConfig>): void {
+    const perf = this.config.perf;
+    const prevFps = perf.analysisFpsOverride;
+    if (patch.analysisFpsOverride === null) {
+      perf.analysisFpsOverride = null;
+    } else if (
+      typeof patch.analysisFpsOverride === 'number' &&
+      Number.isFinite(patch.analysisFpsOverride)
+    ) {
+      perf.analysisFpsOverride = Math.round(
+        clamp(patch.analysisFpsOverride, 8, 16),
+      );
+    }
+    if (
+      patch.animTickHz === 60 ||
+      patch.animTickHz === 30 ||
+      patch.animTickHz === 15
+    ) {
+      perf.animTickHz = patch.animTickHz;
+    }
+    if (
+      patch.hudPublishHz === 10 ||
+      patch.hudPublishHz === 5 ||
+      patch.hudPublishHz === 2
+    ) {
+      perf.hudPublishHz = patch.hudPublishHz;
+    }
+    if (
+      patch.recordingPreset === 'ultrafast' ||
+      patch.recordingPreset === 'superfast' ||
+      patch.recordingPreset === 'veryfast' ||
+      patch.recordingPreset === 'fast' ||
+      patch.recordingPreset === 'medium'
+    ) {
+      perf.recordingPreset = patch.recordingPreset;
+    }
+    if (
+      patch.recordingScale === 1 ||
+      patch.recordingScale === 0.75 ||
+      patch.recordingScale === 0.5
+    ) {
+      perf.recordingScale = patch.recordingScale;
+    }
+    // Live knobs land immediately; recording knobs are read at record start.
+    this.hudMinIntervalMs = Math.round(1000 / perf.hudPublishHz);
+    this.deps.setAnimTickMs(Math.round(1000 / perf.animTickHz));
+    if (perf.analysisFpsOverride !== prevFps) this.repushCoachParams();
   }
 
   getConfig(): KbtConfig {
@@ -2119,7 +2186,7 @@ export class KettlebellTournamentController {
         })),
       ),
     );
-    const fps = analysisFpsFor(heat.playerIds.length);
+    const fps = this.effectiveAnalysisFps(heat.playerIds.length);
     for (const p of staged) {
       void this.deps
         .setKettlebellCoach(p.inputId!, true, this.coachParams(fps))
