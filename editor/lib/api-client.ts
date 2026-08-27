@@ -30,6 +30,7 @@ import type {
   KbtExerciseKey,
   KbtMatchAction,
   KbtMatchEvent,
+  KbtPerfConfig,
   KbtStateEvent,
 } from '@smelter-editor/types';
 import { createStorageClient, type StorageClient } from './storage-client';
@@ -213,6 +214,9 @@ interface SmelterApiClient {
       milestoneFx?: boolean;
       repFloatText?: boolean;
       countIncorrectReps?: boolean;
+      /** Performance knobs (live: analysisFps/animTick/hudPublish; next
+       * recording: recordingPreset/recordingScale). */
+      perf?: Partial<KbtPerfConfig>;
       /** Athlete join URL — the server burns it into the lobby QR. */
       joinUrl?: string;
       joinLabel?: string;

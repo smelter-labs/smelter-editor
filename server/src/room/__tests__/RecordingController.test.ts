@@ -77,6 +77,7 @@ describe('RecordingController', () => {
         expect.stringContaining('room-1::recording::'),
         mockOutput,
         expect.stringMatching(/recording-room-1-\d+\.mp4$/),
+        undefined,
       );
     });
 

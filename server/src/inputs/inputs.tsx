@@ -12,6 +12,7 @@ import {
 
 import React, { useContext } from 'react';
 import { useStore } from 'zustand';
+import { useStoreWithEqualityFn } from 'zustand/traditional';
 import { getInputRenderer } from './rendererRegistry';
 import { wrapWithShaders } from '../utils/shaderUtils';
 import { ScrollingText } from './scrollingText';
@@ -170,9 +171,14 @@ export function Input({ input }: { input: InputConfig }) {
     state.shooter?.targetInputId === input.inputId ? state.shooter : null,
   );
   // Kettlebell Tournament: this input is a player tile of the running heat.
-  const kbtTile = useStore(
+  // publishHud mints a fresh tile object per publish; content equality keeps
+  // an unchanged tile from re-rendering this whole Input at the HUD rate.
+  const kbtTile = useStoreWithEqualityFn(
     store,
     (state) => state.kbTournament?.tiles[input.inputId] ?? null,
+    (a, b) =>
+      a === b ||
+      (a != null && b != null && JSON.stringify(a) === JSON.stringify(b)),
   );
   const kbtScene = useStore(
     store,

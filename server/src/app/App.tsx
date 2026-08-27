@@ -224,7 +224,6 @@ function OutputScene() {
   const { width, height } = resolution;
   const outputShaders = useOutputShaders();
   const viewport = useViewport();
-  const kbTournament = useKbTournament();
   const inputMap = new Map(inputs.map((input) => [input.inputId, input]));
   const activeOutputShaders = outputShaders.filter((s) => s.enabled);
   const layersReversed = [...layers].reverse();
@@ -367,9 +366,7 @@ function OutputScene() {
       })}
       {/* Kettlebell Tournament chrome sits above every layer (per-tile HUD
           renders inside each Input; this is the heat clock/banner/standings). */}
-      {kbTournament ? (
-        <KbtMatchHud hud={kbTournament} resolution={resolution} />
-      ) : null}
+      <KbtHudSlot resolution={resolution} />
     </View>
   );
 
@@ -387,4 +384,16 @@ function OutputScene() {
   );
 
   return wrapWithShaders(scene, activeOutputShaders, resolution);
+}
+
+/** Isolates the HUD snapshot subscription: publishes arrive at up to 10 Hz
+ * and would otherwise re-render the entire scene tree (per output root). */
+function KbtHudSlot({
+  resolution,
+}: {
+  resolution: { width: number; height: number };
+}) {
+  const kbTournament = useKbTournament();
+  if (!kbTournament) return null;
+  return <KbtMatchHud hud={kbTournament} resolution={resolution} />;
 }

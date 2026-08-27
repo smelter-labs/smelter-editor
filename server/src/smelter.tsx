@@ -16,7 +16,7 @@ import {
   UNIX_SOCKET_PATH_MAX,
 } from './captions/captionSocket';
 import { captionDebug } from './captions/captionsDebug';
-import { config } from './config';
+import { config, mp4RecordingPreset, type FfmpegH264Preset } from './config';
 import { DATA_DIR } from './dataDir';
 import { ensureDir, pathExists, readFile, readdir } from 'fs-extra';
 import {
@@ -448,7 +448,12 @@ class SmelterManager {
     outputId: string,
     output: SmelterOutput,
     filePath: string,
+    opts?: { preset?: FfmpegH264Preset; resolutionScale?: number },
   ): Promise<void> {
+    const scale = opts?.resolutionScale ?? 1;
+    // H.264 requires even dimensions.
+    const scaled = (value: number) =>
+      Math.max(2, Math.round((value * scale) / 2) * 2);
     await this.instance.registerOutput(
       outputId,
       <App store={output.store} audioStore={output.audioStore} />,
@@ -458,18 +463,21 @@ class SmelterManager {
         video: {
           encoder: {
             type: 'ffmpeg_h264',
-            preset: 'fast',
+            preset: opts?.preset ?? mp4RecordingPreset,
           },
           resolution: {
-            width: output.resolution.width,
-            height: output.resolution.height,
+            width: scaled(output.resolution.width),
+            height: scaled(output.resolution.height),
           },
         },
         audio: {
+          channels: 'stereo',
+          // The rest of the pipeline runs at 48 kHz; the default (44100)
+          // would make this output the only resample in the system.
           encoder: {
             type: 'aac',
-            channels: 'stereo',
-          } as any,
+            sampleRate: 48000,
+          },
         },
       },
     );

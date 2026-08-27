@@ -121,6 +121,8 @@ type TypeSpecificState =
       type: 'whip';
       whipUrl: string;
       monitor: WhipMonitor;
+      /** Registered without a side channel — AI models cannot be enabled. */
+      noSideChannel?: boolean;
     }
   | {
       type: 'image';

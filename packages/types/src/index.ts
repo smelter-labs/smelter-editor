@@ -190,6 +190,7 @@ export type {
   KbtScoringRule,
   KbtCameraView,
   KbtConfig,
+  KbtPerfConfig,
   KbtTournamentPhase,
   KbtMatchAction,
   KbtHeatPhase,

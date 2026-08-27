@@ -28,6 +28,29 @@ export type KbtScoringRule = { enabled: boolean; points: number };
  * enables the full technique judge; facing keeps only height checks. */
 export type KbtCameraView = "front" | "side";
 
+/**
+ * Performance knobs for experimenting with output smoothness under AI load.
+ * analysisFpsOverride / animTickHz / hudPublishHz apply live (mid-heat);
+ * recordingPreset / recordingScale apply from the next recording start.
+ */
+export type KbtPerfConfig = {
+  /** Coach analysis rate override; null = auto by heat size (14/12/10).
+   * Clamped server-side to 8..16. */
+  analysisFpsOverride: number | null;
+  /** Overlay animation tick rate (skeleton rig, rep floats, shake). Scene
+   * pushes are throttled to ~33 Hz by the engine SDK, so 60 mostly buys
+   * smoother easing math, not smoother output. */
+  animTickHz: 60 | 30 | 15;
+  /** Periodic HUD publish rate during heats (reps and scene flips always
+   * publish immediately). */
+  hudPublishHz: 10 | 5 | 2;
+  /** x264 preset for the MP4 recording output. Slower presets look better
+   * but risk falling behind real-time next to the live encode + AI. */
+  recordingPreset: "ultrafast" | "superfast" | "veryfast" | "fast" | "medium";
+  /** MP4 recording resolution as a fraction of the room resolution. */
+  recordingScale: 1 | 0.75 | 0.5;
+};
+
 export type KbtConfig = {
   scoring: Record<KbtExerciseKey, KbtScoringRule>;
   /** When true, reps judged 'incorrect' score floor(points / 2). */
@@ -49,6 +72,7 @@ export type KbtConfig = {
   /** When false, reps judged 'incorrect' add no reps and no points (they
    * still reset the streak and show struck-out on air). */
   countIncorrectReps: boolean;
+  perf: KbtPerfConfig;
 };
 
 /** Defaults: harder lifts pay more; technique is forgiving (easy to play). */
@@ -66,6 +90,13 @@ export const KBT_DEFAULT_CONFIG: KbtConfig = {
   milestoneFx: true,
   repFloatText: true,
   countIncorrectReps: true,
+  perf: {
+    analysisFpsOverride: null,
+    animTickHz: 60,
+    hudPublishHz: 10,
+    recordingPreset: "ultrafast",
+    recordingScale: 1,
+  },
 };
 
 /**

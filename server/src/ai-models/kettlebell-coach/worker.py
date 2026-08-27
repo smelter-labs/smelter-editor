@@ -46,6 +46,10 @@ try:  # only needed for rep screenshots; the analyzer itself never touches it
     import cv2
 except Exception:  # noqa: BLE001
     cv2 = None
+else:
+    # cv2 only does JPEG resizes here; its default per-core thread pool just
+    # steals cores from the smelter render/encode threads.
+    cv2.setNumThreads(1)
 from smelter import list_channels
 from smelter.aio import subscribe_video_channel
 
@@ -208,6 +212,22 @@ _backend_lock = threading.Lock()
 _backend_failed = False
 _pose_models: dict[str, object] = {}
 _world_model = None
+_torch_threads_capped = False
+
+
+def _cap_torch_threads() -> None:
+    """Cap torch intra-op parallelism — the OMP/MKL env vars set by the
+    spawning server only cover the OpenMP pool, not torch's own."""
+    global _torch_threads_capped
+    if _torch_threads_capped:
+        return
+    _torch_threads_capped = True
+    try:
+        import torch
+
+        torch.set_num_threads(int(os.environ.get("TORCH_NUM_THREADS", "4")))
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _get_pose_model(weights: str):
@@ -226,6 +246,7 @@ def _get_pose_model(weights: str):
         try:
             from ultralytics import YOLO
 
+            _cap_torch_threads()
             log.info("Loading pose model: %s", weights)
             model = YOLO(weights)
             _pose_models[weights] = model
@@ -255,6 +276,7 @@ def _get_world_model():
         try:
             from ultralytics import YOLOWorld
 
+            _cap_torch_threads()
             log.info("Loading YOLO-World model: %s", WORLD_WEIGHTS)
             model = YOLOWorld(WORLD_WEIGHTS)
             model.set_classes(["kettlebell"])

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Text, View } from '@swmansion/smelter';
 import type { KbtHudTile } from '../app/store';
-import { TICK_MS } from './kettlebellRig';
+import { useAnimTickMs } from '../app/store';
 import { KBT_EXERCISE_COLORS } from '@smelter-editor/types';
 import type { KbtExerciseKey } from '@smelter-editor/types';
 
@@ -62,6 +62,7 @@ export function KbtRepFloaters({
   const floaters = useRef<Floater[]>([]);
   const nextId = useRef(0);
   const [, setTick] = useState(0);
+  const tickMs = useAnimTickMs();
 
   if (prevSeq.current != null && tile.repSeq < prevSeq.current) {
     // Attempts went backwards: heat restart — drop leftovers from the old heat.
@@ -114,9 +115,9 @@ export function KbtRepFloaters({
     if (!active) return;
     const timer = setInterval(() => {
       setTick((t) => (t + 1) % 1_000_000);
-    }, TICK_MS);
+    }, tickMs);
     return () => clearInterval(timer);
-  }, [active]);
+  }, [active, tickMs]);
 
   if (!active) return null;
 

@@ -189,6 +189,7 @@ export class InputManager {
       volume: 1,
       whipUrl: '',
       transcription: withTranscription,
+      noSideChannel: opts.noSideChannel,
       aiModels: {},
     });
     return inputId;
@@ -1396,6 +1397,12 @@ function registerOptionsFromInput(
       ...scOpts,
     };
   } else if (input.type === 'whip') {
+    // Inputs flagged noSideChannel (e.g. the KBT commentator mic) never run a
+    // model — skip the reservation, the full-res frame readback and the 3 s
+    // input buffering it costs.
+    if (input.noSideChannel) {
+      return { type: 'whip', url: input.whipUrl };
+    }
     // WHIP is never re-registered after connect (that would kill the live push
     // stream), so reserve the side-channel delay up front — models enabled
     // later get processing headroom at the cost of delaying this input.
