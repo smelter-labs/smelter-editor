@@ -89,6 +89,11 @@ export type RoomStore = {
   ) => void;
   setShooter: (shooter: ShooterOverlay | null) => void;
   setKbTournament: (state: KbtHudState | null) => void;
+  /** Interval (ms) for the JS-driven overlay animation tickers (skeleton rig,
+   * rep floaters, milestone shake). Scene pushes are throttled to 30 ms by the
+   * reconciler anyway, so values below ~30 buy nothing visually. */
+  animTickMs: number;
+  setAnimTickMs: (ms: number) => void;
 } & Partial<ViewportProperties>;
 
 /** A detection bounding box, normalized to 0..1 of the input frame. */
@@ -598,7 +603,7 @@ export type ShooterOverlay = {
 export function createRoomStore(
   resolution: Resolution = { width: 2560, height: 1440 },
 ): StoreApi<RoomStore> {
-  return createStore<RoomStore>((set) => ({
+  return createStore<RoomStore>((set, get) => ({
     inputs: [],
     layers: [],
     resolution,
@@ -724,7 +729,23 @@ export function createRoomStore(
       set(() => ({ shooter }));
     },
     setKbTournament: (kbTournament: KbtHudState | null) => {
+      // publishHud mints a fresh snapshot object on every 10 Hz tick even
+      // when nothing visible changed; an unconditional set() would re-render
+      // the whole scene tree (twice while recording) each time.
+      const prev = get().kbTournament;
+      if (
+        prev === kbTournament ||
+        (prev != null &&
+          kbTournament != null &&
+          JSON.stringify(prev) === JSON.stringify(kbTournament))
+      ) {
+        return;
+      }
       set(() => ({ kbTournament }));
+    },
+    animTickMs: 16,
+    setAnimTickMs: (ms: number) => {
+      set(() => ({ animTickMs: Math.max(16, Math.round(ms)) }));
     },
   }));
 }
@@ -793,6 +814,12 @@ export function useViewport() {
 export function useKbTournament() {
   const store = useContext(StoreContext);
   return useStore(store, (state) => state.kbTournament);
+}
+
+/** Interval for the JS-driven overlay animation tickers. */
+export function useAnimTickMs() {
+  const store = useContext(StoreContext);
+  return useStore(store, (state) => state.animTickMs);
 }
 
 export const StoreContext =

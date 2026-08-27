@@ -312,6 +312,15 @@ function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v));
 }
 
+/** HUD consumers read the heat clock at ≥500 ms granularity (blink phase,
+ * whole seconds), so coarser snapshots stay pixel-identical — and identical
+ * back-to-back snapshots dedupe in the store instead of re-rendering the
+ * scene on every periodic publish. Ceil keeps countdown digits their full
+ * second. */
+function quantizeClock(ms: number | null): number | null {
+  return ms == null ? ms : Math.ceil(ms / 500) * 500;
+}
+
 /**
  * Kettlebell Tournament for one room: an open roster joined by QR, drawn into
  * heats of 2–4, each heat an AMRAP round scored from the kettlebell-coach's
@@ -372,6 +381,10 @@ export class KettlebellTournamentController {
   /** Monotonic clamp for held HUD applies (mirror of kettlebellApplyAt). */
   private hudApplyAt = 0;
   private readonly hudTimers = new Set<ReturnType<typeof setTimeout>>();
+  /** Min interval between periodic (clock-driven) HUD publishes; event
+   * publishes (reps, scene flips) bypass it. 100 ms = the historical 10 Hz. */
+  private hudMinIntervalMs = 100;
+  private lastPeriodicHudAt = 0;
   /** Pose flip debounce per clientId. */
   private readonly poseFlipAt = new Map<string, number>();
   private lastCamPoll = 0;
@@ -2360,8 +2373,12 @@ export class KettlebellTournamentController {
         (heat.endsAt != null && now - heat.endsAt < ENDED_LINGER_MS);
       // Publish through the linger (clock/winner card), then once more when
       // the linger expires so the scene flips to the standings board.
-      if (withinLinger || this.stagedScene !== this.computeScene()) {
-        this.publishHud();
+      const sceneFlip = this.stagedScene !== this.computeScene();
+      if (withinLinger || sceneFlip) {
+        if (sceneFlip || now - this.lastPeriodicHudAt >= this.hudMinIntervalMs) {
+          this.lastPeriodicHudAt = now;
+          this.publishHud();
+        }
       }
     }
     this.maybeStop();
@@ -2904,7 +2921,7 @@ export class KettlebellTournamentController {
         final: heat.final,
         startsAt: heat.startsAt,
         endsAt: heat.endsAt,
-        remainingMs:
+        remainingMs: quantizeClock(
           heat.phase === 'countdown' && heat.startsAt != null
             ? Math.max(0, heat.startsAt - now)
             : heat.phase === 'playing' && heat.endsAt != null
@@ -2912,6 +2929,7 @@ export class KettlebellTournamentController {
               : heat.phase === 'ended'
                 ? 0
                 : null,
+        ),
         winner: heat.finalized ? heat.winner : null,
       };
       const top = ranked[0];

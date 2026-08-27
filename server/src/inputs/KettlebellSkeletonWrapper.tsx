@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Shader, View } from '@swmansion/smelter';
+import { useAnimTickMs } from '../app/store';
 import type { KettlebellOverlayState } from '../app/store';
 import { MotionPredictor } from './motionPredictor';
 import {
@@ -8,7 +9,6 @@ import {
   PREDICT_OPTS,
   ROOT_TRACK_ID,
   SMOOTH,
-  TICK_MS,
   buildSkeletonParams,
   coverTransform,
   parseColor,
@@ -75,6 +75,11 @@ export function KettlebellSkeletonWrapper({
   );
   const drawnRootRef = useRef<number[] | null>(null);
   const [, setTick] = useState(0);
+  const tickMs = useAnimTickMs();
+  // With the rig set to 'off' the shader draws nothing pose-driven, so the
+  // tick only needs to run for the milestone aura.
+  const skeletonOffRef = useRef(data.skeleton === 'off');
+  skeletonOffRef.current = data.skeleton === 'off';
 
   // Feed each result into the root predictor and refresh the joint offsets.
   useEffect(() => {
@@ -121,6 +126,14 @@ export function KettlebellSkeletonWrapper({
         auraRef.current += (target - auraRef.current) * 0.15;
         if (auraRef.current < 0.005 && target === 0) auraRef.current = 0;
       }
+      if (skeletonOffRef.current && !auraLive) {
+        // Rig invisible and no aura fading: drop the drawn state (so a
+        // re-enable snaps fresh instead of easing from a stale pose) and
+        // skip the tick entirely.
+        drawnRootRef.current = null;
+        drawnOffsetsRef.current.fill(null);
+        return;
+      }
       const root = predictorRef.current.predict(ROOT_TRACK_ID, now);
       if (root) {
         if (!drawnRootRef.current) drawnRootRef.current = [...root];
@@ -138,9 +151,9 @@ export function KettlebellSkeletonWrapper({
         return;
       }
       setTick((t) => (t + 1) % 1_000_000);
-    }, TICK_MS);
+    }, tickMs);
     return () => clearInterval(timer);
-  }, []);
+  }, [tickMs]);
 
   const root = drawnRootRef.current;
   const joints = drawnOffsetsRef.current.map((off) =>
