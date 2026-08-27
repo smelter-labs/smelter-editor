@@ -83,6 +83,9 @@ type LifterSession = {
   facing?: 'user' | 'environment';
   wantsCam?: boolean;
   briefed?: boolean;
+  /** Was publishing a recording — the File itself can't survive a refresh,
+   * so resume asks for the source again instead of grabbing the camera. */
+  usedFile?: boolean;
 };
 
 const sessionStorageKey = (roomId: string) => `kbt-lifter-${roomId}`;
@@ -145,6 +148,8 @@ export default function LiftControllerPage() {
 
   /** Auto-republish gave up — the strip asks for a tap instead of spinning. */
   const [publishStuck, setPublishStuck] = useState(false);
+  /** Resumed a file-mode session: the recording is gone, ask for it again. */
+  const [needsSource, setNeedsSource] = useState(false);
   /** Resume re-armed everything without a gesture, so beeps are still locked. */
   const [audioLocked, setAudioLocked] = useState(false);
   /** A kbt_error from the server, shown for a few seconds. */
@@ -168,6 +173,8 @@ export default function LiftControllerPage() {
   const myClientIdRef = useRef<string | null>(null);
   const camStreamRef = useRef<MediaStream | null>(null);
   const fileCamRef = useRef<FileCamera | null>(null);
+  /** Hidden picker behind the status-strip "pick your recording" tap. */
+  const stripFileRef = useRef<HTMLInputElement>(null);
   const camPcRef = useRef<RTCPeerConnection | null>(null);
   /** Real cameras publish H.264 (hardware-encoded everywhere). File mode
    * publishes VP8: some phone hardware H.264 encoders silently refuse
@@ -262,6 +269,8 @@ export default function LiftControllerPage() {
         syncPreviews();
         setCamOn(true);
         setCamErr(null);
+        setNeedsSource(false);
+        saveSession({ usedFile: false });
         if (nextFacing) setFacing(nextFacing);
       } catch {
         setCamErr(
@@ -270,7 +279,7 @@ export default function LiftControllerPage() {
         setCamOn(false);
       }
     },
-    [syncPreviews],
+    [saveSession, syncPreviews],
   );
 
   const flipCamera = useCallback(() => {
@@ -306,13 +315,15 @@ export default function LiftControllerPage() {
         setCamOn(true);
         setCamErr(null);
         setFileMode(true);
+        setNeedsSource(false);
+        saveSession({ usedFile: true });
         // Recordings aren't selfies: skip the 'user'-facing mirror transform.
         setFacing('environment');
       } catch {
         setCamErr('COULD NOT PLAY THAT FILE — try an .mp4 (H.264).');
       }
     },
-    [syncPreviews],
+    [saveSession, syncPreviews],
   );
 
   // Includes the ACTUAL track dimensions so the server registers the input
@@ -438,6 +449,35 @@ export default function LiftControllerPage() {
     setFilePositionMs(t * 1000);
   }, []);
 
+  // ── Source swap (camera ↔ recording), including mid-publish ──────────────
+
+  /** Republish the freshly-swapped source; before the first GO LIVE the
+   * wizard's explicit button stays the one publish trigger. */
+  const swapPublish = useCallback(() => {
+    if (!wantsCamRef.current) return;
+    republishAttemptsRef.current = 0;
+    republishDelayRef.current = 1000;
+    setPublishStuck(false);
+    requestCam();
+  }, [requestCam]);
+
+  const swapToFile = useCallback(
+    async (file: File) => {
+      await enableFileCamera(file);
+      // Track state, not fileCamRef — a failed re-pick leaves the ref on the
+      // disposed cam, but its tracks report 'ended'.
+      const t = camStreamRef.current?.getVideoTracks()[0];
+      if (t?.readyState === 'live') swapPublish();
+    },
+    [enableFileCamera, swapPublish],
+  );
+
+  const swapToCamera = useCallback(async () => {
+    await enableCamera();
+    const t = camStreamRef.current?.getVideoTracks()[0];
+    if (t?.readyState === 'live') swapPublish();
+  }, [enableCamera, swapPublish]);
+
   // Publish watchdog: send fps in file mode + the NO MEDIA PATH diagnostic.
   const sendFps = usePublishWatchdog(live, camPcRef, setCamErr);
 
@@ -465,10 +505,17 @@ export default function LiftControllerPage() {
         // No gesture happened, so the AudioContext is still locked — surface
         // a "tap for sound" chip instead of silently losing rep beeps.
         setAudioLocked(true);
-        void enableCamera(sess.facing).then(() => {
-          const t = camStreamRef.current?.getVideoTracks()[0];
-          if (t && t.readyState === 'live') requestCamSilent();
-        });
+        if (sess.usedFile) {
+          // The picked File can't survive a refresh — don't silently move the
+          // lifter onto the live camera; ask for the source again. With
+          // wantsCam armed, the first pick republishes on its own.
+          setNeedsSource(true);
+        } else {
+          void enableCamera(sess.facing).then(() => {
+            const t = camStreamRef.current?.getVideoTracks()[0];
+            if (t && t.readyState === 'live') requestCamSilent();
+          });
+        }
       }
       const heatLive =
         event.inCurrentHeat &&
@@ -917,6 +964,27 @@ export default function LiftControllerPage() {
       <KbtStatusStrip text='RECONNECTING…' />
     ) : notice ? (
       <KbtStatusStrip text={notice} />
+    ) : needsSource ? (
+      // A refresh dropped the recording — one tap re-picks and republishes.
+      // Also pre-empts the "RESTORING VIDEO…" spinner, which would lie here.
+      <>
+        <input
+          ref={stripFileRef}
+          type='file'
+          accept='video/*'
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = ''; // re-picking the same file must re-fire
+            if (file) void swapToFile(file);
+          }}
+        />
+        <KbtStatusStrip
+          text='VIDEO OFF — TAP TO PICK YOUR RECORDING'
+          tone='bad'
+          onTap={() => stripFileRef.current?.click()}
+        />
+      </>
     ) : publishStuck ? (
       <KbtStatusStrip
         text='VIDEO DOWN — TAP TO RETRY'
@@ -1016,7 +1084,8 @@ export default function LiftControllerPage() {
             live={live}
             attachVideo={attachPreview}
             onEnable={() => void enableCamera()}
-            onUseFile={(f) => void enableFileCamera(f)}
+            onUseFile={(f) => void swapToFile(f)}
+            onUseCamera={() => void swapToCamera()}
             onFlip={flipCamera}
             onGoLive={requestCam}
             onContinue={goToBriefing}
@@ -1038,6 +1107,9 @@ export default function LiftControllerPage() {
             sendFps={sendFps}
             onToggleFile={toggleFilePlayback}
             onRestartFile={restartFile}
+            needsSource={needsSource}
+            onUseFile={(f) => void swapToFile(f)}
+            onUseCamera={() => void swapToCamera()}
             facing={facing}
             attachVideo={attachPreview}
           />
