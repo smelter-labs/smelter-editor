@@ -43,8 +43,12 @@ export type KbtConfig = {
    * (aura in the exercise's color + tile shake). */
   milestoneFx: boolean;
   /** When true, every scored rep floats game-style text up the tile
-   * ("SNATCH +3", or "NO REP" on an incorrect rep). */
+   * ("SNATCH +3"; incorrect reps show "SNATCH*", or a struck-out name when
+   * countIncorrectReps is off). */
   repFloatText: boolean;
+  /** When false, reps judged 'incorrect' add no reps and no points (they
+   * still reset the streak and show struck-out on air). */
+  countIncorrectReps: boolean;
 };
 
 /** Defaults: harder lifts pay more; technique is forgiving (easy to play). */
@@ -61,6 +65,7 @@ export const KBT_DEFAULT_CONFIG: KbtConfig = {
   repScreenshots: false,
   milestoneFx: true,
   repFloatText: true,
+  countIncorrectReps: true,
 };
 
 /**

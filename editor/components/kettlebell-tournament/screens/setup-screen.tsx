@@ -311,6 +311,17 @@ export function SetupScreen({
                 })
               }
             />
+            <TogglePlate
+              label='COUNT NO REPS'
+              hint='off: incorrect reps score nothing and are struck out on air'
+              on={config.countIncorrectReps}
+              onToggle={() =>
+                onConfig({
+                  ...config,
+                  countIncorrectReps: !config.countIncorrectReps,
+                })
+              }
+            />
           </div>
         </div>
 

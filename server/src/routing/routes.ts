@@ -2709,6 +2709,7 @@ const KbtConfigSchema = Type.Object({
   repScreenshots: Type.Optional(Type.Boolean()),
   milestoneFx: Type.Optional(Type.Boolean()),
   repFloatText: Type.Optional(Type.Boolean()),
+  countIncorrectReps: Type.Optional(Type.Boolean()),
   /** Athlete join URL — the server renders it as the lobby scene's QR. */
   joinUrl: Type.Optional(Type.String({ maxLength: 2048 })),
   /** Short human-readable address shown next to the on-air QR. */
@@ -2737,6 +2738,7 @@ routes.post<RoomIdParams & { Body: Static<typeof KbtConfigSchema> }>(
       repScreenshots: req.body.repScreenshots,
       milestoneFx: req.body.milestoneFx,
       repFloatText: req.body.repFloatText,
+      countIncorrectReps: req.body.countIncorrectReps,
       joinUrl: req.body.joinUrl,
       joinLabel: req.body.joinLabel,
     });

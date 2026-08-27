@@ -180,6 +180,9 @@ type PlayerState = {
 type ScoreState = {
   points: number;
   reps: Record<KbtExerciseKey, number>;
+  /** Every judged rep attempt this heat, no-count no-reps included — the
+   * floater spawn clock + accuracy denominator. */
+  attempts: number;
   incorrectReps: number;
   streak: number;
   bestStreak: number;
@@ -1511,13 +1514,22 @@ export class KettlebellTournamentController {
     if (this.config.strictTechnique && verdict === 'incorrect') {
       points = Math.floor(points / 2);
     }
+    const counted = this.config.countIncorrectReps || verdict === 'correct';
+    if (!counted) points = 0;
 
-    score.reps[key] += 1;
-    if (this.config.milestoneFx && score.reps[key] % MILESTONE_FX_EVERY === 0) {
-      score.fxAt = now;
-      score.fxExercise = key;
+    score.attempts += 1;
+    if (counted) {
+      score.reps[key] += 1;
+      if (
+        this.config.milestoneFx &&
+        score.reps[key] % MILESTONE_FX_EVERY === 0
+      ) {
+        score.fxAt = now;
+        score.fxExercise = key;
+      }
+      score.points += points;
+      score.repTimes.push(now);
     }
-    score.points += points;
     if (verdict === 'incorrect') {
       score.incorrectReps += 1;
       score.streak = 0;
@@ -1529,7 +1541,6 @@ export class KettlebellTournamentController {
     score.lastRepAt = now;
     score.lastRepVerdict = verdict;
     score.lastRepPoints = points;
-    score.repTimes.push(now);
     if (screenshotUrl) {
       score.repShots.push({
         repIndex,
@@ -1637,8 +1648,10 @@ export class KettlebellTournamentController {
     repScreenshots?: boolean;
     /** Every-5th-rep on-air celebration (aura + tile shake). */
     milestoneFx?: boolean;
-    /** Floating "SNATCH +3" / "NO REP" text on every scored rep. */
+    /** Floating "SNATCH +3" / "SNATCH*" text on every scored rep. */
     repFloatText?: boolean;
+    /** When false, incorrect reps add no reps and no points. */
+    countIncorrectReps?: boolean;
     /** Athlete join URL — becomes the lobby scene's on-air QR. */
     joinUrl?: string;
     /** Short human-readable address shown next to the QR (defaults to the
@@ -1710,6 +1723,9 @@ export class KettlebellTournamentController {
     }
     if (typeof cfg.repFloatText === 'boolean') {
       this.config.repFloatText = cfg.repFloatText;
+    }
+    if (typeof cfg.countIncorrectReps === 'boolean') {
+      this.config.countIncorrectReps = cfg.countIncorrectReps;
     }
     this.broadcastState();
     return structuredClone(this.config);
@@ -1882,6 +1898,7 @@ export class KettlebellTournamentController {
     return {
       points: 0,
       reps: { swing: 0, clean: 0, snatch: 0 },
+      attempts: 0,
       incorrectReps: 0,
       streak: 0,
       bestStreak: 0,
@@ -2655,7 +2672,11 @@ export class KettlebellTournamentController {
           reps,
           streak: activeScore.streak,
           bestStreak: activeScore.bestStreak,
-          accuracy: reps > 0 ? (reps - activeScore.incorrectReps) / reps : null,
+          accuracy:
+            activeScore.attempts > 0
+              ? (activeScore.attempts - activeScore.incorrectReps) /
+                activeScore.attempts
+              : null,
         },
       };
     }
@@ -2682,7 +2703,9 @@ export class KettlebellTournamentController {
         streak: 0,
         bestStreak: sheet?.bestStreak ?? 0,
         accuracy:
-          sheet && reps > 0 ? (reps - sheet.incorrectReps) / reps : null,
+          sheet && sheet.attempts > 0
+            ? (sheet.attempts - sheet.incorrectReps) / sheet.attempts
+            : null,
       },
     };
   }
@@ -2787,6 +2810,7 @@ export class KettlebellTournamentController {
           photoImageId: p.photoImageId,
           points: s.points,
           reps: s.reps.swing + s.reps.clean + s.reps.snatch,
+          repSeq: s.attempts,
           repsByExercise: { ...s.reps },
           rpm: this.rpmFor(s, heat, now),
           rank: rankOf.get(id) ?? heat.playerIds.length,
@@ -2890,6 +2914,7 @@ export class KettlebellTournamentController {
       // Rides the same ~3s hold as everything else, so a mid-heat flip
       // reaches the air aligned with the delayed video.
       repFloatText: this.config.repFloatText,
+      countIncorrectReps: this.config.countIncorrectReps,
     };
     if (immediate) {
       // Scene cut: supersede every queued held snapshot and land this one

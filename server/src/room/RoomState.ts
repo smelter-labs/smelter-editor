@@ -1743,6 +1743,7 @@ export class RoomState {
     repScreenshots?: boolean;
     milestoneFx?: boolean;
     repFloatText?: boolean;
+    countIncorrectReps?: boolean;
     joinUrl?: string;
     joinLabel?: string;
   }): KbtConfig {

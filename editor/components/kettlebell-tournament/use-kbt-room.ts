@@ -26,8 +26,11 @@ export type KbtUiConfig = {
   repScreenshots: boolean;
   /** Every 5th rep of an exercise fires an on-air aura + tile shake. */
   milestoneFx: boolean;
-  /** Every scored rep floats game text up the tile ("SNATCH +3" / "NO REP"). */
+  /** Every scored rep floats game text up the tile ("SNATCH +3" / "SNATCH*"). */
   repFloatText: boolean;
+  /** Incorrect reps still add reps (asterisk on air); off strikes them out
+   * and scores 0. */
+  countIncorrectReps: boolean;
   /** Broadcast output size — applied at room creation, fixed afterwards. */
   resolution: ResolutionPreset;
 };
@@ -45,6 +48,7 @@ export const DEFAULT_KBT_UI_CONFIG: KbtUiConfig = {
   repScreenshots: false,
   milestoneFx: true,
   repFloatText: true,
+  countIncorrectReps: true,
   resolution: '1080p',
 };
 
@@ -139,6 +143,7 @@ export function useKbtRoom(initialRoomId?: string): KbtRoom {
         repScreenshots: cfg.repScreenshots,
         milestoneFx: cfg.milestoneFx,
         repFloatText: cfg.repFloatText,
+        countIncorrectReps: cfg.countIncorrectReps,
       });
     },
     [roomId],

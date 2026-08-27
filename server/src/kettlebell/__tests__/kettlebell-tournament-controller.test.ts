@@ -397,6 +397,106 @@ describe('KettlebellTournamentController', () => {
     h.controller.dispose();
   });
 
+  it('validates countIncorrectReps in setConfig and carries it into HUD snapshots', async () => {
+    const h = harness();
+    expect(h.controller.getConfig().countIncorrectReps).toBe(true);
+    h.controller.setConfig({ countIncorrectReps: false });
+    expect(h.controller.getConfig().countIncorrectReps).toBe(false);
+    h.controller.setConfig({ countIncorrectReps: 'yes' as never });
+    expect(h.controller.getConfig().countIncorrectReps).toBe(false);
+    const states = h.ofType('kbt_state');
+    expect(states[states.length - 1].config.countIncorrectReps).toBe(false);
+    // The flag rides the held HUD snapshots the renderer reads.
+    await playingHeat(h);
+    await vi.advanceTimersByTimeAsync(3500);
+    expect(h.lastHud()!.countIncorrectReps).toBe(false);
+    h.controller.setConfig({ countIncorrectReps: true });
+    await vi.advanceTimersByTimeAsync(3500);
+    expect(h.lastHud()!.countIncorrectReps).toBe(true);
+    h.controller.dispose();
+  });
+
+  it('no-count mode: incorrect reps score nothing and skip the rep tally', async () => {
+    const h = harness();
+    const { in1 } = await playingHeat(h);
+    h.controller.setConfig({
+      countIncorrectReps: false,
+      strictTechnique: true,
+    });
+    h.rep(in1, 1, 'snatch');
+    h.rep(in1, 2, 'snatch', 'incorrect', ['soft_lockout']);
+    const reps = h.ofType('kbt_rep');
+    // Not counting beats strict halving: 0, not floor(3/2).
+    expect(reps.map((r) => r.points)).toEqual([3, 0]);
+    expect(reps[1].streak).toBe(0);
+    expect(reps[1].totalPoints).toBe(3);
+    const sheet = Object.values(h.controller.getMatchSnapshot().scores)[0];
+    expect(sheet.reps.snatch).toBe(1);
+    expect(sheet.incorrectReps).toBe(1);
+    expect(sheet.points).toBe(3);
+    // HUD: the rep counter stands still while the attempt clock advances,
+    // so the floater still spawns (struck-out style).
+    await vi.advanceTimersByTimeAsync(3500);
+    const tile = h.lastHud()!.tiles[in1];
+    expect(tile.reps).toBe(1);
+    expect(tile.repSeq).toBe(2);
+    expect(tile.lastRepPoints).toBe(0);
+    h.controller.dispose();
+  });
+
+  it('counted mode (default): incorrect reps tally and pay like before', async () => {
+    const h = harness();
+    const { in1 } = await playingHeat(h);
+    h.rep(in1, 1, 'snatch', 'incorrect', ['soft_lockout']);
+    // strictTechnique off → full points despite the verdict.
+    expect(h.ofType('kbt_rep').map((r) => r.points)).toEqual([3]);
+    await vi.advanceTimersByTimeAsync(3500);
+    const tile = h.lastHud()!.tiles[in1];
+    expect(tile.reps).toBe(1);
+    expect(tile.repSeq).toBe(1);
+    h.controller.dispose();
+  });
+
+  it('no-count mode: skipped reps advance neither the milestone clock nor RPM', async () => {
+    const h = harness();
+    const { in1 } = await playingHeat(h);
+    h.controller.setConfig({ countIncorrectReps: false });
+    for (let i = 1; i <= 4; i++) h.rep(in1, i, 'swing');
+    h.rep(in1, 5, 'swing', 'incorrect', ['too_low']); // attempt 5, counted 4
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(h.hudApplies.some((s) => s.tiles[in1]?.fx != null)).toBe(false);
+    h.rep(in1, 6, 'swing'); // counted rep #5 → fx fires
+    await vi.advanceTimersByTimeAsync(3500);
+    expect(h.hudApplies.some((s) => s.tiles[in1]?.fx != null)).toBe(true);
+    h.controller.dispose();
+  });
+
+  it('no-count mode: only counted reps drive the rep counter and RPM', async () => {
+    const h = harness();
+    const { in1 } = await playingHeat(h);
+    h.controller.setConfig({ countIncorrectReps: false });
+    for (let i = 1; i <= 3; i++) {
+      h.rep(in1, i, 'swing', 'incorrect', ['too_low']);
+    }
+    await vi.advanceTimersByTimeAsync(3500);
+    const tile = h.lastHud()!.tiles[in1];
+    expect(tile.reps).toBe(0);
+    expect(tile.repSeq).toBe(3);
+    expect(tile.rpm).toBe(0);
+    h.controller.dispose();
+  });
+
+  it('restart_heat resets the attempt clock the floaters key on', async () => {
+    const h = harness();
+    const { in1 } = await playingHeat(h);
+    h.rep(in1, 1);
+    h.rep(in1, 2, 'swing', 'incorrect', ['too_low']);
+    h.controller.controlMatch({ action: 'restart_heat' });
+    await vi.advanceTimersByTimeAsync(3500);
+    expect(h.lastHud()!.tiles[in1]?.repSeq).toBe(0);
+    h.controller.dispose();
+  });
+
   it('carries rep screenshots into kbt_rep, the score sheet and the player after the heat', async () => {
     const h = harness();
     const { in1 } = await playingHeat(h);
