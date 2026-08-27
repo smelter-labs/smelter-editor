@@ -399,10 +399,13 @@ export class RoomState {
       // registered here get the video side channel the coach model needs, and
       // the standard `${roomId}::whip::${uuid}` id stays inside the 103-char
       // unix-socket path budget.
-      registerPlayerCam: async (name, dims) => {
+      registerPlayerCam: async (name, dims, opts) => {
         const inputId = await this.addNewInput({
           type: 'whip',
           username: `[camera] ${name}`,
+          // Cams that will never run the coach (commentator) skip the
+          // side channel and its 3 s buffering delay.
+          noSideChannel: opts?.ai === false,
           // Real track dimensions from the phone: the registration path
           // honors exact dims (updateInput's bare-orientation heuristic
           // would clobber them, so orientation always travels WITH dims).
@@ -1958,6 +1961,13 @@ export class RoomState {
       if (!manifestSupportsInput(manifest, input)) {
         throw new Error(
           `Model ${modelId} does not support input type ${input.type}`,
+        );
+      }
+      if (enabled && input.type === 'whip' && input.noSideChannel) {
+        // The input was registered without a side channel and WHIP cannot be
+        // re-registered without killing the live push stream.
+        throw new Error(
+          `Input ${inputId} was registered without a side channel; AI models cannot be enabled on it`,
         );
       }
 

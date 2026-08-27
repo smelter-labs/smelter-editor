@@ -1,6 +1,7 @@
 import { ensureDir, pathExists, readdir, remove } from 'fs-extra';
 import path from 'node:path';
 import { SmelterInstance, type SmelterOutput } from '../smelter';
+import type { FfmpegH264Preset } from '../config';
 import { DATA_DIR } from '../dataDir';
 
 export class RecordingController {
@@ -21,7 +22,10 @@ export class RecordingController {
     return !!this.recording && !this.recording.stoppedAt;
   }
 
-  async startRecording(): Promise<{ fileName: string }> {
+  async startRecording(opts?: {
+    preset?: FfmpegH264Preset;
+    resolutionScale?: number;
+  }): Promise<{ fileName: string }> {
     if (this.hasActiveRecording()) {
       throw new Error('Recording is already in progress for this room');
     }
@@ -35,7 +39,12 @@ export class RecordingController {
     const fileName = `recording-${safeRoomId}-${timestamp}.mp4`;
     const filePath = path.join(recordingsDir, fileName);
 
-    await SmelterInstance.registerMp4Output(recordingId, this.output, filePath);
+    await SmelterInstance.registerMp4Output(
+      recordingId,
+      this.output,
+      filePath,
+      opts,
+    );
 
     this.recording = {
       outputId: recordingId,

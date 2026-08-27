@@ -75,10 +75,12 @@ export type KbtStageTile = {
 export type KbtControllerDeps = {
   broadcast: (event: RoomEvent) => void;
   sendTo: (clientId: string, event: RoomEvent) => void;
-  /** Register a WHIP camera input through InputManager (side channel baked in). */
+  /** Register a WHIP camera input through InputManager (side channel baked
+   * in unless `ai: false` — then the input can never run the coach). */
   registerPlayerCam: (
     name: string,
     dims?: { width: number; height: number },
+    opts?: { ai?: boolean },
   ) => Promise<{ inputId: string; whipUrl: string; bearerToken: string }>;
   removeInput: (inputId: string) => Promise<void>;
   /** Enable/disable the kettlebell-coach model on one input. */
@@ -908,7 +910,9 @@ export class KettlebellTournamentController {
     }
     let cam: { inputId: string; whipUrl: string; bearerToken: string };
     try {
-      cam = await this.deps.registerPlayerCam(`🎙 ${c.name}`, dims);
+      cam = await this.deps.registerPlayerCam(`🎙 ${c.name}`, dims, {
+        ai: false,
+      });
     } catch (err) {
       console.error(
         `[kbt] commentator cam register failed for ${clientId}`,
