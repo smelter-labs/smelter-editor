@@ -62,10 +62,12 @@ import type {
   KbtConfig,
   KbtExerciseKey,
   KbtMatchEvent,
+  KbtPerfConfig,
   KbtStateEvent,
   KettlebellExercise,
 } from '@smelter-editor/types';
 import { config } from '../config';
+import type { FfmpegH264Preset } from '../config';
 import { roomEventBus } from '../core/roomEventBus';
 import {
   DEFAULT_HAUNTER_COUNT,
@@ -241,6 +243,11 @@ export class RoomState {
 
   private readonly inputManager: InputManager;
   private readonly recordingController: RecordingController;
+  /** Encoder options for the NEXT recording, from the KBT perf config. */
+  private recordingOptions: {
+    preset?: FfmpegH264Preset;
+    resolutionScale?: number;
+  } = {};
   private readonly motionController: MotionController;
   private readonly aiController: RoomAIController;
   private readonly captionsController: CaptionsController;
@@ -399,10 +406,13 @@ export class RoomState {
       // registered here get the video side channel the coach model needs, and
       // the standard `${roomId}::whip::${uuid}` id stays inside the 103-char
       // unix-socket path budget.
-      registerPlayerCam: async (name, dims) => {
+      registerPlayerCam: async (name, dims, opts) => {
         const inputId = await this.addNewInput({
           type: 'whip',
           username: `[camera] ${name}`,
+          // Cams that will never run the coach (commentator) skip the
+          // side channel and its 3 s buffering delay.
+          noSideChannel: opts?.ai === false,
           // Real track dimensions from the phone: the registration path
           // honors exact dims (updateInput's bare-orientation heuristic
           // would clobber them, so orientation always travels WITH dims).
@@ -435,6 +445,7 @@ export class RoomState {
           false,
           params,
         ),
+      setAnimTickMs: (ms) => this.output.store.getState().setAnimTickMs(ms),
       layoutTiles: (tiles) =>
         this.updateLayers([
           {
@@ -450,6 +461,13 @@ export class RoomState {
             })),
           },
         ]),
+      // InputManager directly (like the volume calls) — the public
+      // RoomState.updateInput would round-trip the engine for a purely
+      // compositor-side fade.
+      runInputTransition: (inputId, transition) =>
+        this.inputManager.updateInput(inputId, {
+          activeTransition: transition,
+        }),
       isInputConnected: (inputId) =>
         this.inputManager
           .getInputs()
@@ -1107,7 +1125,7 @@ export class RoomState {
 
   public async startRecording(): Promise<{ fileName: string }> {
     const result = await this.mutex.runExclusive(() =>
-      this.recordingController.startRecording(),
+      this.recordingController.startRecording(this.recordingOptions),
     );
     // On failure the throw above skips this — state didn't change.
     this.kbTournament.notifyRecordingChanged();
@@ -1761,10 +1779,18 @@ export class RoomState {
     milestoneFx?: boolean;
     repFloatText?: boolean;
     countIncorrectReps?: boolean;
+    perf?: Partial<KbtPerfConfig>;
     joinUrl?: string;
     joinLabel?: string;
   }): KbtConfig {
-    return this.kbTournament.setConfig(cfg);
+    const config = this.kbTournament.setConfig(cfg);
+    // Recording knobs are read at the next record start (the active recording
+    // keeps the encoder it started with).
+    this.recordingOptions = {
+      preset: config.perf.recordingPreset,
+      resolutionScale: config.perf.recordingScale,
+    };
+    return config;
   }
 
   /**
@@ -1958,6 +1984,13 @@ export class RoomState {
       if (!manifestSupportsInput(manifest, input)) {
         throw new Error(
           `Model ${modelId} does not support input type ${input.type}`,
+        );
+      }
+      if (enabled && input.type === 'whip' && input.noSideChannel) {
+        // The input was registered without a side channel and WHIP cannot be
+        // re-registered without killing the live push stream.
+        throw new Error(
+          `Input ${inputId} was registered without a side channel; AI models cannot be enabled on it`,
         );
       }
 

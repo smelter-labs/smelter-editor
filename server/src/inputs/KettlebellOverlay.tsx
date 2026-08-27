@@ -3,6 +3,7 @@ import { Text, View } from '@swmansion/smelter';
 import { KETTLEBELL_ISSUE_LABELS } from '@smelter-editor/types';
 import type { KettlebellIssueCode } from '@smelter-editor/types';
 import type { KettlebellOverlayState } from '../app/store';
+import { useAnimTickMs } from '../app/store';
 import { MotionPredictor } from './motionPredictor';
 import type { Parent } from './kettlebellRig';
 import {
@@ -10,7 +11,6 @@ import {
   BELL_TRACK_ID,
   PREDICT_OPTS,
   SMOOTH,
-  TICK_MS,
   coverTransform,
 } from './kettlebellRig';
 
@@ -39,6 +39,7 @@ function BellBox({
   /** Eased, currently-drawn bell rect [x, y, w, h] in tile px. */
   const drawnBellRef = useRef<number[] | null>(null);
   const [, setTick] = useState(0);
+  const tickMs = useAnimTickMs();
 
   useEffect(() => {
     const { offX, offY, dispW, dispH } = coverTransform(
@@ -83,9 +84,9 @@ function BellBox({
         return;
       }
       setTick((t) => (t + 1) % 1_000_000);
-    }, TICK_MS);
+    }, tickMs);
     return () => clearInterval(timer);
-  }, []);
+  }, [tickMs]);
 
   const bell = drawnBellRef.current;
   if (!bell) return null;

@@ -1,9 +1,16 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Image, Rescaler, Text, View } from '@swmansion/smelter';
 import type { KbtHudState, KbtHudTile } from '../app/store';
-import { barScale, kbtCasterCamRect, kbtCasterVisible } from '../app/store';
+import {
+  KBT_VIEW_TRANSITION_MS,
+  barScale,
+  kbtCasterCamRect,
+  kbtCasterVisible,
+} from '../app/store';
+import type { KbtViewTransitionStyle } from '@smelter-editor/types';
 import { KBT_EXERCISE_COLORS } from '@smelter-editor/types';
 import { KbtRepFloaters } from './KbtRepFloat';
+import { TransitionShaderWrapper } from './transitionWrapper';
 
 /**
  * Kettlebell Tournament broadcast chrome — a port of the approved kb_design
@@ -1864,11 +1871,9 @@ function CommentatorOverlay({ hud, k }: { hud: KbtHudState; k: number }) {
   return <H2hOverlay overlay={overlay} k={k} />;
 }
 
-/**
- * Scene-level tournament chrome, mounted once in the output scene above all
- * layers; per-tile chrome lives in KbtTileHud next to each input.
- */
-export function KbtMatchHud({
+/** One full snapshot of the scene chrome — rendered twice during a view
+ * crossfade (outgoing frozen snapshot + incoming live one). */
+function SceneChrome({
   hud,
   resolution,
 }: {
@@ -1924,6 +1929,96 @@ export function KbtMatchHud({
         <CasterLowerThird hud={hud} resolution={resolution} k={k} />
       ) : (
         <CasterOnAirMini hud={hud} k={k} />
+      )}
+    </View>
+  );
+}
+
+/**
+ * Scene-level tournament chrome, mounted once in the output scene above all
+ * layers; per-tile chrome lives in KbtTileHud next to each input.
+ *
+ * View switches crossfade instead of hard-cutting: when the swap key (scene +
+ * caster-chip variant) changes, the previous snapshot keeps rendering through
+ * a fade/dissolve-out while the new one fades in — the same shader pair the
+ * per-input transitions use, over KBT_VIEW_TRANSITION_MS. A switch landing
+ * mid-transition replaces the outgoing snapshot with the one we were fading
+ * to (its half-faded predecessor drops instantly — accepted).
+ */
+export function KbtMatchHud({
+  hud,
+  resolution,
+}: {
+  hud: KbtHudState;
+  resolution: Resolution;
+}) {
+  const swapKey = `${hud.scene}|${kbtCasterVisible(
+    hud.scene,
+    hud.commentator?.casterPip ?? true,
+  )}`;
+  const lastRef = useRef({ key: swapKey, hud });
+  const [outgoing, setOutgoing] = useState<{
+    hud: KbtHudState;
+    style: KbtViewTransitionStyle;
+    startedAtMs: number;
+  } | null>(null);
+
+  // No dep array: the ref must track every ~10 Hz snapshot so the outgoing
+  // copy freezes the last frame that actually aired, not a stale one.
+  useEffect(() => {
+    if (lastRef.current.key !== swapKey) {
+      setOutgoing({
+        hud: lastRef.current.hud,
+        style: hud.viewTransitionStyle ?? 'fade',
+        startedAtMs: Date.now(),
+      });
+    }
+    lastRef.current = { key: swapKey, hud };
+  });
+
+  useEffect(() => {
+    if (!outgoing) return;
+    const timer = setTimeout(() => setOutgoing(null), KBT_VIEW_TRANSITION_MS);
+    return () => clearTimeout(timer);
+  }, [outgoing]);
+
+  const frame = {
+    top: 0,
+    left: 0,
+    width: resolution.width,
+    height: resolution.height,
+  };
+  return (
+    <View style={{ ...frame, overflow: 'visible' }}>
+      {outgoing ? (
+        <View style={frame}>
+          <TransitionShaderWrapper
+            transition={{
+              type: outgoing.style,
+              durationMs: KBT_VIEW_TRANSITION_MS,
+              direction: 'out',
+              startedAtMs: outgoing.startedAtMs,
+            }}
+            resolution={resolution}>
+            <SceneChrome hud={outgoing.hud} resolution={resolution} />
+          </TransitionShaderWrapper>
+        </View>
+      ) : null}
+      {outgoing ? (
+        <View style={frame}>
+          <TransitionShaderWrapper
+            transition={{
+              type: outgoing.style,
+              durationMs: KBT_VIEW_TRANSITION_MS,
+              direction: 'in',
+              startedAtMs: outgoing.startedAtMs,
+            }}
+            resolution={resolution}>
+            <SceneChrome hud={hud} resolution={resolution} />
+          </TransitionShaderWrapper>
+        </View>
+      ) : (
+        <SceneChrome hud={hud} resolution={resolution} />
       )}
     </View>
   );

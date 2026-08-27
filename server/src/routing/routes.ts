@@ -2710,6 +2710,31 @@ const KbtConfigSchema = Type.Object({
   milestoneFx: Type.Optional(Type.Boolean()),
   repFloatText: Type.Optional(Type.Boolean()),
   countIncorrectReps: Type.Optional(Type.Boolean()),
+  perf: Type.Optional(
+    Type.Object({
+      analysisFpsOverride: Type.Optional(
+        Type.Union([Type.Number(), Type.Null()]),
+      ),
+      animTickHz: Type.Optional(
+        Type.Union([Type.Literal(60), Type.Literal(30), Type.Literal(15)]),
+      ),
+      hudPublishHz: Type.Optional(
+        Type.Union([Type.Literal(10), Type.Literal(5), Type.Literal(2)]),
+      ),
+      recordingPreset: Type.Optional(
+        Type.Union([
+          Type.Literal('ultrafast'),
+          Type.Literal('superfast'),
+          Type.Literal('veryfast'),
+          Type.Literal('fast'),
+          Type.Literal('medium'),
+        ]),
+      ),
+      recordingScale: Type.Optional(
+        Type.Union([Type.Literal(1), Type.Literal(0.75), Type.Literal(0.5)]),
+      ),
+    }),
+  ),
   /** Athlete join URL — the server renders it as the lobby scene's QR. */
   joinUrl: Type.Optional(Type.String({ maxLength: 2048 })),
   /** Short human-readable address shown next to the on-air QR. */
@@ -2739,6 +2764,7 @@ routes.post<RoomIdParams & { Body: Static<typeof KbtConfigSchema> }>(
       milestoneFx: req.body.milestoneFx,
       repFloatText: req.body.repFloatText,
       countIncorrectReps: req.body.countIncorrectReps,
+      perf: req.body.perf,
       joinUrl: req.body.joinUrl,
       joinLabel: req.body.joinLabel,
     });

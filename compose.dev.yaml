@@ -23,6 +23,11 @@ services:
       SMELTER_H264_ENCODER: ffmpeg
       SMELTER_H264_ENCODER_PRESET: ultrafast
       SMELTER_H264_ENCODER_BITRATE: "8000000"
+      # Engine-side downscale of AI side-channel frames before the GPU readback
+      # (~9x less readback + socket traffic at 1080p; inference letterboxes to
+      # 640 anyway). Needs the patched engine binary
+      # (@piotrsnow/side-channel-max-resolution); older builds ignore it.
+      SMELTER_SIDE_CHANNEL_MAX_RESOLUTION: "640"
     entrypoint: ["/home/smelter/demo/entrypoint.dev.sh"]
     volumes:
       - ./entrypoint.dev.sh:/home/smelter/demo/entrypoint.dev.sh:ro

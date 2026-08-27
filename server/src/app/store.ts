@@ -13,6 +13,7 @@ import type {
   ShaderConfig,
   ViewportProperties,
 } from '../types';
+import type { KbtViewTransitionStyle } from '@smelter-editor/types';
 import type { HandsStore } from '../hands/handStore';
 import type { DuckEntity } from '../duckHunter/duckFlight';
 import { createContext, useContext } from 'react';
@@ -89,6 +90,11 @@ export type RoomStore = {
   ) => void;
   setShooter: (shooter: ShooterOverlay | null) => void;
   setKbTournament: (state: KbtHudState | null) => void;
+  /** Interval (ms) for the JS-driven overlay animation tickers (skeleton rig,
+   * rep floaters, milestone shake). Scene pushes are throttled to 30 ms by the
+   * reconciler anyway, so values below ~30 buy nothing visually. */
+  animTickMs: number;
+  setAnimTickMs: (ms: number) => void;
 } & Partial<ViewportProperties>;
 
 /** A detection bounding box, normalized to 0..1 of the input frame. */
@@ -423,6 +429,13 @@ export type KbtBoardRow = {
 };
 
 /**
+ * One view-switch animation: the chrome crossfade in KbtMatchHud and the
+ * tile fade the controller drives through `input.activeTransition` share
+ * this duration so both layers land together.
+ */
+export const KBT_VIEW_TRANSITION_MS = 350;
+
+/**
  * Off-stage parking rect: a 1×1 pixel in the bottom-left corner. Inputs laid
  * here stay in the layer (audio in the mix, decoder warm) without any
  * visible video. Used for the audio-only commentator and for player cams
@@ -536,6 +549,8 @@ export type KbtHudState = {
   /** config.countIncorrectReps; missing means on. Picks the incorrect-rep
    * floater style: asterisk (counted) vs struck-out (not counted). */
   countIncorrectReps?: boolean;
+  /** View-switch animation style (panel toggle; missing means 'fade'). */
+  viewTransitionStyle?: KbtViewTransitionStyle;
 };
 
 /** One player's stat block for spotlight / head-to-head overlays. */
@@ -598,7 +613,7 @@ export type ShooterOverlay = {
 export function createRoomStore(
   resolution: Resolution = { width: 2560, height: 1440 },
 ): StoreApi<RoomStore> {
-  return createStore<RoomStore>((set) => ({
+  return createStore<RoomStore>((set, get) => ({
     inputs: [],
     layers: [],
     resolution,
@@ -724,7 +739,23 @@ export function createRoomStore(
       set(() => ({ shooter }));
     },
     setKbTournament: (kbTournament: KbtHudState | null) => {
+      // publishHud mints a fresh snapshot object on every 10 Hz tick even
+      // when nothing visible changed; an unconditional set() would re-render
+      // the whole scene tree (twice while recording) each time.
+      const prev = get().kbTournament;
+      if (
+        prev === kbTournament ||
+        (prev != null &&
+          kbTournament != null &&
+          JSON.stringify(prev) === JSON.stringify(kbTournament))
+      ) {
+        return;
+      }
       set(() => ({ kbTournament }));
+    },
+    animTickMs: 16,
+    setAnimTickMs: (ms: number) => {
+      set(() => ({ animTickMs: Math.max(16, Math.round(ms)) }));
     },
   }));
 }
@@ -793,6 +824,12 @@ export function useViewport() {
 export function useKbTournament() {
   const store = useContext(StoreContext);
   return useStore(store, (state) => state.kbTournament);
+}
+
+/** Interval for the JS-driven overlay animation tickers. */
+export function useAnimTickMs() {
+  const store = useContext(StoreContext);
+  return useStore(store, (state) => state.animTickMs);
 }
 
 export const StoreContext =

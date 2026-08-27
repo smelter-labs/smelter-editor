@@ -74,6 +74,26 @@ function developmentWebRtcBaseUrls(): {
   };
 }
 
+export type FfmpegH264Preset =
+  | 'ultrafast'
+  | 'superfast'
+  | 'veryfast'
+  | 'faster'
+  | 'fast'
+  | 'medium'
+  | 'slow'
+  | 'slower'
+  | 'veryslow'
+  | 'placebo';
+
+/**
+ * Preset for the MP4 recording output. The recording encoder runs next to the
+ * live WHEP encode (and the AI sidecar), so anything slower than `ultrafast`
+ * risks falling behind real-time and breaking A/V pacing in the file.
+ */
+export const mp4RecordingPreset: FfmpegH264Preset =
+  (process.env.SMELTER_MP4_ENCODER_PRESET as FfmpegH264Preset) ?? 'ultrafast';
+
 function buildH264Encoder(): Outputs.WhepVideoEncoderOptions {
   const encoderEnv = process.env.SMELTER_H264_ENCODER;
   const useVulkan =
@@ -85,17 +105,8 @@ function buildH264Encoder(): Outputs.WhepVideoEncoderOptions {
     return { type: 'vulkan_h264', bitrate };
   }
 
-  const preset = (process.env.SMELTER_H264_ENCODER_PRESET ?? 'ultrafast') as
-    | 'ultrafast'
-    | 'superfast'
-    | 'veryfast'
-    | 'faster'
-    | 'fast'
-    | 'medium'
-    | 'slow'
-    | 'slower'
-    | 'veryslow'
-    | 'placebo';
+  const preset = (process.env.SMELTER_H264_ENCODER_PRESET ??
+    'ultrafast') as FfmpegH264Preset;
   const bitrate = process.env.SMELTER_H264_ENCODER_BITRATE ?? '20000000';
   return {
     type: 'ffmpeg_h264',

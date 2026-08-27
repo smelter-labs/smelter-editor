@@ -6,6 +6,7 @@ import { promisify } from 'node:util';
 import { WebSocketServer, WebSocket, type WebSocket as WsSocket } from 'ws';
 
 import { SmelterInstance } from '../smelter';
+import { sidecarThreadCapEnv } from '../ai-models/sidecar-env';
 import { captionDebug } from './captionsDebug';
 import { CAPTIONS_SIDE_CHANNEL_DELAY_MS } from './constants';
 
@@ -301,6 +302,7 @@ export class CaptionBridge {
       cwd: CAPTIONS_DIR,
       env: {
         ...process.env,
+        ...sidecarThreadCapEnv(),
         SMELTER_SIDE_CHANNEL_SOCKET_DIR: this.opts.socketDir,
         SMELTER_SIDE_CHANNEL_DELAY_MS: String(CAPTIONS_SIDE_CHANNEL_DELAY_MS),
         NODE_WS_URL: `ws://127.0.0.1:${this.opts.port}`,

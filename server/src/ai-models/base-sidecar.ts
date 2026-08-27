@@ -5,6 +5,7 @@ import { promisify } from 'node:util';
 import { EventEmitter } from 'node:events';
 import { WebSocketServer, WebSocket, type WebSocket as WsSocket } from 'ws';
 import type { ModelManifest } from './registry';
+import { sidecarThreadCapEnv } from './sidecar-env';
 
 const execFileAsync = promisify(execFile);
 
@@ -363,6 +364,7 @@ export abstract class BaseSidecar extends EventEmitter {
       cwd: path.dirname(this.manifest.pythonScript),
       env: {
         ...process.env,
+        ...sidecarThreadCapEnv(),
         ...this.manifest.extraEnv,
         SMELTER_SIDE_CHANNEL_SOCKET_DIR: socketDir,
         NODE_WS_URL: `ws://127.0.0.1:${this.manifest.wsPort}`,

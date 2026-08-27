@@ -7,7 +7,7 @@ import type {
   KbtMatchEvent,
   KbtStateEvent,
 } from '@smelter-editor/types';
-import { getKbtState } from '@/app/actions/actions';
+import { getKbtState, setKbtConfig } from '@/app/actions/actions';
 import { RESOLUTION_PRESETS } from '@/lib/resolution';
 import {
   DisplayText,
@@ -21,6 +21,7 @@ import {
 } from './kbt-kit';
 import {
   DEFAULT_KBT_UI_CONFIG,
+  sanitizeKbtPerf,
   useKbtRoom,
   type KbtUiConfig,
 } from './use-kbt-room';
@@ -77,6 +78,8 @@ function loadConfig(): KbtUiConfig {
         p.resolution && p.resolution in RESOLUTION_PRESETS
           ? p.resolution
           : DEFAULT_KBT_UI_CONFIG.resolution,
+      // Old localStorage blobs lack the key → per-field defaults.
+      perf: sanitizeKbtPerf(p.perf),
     };
   } catch {
     return DEFAULT_KBT_UI_CONFIG;
@@ -103,6 +106,8 @@ function serverConfigToUi(cfg: KbtConfig): KbtUiConfig {
     // Not part of the server config — resolution is fixed at room creation,
     // so after a refresh keep whatever this browser last picked.
     resolution: loadConfig().resolution,
+    // Old server snapshots may predate the perf block.
+    perf: sanitizeKbtPerf(cfg.perf),
   };
 }
 
@@ -188,6 +193,18 @@ export function KettlebellTournamentArcade({
       /* ignore */
     }
   }, [config]);
+
+  // Perf knobs exist to be experimented with mid-tournament: push them the
+  // moment they change while a room is live (the rest of the config still
+  // waits for OPEN ARENA so a stale tab can't clobber the live rules).
+  const perfJson = JSON.stringify(config.perf);
+  const pushedPerfRef = useRef(perfJson);
+  useEffect(() => {
+    if (!room.roomId || pushedPerfRef.current === perfJson) return;
+    pushedPerfRef.current = perfJson;
+    void setKbtConfig(room.roomId, { perf: config.perf }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room.roomId, perfJson]);
 
   // The server owns the heat lifecycle — follow its phase. Guards on the
   // current screen keep manual navigation in charge, and the results

@@ -172,6 +172,9 @@ export function SetupScreen({
       },
     });
 
+  const patchPerf = (patch: Partial<KbtUiConfig['perf']>) =>
+    onConfig({ ...config, perf: { ...config.perf, ...patch } });
+
   return (
     <Frame
       title='RULES'
@@ -448,6 +451,134 @@ export function SetupScreen({
             </div>
             <Label size={10} tracking={1.5} style={{ textTransform: 'none' }}>
               {`Broadcast size ${RESOLUTION_PRESETS[config.resolution].width}×${RESOLUTION_PRESETS[config.resolution].height} — set when the arena opens. HD (1080p) is the default.`}
+            </Label>
+          </Plate>
+          <Label size={11}>PERFORMANCE</Label>
+          <Plate
+            cutPx={14}
+            innerStyle={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8,
+              padding: '12px 14px',
+            }}>
+            <DisplayText size={16} weight={700} tracking={2}>
+              AI ANALYSIS FPS
+            </DisplayText>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {([null, 8, 10, 12, 14, 16] as const).map((v) => (
+                <ChipButton
+                  key={String(v)}
+                  label={v == null ? 'AUTO' : String(v)}
+                  active={config.perf.analysisFpsOverride === v}
+                  onClick={() => patchPerf({ analysisFpsOverride: v })}
+                  style={{ height: 32, padding: '0 10px', fontSize: 11 }}
+                />
+              ))}
+            </div>
+            <Label size={10} tracking={1.5} style={{ textTransform: 'none' }}>
+              Live. AUTO adapts to heat size (14/12/10). Lower = lighter AI,
+              laggier referee.
+            </Label>
+          </Plate>
+          <Plate
+            cutPx={14}
+            innerStyle={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8,
+              padding: '12px 14px',
+            }}>
+            <DisplayText size={16} weight={700} tracking={2}>
+              OVERLAY ANIMATION
+            </DisplayText>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {([60, 30, 15] as const).map((v) => (
+                <ChipButton
+                  key={v}
+                  label={`${v} HZ`}
+                  active={config.perf.animTickHz === v}
+                  onClick={() => patchPerf({ animTickHz: v })}
+                  style={{ height: 32, padding: '0 10px', fontSize: 11 }}
+                />
+              ))}
+            </div>
+            <Label size={10} tracking={1.5} style={{ textTransform: 'none' }}>
+              Live. Skeleton / rep text / shake tick rate — the engine renders
+              at most ~33 scene updates a second anyway.
+            </Label>
+          </Plate>
+          <Plate
+            cutPx={14}
+            innerStyle={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8,
+              padding: '12px 14px',
+            }}>
+            <DisplayText size={16} weight={700} tracking={2}>
+              HUD REFRESH
+            </DisplayText>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {([10, 5, 2] as const).map((v) => (
+                <ChipButton
+                  key={v}
+                  label={`${v} HZ`}
+                  active={config.perf.hudPublishHz === v}
+                  onClick={() => patchPerf({ hudPublishHz: v })}
+                  style={{ height: 32, padding: '0 10px', fontSize: 11 }}
+                />
+              ))}
+            </div>
+            <Label size={10} tracking={1.5} style={{ textTransform: 'none' }}>
+              Live. Clock and standings cadence — scored reps always land
+              immediately.
+            </Label>
+          </Plate>
+          <Plate
+            cutPx={14}
+            innerStyle={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8,
+              padding: '12px 14px',
+            }}>
+            <DisplayText size={16} weight={700} tracking={2}>
+              RECORDING ENCODER
+            </DisplayText>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {(
+                [
+                  'ultrafast',
+                  'superfast',
+                  'veryfast',
+                  'fast',
+                  'medium',
+                ] as const
+              ).map((v) => (
+                <ChipButton
+                  key={v}
+                  label={v.toUpperCase()}
+                  active={config.perf.recordingPreset === v}
+                  onClick={() => patchPerf({ recordingPreset: v })}
+                  style={{ height: 32, padding: '0 8px', fontSize: 10 }}
+                />
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {([1, 0.75, 0.5] as const).map((v) => (
+                <ChipButton
+                  key={v}
+                  label={`${Math.round(v * 100)}%`}
+                  active={config.perf.recordingScale === v}
+                  onClick={() => patchPerf({ recordingScale: v })}
+                  style={{ height: 32, padding: '0 10px', fontSize: 11 }}
+                />
+              ))}
+            </div>
+            <Label size={10} tracking={1.5} style={{ textTransform: 'none' }}>
+              Applies from the next REC start. Slower presets look better but
+              can fall behind real-time next to the live encode + AI.
             </Label>
           </Plate>
           <Plate cutPx={14} innerStyle={{ padding: '10px 14px' }}>

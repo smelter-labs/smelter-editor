@@ -1,7 +1,11 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import type { KbtStateEvent, KbtViewOverride } from '@smelter-editor/types';
+import type {
+  KbtStateEvent,
+  KbtViewOverride,
+  KbtViewTransitionStyle,
+} from '@smelter-editor/types';
 import {
   KBT,
   KbtButton,
@@ -78,9 +82,11 @@ function buildOverride(
 export function ViewSwitcher({
   state,
   sendView,
+  sendTransitionStyle,
 }: {
   state: KbtStateEvent | null;
   sendView: (override: KbtViewOverride) => void;
+  sendTransitionStyle: (style: KbtViewTransitionStyle) => void;
 }) {
   const [featuredId, setFeaturedId] = useState<string | null>(null);
   const [pending, setPending] = useState<ViewKey | null>(null);
@@ -140,6 +146,9 @@ export function ViewSwitcher({
   // A lifter is a valid feature target when their camera is up.
   const featurable = players.filter((p) => p.camConnected);
   const featured = players.find((p) => p.clientId === featuredId) ?? null;
+  // Mirrors the kbt_state echo like the view buttons — no optimistic lock,
+  // picking a style is not an on-air cut.
+  const transitionStyle = state?.viewTransitionStyle ?? 'fade';
 
   return (
     <Plate
@@ -231,6 +240,22 @@ export function ViewSwitcher({
             pulse={!featured.camConnected}
           />
         ) : null}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <Label size={10} tracking={2}>
+          TRANSITION
+        </Label>
+        {(['fade', 'dissolve'] as const).map((s) => (
+          <ChipButton
+            key={s}
+            dense
+            active={transitionStyle === s}
+            label={s === 'fade' ? 'FADE' : 'DISSOLVE'}
+            onClick={() => {
+              if (transitionStyle !== s) sendTransitionStyle(s);
+            }}
+          />
+        ))}
       </div>
     </Plate>
   );

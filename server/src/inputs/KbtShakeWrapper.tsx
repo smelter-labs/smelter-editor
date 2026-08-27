@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View } from '@swmansion/smelter';
 import type { KbtHudTile } from '../app/store';
-import { TICK_MS } from './kettlebellRig';
+import { useAnimTickMs } from '../app/store';
 
 /** Matches MILESTONE_FX_MS in KettlebellTournamentController. */
 const FX_MS = 3000;
@@ -35,6 +35,7 @@ export function KbtShakeWrapper({
   // Local effect clock: Date.now() epoch of the effect's start.
   const startRef = useRef<number | null>(null);
   const [, setTick] = useState(0);
+  const tickMs = useAnimTickMs();
 
   if (fx) {
     const implied = Date.now() - fx.p * FX_MS;
@@ -53,9 +54,9 @@ export function KbtShakeWrapper({
     if (!active) return;
     const timer = setInterval(() => {
       setTick((t) => (t + 1) % 1_000_000);
-    }, TICK_MS);
+    }, tickMs);
     return () => clearInterval(timer);
-  }, [active]);
+  }, [active, tickMs]);
 
   if (!active) {
     return <View style={{ ...resolution }}>{children}</View>;

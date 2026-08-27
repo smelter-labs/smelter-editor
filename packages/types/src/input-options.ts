@@ -66,6 +66,13 @@ export type RegisterInputOptions =
       nativeWidth?: number;
       nativeHeight?: number;
       transcription?: boolean;
+      /**
+       * This input will never run AI/transcription: skip the WHIP
+       * side-channel reservation and its 3 s buffering delay entirely.
+       * Enabling a model on such an input is refused (WHIP cannot be
+       * re-registered without killing the live push stream).
+       */
+      noSideChannel?: boolean;
     }
   | {
       type: "local-mp4";
