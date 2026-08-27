@@ -1262,26 +1262,30 @@ export class RoomState {
     return this.mutex.runExclusive(async () => {
       await this.inputManager.removeInput(inputId);
 
-      let layersUpdated = false;
-      this.layers = this.layers.map((layer) => {
-        const filteredInputs = layer.inputs.filter(
-          (input) => input.inputId !== inputId,
-        );
-        if (filteredInputs.length === layer.inputs.length) {
-          return layer;
-        }
-
-        layersUpdated = true;
-        return {
-          ...layer,
-          inputs: filteredInputs,
-        };
-      });
-
-      if (layersUpdated) {
+      if (this.pruneInputFromLayers(inputId)) {
         this.updateStoreWithState();
       }
     });
+  }
+
+  /** Drop an input from every layer. Lock-free — call under the mutex. */
+  private pruneInputFromLayers(inputId: string): boolean {
+    let layersUpdated = false;
+    this.layers = this.layers.map((layer) => {
+      const filteredInputs = layer.inputs.filter(
+        (input) => input.inputId !== inputId,
+      );
+      if (filteredInputs.length === layer.inputs.length) {
+        return layer;
+      }
+
+      layersUpdated = true;
+      return {
+        ...layer,
+        inputs: filteredInputs,
+      };
+    });
+    return layersUpdated;
   }
 
   public async connectInput(inputId: string): Promise<string> {
@@ -1609,9 +1613,22 @@ export class RoomState {
   }
 
   public async removeStaleWhipInputs(staleTtlMs: number): Promise<void> {
-    return this.mutex.runExclusive(async () => {
-      await this.inputManager.removeStaleWhipInputs(staleTtlMs);
+    const removed = await this.mutex.runExclusive(async () => {
+      const ids = await this.inputManager.removeStaleWhipInputs(staleTtlMs);
+      let layersUpdated = false;
+      for (const id of ids) {
+        layersUpdated = this.pruneInputFromLayers(id) || layersUpdated;
+      }
+      if (layersUpdated) {
+        this.updateStoreWithState();
+      }
+      return ids;
     });
+    // Outside the mutex: the controller's restage re-enters updateLayers,
+    // and async-mutex is non-reentrant.
+    if (removed.length > 0) {
+      this.kbTournament.onInputsRemoved(removed);
+    }
   }
 
   /** Route a Ghost Shooter WebSocket message from a phone client. */

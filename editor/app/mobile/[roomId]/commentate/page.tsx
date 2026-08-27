@@ -36,6 +36,11 @@ import { CameraStep } from '@/components/kettlebell-tournament/phone/camera-step
 import { usePreviewSet } from '@/components/kettlebell-tournament/phone/use-preview';
 import { useMicLevel } from '@/components/kettlebell-tournament/phone/use-mic-level';
 import { usePublishWatchdog } from '@/components/kettlebell-tournament/phone/use-publish-watchdog';
+import {
+  type CommentatorSession,
+  readCommentatorSession,
+  sessionStorageKey,
+} from '@/components/kettlebell-tournament/phone/commentator-session';
 import '@/components/kettlebell-tournament/kbt-kit.css';
 
 // The commentator wizard: boot → name → camera+mic rig → on air. Unlike the
@@ -53,28 +58,6 @@ const STEP_META: Record<Step, { index: number; label: string }> = {
 const NAME_KEY = 'kbt-commentator-name';
 const RECONNECT_MAX_MS = 8000;
 const REPUBLISH_MAX_MS = 8000;
-
-/** Per-room resume session — same contract as the lifter page's. */
-type CommentatorSession = {
-  playerKey?: string;
-  name?: string;
-  facing?: 'user' | 'environment';
-  wantsCam?: boolean;
-};
-
-const sessionStorageKey = (roomId: string) => `kbt-commentator-${roomId}`;
-
-function readCommentatorSession(roomId: string): CommentatorSession {
-  try {
-    const raw = window.localStorage.getItem(sessionStorageKey(roomId));
-    const parsed = raw ? (JSON.parse(raw) as unknown) : null;
-    return parsed && typeof parsed === 'object'
-      ? (parsed as CommentatorSession)
-      : {};
-  } catch {
-    return {};
-  }
-}
 
 function remoteOrigin(): string | null {
   if (typeof window === 'undefined') return null;

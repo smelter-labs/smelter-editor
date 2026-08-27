@@ -355,6 +355,8 @@ export class KettlebellTournamentController {
   > | null = null;
   /** Live skeleton mode for heat tiles (rides in the coach params). */
   private skeletonMode: KbtSkeletonMode = 'neon';
+  /** Commentator cam PiP on non-featured scenes (panel toggle, default on). */
+  private casterPip = true;
   /** url → engine imageId cache for rep-shot stills (freed at dispose). */
   private readonly repShotImageIds = new Map<string, string>();
   /** Last player-tile layout, so a scene flip can re-stage the caster cam. */
@@ -479,6 +481,9 @@ export class KettlebellTournamentController {
         break;
       case 'kbt_commentator_rep_float':
         this.setRepFloatText(clientId, msg.enabled);
+        break;
+      case 'kbt_commentator_caster_pip':
+        this.setCasterPip(clientId, msg.enabled);
         break;
       case 'kbt_commentator_match': {
         const action = msg.action;
@@ -956,6 +961,43 @@ export class KettlebellTournamentController {
     void this.deps.removeInput(inputId).catch(() => {});
   }
 
+  /**
+   * The room reaped inputs behind our back (stale-WHIP sweep). Drop every
+   * reference so a later restage can't re-push a dead input and the panel
+   * learns the cam is down (the client's auto-republish trigger). No
+   * deps.removeInput here — the inputs are already gone from the engine.
+   */
+  onInputsRemoved(inputIds: string[]): void {
+    if (this.disposed) return;
+    const gone = new Set(inputIds);
+    let changed = false;
+    const c = this.commentator;
+    if (c?.inputId != null && gone.has(c.inputId)) {
+      const inputId = c.inputId;
+      c.inputId = null;
+      c.camConnected = false;
+      this.lastTiles = this.lastTiles.filter((t) => t.inputId !== inputId);
+      changed = true;
+    }
+    for (const p of this.players.values()) {
+      if (p.inputId != null && gone.has(p.inputId)) {
+        const inputId = p.inputId;
+        p.inputId = null;
+        p.camConnected = false;
+        p.camDownAt = null;
+        p.poseTracked = false;
+        p.fullBody = true;
+        this.lastTiles = this.lastTiles.filter((t) => t.inputId !== inputId);
+        changed = true;
+      }
+    }
+    if (!changed) return;
+    void this.restage();
+    // publishHud (via broadcastState) re-validates overrides, so a caster/
+    // split view pinned to a dead input falls back to AUTO on its own.
+    this.broadcastState();
+  }
+
   // ── Commentator view + show control (the moderator panel) ─────────────────
 
   /**
@@ -1254,6 +1296,22 @@ export class KettlebellTournamentController {
     // Push the flag to the HUD immediately (still rides the ~3s hold) so a
     // mid-heat flip lands without waiting for the next rep.
     this.publishHud();
+    this.deps.broadcast(this.stateSnapshot());
+  }
+
+  /** Toggle the commentator's PiP cam tile (visible outside caster/split). */
+  setCasterPip(clientId: string, raw: unknown): void {
+    if (!this.requireCommentator(clientId, 'toggle the cam PiP')) return;
+    if (typeof raw !== 'boolean') {
+      this.sendError(clientId, 'invalid_overlay', 'Invalid cam PiP toggle.');
+      return;
+    }
+    if (this.casterPip === raw) return;
+    this.casterPip = raw;
+    // The tile moves instantly (restage), so the chrome must not ride the
+    // ~3s hold — publish immediately like a scene cut.
+    this.publishHud(true);
+    void this.restage();
     this.deps.broadcast(this.stateSnapshot());
   }
 
@@ -1991,7 +2049,10 @@ export class KettlebellTournamentController {
     if (casterInput && !all.some((t) => t.inputId === casterInput)) {
       all.push({
         inputId: casterInput,
-        ...kbtCasterCamRect(resolution, kbtCasterVisible(this.stagedScene)),
+        ...kbtCasterCamRect(
+          resolution,
+          kbtCasterVisible(this.stagedScene, this.casterPip),
+        ),
       });
     }
     for (const p of this.players.values()) {
@@ -2466,6 +2527,7 @@ export class KettlebellTournamentController {
         ? { ...this.commentatorOverlay }
         : { kind: 'none' },
       skeletonMode: this.skeletonMode,
+      casterPip: this.casterPip,
       isRecording: this.deps.hasActiveRecording?.() ?? false,
     };
   }
@@ -2906,6 +2968,7 @@ export class KettlebellTournamentController {
             name: this.commentator.name,
             camConnected: this.commentator.camConnected,
             inputId: this.commentator.inputId,
+            casterPip: this.casterPip,
           }
         : null,
       leader,

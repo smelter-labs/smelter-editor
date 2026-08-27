@@ -1917,7 +1917,10 @@ export function KbtMatchHud({
       {/* On caster/split the commentator IS the scene — no lower-third or
           mini chip on top of their own camera. */}
       {hud.scene === 'caster' ||
-      hud.scene === 'split' ? null : kbtCasterVisible(hud.scene) ? (
+      hud.scene === 'split' ? null : kbtCasterVisible(
+          hud.scene,
+          hud.commentator?.casterPip ?? true,
+        ) ? (
         <CasterLowerThird hud={hud} resolution={resolution} k={k} />
       ) : (
         <CasterOnAirMini hud={hud} k={k} />

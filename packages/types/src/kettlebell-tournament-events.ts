@@ -329,6 +329,11 @@ export type KbtCommentatorRepFloatMessage = {
   type: "kbt_commentator_rep_float";
   enabled: boolean;
 };
+/** Toggle the commentator's picture-in-picture cam tile on the output. */
+export type KbtCommentatorCasterPipMessage = {
+  type: "kbt_commentator_caster_pip";
+  enabled: boolean;
+};
 
 export type KbtClientMessage =
   | KbtJoinMessage
@@ -345,7 +350,8 @@ export type KbtClientMessage =
   | KbtCommentatorOverlayMessage
   | KbtCommentatorBannerMessage
   | KbtCommentatorSkeletonMessage
-  | KbtCommentatorRepFloatMessage;
+  | KbtCommentatorRepFloatMessage
+  | KbtCommentatorCasterPipMessage;
 
 /** Public commentator info in `kbt_state`. */
 export type KbtCommentator = {
@@ -375,6 +381,9 @@ export type KbtStateEvent = {
   commentatorOverlay?: KbtCommentatorOverlay;
   /** Skeleton mode on heat tiles (absent on older servers — treat as 'neon'). */
   skeletonMode?: KbtSkeletonMode;
+  /** Commentator cam PiP visible outside full-frame caster scenes (absent on
+   * older servers — treat as true). */
+  casterPip?: boolean;
   /** An MP4 recording of the program output is running (absent on older servers). */
   isRecording?: boolean;
 };

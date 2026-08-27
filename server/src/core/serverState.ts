@@ -19,10 +19,13 @@ const ROOM_COUNT_SOFT_LIMIT = 3;
 const ROOM_COUNT_HARD_LIMIT = 5;
 const SOFT_LIMIT_ROOM_DELETE_DELAY = 20_000;
 const whipStaleTtlFromEnv = Number(process.env.WHIP_STALE_TTL_MS);
+// Keep this well above WHIP_LIVE_TTL_MS (12s): liveness flips the UI fast,
+// but destroying the input over a transient ack outage (proxy hiccup,
+// throttled tab) forces a full republish — give publishers time to recover.
 const WHIP_STALE_TTL_MS =
   Number.isFinite(whipStaleTtlFromEnv) && whipStaleTtlFromEnv > 0
     ? whipStaleTtlFromEnv
-    : 15_000;
+    : 45_000;
 export class ServerState {
   private readonly mutex = new Mutex();
   private rooms: Record<string, RoomState> = {};

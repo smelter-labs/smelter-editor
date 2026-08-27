@@ -912,8 +912,8 @@ describe('KettlebellTournamentController', () => {
     const rosterTiles = h.layouts[h.layouts.length - 1];
     expect(rosterTiles.map((t) => t.inputId)).toContain(casterInput);
 
-    // During a heat the caster tile shrinks offscreen but STAYS in the layer
-    // (audio keeps mixing).
+    // During a heat the caster tile stays visible as the lower-third PiP
+    // (default toggle ON) — and stays in the layer so audio keeps mixing.
     h.controller.join('p2', 'BARTEK');
     await h.controller.startCamera('p2');
     h.controller.setConfig({ heatDurationMs: 30_000, heatSize: 2 });
@@ -923,7 +923,7 @@ describe('KettlebellTournamentController', () => {
     const heatTiles = h.layouts[h.layouts.length - 1];
     const caster = heatTiles.find((t) => t.inputId === casterInput);
     expect(caster).toBeDefined();
-    expect(caster!.width).toBe(1);
+    expect(caster!.width).toBe(220);
     h.controller.dispose();
   });
 
@@ -963,10 +963,9 @@ describe('KettlebellTournamentController', () => {
     // The cut lands without the 3s hold…
     expect(h.hudApplies.length).toBeGreaterThan(applied);
     expect(h.lastHud()?.scene).toBe('caster');
-    // …the caster fills the stage exactly once (audio keeps mixing), with a
-    // hard cut on the FIRST apply that changed geometry (it grew out of the
-    // 1×1 park — no scale-up animation; the override triggers a second,
-    // geometry-identical apply whose transition value is a visual no-op)…
+    // …the caster fills the stage exactly once (audio keeps mixing). It was
+    // already staged as the lower-third PiP (default toggle ON), so growing
+    // to fullscreen is a staged→staged move and glides…
     const tiles = h.layouts.find(
       (l) => l[0]?.inputId === casterInput && l[0].width === 1920,
     )!;
@@ -974,7 +973,8 @@ describe('KettlebellTournamentController', () => {
       inputId: casterInput,
       x: 0,
       width: 1920,
-      transitionDurationMs: 0,
+      transitionDurationMs: 300,
+      transitionEasing: 'cubic_bezier_ease_in_out',
     });
     // …while the lifters stay mentioned as 1×1 parks (dropping them would
     // let RoomState auto-append them back on top of the caster).
@@ -999,7 +999,7 @@ describe('KettlebellTournamentController', () => {
     expect(restored.map((t) => t.inputId)).toEqual(
       expect.arrayContaining([in1, in2, casterInput]),
     );
-    expect(restored.find((t) => t.inputId === casterInput)!.width).toBe(1); // offscreen again
+    expect(restored.find((t) => t.inputId === casterInput)!.width).toBe(220); // PiP again
     h.controller.dispose();
   });
 
@@ -1034,7 +1034,8 @@ describe('KettlebellTournamentController', () => {
     expect(Object.keys(h.lastHud()?.tiles ?? {})).toEqual([in1]);
     const tiles = h.layouts[h.layouts.length - 1];
     expect(tiles.map((t) => t.inputId)).toEqual([in1, casterInput, in2]);
-    expect(tiles.find((t) => t.inputId === casterInput)!.width).toBe(1);
+    // The caster rides along as the lower-third PiP (default toggle ON).
+    expect(tiles.find((t) => t.inputId === casterInput)!.width).toBe(220);
     // The unfeatured lifter is parked at 1×1, not visible on stage.
     expect(tiles.find((t) => t.inputId === in2)!.width).toBe(1);
 
@@ -1069,14 +1070,175 @@ describe('KettlebellTournamentController', () => {
     expect(tiles[0].width).toBe(960);
     expect(tiles[1].x).toBe(960);
     expect(tiles[2].width).toBe(1);
-    // Transition decoration: entering from park = hard cut, staged→staged
-    // move glides, parking = hard cut (no shrink-to-dot).
-    expect(tiles[0].transitionDurationMs).toBe(0);
+    // Transition decoration: the caster was already staged as the PiP so its
+    // grow-to-half glides, staged→staged moves glide, parking = hard cut
+    // (no shrink-to-dot).
+    expect(tiles[0]).toMatchObject({
+      transitionDurationMs: 300,
+      transitionEasing: 'cubic_bezier_ease_in_out',
+    });
     expect(tiles[1]).toMatchObject({
       transitionDurationMs: 300,
       transitionEasing: 'cubic_bezier_ease_in_out',
     });
     expect(tiles[2].transitionDurationMs).toBe(0);
+    h.controller.dispose();
+  });
+
+  // ── Stale-input reap notification (onInputsRemoved) ───────────────────────
+
+  it('clears the commentator slot when the stale sweep reaps the input and re-offers a fresh one', async () => {
+    const h = harness();
+    h.controller.joinCommentator('c1', 'MAREK');
+    await h.controller.startCommentatorCamera('c1');
+    const inputId = h.camOfferFor('c1')!.inputId;
+    await vi.advanceTimersByTimeAsync(0); // flush restage
+
+    // The room's reaper removed the input behind the controller's back.
+    h.connected.delete(inputId);
+    h.controller.onInputsRemoved([inputId]);
+    await vi.advanceTimersByTimeAsync(0); // flush restage
+
+    const state = h.controller.stateSnapshot();
+    expect(state.commentator?.camConnected).toBe(false);
+    const tiles = h.layouts[h.layouts.length - 1];
+    expect(tiles.map((t) => t.inputId)).not.toContain(inputId);
+
+    // The zombie is gone: a re-request mints a fresh input + offer.
+    await h.controller.startCommentatorCamera('c1');
+    const fresh = h.camOfferFor('c1')!.inputId;
+    expect(fresh).not.toBe(inputId);
+    h.controller.dispose();
+  });
+
+  it('drops a forced caster view when the reap kills the commentator input', async () => {
+    const h = harness();
+    await playingHeat(h);
+    h.controller.joinCommentator('c1', 'MAREK');
+    await h.controller.startCommentatorCamera('c1');
+    const inputId = h.camOfferFor('c1')!.inputId;
+    h.controller.handleMessage('c1', {
+      type: 'kbt_commentator_view',
+      override: { mode: 'caster' },
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.controller.stateSnapshot().scene).toBe('caster');
+
+    h.connected.delete(inputId);
+    h.controller.onInputsRemoved([inputId]);
+    await vi.advanceTimersByTimeAsync(0);
+    // overrideScene re-validates: no input → the derived scene is back.
+    expect(h.controller.stateSnapshot().scene).toBe('grid');
+    h.controller.dispose();
+  });
+
+  it('clears a reaped player camera and restages without it', async () => {
+    const h = harness();
+    const { in1, in2 } = await playingHeat(h);
+
+    h.connected.delete(in1);
+    h.controller.onInputsRemoved([in1]);
+    await vi.advanceTimersByTimeAsync(0);
+
+    const state = h.controller.stateSnapshot();
+    const p1 = state.players.find((p) => p.name === 'ANIA');
+    expect(p1?.camConnected).toBe(false);
+    const tiles = h.layouts[h.layouts.length - 1];
+    expect(tiles.map((t) => t.inputId)).not.toContain(in1);
+    expect(tiles.map((t) => t.inputId)).toContain(in2);
+    h.controller.dispose();
+  });
+
+  // ── Caster-cam PiP toggle ─────────────────────────────────────────────────
+
+  it('parks the caster on PIP OFF and restores the lower-third on PIP ON', async () => {
+    const h = harness();
+    h.controller.joinCommentator('c1', 'MAREK');
+    await h.controller.startCommentatorCamera('c1');
+    const casterInput = h.camOfferFor('c1')!.inputId;
+    h.controller.join('p1', 'ANIA');
+    await h.controller.startCamera('p1');
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Default ON: visible lower-third in the lobby.
+    let caster = h.layouts[h.layouts.length - 1].find(
+      (t) => t.inputId === casterInput,
+    );
+    expect(caster!.width).toBe(220);
+    expect(h.controller.stateSnapshot().casterPip).toBe(true);
+
+    h.controller.handleMessage('c1', {
+      type: 'kbt_commentator_caster_pip',
+      enabled: false,
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    caster = h.layouts[h.layouts.length - 1].find(
+      (t) => t.inputId === casterInput,
+    );
+    expect(caster!.width).toBe(1); // parked, audio-only
+    expect(h.controller.stateSnapshot().casterPip).toBe(false);
+    expect(h.lastHud()?.commentator?.casterPip).toBe(false);
+
+    h.controller.handleMessage('c1', {
+      type: 'kbt_commentator_caster_pip',
+      enabled: true,
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    caster = h.layouts[h.layouts.length - 1].find(
+      (t) => t.inputId === casterInput,
+    );
+    expect(caster!.width).toBe(220);
+    h.controller.dispose();
+  });
+
+  it('keeps the PiP visible on heat scenes when ON (the new default)', async () => {
+    const h = harness();
+    const { in1, in2 } = await playingHeat(h);
+    h.controller.joinCommentator('c1', 'MAREK');
+    await h.controller.startCommentatorCamera('c1');
+    const casterInput = h.camOfferFor('c1')!.inputId;
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(h.controller.stateSnapshot().scene).toBe('grid');
+    const tiles = h.layouts[h.layouts.length - 1];
+    expect(tiles.map((t) => t.inputId)).toEqual(
+      expect.arrayContaining([in1, in2, casterInput]),
+    );
+    expect(tiles.find((t) => t.inputId === casterInput)!.width).toBe(220);
+    h.controller.dispose();
+  });
+
+  it('rejects the PiP toggle from anyone but the joined commentator', async () => {
+    const h = harness();
+    h.controller.joinCommentator('c1', 'MAREK');
+    await h.controller.startCommentatorCamera('c1');
+    h.controller.join('p1', 'ANIA');
+    h.controller.handleMessage('p1', {
+      type: 'kbt_commentator_caster_pip',
+      enabled: false,
+    });
+    expect(h.controller.stateSnapshot().casterPip).toBe(true);
+    h.controller.dispose();
+  });
+
+  // ── playerKey adoption (desktop panel reconnect) ──────────────────────────
+
+  it('adopts the commentator slot by playerKey even while the old socket looks connected', async () => {
+    const h = harness();
+    h.controller.joinCommentator('c1', 'MAREK');
+    const playerKey = h.joinedFor('c1')!.playerKey;
+    await h.controller.startCommentatorCamera('c1');
+    const inputId = h.camOfferFor('c1')!.inputId;
+
+    // No handleDisconnect: the server still believes c1 is connected
+    // (half-open socket) when the reconnected panel joins with the key.
+    h.controller.joinCommentator('c2', 'MAREK', playerKey);
+
+    expect(h.connected.has(inputId)).toBe(true); // live camera survives
+    const joined = h.joinedFor('c2')!;
+    expect(joined.playerKey).toBe(playerKey);
+    expect(joined.camInputActive).toBe(true);
+    expect(h.controller.stateSnapshot().commentator?.name).toBe('MAREK');
     h.controller.dispose();
   });
 

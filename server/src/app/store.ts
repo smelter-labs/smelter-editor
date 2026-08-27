@@ -459,10 +459,12 @@ export function kbtCasterCamRect(
   };
 }
 
-/** Scenes where the commentator camera is visible (lower-third shown).
- * Heats are audio-only; the podium keeps its blocks clear too. */
-export function kbtCasterVisible(scene: KbtHudScene): boolean {
-  return scene === 'lobby' || scene === 'board';
+/** Whether the commentator camera is visible (lower-third PiP shown). The
+ * panel toggle (`pip`) gates every scene; caster/split are excluded because
+ * the commentator is already full-frame there. PiP off = audio-only with the
+ * mini ON AIR chip. */
+export function kbtCasterVisible(scene: KbtHudScene, pip: boolean): boolean {
+  return pip && scene !== 'caster' && scene !== 'split';
 }
 
 /**
@@ -513,6 +515,8 @@ export type KbtHudState = {
     name: string;
     camConnected: boolean;
     inputId: string | null;
+    /** Panel toggle: PiP cam tile shown on non-featured scenes. */
+    casterPip: boolean;
   } | null;
   /** Current leader (heat leader during play, standings leader otherwise). */
   leader: { name: string; points: number } | null;

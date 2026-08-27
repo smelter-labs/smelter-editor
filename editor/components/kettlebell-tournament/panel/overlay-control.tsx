@@ -44,17 +44,20 @@ export function OverlayControl({
   sendBanner,
   sendSkeleton,
   sendRepFloat,
+  sendCasterPip,
 }: {
   state: KbtStateEvent | null;
   sendOverlay: (overlay: KbtCommentatorOverlay) => void;
   sendBanner: (bannerId: KbtHypeBannerId) => void;
   sendSkeleton: (mode: KbtSkeletonMode) => void;
   sendRepFloat: (enabled: boolean) => void;
+  sendCasterPip: (enabled: boolean) => void;
 }) {
   const players = state?.players ?? [];
   const serverOverlay = state?.commentatorOverlay ?? { kind: 'none' };
   const serverSkeleton = state?.skeletonMode ?? 'neon';
   const serverRepFloat = state?.config?.repFloatText !== false;
+  const serverCasterPip = state?.casterPip !== false;
 
   // Optimistic-pending on the overlay identity: a press locks the section
   // until the kbt_state echo lands (or a short timeout — e.g. refused).
@@ -62,6 +65,9 @@ export function OverlayControl({
   const [pendingSkeleton, setPendingSkeleton] =
     useState<KbtSkeletonMode | null>(null);
   const [pendingRepFloat, setPendingRepFloat] = useState<boolean | null>(null);
+  const [pendingCasterPip, setPendingCasterPip] = useState<boolean | null>(
+    null,
+  );
   const timersRef = useRef<number[]>([]);
   const [h2hA, setH2hA] = useState<string | null>(null);
   const [h2hB, setH2hB] = useState<string | null>(null);
@@ -83,6 +89,11 @@ export function OverlayControl({
       setPendingRepFloat(null);
     }
   }, [pendingRepFloat, serverRepFloat]);
+  useEffect(() => {
+    if (pendingCasterPip != null && serverCasterPip === pendingCasterPip) {
+      setPendingCasterPip(null);
+    }
+  }, [pendingCasterPip, serverCasterPip]);
   useEffect(
     () => () => {
       timersRef.current.forEach((t) => window.clearTimeout(t));
@@ -111,6 +122,16 @@ export function OverlayControl({
     setPendingSkeleton(mode);
     later(
       () => setPendingSkeleton((p) => (p === mode ? null : p)),
+      PENDING_TIMEOUT_MS,
+    );
+  };
+
+  const pressCasterPip = (enabled: boolean) => {
+    if (pendingCasterPip != null || enabled === serverCasterPip) return;
+    sendCasterPip(enabled);
+    setPendingCasterPip(enabled);
+    later(
+      () => setPendingCasterPip((p) => (p === enabled ? null : p)),
       PENDING_TIMEOUT_MS,
     );
   };
@@ -395,6 +416,36 @@ export function OverlayControl({
         })}
         <Label size={9} tracking={1} color={KBT.dim}>
           floating &quot;SNATCH +3&quot; on every scored rep
+        </Label>
+      </div>
+
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          flexWrap: 'wrap',
+        }}>
+        <Label size={10} tracking={2}>
+          MY CAM PIP
+        </Label>
+        {[true, false].map((enabled) => {
+          const isActive =
+            pendingCasterPip == null
+              ? serverCasterPip === enabled
+              : pendingCasterPip === enabled;
+          return (
+            <ChipButton
+              key={enabled ? 'on' : 'off'}
+              dense
+              active={isActive}
+              label={enabled ? 'ON' : 'OFF'}
+              onClick={() => pressCasterPip(enabled)}
+            />
+          );
+        })}
+        <Label size={9} tracking={1} color={KBT.dim}>
+          your camera stays picture-in-picture during heats
         </Label>
       </div>
     </Plate>

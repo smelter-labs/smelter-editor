@@ -16,6 +16,7 @@ import {
 import { DevicePickers } from './device-pickers';
 import type { PanelSocket } from './use-panel-socket';
 import type { CommentatorRig } from './use-commentator-rig';
+import type { CamRecovery } from './use-cam-recovery';
 import { ViewSwitcher } from './view-switcher';
 import { ShowControl } from './show-control';
 import { OverlayControl } from './overlay-control';
@@ -88,7 +89,16 @@ function ProgramMonitor({ whepUrl }: { whepUrl: string | null }) {
 }
 
 /** Self-preview + ON AIR + mic meter + device/mute controls — the rig. */
-function RigStrip({ rig, name }: { rig: CommentatorRig; name: string }) {
+function RigStrip({
+  rig,
+  recovery,
+  name,
+}: {
+  rig: CommentatorRig;
+  recovery: CamRecovery;
+  name: string;
+}) {
+  const restoring = recovery.restoring && !rig.live;
   return (
     <Plate
       cutPx={14}
@@ -125,10 +135,11 @@ function RigStrip({ rig, name }: { rig: CommentatorRig; name: string }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <Tab
               size={10}
-              color={rig.live ? KBT.good : KBT.bad}
+              color={rig.live ? KBT.good : restoring ? KBT.amber : KBT.bad}
               textColor={KBT.dark}>
-              {rig.live ? 'ON AIR' : 'OFFLINE'}
+              {rig.live ? 'ON AIR' : restoring ? 'RESTORING VIDEO…' : 'OFFLINE'}
             </Tab>
+            {restoring ? <StatusDot state='warn' pulse /> : null}
             <Label size={10} tracking={1.5} color={KBT.cream}>
               {name}
             </Label>
@@ -160,13 +171,28 @@ function RigStrip({ rig, name }: { rig: CommentatorRig; name: string }) {
             your voice is always in the mix — mute between segments
           </Label>
         </div>
-        <KbtButton
-          dense
-          variant={rig.muted ? 'danger' : 'outline'}
-          label={rig.muted ? 'MIC MUTED — UNMUTE' : 'MUTE MIC'}
-          active={rig.muted}
-          onClick={rig.toggleMute}
-        />
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+            alignItems: 'stretch',
+          }}>
+          <KbtButton
+            dense
+            variant={rig.muted ? 'danger' : 'outline'}
+            label={rig.muted ? 'MIC MUTED — UNMUTE' : 'MUTE MIC'}
+            active={rig.muted}
+            onClick={rig.toggleMute}
+          />
+          {/* Escape hatch for a wedged publish the self-heal didn't catch. */}
+          <KbtButton
+            dense
+            variant='outline'
+            label='RESTART CAMERA'
+            onClick={recovery.restartCamera}
+          />
+        </div>
       </div>
       <DevicePickers rig={rig} />
       {rig.camErr ? (
@@ -186,12 +212,14 @@ function RigStrip({ rig, name }: { rig: CommentatorRig; name: string }) {
 export function PanelScreen({
   socket,
   rig,
+  recovery,
   name,
   whepUrl,
   roomId,
 }: {
   socket: PanelSocket;
   rig: CommentatorRig;
+  recovery: CamRecovery;
   name: string;
   whepUrl: string | null;
   roomId: string;
@@ -236,7 +264,7 @@ export function PanelScreen({
           minWidth: 0,
         }}>
         <ProgramMonitor whepUrl={whepUrl} />
-        <RigStrip rig={rig} name={name} />
+        <RigStrip rig={rig} recovery={recovery} name={name} />
         {!socket.connected ? (
           <Plate
             cutPx={12}
@@ -280,6 +308,7 @@ export function PanelScreen({
           sendBanner={socket.sendBanner}
           sendSkeleton={socket.sendSkeleton}
           sendRepFloat={socket.sendRepFloat}
+          sendCasterPip={socket.sendCasterPip}
         />
         <RecordingPlate rec={rec} />
         {socket.recentShots.length > 0 ? (
