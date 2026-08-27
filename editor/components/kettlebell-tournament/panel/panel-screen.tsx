@@ -296,7 +296,11 @@ export function PanelScreen({
           // 1px-too-wide child can't spawn a horizontal bar.
           overflowX: 'hidden',
         }}>
-        <ViewSwitcher state={socket.state} sendView={socket.sendView} />
+        <ViewSwitcher
+          state={socket.state}
+          sendView={socket.sendView}
+          sendTransitionStyle={socket.sendTransitionStyle}
+        />
         <ShowControl
           state={socket.state}
           match={socket.match}

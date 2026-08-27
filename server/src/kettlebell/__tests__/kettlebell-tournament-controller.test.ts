@@ -5,6 +5,7 @@ import type {
   RoomEvent,
 } from '@smelter-editor/types';
 import type { KbtHudState } from '../../app/store';
+import { KBT_VIEW_TRANSITION_MS } from '../../app/store';
 import { KettlebellTournamentController } from '../KettlebellTournamentController';
 
 const ROOM = 'room-1';
@@ -28,6 +29,12 @@ function harness(opts?: {
     transitionEasing?: string;
   }[][] = [];
   const hudApplies: (KbtHudState | null)[] = [];
+  const inputTransitions: {
+    inputId: string;
+    type: string;
+    durationMs: number;
+    direction: 'in' | 'out';
+  }[] = [];
   const qrCalls: string[] = [];
   const photoRegisters: { photoPath: string; photoHash: string }[] = [];
   const photoUnregisters: { imageId: string | null; photoPath: string }[] = [];
@@ -81,6 +88,9 @@ function harness(opts?: {
         ),
       );
     },
+    runInputTransition: (inputId, transition) => {
+      inputTransitions.push({ inputId, ...transition });
+    },
     isInputConnected: (inputId) => connected.has(inputId),
     ...(opts?.withLiveness
       ? { isInputLive: (inputId: string) => live.has(inputId) }
@@ -117,6 +127,7 @@ function harness(opts?: {
     aiCalls,
     layouts,
     hudApplies,
+    inputTransitions,
     qrCalls,
     photoRegisters,
     photoUnregisters,
@@ -976,10 +987,28 @@ describe('KettlebellTournamentController', () => {
       transitionDurationMs: 300,
       transitionEasing: 'cubic_bezier_ease_in_out',
     });
-    // …while the lifters stay mentioned as 1×1 parks (dropping them would
-    // let RoomState auto-append them back on top of the caster).
+    // …while the lifters hold their grid rects through a fade-out (still
+    // mentioned in the layout — dropping them would let RoomState
+    // auto-append them back on top of the caster)…
     expect(
-      tiles.slice(1).map((t) => ({ inputId: t.inputId, width: t.width })),
+      tiles.slice(1).map((t) => ({ inputId: t.inputId, fading: t.width > 1 })),
+    ).toEqual([
+      { inputId: in1, fading: true },
+      { inputId: in2, fading: true },
+    ]);
+    expect(h.inputTransitions).toContainEqual({
+      inputId: in1,
+      type: 'fade',
+      durationMs: KBT_VIEW_TRANSITION_MS,
+      direction: 'out',
+    });
+    // …and park at 1×1 once the fade has run.
+    await vi.advanceTimersByTimeAsync(KBT_VIEW_TRANSITION_MS);
+    const afterFade = h.layouts[h.layouts.length - 1];
+    expect(
+      afterFade
+        .filter((t) => t.inputId !== casterInput)
+        .map((t) => ({ inputId: t.inputId, width: t.width })),
     ).toEqual([
       { inputId: in1, width: 1 },
       { inputId: in2, width: 1 },
@@ -1036,8 +1065,18 @@ describe('KettlebellTournamentController', () => {
     expect(tiles.map((t) => t.inputId)).toEqual([in1, casterInput, in2]);
     // The caster rides along as the lower-third PiP (default toggle ON).
     expect(tiles.find((t) => t.inputId === casterInput)!.width).toBe(220);
-    // The unfeatured lifter is parked at 1×1, not visible on stage.
-    expect(tiles.find((t) => t.inputId === in2)!.width).toBe(1);
+    // The unfeatured lifter holds its on-stage rect through a fade-out…
+    expect(tiles.find((t) => t.inputId === in2)!.width).toBeGreaterThan(1);
+    expect(h.inputTransitions).toContainEqual({
+      inputId: in2,
+      type: 'fade',
+      durationMs: KBT_VIEW_TRANSITION_MS,
+      direction: 'out',
+    });
+    // …and parks at 1×1 once the fade has run.
+    await vi.advanceTimersByTimeAsync(KBT_VIEW_TRANSITION_MS);
+    const parked = h.layouts[h.layouts.length - 1];
+    expect(parked.find((t) => t.inputId === in2)!.width).toBe(1);
 
     h.controller.leave('p1');
     expect(h.controller.stateSnapshot().viewOverride).toEqual({ mode: 'auto' });
@@ -1069,10 +1108,12 @@ describe('KettlebellTournamentController', () => {
     expect(tiles.filter((t) => t.inputId === casterInput)).toHaveLength(1);
     expect(tiles[0].width).toBe(960);
     expect(tiles[1].x).toBe(960);
-    expect(tiles[2].width).toBe(1);
+    // The leaving lifter holds its on-stage rect while its fade-out runs.
+    expect(tiles[2].width).toBeGreaterThan(1);
     // Transition decoration: the caster was already staged as the PiP so its
-    // grow-to-half glides, staged→staged moves glide, parking = hard cut
-    // (no shrink-to-dot).
+    // grow-to-half glides, staged→staged moves glide; the leaver's held rect
+    // lands instantly (the fade animates, not the geometry) and the park
+    // commits after the fade.
     expect(tiles[0]).toMatchObject({
       transitionDurationMs: 300,
       transitionEasing: 'cubic_bezier_ease_in_out',
@@ -1082,6 +1123,15 @@ describe('KettlebellTournamentController', () => {
       transitionEasing: 'cubic_bezier_ease_in_out',
     });
     expect(tiles[2].transitionDurationMs).toBe(0);
+    expect(h.inputTransitions).toContainEqual({
+      inputId: in2,
+      type: 'fade',
+      durationMs: KBT_VIEW_TRANSITION_MS,
+      direction: 'out',
+    });
+    await vi.advanceTimersByTimeAsync(KBT_VIEW_TRANSITION_MS);
+    const parked = h.layouts[h.layouts.length - 1];
+    expect(parked.find((t) => t.inputId === in2)!.width).toBe(1);
     h.controller.dispose();
   });
 
@@ -1175,9 +1225,22 @@ describe('KettlebellTournamentController', () => {
     caster = h.layouts[h.layouts.length - 1].find(
       (t) => t.inputId === casterInput,
     );
-    expect(caster!.width).toBe(1); // parked, audio-only
+    // Fades out on the lower-third rect first…
+    expect(caster!.width).toBe(220);
+    expect(h.inputTransitions).toContainEqual({
+      inputId: casterInput,
+      type: 'fade',
+      durationMs: KBT_VIEW_TRANSITION_MS,
+      direction: 'out',
+    });
     expect(h.controller.stateSnapshot().casterPip).toBe(false);
     expect(h.lastHud()?.commentator?.casterPip).toBe(false);
+    // …then parks to audio-only once the fade has run.
+    await vi.advanceTimersByTimeAsync(KBT_VIEW_TRANSITION_MS);
+    caster = h.layouts[h.layouts.length - 1].find(
+      (t) => t.inputId === casterInput,
+    );
+    expect(caster!.width).toBe(1); // parked, audio-only
 
     h.controller.handleMessage('c1', {
       type: 'kbt_commentator_caster_pip',
@@ -1188,6 +1251,13 @@ describe('KettlebellTournamentController', () => {
       (t) => t.inputId === casterInput,
     );
     expect(caster!.width).toBe(220);
+    // Un-park lands on the rect instantly and fades the video back in.
+    const casterFades = h.inputTransitions.filter(
+      (t) => t.inputId === casterInput,
+    );
+    expect(casterFades[casterFades.length - 1]).toMatchObject({
+      direction: 'in',
+    });
     h.controller.dispose();
   });
 
@@ -1205,6 +1275,80 @@ describe('KettlebellTournamentController', () => {
       expect.arrayContaining([in1, in2, casterInput]),
     );
     expect(tiles.find((t) => t.inputId === casterInput)!.width).toBe(220);
+    h.controller.dispose();
+  });
+
+  // ── View-transition style toggle ──────────────────────────────────────────
+
+  it('switches the transition style from the panel and drives tile fades with it', async () => {
+    const h = harness();
+    h.controller.joinCommentator('c1', 'MAREK');
+    expect(h.controller.stateSnapshot().viewTransitionStyle).toBe('fade');
+
+    h.controller.handleMessage('c1', {
+      type: 'kbt_commentator_transition_style',
+      style: 'dissolve',
+    });
+    expect(h.controller.stateSnapshot().viewTransitionStyle).toBe('dissolve');
+    expect(h.lastHud()?.viewTransitionStyle).toBe('dissolve');
+
+    // The next tile enter (caster PiP appearing in the lobby) uses the style.
+    await h.controller.startCommentatorCamera('c1');
+    const casterInput = h.camOfferFor('c1')!.inputId;
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.inputTransitions).toContainEqual({
+      inputId: casterInput,
+      type: 'dissolve',
+      durationMs: KBT_VIEW_TRANSITION_MS,
+      direction: 'in',
+    });
+    h.controller.dispose();
+  });
+
+  it('rejects the transition style from a non-commentator and an unknown value', () => {
+    const h = harness();
+    h.controller.joinCommentator('c1', 'MAREK');
+
+    h.controller.handleMessage('intruder', {
+      type: 'kbt_commentator_transition_style',
+      style: 'dissolve',
+    });
+    expect(h.controller.stateSnapshot().viewTransitionStyle).toBe('fade');
+    expect(h.errorsFor('intruder')[0]?.code).toBe('not_commentator');
+
+    h.controller.handleMessage('c1', {
+      type: 'kbt_commentator_transition_style',
+      style: 'wipe-left',
+    });
+    expect(h.controller.stateSnapshot().viewTransitionStyle).toBe('fade');
+    expect(h.errorsFor('c1')[0]?.code).toBe('invalid_view');
+    h.controller.dispose();
+  });
+
+  it('supersedes a pending park when the view flips back mid-fade', async () => {
+    const h = harness();
+    const { in2 } = await playingHeat(h);
+    h.controller.joinCommentator('c1', 'MAREK');
+
+    // grid → player_solo: in2 starts fading out on its held rect.
+    h.controller.handleMessage('c1', {
+      type: 'kbt_commentator_view',
+      override: { mode: 'player_solo', playerId: 'p1' },
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    // Flip back before the deferred park lands.
+    h.controller.handleMessage('c1', {
+      type: 'kbt_commentator_view',
+      override: { mode: 'auto' },
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    const fades = h.inputTransitions.filter((t) => t.inputId === in2);
+    expect(fades[fades.length - 1]).toMatchObject({ direction: 'in' });
+
+    // The superseded park never lands: well past the fade, in2 is on stage.
+    await vi.advanceTimersByTimeAsync(KBT_VIEW_TRANSITION_MS * 2);
+    const tiles = h.layouts[h.layouts.length - 1];
+    expect(tiles.find((t) => t.inputId === in2)!.width).toBeGreaterThan(1);
     h.controller.dispose();
   });
 
@@ -1261,7 +1405,13 @@ describe('KettlebellTournamentController', () => {
     );
     expect(tiles.find((t) => t.inputId === in1)!.width).toBeGreaterThan(1);
     expect(tiles.find((t) => t.inputId === in2)!.width).toBeGreaterThan(1);
-    expect(tiles.find((t) => t.inputId === in3)!.width).toBe(1);
+    // The off-heat cam fades out on its held rect, then parks at 1×1.
+    await vi.advanceTimersByTimeAsync(KBT_VIEW_TRANSITION_MS);
+    const settled = h.layouts[h.layouts.length - 1];
+    expect(settled.map((t) => t.inputId)).toEqual(
+      expect.arrayContaining([in1, in2, in3]),
+    );
+    expect(settled.find((t) => t.inputId === in3)!.width).toBe(1);
     h.controller.dispose();
   });
 

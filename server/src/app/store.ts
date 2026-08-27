@@ -13,6 +13,7 @@ import type {
   ShaderConfig,
   ViewportProperties,
 } from '../types';
+import type { KbtViewTransitionStyle } from '@smelter-editor/types';
 import type { HandsStore } from '../hands/handStore';
 import type { DuckEntity } from '../duckHunter/duckFlight';
 import { createContext, useContext } from 'react';
@@ -423,6 +424,13 @@ export type KbtBoardRow = {
 };
 
 /**
+ * One view-switch animation: the chrome crossfade in KbtMatchHud and the
+ * tile fade the controller drives through `input.activeTransition` share
+ * this duration so both layers land together.
+ */
+export const KBT_VIEW_TRANSITION_MS = 350;
+
+/**
  * Off-stage parking rect: a 1×1 pixel in the bottom-left corner. Inputs laid
  * here stay in the layer (audio in the mix, decoder warm) without any
  * visible video. Used for the audio-only commentator and for player cams
@@ -536,6 +544,8 @@ export type KbtHudState = {
   /** config.countIncorrectReps; missing means on. Picks the incorrect-rep
    * floater style: asterisk (counted) vs struck-out (not counted). */
   countIncorrectReps?: boolean;
+  /** View-switch animation style (panel toggle; missing means 'fade'). */
+  viewTransitionStyle?: KbtViewTransitionStyle;
 };
 
 /** One player's stat block for spotlight / head-to-head overlays. */

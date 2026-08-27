@@ -11,6 +11,7 @@ import type {
   KbtSkeletonMode,
   KbtStateEvent,
   KbtViewOverride,
+  KbtViewTransitionStyle,
   RoomEvent,
 } from '@smelter-editor/types';
 import {
@@ -61,6 +62,8 @@ export type PanelSocket = {
   sendRepFloat: (enabled: boolean) => void;
   /** Toggle the caster-cam PiP tile on the output. */
   sendCasterPip: (enabled: boolean) => void;
+  /** Pick how view switches animate on the output (fade / dissolve). */
+  sendTransitionStyle: (style: KbtViewTransitionStyle) => void;
   retry: () => void;
 };
 
@@ -293,6 +296,13 @@ export function usePanelSocket(
     [sendJson],
   );
 
+  const sendTransitionStyle = useCallback(
+    (style: KbtViewTransitionStyle) => {
+      sendJson({ type: 'kbt_commentator_transition_style', style });
+    },
+    [sendJson],
+  );
+
   const retry = useCallback(() => {
     setWsError('');
     closedByUsRef.current = false;
@@ -316,6 +326,7 @@ export function usePanelSocket(
     sendSkeleton,
     sendRepFloat,
     sendCasterPip,
+    sendTransitionStyle,
     retry,
   };
 }

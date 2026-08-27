@@ -16,6 +16,7 @@ import type {
   KbtStateEvent,
   KbtTournamentPhase,
   KbtViewOverride,
+  KbtViewTransitionStyle,
   KettlebellExercise,
   KettlebellIssueCode,
   RoomEvent,
@@ -35,7 +36,12 @@ import type {
   KbtHudTile,
   KbtStatSide,
 } from '../app/store';
-import { kbtCasterCamRect, kbtCasterVisible, kbtParkRect } from '../app/store';
+import {
+  KBT_VIEW_TRANSITION_MS,
+  kbtCasterCamRect,
+  kbtCasterVisible,
+  kbtParkRect,
+} from '../app/store';
 
 /** Command from the arcade page's match endpoint. */
 export type KbtMatchCommand = {
@@ -89,6 +95,18 @@ export type KbtControllerDeps = {
   ) => Promise<void>;
   /** Replace the output layout with these tiles (manual positions). */
   layoutTiles: (tiles: KbtStageTile[]) => Promise<void>;
+  /**
+   * Run a one-shot fade/dissolve on an input's video (InputManager
+   * activeTransition — self-clearing after durationMs, audio untouched).
+   */
+  runInputTransition: (
+    inputId: string,
+    transition: {
+      type: KbtViewTransitionStyle;
+      durationMs: number;
+      direction: 'in' | 'out';
+    },
+  ) => void;
   /** WHIP input is currently connected (registered with the engine). */
   isInputConnected: (inputId: string) => boolean;
   /**
@@ -277,6 +295,12 @@ const MATCH_BROADCAST_MS = 1000; // 1 Hz authoritative clock for clients
  */
 const HUD_HOLD_MS = 3000;
 /**
+ * A leaving tile parks this much before its fade-out ends: the layout lands
+ * while the video is still ~invisible, so the full-opacity frame InputManager
+ * restores after clearing the transition never reaches the old rect.
+ */
+const PARK_LEAD_MS = 50;
+/**
  * A rep finished right at the buzzer surfaces up to ~1 analysis frame +
  * pipeline late. Accept scoring events this long past endsAt, and only
  * finalize (winner, frozen board) after the grace closes.
@@ -357,6 +381,8 @@ export class KettlebellTournamentController {
   private skeletonMode: KbtSkeletonMode = 'neon';
   /** Commentator cam PiP on non-featured scenes (panel toggle, default on). */
   private casterPip = true;
+  /** How view switches animate (panel toggle; drives chrome + tile fades). */
+  private viewTransitionStyle: KbtViewTransitionStyle = 'fade';
   /** url → engine imageId cache for rep-shot stills (freed at dispose). */
   private readonly repShotImageIds = new Map<string, string>();
   /** Last player-tile layout, so a scene flip can re-stage the caster cam. */
@@ -367,6 +393,31 @@ export class KettlebellTournamentController {
    * of the 1×1 parking pixel; staged→staged moves glide.
    */
   private lastStagedInputIds = new Set<string>();
+  /**
+   * Rects from the last applied layout, so a leaving tile can hold its
+   * on-stage position while its fade-out runs (park commits in commitParks).
+   */
+  private lastAppliedRects = new Map<
+    string,
+    { x: number; y: number; width: number; height: number }
+  >();
+  /** Desired (undecorated) tiles from the last applyStage, for park commits. */
+  private lastDesiredTiles: KbtStageTile[] = [];
+  /**
+   * Tiles mid-fade-out, held at their last on-stage rect until `until`.
+   * Durable across restages: a view override restages twice back to back
+   * (publishHud's scene flip + the explicit restage), and the second pass
+   * must keep holding, not park early.
+   */
+  private leavingTiles = new Map<
+    string,
+    {
+      rect: { x: number; y: number; width: number; height: number };
+      until: number;
+    }
+  >();
+  /** Deferred park commit for tiles fading out; superseded by any restage. */
+  private parkTimer: ReturnType<typeof setTimeout> | null = null;
   /** Monotonic clamp for held HUD applies (mirror of kettlebellApplyAt). */
   private hudApplyAt = 0;
   private readonly hudTimers = new Set<ReturnType<typeof setTimeout>>();
@@ -402,6 +453,7 @@ export class KettlebellTournamentController {
       bannerId?: unknown;
       mode?: unknown;
       enabled?: unknown;
+      style?: unknown;
     };
     const playerKey =
       typeof msg.playerKey === 'string' && msg.playerKey.length <= 64
@@ -484,6 +536,9 @@ export class KettlebellTournamentController {
         break;
       case 'kbt_commentator_caster_pip':
         this.setCasterPip(clientId, msg.enabled);
+        break;
+      case 'kbt_commentator_transition_style':
+        this.setViewTransitionStyle(clientId, msg.style);
         break;
       case 'kbt_commentator_match': {
         const action = msg.action;
@@ -1315,6 +1370,20 @@ export class KettlebellTournamentController {
     this.deps.broadcast(this.stateSnapshot());
   }
 
+  setViewTransitionStyle(clientId: string, raw: unknown): void {
+    if (!this.requireCommentator(clientId, 'pick the transition style')) return;
+    if (raw !== 'fade' && raw !== 'dissolve') {
+      this.sendError(clientId, 'invalid_view', 'Unknown transition style.');
+      return;
+    }
+    if (this.viewTransitionStyle === raw) return;
+    this.viewTransitionStyle = raw;
+    // Style rides the HUD snapshot (the chrome crossfade reads it); publish
+    // immediately so the very next switch already animates the new way.
+    this.publishHud(true);
+    this.deps.broadcast(this.stateSnapshot());
+  }
+
   /**
    * Coach model params for a staged heat. Single source of truth: the worker
    * replaces params wholesale, so both heat staging and the live skeleton
@@ -2038,10 +2107,17 @@ export class KettlebellTournamentController {
    * 1×1 offscreen pixel: the layout must mention ALL of them, or RoomState's
    * unplaced-input auto-append resurrects the missing ones at their stale
    * rects on top of the stage (parking also keeps their decoders warm).
-   * Park/unpark tiles get a hard cut (durationMs 0) so faces never scale
-   * to/from the parking pixel; staged→staged moves glide with ease-in-out.
+   * Park/unpark tiles never scale to/from the parking pixel: an entering
+   * tile lands on its rect instantly and fades in, a leaving tile holds its
+   * on-stage rect through a fade-out and parks on parkTimer; staged→staged
+   * moves glide with ease-in-out.
    */
   private async applyStage(): Promise<void> {
+    // A new stage supersedes any pending park commit from the previous one.
+    if (this.parkTimer) {
+      clearTimeout(this.parkTimer);
+      this.parkTimer = null;
+    }
     const override = this.overrideTiles();
     const all: KbtStageTile[] = [...(override ?? this.lastTiles)];
     const resolution = this.deps.getResolution();
@@ -2063,21 +2139,117 @@ export class KettlebellTournamentController {
     const staged = new Set(
       all.filter((t) => t.width > 1).map((t) => t.inputId),
     );
-    const decorated = all.map((t) =>
-      t.width > 1 && this.lastStagedInputIds.has(t.inputId)
-        ? {
+    this.lastDesiredTiles = all;
+    const fade = {
+      type: this.viewTransitionStyle,
+      durationMs: KBT_VIEW_TRANSITION_MS,
+    };
+    const now = this.now();
+    let nextParkAt = Infinity;
+    const decorated = all.map((t) => {
+      const wasStaged = this.lastStagedInputIds.has(t.inputId);
+      if (t.width > 1) {
+        this.leavingTiles.delete(t.inputId);
+        if (wasStaged) {
+          return {
             ...t,
             transitionDurationMs: 300,
             transitionEasing: 'cubic_bezier_ease_in_out',
-          }
-        : { ...t, transitionDurationMs: 0 },
-    );
+          };
+        }
+        // Entering from park: land on the rect instantly, fade the video in.
+        this.deps.runInputTransition(t.inputId, { ...fade, direction: 'in' });
+        return { ...t, transitionDurationMs: 0 };
+      }
+      const leaving = this.leavingTiles.get(t.inputId);
+      if (leaving && leaving.until - PARK_LEAD_MS > now) {
+        // Still mid-fade-out: keep holding the on-stage rect, the running
+        // fade needs no restart.
+        nextParkAt = Math.min(nextParkAt, leaving.until - PARK_LEAD_MS);
+        return { ...t, ...leaving.rect, transitionDurationMs: 0 };
+      }
+      if (leaving) this.leavingTiles.delete(t.inputId);
+      const rect = wasStaged ? this.lastAppliedRects.get(t.inputId) : undefined;
+      if (rect) {
+        // Leaving the stage: hold the rect through a fade-out; the park
+        // itself commits in commitParks.
+        this.leavingTiles.set(t.inputId, {
+          rect,
+          until: now + KBT_VIEW_TRANSITION_MS,
+        });
+        this.deps.runInputTransition(t.inputId, { ...fade, direction: 'out' });
+        nextParkAt = Math.min(
+          nextParkAt,
+          now + KBT_VIEW_TRANSITION_MS - PARK_LEAD_MS,
+        );
+        return { ...t, ...rect, transitionDurationMs: 0 };
+      }
+      return { ...t, transitionDurationMs: 0 };
+    });
     this.lastStagedInputIds = staged;
+    this.lastAppliedRects = new Map(
+      decorated.map((t) => [
+        t.inputId,
+        { x: t.x, y: t.y, width: t.width, height: t.height },
+      ]),
+    );
+    if (nextParkAt < Infinity) {
+      this.parkTimer = setTimeout(
+        () => this.commitParks(),
+        Math.max(0, nextParkAt - now),
+      );
+    }
     try {
       await this.deps.layoutTiles(decorated);
     } catch (err) {
       console.error('[kbt] layoutTiles failed', err);
     }
+  }
+
+  /**
+   * Park every leaver whose fade-out has (nearly) run — PARK_LEAD_MS early,
+   * so the 1×1 rect lands before InputManager restores full opacity — and
+   * keep holding the rest, rescheduling for the earliest of them.
+   */
+  private commitParks(): void {
+    this.parkTimer = null;
+    const now = this.now();
+    let nextAt = Infinity;
+    const tiles = this.lastDesiredTiles.map((t) => {
+      const leaving = this.leavingTiles.get(t.inputId);
+      if (!leaving) {
+        // Re-glide staying tiles: a commit can land mid-glide, and a bare
+        // re-apply of the target rect would snap the move.
+        return t.width > 1
+          ? {
+              ...t,
+              transitionDurationMs: 300,
+              transitionEasing: 'cubic_bezier_ease_in_out',
+            }
+          : { ...t, transitionDurationMs: 0 };
+      }
+      if (leaving.until - PARK_LEAD_MS <= now) {
+        this.leavingTiles.delete(t.inputId);
+        return { ...t, transitionDurationMs: 0 };
+      }
+      nextAt = Math.min(nextAt, leaving.until - PARK_LEAD_MS);
+      return { ...t, ...leaving.rect, transitionDurationMs: 0 };
+    });
+    this.lastAppliedRects = new Map(
+      tiles.map((t) => [
+        t.inputId,
+        { x: t.x, y: t.y, width: t.width, height: t.height },
+      ]),
+    );
+    if (nextAt < Infinity) {
+      this.parkTimer = setTimeout(
+        () => this.commitParks(),
+        Math.max(0, nextAt - now),
+      );
+    }
+    this.deps.layoutTiles(tiles).catch((err) => {
+      console.error('[kbt] park layoutTiles failed', err);
+    });
   }
 
   /** Re-apply the current stage (scene flip moved the caster cam rect, the
@@ -2528,6 +2700,7 @@ export class KettlebellTournamentController {
         : { kind: 'none' },
       skeletonMode: this.skeletonMode,
       casterPip: this.casterPip,
+      viewTransitionStyle: this.viewTransitionStyle,
       isRecording: this.deps.hasActiveRecording?.() ?? false,
     };
   }
@@ -2978,6 +3151,7 @@ export class KettlebellTournamentController {
       // reaches the air aligned with the delayed video.
       repFloatText: this.config.repFloatText,
       countIncorrectReps: this.config.countIncorrectReps,
+      viewTransitionStyle: this.viewTransitionStyle,
     };
     if (immediate) {
       // Scene cut: supersede every queued held snapshot and land this one
@@ -3008,6 +3182,10 @@ export class KettlebellTournamentController {
     this.stop();
     for (const t of this.hudTimers) clearTimeout(t);
     this.hudTimers.clear();
+    if (this.parkTimer) {
+      clearTimeout(this.parkTimer);
+      this.parkTimer = null;
+    }
     for (const imageId of this.repShotImageIds.values()) {
       this.deps.unregisterRepShotImage(imageId);
     }

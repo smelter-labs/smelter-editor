@@ -450,6 +450,13 @@ export class RoomState {
             })),
           },
         ]),
+      // InputManager directly (like the volume calls) — the public
+      // RoomState.updateInput would round-trip the engine for a purely
+      // compositor-side fade.
+      runInputTransition: (inputId, transition) =>
+        this.inputManager.updateInput(inputId, {
+          activeTransition: transition,
+        }),
       isInputConnected: (inputId) =>
         this.inputManager
           .getInputs()

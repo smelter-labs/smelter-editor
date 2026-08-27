@@ -126,6 +126,13 @@ export type KbtViewOverride =
   | { mode: "grid" }
   | { mode: "board" };
 
+/**
+ * How a broadcast view switch animates: 'fade' = opacity crossfade,
+ * 'dissolve' = noise-based pixel dissolve. Subset of the generic
+ * `TransitionType` vocabulary (transition.ts) the KBT panel exposes.
+ */
+export type KbtViewTransitionStyle = "fade" | "dissolve";
+
 /** Skeleton overlay draw mode on heat tiles (mirrors the coach model param). */
 export type KbtSkeletonMode = "off" | "lines" | "neon";
 
@@ -334,6 +341,11 @@ export type KbtCommentatorCasterPipMessage = {
   type: "kbt_commentator_caster_pip";
   enabled: boolean;
 };
+/** Pick how view switches animate on the program output. */
+export type KbtCommentatorTransitionStyleMessage = {
+  type: "kbt_commentator_transition_style";
+  style: KbtViewTransitionStyle;
+};
 
 export type KbtClientMessage =
   | KbtJoinMessage
@@ -351,7 +363,8 @@ export type KbtClientMessage =
   | KbtCommentatorBannerMessage
   | KbtCommentatorSkeletonMessage
   | KbtCommentatorRepFloatMessage
-  | KbtCommentatorCasterPipMessage;
+  | KbtCommentatorCasterPipMessage
+  | KbtCommentatorTransitionStyleMessage;
 
 /** Public commentator info in `kbt_state`. */
 export type KbtCommentator = {
@@ -384,6 +397,8 @@ export type KbtStateEvent = {
   /** Commentator cam PiP visible outside full-frame caster scenes (absent on
    * older servers — treat as true). */
   casterPip?: boolean;
+  /** View-switch animation style (absent on older servers — treat as 'fade'). */
+  viewTransitionStyle?: KbtViewTransitionStyle;
   /** An MP4 recording of the program output is running (absent on older servers). */
   isRecording?: boolean;
 };
