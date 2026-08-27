@@ -71,3 +71,4 @@ secret.env
 server/.smelter-bin/
 workshop/__pycache__/
 *.pyc
+weights/clip/

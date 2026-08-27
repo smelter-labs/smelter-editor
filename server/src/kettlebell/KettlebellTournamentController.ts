@@ -180,6 +180,9 @@ type PlayerState = {
 type ScoreState = {
   points: number;
   reps: Record<KbtExerciseKey, number>;
+  /** Every judged rep attempt this heat, no-count no-reps included — the
+   * floater spawn clock + accuracy denominator. */
+  attempts: number;
   incorrectReps: number;
   streak: number;
   bestStreak: number;
@@ -352,6 +355,8 @@ export class KettlebellTournamentController {
   > | null = null;
   /** Live skeleton mode for heat tiles (rides in the coach params). */
   private skeletonMode: KbtSkeletonMode = 'neon';
+  /** Commentator cam PiP on non-featured scenes (panel toggle, default on). */
+  private casterPip = true;
   /** url → engine imageId cache for rep-shot stills (freed at dispose). */
   private readonly repShotImageIds = new Map<string, string>();
   /** Last player-tile layout, so a scene flip can re-stage the caster cam. */
@@ -476,6 +481,9 @@ export class KettlebellTournamentController {
         break;
       case 'kbt_commentator_rep_float':
         this.setRepFloatText(clientId, msg.enabled);
+        break;
+      case 'kbt_commentator_caster_pip':
+        this.setCasterPip(clientId, msg.enabled);
         break;
       case 'kbt_commentator_match': {
         const action = msg.action;
@@ -953,6 +961,43 @@ export class KettlebellTournamentController {
     void this.deps.removeInput(inputId).catch(() => {});
   }
 
+  /**
+   * The room reaped inputs behind our back (stale-WHIP sweep). Drop every
+   * reference so a later restage can't re-push a dead input and the panel
+   * learns the cam is down (the client's auto-republish trigger). No
+   * deps.removeInput here — the inputs are already gone from the engine.
+   */
+  onInputsRemoved(inputIds: string[]): void {
+    if (this.disposed) return;
+    const gone = new Set(inputIds);
+    let changed = false;
+    const c = this.commentator;
+    if (c?.inputId != null && gone.has(c.inputId)) {
+      const inputId = c.inputId;
+      c.inputId = null;
+      c.camConnected = false;
+      this.lastTiles = this.lastTiles.filter((t) => t.inputId !== inputId);
+      changed = true;
+    }
+    for (const p of this.players.values()) {
+      if (p.inputId != null && gone.has(p.inputId)) {
+        const inputId = p.inputId;
+        p.inputId = null;
+        p.camConnected = false;
+        p.camDownAt = null;
+        p.poseTracked = false;
+        p.fullBody = true;
+        this.lastTiles = this.lastTiles.filter((t) => t.inputId !== inputId);
+        changed = true;
+      }
+    }
+    if (!changed) return;
+    void this.restage();
+    // publishHud (via broadcastState) re-validates overrides, so a caster/
+    // split view pinned to a dead input falls back to AUTO on its own.
+    this.broadcastState();
+  }
+
   // ── Commentator view + show control (the moderator panel) ─────────────────
 
   /**
@@ -1254,6 +1299,22 @@ export class KettlebellTournamentController {
     this.deps.broadcast(this.stateSnapshot());
   }
 
+  /** Toggle the commentator's PiP cam tile (visible outside caster/split). */
+  setCasterPip(clientId: string, raw: unknown): void {
+    if (!this.requireCommentator(clientId, 'toggle the cam PiP')) return;
+    if (typeof raw !== 'boolean') {
+      this.sendError(clientId, 'invalid_overlay', 'Invalid cam PiP toggle.');
+      return;
+    }
+    if (this.casterPip === raw) return;
+    this.casterPip = raw;
+    // The tile moves instantly (restage), so the chrome must not ride the
+    // ~3s hold — publish immediately like a scene cut.
+    this.publishHud(true);
+    void this.restage();
+    this.deps.broadcast(this.stateSnapshot());
+  }
+
   /**
    * Coach model params for a staged heat. Single source of truth: the worker
    * replaces params wholesale, so both heat staging and the live skeleton
@@ -1511,13 +1572,22 @@ export class KettlebellTournamentController {
     if (this.config.strictTechnique && verdict === 'incorrect') {
       points = Math.floor(points / 2);
     }
+    const counted = this.config.countIncorrectReps || verdict === 'correct';
+    if (!counted) points = 0;
 
-    score.reps[key] += 1;
-    if (this.config.milestoneFx && score.reps[key] % MILESTONE_FX_EVERY === 0) {
-      score.fxAt = now;
-      score.fxExercise = key;
+    score.attempts += 1;
+    if (counted) {
+      score.reps[key] += 1;
+      if (
+        this.config.milestoneFx &&
+        score.reps[key] % MILESTONE_FX_EVERY === 0
+      ) {
+        score.fxAt = now;
+        score.fxExercise = key;
+      }
+      score.points += points;
+      score.repTimes.push(now);
     }
-    score.points += points;
     if (verdict === 'incorrect') {
       score.incorrectReps += 1;
       score.streak = 0;
@@ -1529,7 +1599,6 @@ export class KettlebellTournamentController {
     score.lastRepAt = now;
     score.lastRepVerdict = verdict;
     score.lastRepPoints = points;
-    score.repTimes.push(now);
     if (screenshotUrl) {
       score.repShots.push({
         repIndex,
@@ -1637,8 +1706,10 @@ export class KettlebellTournamentController {
     repScreenshots?: boolean;
     /** Every-5th-rep on-air celebration (aura + tile shake). */
     milestoneFx?: boolean;
-    /** Floating "SNATCH +3" / "NO REP" text on every scored rep. */
+    /** Floating "SNATCH +3" / "SNATCH*" text on every scored rep. */
     repFloatText?: boolean;
+    /** When false, incorrect reps add no reps and no points. */
+    countIncorrectReps?: boolean;
     /** Athlete join URL — becomes the lobby scene's on-air QR. */
     joinUrl?: string;
     /** Short human-readable address shown next to the QR (defaults to the
@@ -1710,6 +1781,9 @@ export class KettlebellTournamentController {
     }
     if (typeof cfg.repFloatText === 'boolean') {
       this.config.repFloatText = cfg.repFloatText;
+    }
+    if (typeof cfg.countIncorrectReps === 'boolean') {
+      this.config.countIncorrectReps = cfg.countIncorrectReps;
     }
     this.broadcastState();
     return structuredClone(this.config);
@@ -1882,6 +1956,7 @@ export class KettlebellTournamentController {
     return {
       points: 0,
       reps: { swing: 0, clean: 0, snatch: 0 },
+      attempts: 0,
       incorrectReps: 0,
       streak: 0,
       bestStreak: 0,
@@ -1974,7 +2049,10 @@ export class KettlebellTournamentController {
     if (casterInput && !all.some((t) => t.inputId === casterInput)) {
       all.push({
         inputId: casterInput,
-        ...kbtCasterCamRect(resolution, kbtCasterVisible(this.stagedScene)),
+        ...kbtCasterCamRect(
+          resolution,
+          kbtCasterVisible(this.stagedScene, this.casterPip),
+        ),
       });
     }
     for (const p of this.players.values()) {
@@ -2449,6 +2527,7 @@ export class KettlebellTournamentController {
         ? { ...this.commentatorOverlay }
         : { kind: 'none' },
       skeletonMode: this.skeletonMode,
+      casterPip: this.casterPip,
       isRecording: this.deps.hasActiveRecording?.() ?? false,
     };
   }
@@ -2655,7 +2734,11 @@ export class KettlebellTournamentController {
           reps,
           streak: activeScore.streak,
           bestStreak: activeScore.bestStreak,
-          accuracy: reps > 0 ? (reps - activeScore.incorrectReps) / reps : null,
+          accuracy:
+            activeScore.attempts > 0
+              ? (activeScore.attempts - activeScore.incorrectReps) /
+                activeScore.attempts
+              : null,
         },
       };
     }
@@ -2682,7 +2765,9 @@ export class KettlebellTournamentController {
         streak: 0,
         bestStreak: sheet?.bestStreak ?? 0,
         accuracy:
-          sheet && reps > 0 ? (reps - sheet.incorrectReps) / reps : null,
+          sheet && sheet.attempts > 0
+            ? (sheet.attempts - sheet.incorrectReps) / sheet.attempts
+            : null,
       },
     };
   }
@@ -2787,6 +2872,7 @@ export class KettlebellTournamentController {
           photoImageId: p.photoImageId,
           points: s.points,
           reps: s.reps.swing + s.reps.clean + s.reps.snatch,
+          repSeq: s.attempts,
           repsByExercise: { ...s.reps },
           rpm: this.rpmFor(s, heat, now),
           rank: rankOf.get(id) ?? heat.playerIds.length,
@@ -2882,6 +2968,7 @@ export class KettlebellTournamentController {
             name: this.commentator.name,
             camConnected: this.commentator.camConnected,
             inputId: this.commentator.inputId,
+            casterPip: this.casterPip,
           }
         : null,
       leader,
@@ -2890,6 +2977,7 @@ export class KettlebellTournamentController {
       // Rides the same ~3s hold as everything else, so a mid-heat flip
       // reaches the air aligned with the delayed video.
       repFloatText: this.config.repFloatText,
+      countIncorrectReps: this.config.countIncorrectReps,
     };
     if (immediate) {
       // Scene cut: supersede every queued held snapshot and land this one

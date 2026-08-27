@@ -39,6 +39,15 @@ export type CommentatorRig = {
   /** The panel asked for a cam slot — show CONNECTING until publish lands. */
   markPublishing: () => void;
   hasStream: () => boolean;
+  /** The publish peer connection exists (not necessarily healthy). */
+  hasActivePc: () => boolean;
+  /** The current video track is capturing (readyState 'live'). */
+  hasLiveTrack: () => boolean;
+  /** Tear down the publish without firing onPublishDead (caller-initiated). */
+  closePublish: () => void;
+  /** One listener for "the publish died" (pc failed/closed, publish POST
+   * failed, or the camera track ended) — recovery hooks in here. */
+  setOnPublishDead: (cb: (() => void) | null) => void;
   dispose: () => void;
 };
 
@@ -66,6 +75,7 @@ export function useCommentatorRig(roomId: string): CommentatorRig {
   const camPcRef = useRef<RTCPeerConnection | null>(null);
   const mutedRef = useRef(false);
   mutedRef.current = muted;
+  const onPublishDeadRef = useRef<(() => void) | null>(null);
 
   // Gated on `live` so a dead publish stops acking (server-side liveness).
   useWhipHeartbeat(roomId, camInputId, camOn && live);
@@ -112,6 +122,17 @@ export function useCommentatorRig(roomId: string): CommentatorRig {
           },
         });
         camStreamRef.current = stream;
+        // OS-level camera loss (sleep/unplug) ends the track without any
+        // peer-connection event — surface it so recovery can republish.
+        // (`stop()` on device swaps does NOT fire 'ended', so no false
+        // positives; the stream guard covers swapped-out streams anyway.)
+        const videoTrack = stream.getVideoTracks()[0];
+        videoTrack?.addEventListener('ended', () => {
+          if (camStreamRef.current === stream) {
+            setLive(false);
+            onPublishDeadRef.current?.();
+          }
+        });
         // A device swap mid-show must not blip the publish: swap the tracks
         // on the live peer connection instead of renegotiating.
         const pc = camPcRef.current;
@@ -185,6 +206,7 @@ export function useCommentatorRig(roomId: string): CommentatorRig {
       () => {
         camPcRef.current = null;
         setLive(false);
+        onPublishDeadRef.current?.();
       },
       undefined,
       false,
@@ -194,17 +216,32 @@ export function useCommentatorRig(roomId: string): CommentatorRig {
       .then(() => {
         setLive(true);
         setPublishing(false);
+        setCamErr(null);
       })
       .catch(() => {
         camPcRef.current = null;
         setLive(false);
         setPublishing(false);
         setCamErr('PUBLISH FAILED — check the connection and try again.');
+        onPublishDeadRef.current?.();
       });
   }, []);
 
   const markPublishing = useCallback(() => setPublishing(true), []);
   const hasStream = useCallback(() => camStreamRef.current != null, []);
+  const hasActivePc = useCallback(() => camPcRef.current != null, []);
+  const hasLiveTrack = useCallback(
+    () => camStreamRef.current?.getVideoTracks()[0]?.readyState === 'live',
+    [],
+  );
+  const closePublish = useCallback(() => {
+    camPcRef.current?.close();
+    camPcRef.current = null;
+    setLive(false);
+  }, []);
+  const setOnPublishDead = useCallback((cb: (() => void) | null) => {
+    onPublishDeadRef.current = cb;
+  }, []);
 
   const dispose = useCallback(() => {
     camPcRef.current?.close();
@@ -233,6 +270,10 @@ export function useCommentatorRig(roomId: string): CommentatorRig {
     handleCamOffer,
     markPublishing,
     hasStream,
+    hasActivePc,
+    hasLiveTrack,
+    closePublish,
+    setOnPublishDead,
     dispose,
   };
 }

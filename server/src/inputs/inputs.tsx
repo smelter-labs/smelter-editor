@@ -183,6 +183,12 @@ export function Input({ input }: { input: InputConfig }) {
     store,
     (state) => state.kbTournament?.repFloatText !== false,
   );
+  // Incorrect-rep counting toggle (asterisk vs struck-out floater style);
+  // missing on old snapshots → on.
+  const kbtCountIncorrect = useStore(
+    store,
+    (state) => state.kbTournament?.countIncorrectReps !== false,
+  );
 
   // The video/content element for the playing state. Extracted so Ghost City
   // can wrap it in the haunted-city shader without disturbing the overlays
@@ -430,6 +436,7 @@ export function Input({ input }: { input: InputConfig }) {
               scene={kbtScene === 'split' ? 'grid' : kbtScene}
               parent={{ width: contentWidth, height: contentHeight }}
               floatText={kbtRepFloat}
+              countIncorrect={kbtCountIncorrect}
             />
           ) : null}
           {input.showTitle !== false && (

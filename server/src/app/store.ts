@@ -342,8 +342,13 @@ export type KbtHudTile = {
   /** Registered engine image id of the player's profile photo, if any. */
   photoImageId?: string | null;
   points: number;
-  /** Total reps this heat (all exercises, scored or not). */
+  /** Total counted reps this heat (all exercises; excludes no-count
+   * no-reps when countIncorrectReps is off). */
   reps: number;
+  /** Monotonic count of judged rep attempts this heat, no-count no-reps
+   * included — the floater's spawn/reset clock (reps alone stalls when
+   * countIncorrectReps is off). */
+  repSeq: number;
   /** Per-exercise rep counts (the solo scene's AI REP TRACKER panel). */
   repsByExercise: { swing: number; clean: number; snatch: number };
   /** Reps per minute over a rolling window (snapshot-computed). */
@@ -454,10 +459,12 @@ export function kbtCasterCamRect(
   };
 }
 
-/** Scenes where the commentator camera is visible (lower-third shown).
- * Heats are audio-only; the podium keeps its blocks clear too. */
-export function kbtCasterVisible(scene: KbtHudScene): boolean {
-  return scene === 'lobby' || scene === 'board';
+/** Whether the commentator camera is visible (lower-third PiP shown). The
+ * panel toggle (`pip`) gates every scene; caster/split are excluded because
+ * the commentator is already full-frame there. PiP off = audio-only with the
+ * mini ON AIR chip. */
+export function kbtCasterVisible(scene: KbtHudScene, pip: boolean): boolean {
+  return pip && scene !== 'caster' && scene !== 'split';
 }
 
 /**
@@ -508,6 +515,8 @@ export type KbtHudState = {
     name: string;
     camConnected: boolean;
     inputId: string | null;
+    /** Panel toggle: PiP cam tile shown on non-featured scenes. */
+    casterPip: boolean;
   } | null;
   /** Current leader (heat leader during play, standings leader otherwise). */
   leader: { name: string; points: number } | null;
@@ -524,6 +533,9 @@ export type KbtHudState = {
   /** Floating rep text feature flag (config.repFloatText); the renderer
    * treats a missing value as on. */
   repFloatText?: boolean;
+  /** config.countIncorrectReps; missing means on. Picks the incorrect-rep
+   * floater style: asterisk (counted) vs struck-out (not counted). */
+  countIncorrectReps?: boolean;
 };
 
 /** One player's stat block for spotlight / head-to-head overlays. */
@@ -536,7 +548,7 @@ export type KbtStatSide = {
   reps: number;
   streak: number;
   bestStreak: number;
-  /** Correct-rep ratio 0..1; null when the player has no reps yet. */
+  /** Correct-attempt ratio 0..1; null when the player has no attempts yet. */
   accuracy: number | null;
 };
 

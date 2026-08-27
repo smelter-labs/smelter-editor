@@ -68,8 +68,10 @@ function loadConfig(): KbtUiConfig {
       // Old localStorage blobs lack the key → celebration on by default.
       milestoneFx: typeof p.milestoneFx === 'boolean' ? p.milestoneFx : true,
       // Old localStorage blobs lack the key → floating rep text on.
-      repFloatText:
-        typeof p.repFloatText === 'boolean' ? p.repFloatText : true,
+      repFloatText: typeof p.repFloatText === 'boolean' ? p.repFloatText : true,
+      // Old localStorage blobs lack the key → incorrect reps count.
+      countIncorrectReps:
+        typeof p.countIncorrectReps === 'boolean' ? p.countIncorrectReps : true,
       // Old localStorage blobs lack the key → HD (back-compat).
       resolution:
         p.resolution && p.resolution in RESOLUTION_PRESETS
@@ -97,6 +99,7 @@ function serverConfigToUi(cfg: KbtConfig): KbtUiConfig {
     repScreenshots: !!cfg.repScreenshots,
     milestoneFx: cfg.milestoneFx !== false,
     repFloatText: cfg.repFloatText !== false,
+    countIncorrectReps: cfg.countIncorrectReps !== false,
     // Not part of the server config — resolution is fixed at room creation,
     // so after a refresh keep whatever this browser last picked.
     resolution: loadConfig().resolution,

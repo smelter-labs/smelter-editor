@@ -43,8 +43,12 @@ export type KbtConfig = {
    * (aura in the exercise's color + tile shake). */
   milestoneFx: boolean;
   /** When true, every scored rep floats game-style text up the tile
-   * ("SNATCH +3", or "NO REP" on an incorrect rep). */
+   * ("SNATCH +3"; incorrect reps show "SNATCH*", or a struck-out name when
+   * countIncorrectReps is off). */
   repFloatText: boolean;
+  /** When false, reps judged 'incorrect' add no reps and no points (they
+   * still reset the streak and show struck-out on air). */
+  countIncorrectReps: boolean;
 };
 
 /** Defaults: harder lifts pay more; technique is forgiving (easy to play). */
@@ -61,6 +65,7 @@ export const KBT_DEFAULT_CONFIG: KbtConfig = {
   repScreenshots: false,
   milestoneFx: true,
   repFloatText: true,
+  countIncorrectReps: true,
 };
 
 /**
@@ -324,6 +329,11 @@ export type KbtCommentatorRepFloatMessage = {
   type: "kbt_commentator_rep_float";
   enabled: boolean;
 };
+/** Toggle the commentator's picture-in-picture cam tile on the output. */
+export type KbtCommentatorCasterPipMessage = {
+  type: "kbt_commentator_caster_pip";
+  enabled: boolean;
+};
 
 export type KbtClientMessage =
   | KbtJoinMessage
@@ -340,7 +350,8 @@ export type KbtClientMessage =
   | KbtCommentatorOverlayMessage
   | KbtCommentatorBannerMessage
   | KbtCommentatorSkeletonMessage
-  | KbtCommentatorRepFloatMessage;
+  | KbtCommentatorRepFloatMessage
+  | KbtCommentatorCasterPipMessage;
 
 /** Public commentator info in `kbt_state`. */
 export type KbtCommentator = {
@@ -370,6 +381,9 @@ export type KbtStateEvent = {
   commentatorOverlay?: KbtCommentatorOverlay;
   /** Skeleton mode on heat tiles (absent on older servers — treat as 'neon'). */
   skeletonMode?: KbtSkeletonMode;
+  /** Commentator cam PiP visible outside full-frame caster scenes (absent on
+   * older servers — treat as true). */
+  casterPip?: boolean;
   /** An MP4 recording of the program output is running (absent on older servers). */
   isRecording?: boolean;
 };

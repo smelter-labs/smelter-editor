@@ -212,6 +212,7 @@ interface SmelterApiClient {
       repScreenshots?: boolean;
       milestoneFx?: boolean;
       repFloatText?: boolean;
+      countIncorrectReps?: boolean;
       /** Athlete join URL — the server burns it into the lobby QR. */
       joinUrl?: string;
       joinLabel?: string;

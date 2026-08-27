@@ -15,6 +15,7 @@ import {
   kbtMonoFont,
 } from '../kbt-kit';
 import { KbtAvatar } from '../avatar';
+import { UseCameraButton, UseRecordingButton } from './use-recording-button';
 
 function Row({
   left,
@@ -125,6 +126,9 @@ export function ReadyStep({
   sendFps,
   onToggleFile,
   onRestartFile,
+  needsSource,
+  onUseFile,
+  onUseCamera,
   facing,
   attachVideo,
 }: {
@@ -150,6 +154,12 @@ export function ReadyStep({
   sendFps?: number | null;
   onToggleFile?: () => void;
   onRestartFile?: () => void;
+  /** A refresh dropped the recording — ask for the source again. */
+  needsSource?: boolean;
+  /** Pick (or re-pick) a recorded clip as the published source. */
+  onUseFile?: (file: File) => void;
+  /** Swap to the live camera as the published source. */
+  onUseCamera?: () => void;
   facing: 'user' | 'environment';
   attachVideo: (el: HTMLVideoElement | null) => void;
 }) {
@@ -368,6 +378,27 @@ export function ReadyStep({
         </div>
       ) : null}
 
+      {needsSource ? (
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+            flexShrink: 0,
+          }}>
+          <WarnPlate>
+            NO VIDEO SOURCE — a reload drops your recording. Pick it again, or
+            switch to the camera.
+          </WarnPlate>
+          <div style={{ display: 'flex', gap: 18, justifyContent: 'center' }}>
+            {onUseFile ? (
+              <UseRecordingButton fileMode onUseFile={onUseFile} />
+            ) : null}
+            {onUseCamera ? <UseCameraButton onClick={onUseCamera} /> : null}
+          </div>
+        </div>
+      ) : null}
+
       {camOn && live === false ? (
         <div
           style={{
@@ -409,6 +440,23 @@ export function ReadyStep({
             dense
             onClick={() => onRestartFile?.()}
           />
+        </div>
+      ) : null}
+
+      {/* Source swap while the rig works — a refresh isn't required to
+          trade the camera for a recording (or back). */}
+      {camOn && !needsSource && onUseFile ? (
+        <div
+          style={{
+            display: 'flex',
+            gap: 18,
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}>
+          <UseRecordingButton fileMode={fileMode} onUseFile={onUseFile} />
+          {fileMode && onUseCamera ? (
+            <UseCameraButton onClick={onUseCamera} />
+          ) : null}
         </div>
       ) : null}
 

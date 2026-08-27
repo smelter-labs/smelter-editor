@@ -24,6 +24,8 @@ type Floater = {
   startAt: number;
   label: string;
   color: string;
+  /** No-count no-rep: draw a strike bar through the label. */
+  strike: boolean;
   /** Small per-floater horizontal offset so back-to-back reps don't stack. */
   xJitter: number;
 };
@@ -35,54 +37,74 @@ function withAlpha(hex: string, alpha: number): string {
 }
 
 /**
- * Game-style floating rep text: on every scored rep a "SNATCH +3" (or red
- * "NO REP") spawns mid-tile and drifts up like smoke — sine wobble widening
- * as it rises, fading out over its lifetime.
+ * Game-style floating rep text: on every scored rep a "SNATCH +3" (or a red
+ * "SNATCH*" / struck-out "SNATCH" on an incorrect rep) spawns mid-tile and
+ * drifts up like smoke — sine wobble widening as it rises, fading out over
+ * its lifetime.
  *
  * Same clocking recipe as KbtShakeWrapper: the ~10 Hz held snapshots only
- * *spawn* floaters (a `tile.reps` increase between renders is a new rep —
- * inherently aligned with the ~3s-delayed video, unlike live pose state);
- * a local 60 Hz interval renders the actual motion.
+ * *spawn* floaters (a `tile.repSeq` increase between renders is a new rep
+ * attempt — inherently aligned with the ~3s-delayed video, unlike live pose
+ * state); a local 60 Hz interval renders the actual motion.
  */
 export function KbtRepFloaters({
   tile,
   parent,
+  countIncorrect,
 }: {
   tile: KbtHudTile;
   parent: { width: number; height: number };
+  /** hud countIncorrectReps — asterisk (counted) vs strike (not counted). */
+  countIncorrect: boolean;
 }) {
   const k = parent.height / 1080;
-  const prevReps = useRef<number | null>(null);
+  const prevSeq = useRef<number | null>(null);
   const floaters = useRef<Floater[]>([]);
   const nextId = useRef(0);
   const [, setTick] = useState(0);
 
-  if (prevReps.current != null && tile.reps < prevReps.current) {
-    // Reps went backwards: heat restart — drop leftovers from the old heat.
+  if (prevSeq.current != null && tile.repSeq < prevSeq.current) {
+    // Attempts went backwards: heat restart — drop leftovers from the old heat.
     floaters.current = [];
   }
-  if (prevReps.current != null && tile.reps > prevReps.current) {
-    // One floater even if reps jumped by 2+ in a single snapshot: the
+  if (prevSeq.current != null && tile.repSeq > prevSeq.current) {
+    // One floater even if attempts jumped by 2+ in a single snapshot: the
     // lastRep* fields only describe the latest rep.
     const bad = tile.lastRepVerdict === 'incorrect';
     const ex = tile.exercise === 'idle' ? '' : tile.exercise.toUpperCase();
-    const label = bad
-      ? 'NO REP'
-      : tile.lastRepPoints > 0
-        ? `${ex} +${tile.lastRepPoints}`.trim()
-        : ex;
+    let label: string;
+    let strike = false;
+    if (!bad) {
+      label = tile.lastRepPoints > 0 ? `${ex} +${tile.lastRepPoints}` : ex;
+    } else if (countIncorrect) {
+      // Counted no-rep: the lift with an asterisk (strict judging may still
+      // pay half points).
+      label =
+        tile.lastRepPoints > 0 ? `${ex}* +${tile.lastRepPoints}` : `${ex}*`;
+    } else {
+      // Not counted: struck-out lift name, zero everything.
+      label = ex;
+      strike = true;
+    }
     const color = bad
       ? BAD
       : (KBT_EXERCISE_COLORS[tile.exercise as KbtExerciseKey] ?? tile.color);
     const id = nextId.current++;
-    if (label) {
+    if (ex) {
       floaters.current = [
         ...floaters.current,
-        { id, startAt: Date.now(), label, color, xJitter: ((id % 3) - 1) * 36 },
+        {
+          id,
+          startAt: Date.now(),
+          label,
+          color,
+          strike,
+          xJitter: ((id % 3) - 1) * 36,
+        },
       ];
     }
   }
-  prevReps.current = tile.reps;
+  prevSeq.current = tile.repSeq;
 
   const now = Date.now();
   floaters.current = floaters.current.filter((f) => now - f.startAt < FLOAT_MS);
@@ -99,7 +121,8 @@ export function KbtRepFloaters({
   if (!active) return null;
 
   return (
-    <View style={{ top: 0, left: 0, width: parent.width, height: parent.height }}>
+    <View
+      style={{ top: 0, left: 0, width: parent.width, height: parent.height }}>
       {floaters.current.map((f) => {
         const t = (now - f.startAt) / FLOAT_MS;
         // Hold full alpha through the pop, then fade out.
@@ -110,6 +133,14 @@ export function KbtRepFloaters({
         // Slight growth substitutes for the missing scale transform.
         const fs = Math.round(FS * (1 + 0.12 * t) * k);
         const boxW = Math.round(BOX_W * k);
+        // Smelter Text has no strikethrough — fake it with a bar over the
+        // centered label. Big Shoulders bold caps advance ≈0.46em/char and
+        // cap-center sits ≈0.585em below the text-box top (KbtHud's
+        // CAP_CENTER); fs already carries the growth + k, so the bar grows
+        // and fades in lockstep with the text.
+        const barW = Math.ceil(fs * 0.46 * f.label.length);
+        const barH = Math.max(3, Math.round(fs * 0.09));
+        const barTop = Math.round(fs * 0.585 - barH / 2);
         return (
           <View
             key={f.id}
@@ -132,6 +163,17 @@ export function KbtRepFloaters({
               }}>
               {f.label}
             </Text>
+            {f.strike ? (
+              <View
+                style={{
+                  top: barTop,
+                  left: Math.round((boxW - barW) / 2),
+                  width: barW,
+                  height: barH,
+                  backgroundColor: withAlpha(f.color, alpha),
+                }}
+              />
+            ) : null}
           </View>
         );
       })}

@@ -20,6 +20,7 @@ import { NameStep } from '../phone/name-step';
 import { CameraStep } from '../phone/camera-step';
 import { useCommentatorRig } from './use-commentator-rig';
 import { usePanelSocket } from './use-panel-socket';
+import { useCamRecovery } from './use-cam-recovery';
 import { PanelScreen } from './panel-screen';
 import { DevicePickers } from './device-pickers';
 import '../kbt-kit.css';
@@ -77,6 +78,7 @@ export function CommentatorPanel({ roomId }: { roomId: string }) {
     hasStream: rig.hasStream,
     onCamOffer: rig.handleCamOffer,
   });
+  const recovery = useCamRecovery(rig, socket);
 
   const loadRoom = useCallback(() => {
     setRoomStatus('loading');
@@ -132,9 +134,10 @@ export function CommentatorPanel({ roomId }: { roomId: string }) {
   }, [name, socket]);
 
   const goLive = useCallback(() => {
+    recovery.markWanted();
     rig.markPublishing();
     socket.requestCam();
-  }, [rig, socket]);
+  }, [recovery, rig, socket]);
 
   const retryConnect = useCallback(() => {
     if (roomStatus !== 'ok') loadRoom();
@@ -224,6 +227,7 @@ export function CommentatorPanel({ roomId }: { roomId: string }) {
           <PanelScreen
             socket={socket}
             rig={rig}
+            recovery={recovery}
             name={name.trim() || 'Commentator'}
             whepUrl={whepUrl}
             roomId={roomId}

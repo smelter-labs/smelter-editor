@@ -598,6 +598,7 @@ export async function setKbtConfig(
     repScreenshots?: boolean;
     milestoneFx?: boolean;
     repFloatText?: boolean;
+    countIncorrectReps?: boolean;
     joinUrl?: string;
     joinLabel?: string;
   },

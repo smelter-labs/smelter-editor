@@ -526,7 +526,7 @@ export class InputManager {
           hidden: false,
           motionEnabled: false,
           transcription: false,
-      aiModels: {},
+          aiModels: {},
           metadata: {
             title: `[Missing image] ${missingImageName}`,
             description:
@@ -567,7 +567,7 @@ export class InputManager {
         hidden: false,
         motionEnabled: false,
         transcription: false,
-      aiModels: {},
+        aiModels: {},
         metadata: { title: formatImageName(fileName), description: '' },
         volume: 0,
         imageId,
@@ -586,7 +586,7 @@ export class InputManager {
         hidden: false,
         motionEnabled: false,
         transcription: false,
-      aiModels: {},
+        aiModels: {},
         metadata: {
           title: `[Missing image] ${formatImageName(path.basename(fileName))}`,
           description:
@@ -1150,7 +1150,9 @@ export class InputManager {
     return input.monitor.isPublishLive(ttlMs);
   }
 
-  async removeStaleWhipInputs(staleTtlMs: number): Promise<void> {
+  /** Returns the ids of the inputs it actually removed. */
+  async removeStaleWhipInputs(staleTtlMs: number): Promise<string[]> {
+    const removed: string[] = [];
     const now = Date.now();
     for (const input of this.getInputs()) {
       if (input.type === 'whip') {
@@ -1172,7 +1174,10 @@ export class InputManager {
           // shields inputs that never published (someone still setting up
           // OBS). Once acks flowed and then stopped, the publisher is gone —
           // remove the input regardless of what the engine claims.
-          if (input.status === 'connected' && !input.monitor.wasExternallyAcked()) {
+          if (
+            input.status === 'connected' &&
+            !input.monitor.wasExternallyAcked()
+          ) {
             console.log(
               '[whip][stale] Skipping removal — input registered but never published',
               {
@@ -1197,12 +1202,14 @@ export class InputManager {
               inputStatus: input.status,
             });
             await this.removeInput(input.inputId);
+            removed.push(input.inputId);
           } catch (err: any) {
             console.log(err, 'Failed to remove stale WHIP input');
           }
         }
       }
     }
+    return removed;
   }
 
   // ── MP4 Restart ───────────────────────────────────────────

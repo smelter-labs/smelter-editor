@@ -1,6 +1,5 @@
 'use client';
 
-import React from 'react';
 import {
   Bar,
   ChipButton,
@@ -12,6 +11,7 @@ import {
   WarnPlate,
   kbtMonoFont,
 } from '../kbt-kit';
+import { UseCameraButton, UseRecordingButton } from './use-recording-button';
 
 export type CameraStepVariant =
   | 'lifter'
@@ -45,6 +45,7 @@ export function CameraStep({
   attachVideo,
   onEnable,
   onUseFile,
+  onUseCamera,
   onFlip,
   onGoLive,
   onContinue,
@@ -72,6 +73,8 @@ export function CameraStep({
   onEnable: () => void;
   /** When set, offers "use a recording" — a clip published as the camera. */
   onUseFile?: (file: File) => void;
+  /** Swap back from a recording to the live camera (shown in file mode). */
+  onUseCamera?: () => void;
   onFlip?: () => void;
   onGoLive: () => void;
   onContinue: () => void;
@@ -80,7 +83,6 @@ export function CameraStep({
   /** Live mic level (0..1) — renders a MIC meter (commentator variants). */
   micLevel?: number | null;
 }) {
-  const fileInputRef = React.useRef<HTMLInputElement>(null);
   const commentator = variant !== 'lifter';
   const desktop = variant === 'commentator-desktop';
   return (
@@ -337,39 +339,15 @@ export function CameraStep({
         />
       )}
 
-      {/* Discreet alternative: publish a recorded clip instead of the camera. */}
-      {onUseFile && !live ? (
-        <>
-          <input
-            ref={fileInputRef}
-            type='file'
-            accept='video/*'
-            style={{ display: 'none' }}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              e.target.value = ''; // re-picking the same file must re-fire
-              if (file) onUseFile(file);
-            }}
-          />
-          <button
-            type='button'
-            className='kbt-btn'
-            onClick={() => fileInputRef.current?.click()}
-            style={{
-              padding: '2px 0 6px',
-              alignSelf: 'center',
-              fontFamily: kbtMonoFont,
-              fontSize: 10,
-              letterSpacing: 1,
-              color: KBT.dim,
-              textDecoration: 'underline',
-              textUnderlineOffset: 3,
-            }}>
-            {fileMode
-              ? 'PICK A DIFFERENT RECORDING'
-              : 'USE A RECORDING INSTEAD'}
-          </button>
-        </>
+      {/* Discreet alternative: publish a recorded clip instead of the camera.
+          Stays visible while live — picking a source mid-publish swaps it. */}
+      {onUseFile ? (
+        <div style={{ display: 'flex', gap: 18, justifyContent: 'center' }}>
+          <UseRecordingButton fileMode={fileMode} onUseFile={onUseFile} />
+          {fileMode && onUseCamera ? (
+            <UseCameraButton onClick={onUseCamera} />
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

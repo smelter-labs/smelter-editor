@@ -19,6 +19,10 @@ import {
   getStoredClientServerUrl,
   toWsUrl,
 } from '@/lib/server-url';
+import {
+  readCommentatorSession,
+  writeCommentatorSession,
+} from '../phone/commentator-session';
 
 const RECONNECT_MAX_MS = 8000;
 const TICKER_LEN = 6;
@@ -55,6 +59,8 @@ export type PanelSocket = {
   sendSkeleton: (mode: KbtSkeletonMode) => void;
   /** Live-switch the floating rep text on the output. */
   sendRepFloat: (enabled: boolean) => void;
+  /** Toggle the caster-cam PiP tile on the output. */
+  sendCasterPip: (enabled: boolean) => void;
   retry: () => void;
 };
 
@@ -88,6 +94,11 @@ export function usePanelSocket(
   const wantsJoinRef = useRef(false);
   const wantsCamRef = useRef(false);
   const nameRef = useRef('');
+  // Resume token shared with the phone page: joining with it adopts the
+  // commentator slot even when the server still sees the old socket as
+  // connected (name-only matching would replace the slot and retire a live
+  // camera input).
+  const playerKeyRef = useRef<string | null>(null);
   const optsRef = useRef(opts);
   optsRef.current = opts;
 
@@ -106,27 +117,39 @@ export function usePanelSocket(
     });
   }, [sendJson]);
 
-  const handleEvent = useCallback((event: RoomEvent) => {
-    switch (event.type) {
-      case 'kbt_state':
-        setState(event);
-        break;
-      case 'kbt_match':
-        setMatch(event);
-        break;
-      case 'kbt_rep':
-        setRecentReps((prev) => [event, ...prev].slice(0, TICKER_LEN));
-        if (event.screenshotUrl) {
-          setRecentShots((prev) => [event, ...prev].slice(0, SHOTS_LEN));
-        }
-        break;
-      case 'kbt_cam_offer':
-        if (wantsCamRef.current) optsRef.current.onCamOffer(event);
-        break;
-      default:
-        break;
-    }
-  }, []);
+  const handleEvent = useCallback(
+    (event: RoomEvent) => {
+      switch (event.type) {
+        case 'kbt_state':
+          setState(event);
+          break;
+        case 'kbt_joined':
+          if (event.role === 'commentator') {
+            playerKeyRef.current = event.playerKey;
+            writeCommentatorSession(roomId, {
+              playerKey: event.playerKey,
+              name: event.name,
+            });
+          }
+          break;
+        case 'kbt_match':
+          setMatch(event);
+          break;
+        case 'kbt_rep':
+          setRecentReps((prev) => [event, ...prev].slice(0, TICKER_LEN));
+          if (event.screenshotUrl) {
+            setRecentShots((prev) => [event, ...prev].slice(0, SHOTS_LEN));
+          }
+          break;
+        case 'kbt_cam_offer':
+          if (wantsCamRef.current) optsRef.current.onCamOffer(event);
+          break;
+        default:
+          break;
+      }
+    },
+    [roomId],
+  );
 
   const handleEventRef = useRef(handleEvent);
   handleEventRef.current = handleEvent;
@@ -152,6 +175,9 @@ export function usePanelSocket(
           JSON.stringify({
             type: 'kbt_commentator_join',
             name: nameRef.current.trim() || 'Commentator',
+            ...(playerKeyRef.current
+              ? { playerKey: playerKeyRef.current }
+              : {}),
           }),
         );
         if (wantsCamRef.current && optsRef.current.hasStream()) {
@@ -187,6 +213,7 @@ export function usePanelSocket(
     // Re-arm after a StrictMode unmount/remount — the cleanup below set the
     // flag, and without the reset auto-reconnect would stay off for good.
     closedByUsRef.current = false;
+    playerKeyRef.current = readCommentatorSession(roomId).playerKey ?? null;
     connectWs();
     return () => {
       closedByUsRef.current = true;
@@ -199,7 +226,11 @@ export function usePanelSocket(
     (name: string) => {
       nameRef.current = name;
       wantsJoinRef.current = true;
-      sendJson({ type: 'kbt_commentator_join', name });
+      sendJson({
+        type: 'kbt_commentator_join',
+        name,
+        ...(playerKeyRef.current ? { playerKey: playerKeyRef.current } : {}),
+      });
     },
     [sendJson],
   );
@@ -255,6 +286,13 @@ export function usePanelSocket(
     [sendJson],
   );
 
+  const sendCasterPip = useCallback(
+    (enabled: boolean) => {
+      sendJson({ type: 'kbt_commentator_caster_pip', enabled });
+    },
+    [sendJson],
+  );
+
   const retry = useCallback(() => {
     setWsError('');
     closedByUsRef.current = false;
@@ -277,6 +315,7 @@ export function usePanelSocket(
     sendBanner,
     sendSkeleton,
     sendRepFloat,
+    sendCasterPip,
     retry,
   };
 }

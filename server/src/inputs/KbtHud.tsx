@@ -217,12 +217,15 @@ export function KbtTileHud({
   scene,
   parent,
   floatText,
+  countIncorrect,
 }: {
   tile: KbtHudTile;
   scene: KbtHudState['scene'];
   parent: { width: number; height: number };
   /** config.repFloatText — floating rep text instead of the static pop. */
   floatText: boolean;
+  /** config.countIncorrectReps — incorrect-rep floater style. */
+  countIncorrect: boolean;
 }) {
   // The tile spans the full output height on ≤3-wide heats; scale the plate
   // with the column so the ×4 grid gets the narrow variant at its true size.
@@ -270,7 +273,13 @@ export function KbtTileHud({
           the scene has no per-tile plate — solo hero plate is scene-level).
           The floaters mount unconditionally while enabled so their spawn
           detection sees every snapshot. */}
-      {floatText ? <KbtRepFloaters tile={tile} parent={parent} /> : null}
+      {floatText ? (
+        <KbtRepFloaters
+          tile={tile}
+          parent={parent}
+          countIncorrect={countIncorrect}
+        />
+      ) : null}
       {!floatText && tile.flash && tile.lastRepPoints > 0 ? (
         <View
           style={{
@@ -1908,7 +1917,10 @@ export function KbtMatchHud({
       {/* On caster/split the commentator IS the scene — no lower-third or
           mini chip on top of their own camera. */}
       {hud.scene === 'caster' ||
-      hud.scene === 'split' ? null : kbtCasterVisible(hud.scene) ? (
+      hud.scene === 'split' ? null : kbtCasterVisible(
+          hud.scene,
+          hud.commentator?.casterPip ?? true,
+        ) ? (
         <CasterLowerThird hud={hud} resolution={resolution} k={k} />
       ) : (
         <CasterOnAirMini hud={hud} k={k} />
