@@ -48,6 +48,10 @@ import { kettlebellSkeletonMode } from '../app/store';
 import type { CarAdDetection } from '../app/store';
 import { DuckHunterController } from '../duckHunter/DuckHunterController';
 import type { MatchCommand } from '../duckHunter/DuckHunterController';
+import {
+  DEFAULT_DUCK_FLY_FRAC_PER_SEC,
+  DEFAULT_DUCK_PAUSE_MS,
+} from '../duckHunter/duckFlight';
 import type { ShooterMatchEvent } from '@smelter-editor/types';
 import {
   KettlebellCoachController,
@@ -386,7 +390,49 @@ export class RoomState {
     );
     this.recordingController = new RecordingController(idPrefix, output);
     this.snakeGameController = new SnakeGameController();
-    this.duckHunter = new DuckHunterController(idPrefix, output.store);
+    this.duckHunter = new DuckHunterController(idPrefix, output.store, {
+      broadcast: (event) => roomEventBus.broadcast(idPrefix, event),
+      sendTo: (clientId, event) =>
+        roomEventBus.sendTo(idPrefix, clientId, event),
+      // InputManager path (same rationale as KBT's registerPlayerCam below):
+      // WHIP inputs registered here get the heartbeat monitor, the stale
+      // sweep and onInputsRemoved. Duck Hunter cams never run AI, so the side
+      // channel (and its 3 s buffering delay) is always skipped, and the
+      // input is hidden — drawn only inside the avatar circle by the overlay
+      // renderer, never as a layout tile.
+      registerShooterCam: async (name, dims) => {
+        const inputId = await this.addNewInput({
+          type: 'whip',
+          username: `[camera] ${name}`,
+          noSideChannel: true,
+          // Real track dimensions from the phone: the registration path
+          // honors exact dims (updateInput's bare-orientation heuristic
+          // would clobber them, so orientation always travels WITH dims).
+          ...(dims
+            ? {
+                nativeWidth: dims.width,
+                nativeHeight: dims.height,
+                orientation:
+                  dims.height > dims.width
+                    ? ('vertical' as const)
+                    : ('horizontal' as const),
+              }
+            : {}),
+        });
+        if (!inputId) throw new Error('WHIP input registration failed');
+        const bearerToken = await this.connectInput(inputId);
+        await this.batchHideInputs([inputId]);
+        return {
+          inputId,
+          whipUrl: `${config.whipBaseUrl}/${inputId}`,
+          bearerToken,
+        };
+      },
+      removeInput: (inputId) => this.removeInput(inputId),
+      // Engine status for WHIP means "registered", not "publishing" — real
+      // liveness comes from the phone's heartbeat acks.
+      isInputLive: (inputId) => this.inputManager.isWhipInputLive(inputId),
+    });
     // The coach's debounced events are tee'd into the tournament controller —
     // one debounce layer, two consumers (room bus + scoring). The arrow reads
     // this.kbTournament lazily, so construction order below doesn't matter.
@@ -1655,6 +1701,7 @@ export class RoomState {
     // and async-mutex is non-reentrant.
     if (removed.length > 0) {
       this.kbTournament.onInputsRemoved(removed);
+      this.duckHunter.onInputsRemoved(removed);
     }
   }
 
@@ -1666,12 +1713,18 @@ export class RoomState {
       name?: unknown;
       x?: unknown;
       y?: unknown;
+      playerKey?: unknown;
+      nativeWidth?: unknown;
+      nativeHeight?: unknown;
     };
     switch (msg.type) {
       case 'shoot_join':
         this.duckHunter.join(
           clientId,
           typeof msg.name === 'string' ? msg.name : 'Player',
+          typeof msg.playerKey === 'string' && msg.playerKey.length <= 64
+            ? msg.playerKey
+            : undefined,
         );
         break;
       case 'shoot_aim':
@@ -1686,7 +1739,17 @@ export class RoomState {
         this.duckHunter.leave(clientId);
         break;
       case 'shoot_cam_start':
-        void this.duckHunter.startCamera(clientId);
+        void this.duckHunter.startCamera(
+          clientId,
+          typeof msg.nativeWidth === 'number' &&
+            Number.isFinite(msg.nativeWidth) &&
+            msg.nativeWidth > 0 &&
+            typeof msg.nativeHeight === 'number' &&
+            Number.isFinite(msg.nativeHeight) &&
+            msg.nativeHeight > 0
+            ? { width: msg.nativeWidth, height: msg.nativeHeight }
+            : undefined,
+        );
         break;
       case 'shoot_cam_stop':
         this.duckHunter.stopCamera(clientId);
@@ -1858,8 +1921,11 @@ export class RoomState {
   private duckScale = 1;
   /** How long a duck holds before flying off (ms), and its fly speed (fraction
    * of the larger screen edge per second). Injected into each bird push. */
-  private duckPauseMs = 700;
-  private duckFlySpeed = 0.9;
+  // Single source of truth for the flight defaults is duckFlight.ts — the
+  // client sliders and the hit-test model assume these exact values until an
+  // operator pushes a config.
+  private duckPauseMs = DEFAULT_DUCK_PAUSE_MS;
+  private duckFlySpeed = DEFAULT_DUCK_FLY_FRAC_PER_SEC;
 
   /** Set the room-wide Duck Hunter config (ammo + duck size/flight) from the panel. */
   public setDuckHunterConfig(cfg: {

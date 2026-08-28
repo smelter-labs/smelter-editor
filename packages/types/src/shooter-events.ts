@@ -7,6 +7,14 @@ export type ShooterPlayer = {
   /** Hex color assigned to this player's crosshair + scoreboard row. */
   color: string;
   score: number;
+  /**
+   * The player's control socket is connected. A dropped phone stays on the
+   * roster (grayed out) through the disconnect grace so its score survives a
+   * reconnect; absent = true (older servers).
+   */
+  connected?: boolean;
+  /** The player's camera WHIP publish is heartbeat-live (not just registered). */
+  camLive?: boolean;
 };
 
 /**
@@ -19,6 +27,12 @@ export type ShooterAmmoConfig = { maxAmmo?: number; reloadMs?: number };
 export type ShooterJoinMessage = {
   type: "shoot_join";
   name: string;
+  /**
+   * Resume token from a previous `shooter_joined` (persisted on the phone).
+   * Lets a reconnecting/refreshing phone adopt its old player entry — score,
+   * color and camera included — instead of forking a fresh one.
+   */
+  playerKey?: string;
 };
 /** Aim position in normalized content space [0,1] (0,0 = top-left). */
 export type ShooterAimMessage = { type: "shoot_aim"; x: number; y: number };
@@ -29,7 +43,16 @@ export type ShooterLeaveMessage = { type: "shoot_leave" };
  * WHIP input for this client and replies with `shooter_cam_offer` so the phone
  * can publish its camera into the broadcast (shown live next to the name).
  */
-export type ShooterCamStartMessage = { type: "shoot_cam_start" };
+export type ShooterCamStartMessage = {
+  type: "shoot_cam_start";
+  /**
+   * Real dimensions of the camera track (`getSettings()`), so the server can
+   * register the WHIP input with the exact portrait/landscape geometry instead
+   * of guessing from orientation.
+   */
+  nativeWidth?: number;
+  nativeHeight?: number;
+};
 /** Turn the live camera off; the server tears down the WHIP input. */
 export type ShooterCamStopMessage = { type: "shoot_cam_stop" };
 
@@ -76,6 +99,36 @@ export type ShooterMatchConfig = {
 };
 
 // Server -> Client
+
+/**
+ * Private ack for `shoot_join`: the authoritative identity of this phone's
+ * player. `playerKey` is the resume token the phone persists (localStorage)
+ * and replays on every reconnect; `clientId` is socket-scoped and changes on
+ * every reconnect, so the phone must overwrite its cached copy with this one.
+ */
+export type ShooterJoinedEvent = {
+  type: "shooter_joined";
+  roomId: string;
+  clientId: string;
+  playerKey: string;
+  name: string;
+  color: string;
+  /** Restored score (nonzero when this join adopted an existing entry). */
+  score: number;
+  /** An earlier camera session is still registered for this player. */
+  camInputActive: boolean;
+};
+
+/** Why a shooter request was refused (typed, so phones can show real copy). */
+export type ShooterErrorCode = "room_full" | "not_joined" | "camera_failed";
+
+export type ShooterErrorEvent = {
+  type: "shooter_error";
+  roomId: string;
+  code: ShooterErrorCode;
+  message: string;
+};
+
 export type ShooterStateEvent = {
   type: "shooter_state";
   roomId: string;
@@ -155,6 +208,8 @@ export type ShooterMatchEvent = {
 };
 
 export type ShooterServerEvent =
+  | ShooterJoinedEvent
+  | ShooterErrorEvent
   | ShooterStateEvent
   | ShooterHitEvent
   | ShooterMissEvent

@@ -1578,7 +1578,7 @@ const RANK_COLORS = ['#FFD700', '#C0C0C0', '#CD7F32'];
  * ammo pips + reload countdown, and the score right-aligned.
  */
 function ShooterScoreboard({
-  scores,
+  scores: allScores,
   parent,
   now,
 }: {
@@ -1586,6 +1586,10 @@ function ShooterScoreboard({
   parent: { width: number; height: number };
   now: number;
 }) {
+  // The board height scales with the row count and nothing else clamps it —
+  // more rows than this would overflow the frame (and mount a live camera
+  // tile per row). Rows arrive sorted by score, so the tail is droppable.
+  const scores = allScores.slice(0, 8);
   const margin = Math.round(parent.width * 0.02);
   const fs = Math.max(18, Math.round(parent.height * 0.03));
   const padH = Math.round(fs * 0.6);

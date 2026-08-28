@@ -40,7 +40,6 @@ export type DuckHunterRoom = {
   pushConfig(cfg: DuckHunterSliderConfig): Promise<void>;
   startMatch(cfg: ShooterMatchConfig): Promise<void>;
   stopMatch(): Promise<void>;
-  resetMatch(): Promise<void>;
   /**
    * Tell the server the host is on the lobby screen ('lobby' match phase), so
    * phones hold on the briefing instead of treating the attract mode as open
@@ -185,11 +184,6 @@ export function useDuckHunterRoom(): DuckHunterRoom {
     await controlDuckHunterMatch(roomId, { action: 'stop' });
   }, [roomId]);
 
-  const resetMatch = useCallback(async () => {
-    if (!roomId) return;
-    await controlDuckHunterMatch(roomId, { action: 'reset' });
-  }, [roomId]);
-
   const exitAndDelete = useCallback(async () => {
     const target = roomId;
     setRoomId(null);
@@ -216,7 +210,6 @@ export function useDuckHunterRoom(): DuckHunterRoom {
     pushConfig,
     startMatch,
     stopMatch,
-    resetMatch,
     armLobby,
     exitAndDelete,
   };

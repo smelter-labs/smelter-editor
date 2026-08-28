@@ -281,6 +281,8 @@ export type ShooterCrosshair = {
   name: string;
   /** Smelter input id of the player's live camera (WHIP), if the camera is on. */
   camInputId?: string;
+  /** The camera publish is heartbeat-live (false = registered but dark). */
+  camLive?: boolean;
   ammo: number;
   maxAmmo: number;
   /** Full regen time for one round (ms) — with reloadEndsAt gives progress. */
@@ -297,6 +299,8 @@ export type ShooterScoreRow = {
   score: number;
   /** Smelter input id of the player's live camera (WHIP), if the camera is on. */
   camInputId?: string;
+  /** The camera publish is heartbeat-live (false = registered but dark). */
+  camLive?: boolean;
   ammo: number;
   maxAmmo: number;
   reloadMs: number;
@@ -736,6 +740,19 @@ export function createRoomStore(
       });
     },
     setShooter: (shooter: ShooterOverlay | null) => {
+      // The 30 Hz game loop mints a fresh overlay object every tick even when
+      // nothing visible changed (idle attract mode, no ducks, no players); an
+      // unconditional set() would re-render the whole scene tree each time.
+      // All overlay timestamps are absolute, so idle snapshots compare equal.
+      const prev = get().shooter;
+      if (
+        prev === shooter ||
+        (prev != null &&
+          shooter != null &&
+          JSON.stringify(prev) === JSON.stringify(shooter))
+      ) {
+        return;
+      }
       set(() => ({ shooter }));
     },
     setKbTournament: (kbTournament: KbtHudState | null) => {
