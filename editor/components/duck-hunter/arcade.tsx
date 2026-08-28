@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ShooterMatchMode } from '@smelter-editor/types';
-import { ArcadeStage } from './retro-kit';
+import { ArcadeStage, R5, monoFont } from './retro-kit';
 import { CHARACTERS, type ArcadeCharacter } from './characters';
 import {
   useDuckHunterRoom,
@@ -68,8 +68,13 @@ export function DuckHunterArcade() {
     useState<DuckHunterSliderConfig>(DEFAULT_SLIDERS);
   const [stageFile, setStageFile] = useState<string>(DEFAULT_STAGE_FILE);
 
+  const [roomGone, setRoomGone] = useState(false);
+
   const room = useDuckHunterRoom();
-  const feed = useShooterFeed(room.roomId);
+  // The room vanished under us (deleted/GC'd): the feed stops retrying, so
+  // show the operator what happened instead of a silently frozen lobby.
+  const onRoomGone = useCallback(() => setRoomGone(true), []);
+  const feed = useShooterFeed(room.roomId, onRoomGone);
 
   // Load persisted slider tuning once on mount.
   useEffect(() => {
@@ -96,6 +101,19 @@ export function DuckHunterArcade() {
     }
   }, [phase, screen]);
 
+  // After a refresh re-attached to a running room, land on the screen the
+  // match phase dictates (once — EXIT TO TITLE must not be fought over).
+  const restoreHandledRef = useRef(false);
+  useEffect(() => {
+    if (restoreHandledRef.current || !room.restored) return;
+    if (!phase) return; // wait for the spectate snapshot
+    restoreHandledRef.current = true;
+    if (phase === 'lobby') setScreen('lobby');
+    else if (phase === 'countdown' || phase === 'playing') setScreen('game');
+    else if (phase === 'ended') setScreen('results');
+    // 'idle' stays on the title — nothing to rejoin.
+  }, [room.restored, phase]);
+
   // Track whether the room's stage input matches the chosen file, so coming
   // back from the results screen with a different pick swaps the video.
   const roomStageFileRef = useRef<string | null>(null);
@@ -121,12 +139,37 @@ export function DuckHunterArcade() {
 
   const exitToTitle = async () => {
     roomStageFileRef.current = null;
+    restoreHandledRef.current = true; // a later snapshot must not re-route us
+    setRoomGone(false);
     setScreen('title');
     await room.exitAndDelete();
   };
 
+  const banner = roomGone
+    ? 'ROOM LOST — THE SERVER CLOSED IT. EXIT TO TITLE AND START OVER.'
+    : room.error;
+
   return (
     <ArcadeStage>
+      {banner ? (
+        <div
+          style={{
+            position: 'absolute',
+            top: 8,
+            left: 8,
+            right: 8,
+            zIndex: 50,
+            padding: '8px 12px',
+            background: 'rgba(40, 8, 8, 0.92)',
+            border: `2px solid ${R5.red}`,
+            color: R5.ink,
+            fontFamily: monoFont,
+            fontSize: 13,
+            letterSpacing: 1,
+          }}>
+          {banner}
+        </div>
+      ) : null}
       {screen === 'title' ? (
         <TitleScreen onStart={() => setScreen('select')} />
       ) : null}

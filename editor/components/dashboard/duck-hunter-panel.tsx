@@ -96,6 +96,7 @@ export function DuckHunterPanel({ roomId }: Props) {
   const [inputs, setInputs] = useState<Input[]>([]);
   const [selectedInputId, setSelectedInputId] = useState<string>('');
   const [starting, setStarting] = useState(false);
+  const [gameErr, setGameErr] = useState<string | null>(null);
 
   // Load saved base (or default) once on mount.
   useEffect(() => {
@@ -167,8 +168,12 @@ export function DuckHunterPanel({ roomId }: Props) {
   }, []);
 
   const refreshInputs = useCallback(async () => {
-    const info = await getRoomInfo(roomId);
-    if (info && info !== 'not-found') setInputs(info.inputs);
+    try {
+      const info = await getRoomInfo(roomId);
+      if (info && info !== 'not-found') setInputs(info.inputs);
+    } catch {
+      // Server unreachable — keep the last snapshot; the interval retries.
+    }
   }, [roomId]);
 
   // Load inputs on mount and keep them fresh (inputs come and go while the
@@ -231,6 +236,7 @@ export function DuckHunterPanel({ roomId }: Props) {
     async (on: boolean) => {
       if (!birdModel || !selectedInputId) return;
       setStarting(true);
+      setGameErr(null);
       try {
         await setAIModel(
           roomId,
@@ -243,6 +249,10 @@ export function DuckHunterPanel({ roomId }: Props) {
           on, // ghostMode = duck sprites
         );
         await refreshInputs();
+      } catch (err) {
+        setGameErr(
+          err instanceof Error ? err.message : 'Toggling the game failed',
+        );
       } finally {
         setStarting(false);
       }
@@ -330,6 +340,9 @@ export function DuckHunterPanel({ roomId }: Props) {
               onClick={() => void toggleGame(!gameActive)}>
               {starting ? 'One sec…' : gameActive ? 'End game' : 'Start game'}
             </Button>
+            {gameErr ? (
+              <div className='text-[10px] text-red-400'>{gameErr}</div>
+            ) : null}
             <div className='text-[10px] text-neutral-500'>
               Enables the Bird Counter (duck mode) on the selected input. For
               accurate aiming, set this input to full screen (broadcast/solo).

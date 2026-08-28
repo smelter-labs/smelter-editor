@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { connectWhep } from '@/lib/webrtc/whep-connect';
+import { resolveMediaUrl } from '@/lib/server-url';
 import type { MatchSetup } from '../arcade';
 import type { ArcadeCharacter } from '../characters';
 import type { DuckHunterRoom } from '../use-duck-hunter-room';
@@ -40,28 +41,47 @@ export function GameScreen({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [muted, setMuted] = useState(true);
   const [confirmAbort, setConfirmAbort] = useState(false);
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  const [whepError, setWhepError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!room.whepUrl) return;
     let closeConnection = () => {};
     let cancelled = false;
-    void connectWhep(room.whepUrl).then(({ stream, close }) => {
-      if (cancelled) {
-        close();
-        return;
-      }
-      closeConnection = close;
-      const vid = videoRef.current;
-      if (vid && vid.srcObject !== stream) {
-        vid.srcObject = stream;
-        vid.play().catch(() => {});
-      }
-    });
+    setWhepError(null);
+    // The URL may only be reachable via the ?server= base / page origin.
+    void connectWhep(resolveMediaUrl(room.whepUrl))
+      .then((conn) => {
+        if (cancelled) {
+          conn.close();
+          return;
+        }
+        closeConnection = conn.close;
+        setStream(conn.stream);
+      })
+      .catch(() => {
+        // A failed WHEP was an unhandled rejection + a permanently black
+        // screen; the ducks are burned in server-side, so at least say so.
+        if (!cancelled) setWhepError('VIDEO LINK FAILED — game continues');
+      });
     return () => {
       cancelled = true;
       closeConnection();
+      setStream(null);
     };
   }, [room.whepUrl]);
+
+  // Attach in a separate effect: holding the stream in state means a video
+  // element that mounts a beat later still gets it (the old code silently
+  // discarded the stream when the ref was momentarily null).
+  useEffect(() => {
+    const vid = videoRef.current;
+    if (!vid || !stream) return;
+    if (vid.srcObject !== stream) {
+      vid.srcObject = stream;
+      vid.play().catch(() => {});
+    }
+  }, [stream]);
 
   // Local 4 Hz clock re-render; the displayed value anchors on the last
   // server tick (endsAtMs / startsAtMs are wall-clock).
@@ -128,6 +148,33 @@ export function GameScreen({
           background: '#000',
         }}
       />
+
+      {whepError ? (
+        <div
+          style={{
+            position: 'absolute',
+            top: 60,
+            left: 0,
+            right: 0,
+            display: 'flex',
+            justifyContent: 'center',
+            zIndex: 6,
+            pointerEvents: 'none',
+          }}>
+          <span
+            style={{
+              padding: '4px 10px',
+              background: 'rgba(40,8,8,0.9)',
+              border: `2px solid ${R5.red}`,
+              color: R5.ink,
+              fontFamily: monoFont,
+              fontSize: 12,
+              letterSpacing: 1,
+            }}>
+            {whepError}
+          </span>
+        </div>
+      ) : null}
 
       {/* Slim chrome: top-center clock chip. */}
       <div
@@ -202,7 +249,13 @@ export function GameScreen({
                 boxShadow: `0 0 6px ${p.color}`,
               }}
             />
-            <span style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <span
+              style={{
+                maxWidth: 140,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}>
               {p.name}
             </span>
             <LedText size={16}>{p.score}</LedText>

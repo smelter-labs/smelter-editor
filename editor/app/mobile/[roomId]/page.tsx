@@ -45,7 +45,14 @@ export default function MobileJoinPage() {
         return;
       }
 
-      const state = await getRoomInfo(roomId as string);
+      let state: Awaited<ReturnType<typeof getRoomInfo>>;
+      try {
+        state = await getRoomInfo(roomId as string);
+      } catch {
+        // Server unreachable: an unhandled rejection every 5 s otherwise;
+        // keep whatever we had and let the interval retry.
+        return;
+      }
       if (!mounted) return;
 
       if (state === 'not-found') {
