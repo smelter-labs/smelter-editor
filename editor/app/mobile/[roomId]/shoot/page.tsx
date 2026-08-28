@@ -46,12 +46,15 @@ import {
   PlayTopBar,
 } from '@/components/duck-hunter/phone/play-hud';
 import {
-  AXIS_CFG_KEY,
-  DEFAULT_HORIZ,
-  DEFAULT_VERT,
+  defaultAxisSettings,
+  loadAxisSettings,
+  saveAxisSettings,
   type AxisCfg,
+  type AxisSettings,
   type AxisSource,
+  type OrientationKey,
 } from '@/components/duck-hunter/phone/axis';
+import { useIsLandscape } from '@/components/duck-hunter/phone/use-viewport';
 import '@/components/duck-hunter/retro.css';
 
 const AIM_THROTTLE_MS = 25;
@@ -213,13 +216,36 @@ export default function ShootControllerPage() {
   // Accumulated crosshair position [0,1] (relative aiming integrates into this).
   const smoothRef = useRef({ x: 0.5, y: 0.5 });
   // Per-axis gyro mapping (source + invert + sensitivity), tuned on the
-  // calibration screen and persisted. Mirrored to refs for the motion listener.
-  const [horizCfg, setHorizCfg] = useState<AxisCfg>(DEFAULT_HORIZ);
-  const [vertCfg, setVertCfg] = useState<AxisCfg>(DEFAULT_VERT);
+  // calibration screen and persisted — one bucket per screen orientation,
+  // since the raw rateX/Y/Z sources are device-frame and change meaning when
+  // the phone rotates. The active pair follows live orientation (rotating
+  // with the advanced sheet open swaps its controls to the other bucket —
+  // intended). Mirrored to refs for the motion listener.
+  const landscape = useIsLandscape();
+  const orientKey: OrientationKey = landscape ? 'landscape' : 'portrait';
+  const orientKeyRef = useRef(orientKey);
+  orientKeyRef.current = orientKey;
+  const [axisPairs, setAxisPairs] = useState<AxisSettings>(defaultAxisSettings);
+  const horizCfg = axisPairs[orientKey].horiz;
+  const vertCfg = axisPairs[orientKey].vert;
   const horizCfgRef = useRef(horizCfg);
   const vertCfgRef = useRef(vertCfg);
   horizCfgRef.current = horizCfg;
   vertCfgRef.current = vertCfg;
+  // Stable setters that write into the bucket for the orientation at call
+  // time (ref read, not closure — a rotate-then-tap can't hit a stale slot).
+  const setHorizCfg = useCallback((c: AxisCfg) => {
+    setAxisPairs((p) => {
+      const k = orientKeyRef.current;
+      return { ...p, [k]: { ...p[k], horiz: c } };
+    });
+  }, []);
+  const setVertCfg = useCallback((c: AxisCfg) => {
+    setAxisPairs((p) => {
+      const k = orientKeyRef.current;
+      return { ...p, [k]: { ...p[k], vert: c } };
+    });
+  }, []);
   // Live crosshair position for the calibration test range.
   const [previewAim, setPreviewAim] = useState({ x: 0.5, y: 0.5 });
   const previewAimRef = useRef(previewAim);
@@ -255,17 +281,9 @@ export default function ShootControllerPage() {
       // name override it, then the per-room resume session (most specific).
       const dn = localStorage.getItem('smelter-display-name');
       if (dn) setName(dn);
-      const raw = localStorage.getItem(AXIS_CFG_KEY);
-      if (raw) {
-        const p = JSON.parse(raw) as {
-          horiz?: AxisCfg;
-          vert?: AxisCfg;
-          name?: string;
-        };
-        if (p.horiz) setHorizCfg({ ...DEFAULT_HORIZ, ...p.horiz });
-        if (p.vert) setVertCfg({ ...DEFAULT_VERT, ...p.vert });
-        if (typeof p.name === 'string' && p.name) setName(p.name);
-      }
+      const stored = loadAxisSettings();
+      setAxisPairs({ portrait: stored.portrait, landscape: stored.landscape });
+      if (stored.name) setName(stored.name);
       const session = readShooterSession(String(roomId));
       if (session.name) setName(session.name);
       if (session.characterId) setCharacterId(session.characterId);
@@ -278,19 +296,8 @@ export default function ShootControllerPage() {
       firstAxisSaveRef.current = false;
       return;
     }
-    try {
-      localStorage.setItem(
-        AXIS_CFG_KEY,
-        JSON.stringify({
-          horiz: horizCfg,
-          vert: vertCfg,
-          name,
-        }),
-      );
-    } catch {
-      /* ignore */
-    }
-  }, [horizCfg, vertCfg, name]);
+    saveAxisSettings({ ...axisPairs, name });
+  }, [axisPairs, name]);
 
   const recenter = useCallback(() => {
     smoothRef.current = { x: 0.5, y: 0.5 };
