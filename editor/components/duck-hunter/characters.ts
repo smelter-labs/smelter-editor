@@ -1,13 +1,18 @@
+import {
+  SHOOTER_CHARACTERS,
+  type ShooterCharacterId,
+} from '@smelter-editor/types';
 import type { RetroAccent } from './retro-kit';
 
 /**
- * The three pre-rendered "CHARACTER SELECT" clips bundled with the server
- * (server/duck-hunter-defaults → seeded into data/mp4s/duck-hunter-characters
- * at startup). Each is a loopable 1280×720 animated select screen for one
- * character; the /duck-hunter page plays them as the literal select UI.
+ * Presentation layer over the shared SHOOTER_CHARACTERS catalog (the ids the
+ * server validates). Each character has a pre-rendered 1280×720 looping
+ * "CHARACTER SELECT" clip bundled with the server (server/duck-hunter-defaults
+ * → seeded into data/mp4s/duck-hunter-characters at startup) plus a retro-kit
+ * accent; ids/names/colors come from the shared list so they can't drift.
  */
 export type ArcadeCharacter = {
-  id: 'improwizator' | 'crane-hunter' | 'pink-spotter';
+  id: ShooterCharacterId;
   /** Headline name as rendered inside the clip. */
   name: string;
   /** Sub-line class, e.g. "DIY Ranger". */
@@ -19,32 +24,35 @@ export type ArcadeCharacter = {
   color: string;
 };
 
-export const CHARACTERS: ArcadeCharacter[] = [
-  {
-    id: 'improwizator',
-    name: 'IMPROWIZATOR',
-    title: 'DIY Ranger',
+const CHARACTER_EXTRAS: Record<
+  ShooterCharacterId,
+  { file: string; accent: RetroAccent }
+> = {
+  improwizator: {
     file: 'duck-hunter-characters/improwizator.mp4',
     accent: 'cyan',
-    color: '#4fc3f7',
   },
-  {
-    id: 'crane-hunter',
-    name: 'CRANE HUNTER',
-    title: 'Kimono Blaster',
+  'crane-hunter': {
     file: 'duck-hunter-characters/crane-hunter.mp4',
     accent: 'orange',
-    color: '#ff9210',
   },
-  {
-    id: 'pink-spotter',
-    name: 'PINK SPOTTER',
-    title: 'Visor Scout',
+  'pink-spotter': {
     file: 'duck-hunter-characters/pink-spotter.mp4',
     accent: 'pink',
-    color: '#FF4081',
   },
-];
+};
+
+export const CHARACTERS: ArcadeCharacter[] = SHOOTER_CHARACTERS.map((c) => ({
+  ...c,
+  ...CHARACTER_EXTRAS[c.id],
+}));
+
+/** Look up a character by (wire) id; null for unknown/absent picks. */
+export function characterById(
+  id: string | null | undefined,
+): ArcadeCharacter | null {
+  return CHARACTERS.find((c) => c.id === id) ?? null;
+}
 
 /** Browser-playable URL for a character clip (Next proxy → server data dir). */
 export function characterVideoUrl(c: ArcadeCharacter): string {

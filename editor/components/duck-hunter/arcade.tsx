@@ -3,21 +3,21 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ShooterMatchMode } from '@smelter-editor/types';
 import { ArcadeStage, R5, monoFont } from './retro-kit';
-import { CHARACTERS, type ArcadeCharacter } from './characters';
 import {
   useDuckHunterRoom,
   type DuckHunterSliderConfig,
 } from './use-duck-hunter-room';
 import { useShooterFeed } from './use-shooter-feed';
 import { TitleScreen } from './screens/title-screen';
-import { CharacterSelect } from './screens/character-select';
 import { ModeSelect } from './screens/mode-select';
 import { Lobby } from './screens/lobby';
 import { GameScreen } from './screens/game-screen';
 import { Results } from './screens/results';
 import './retro.css';
 
-type Screen = 'title' | 'select' | 'config' | 'lobby' | 'game' | 'results';
+// Characters are picked per player on the phones, so the host flow goes
+// straight from the title to the match config.
+type Screen = 'title' | 'config' | 'lobby' | 'game' | 'results';
 
 export type MatchSetup = {
   mode: ShooterMatchMode;
@@ -58,7 +58,6 @@ function loadSliders(): DuckHunterSliderConfig {
 /** The /duck-hunter screen machine. */
 export function DuckHunterArcade() {
   const [screen, setScreen] = useState<Screen>('title');
-  const [character, setCharacter] = useState<ArcadeCharacter>(CHARACTERS[0]);
   const [setup, setSetup] = useState<MatchSetup>({
     mode: 'time',
     durationMs: 60_000,
@@ -171,21 +170,10 @@ export function DuckHunterArcade() {
         </div>
       ) : null}
       {screen === 'title' ? (
-        <TitleScreen onStart={() => setScreen('select')} />
-      ) : null}
-      {screen === 'select' ? (
-        <CharacterSelect
-          selected={character}
-          onPick={(c) => {
-            setCharacter(c);
-            setScreen('config');
-          }}
-          onBack={() => setScreen('title')}
-        />
+        <TitleScreen onStart={() => setScreen('config')} />
       ) : null}
       {screen === 'config' ? (
         <ModeSelect
-          character={character}
           setup={setup}
           onSetup={setSetup}
           sliders={sliders}
@@ -193,12 +181,11 @@ export function DuckHunterArcade() {
           stageFile={stageFile}
           onStageFile={setStageFile}
           onConfirm={() => void openLobby()}
-          onBack={() => setScreen('select')}
+          onBack={() => setScreen('title')}
         />
       ) : null}
       {screen === 'lobby' ? (
         <Lobby
-          character={character}
           setup={setup}
           room={room}
           feed={feed}
@@ -208,11 +195,6 @@ export function DuckHunterArcade() {
               durationMs: setup.mode === 'time' ? setup.durationMs : undefined,
               targetScore:
                 setup.mode === 'points' ? setup.targetScore : undefined,
-              character: {
-                id: character.id,
-                name: character.name,
-                color: character.color,
-              },
             })
           }
           onBack={() => setScreen('config')}
@@ -220,7 +202,6 @@ export function DuckHunterArcade() {
       ) : null}
       {screen === 'game' ? (
         <GameScreen
-          character={character}
           setup={setup}
           room={room}
           feed={feed}
@@ -229,7 +210,6 @@ export function DuckHunterArcade() {
       ) : null}
       {screen === 'results' ? (
         <Results
-          character={character}
           feed={feed}
           onPlayAgain={() => {
             // No resetMatch here: the match stays 'ended' until openLobby arms

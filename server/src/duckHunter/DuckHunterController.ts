@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type {
   RoomEvent,
+  ShooterCharacterId,
   ShooterErrorCode,
-  ShooterHostCharacter,
   ShooterMatchConfig,
   ShooterMatchEvent,
   ShooterMatchMode,
@@ -68,6 +68,9 @@ type Player = {
   playerKey: string;
   name: string;
   color: string;
+  /** Hunter character picked on the phone (duplicates across players are
+   * allowed — the assigned color still separates them). */
+  characterId: ShooterCharacterId | null;
   /** Control socket state; a disconnected player lingers through the grace. */
   connected: boolean;
   disconnectedAt: number | null;
@@ -125,7 +128,6 @@ type MatchState = {
   startsAt: number;
   /** Time-mode deadline; null in points mode. */
   endsAt: number | null;
-  character: ShooterHostCharacter | null;
   winner: ShooterPlayer | null;
   finalScores: ShooterPlayer[];
   /** 'ended' only: global TOP SCORES snapshot + the winner's rank in it. */
@@ -264,13 +266,19 @@ export class DuckHunterController {
    * nothing skips name adoption — that phone is a genuinely new entrant,
    * and adopting by name could hijack someone else's slot.
    */
-  join(clientId: string, rawName: string, playerKey?: string): void {
+  join(
+    clientId: string,
+    rawName: string,
+    playerKey?: string,
+    characterId?: ShooterCharacterId,
+  ): void {
     const name = rawName.slice(0, 24).trim() || 'Player';
     const existing = this.players.get(clientId);
     if (existing) {
       // Already joined (e.g. re-entering after the calibration screen): keep
-      // the player but refresh the chosen name.
+      // the player but refresh the chosen name + character.
       existing.name = name;
+      if (characterId !== undefined) existing.characterId = characterId;
       existing.connected = true;
       existing.disconnectedAt = null;
       this.sendJoined(clientId, existing);
@@ -294,6 +302,7 @@ export class DuckHunterController {
     if (orphan) {
       this.adoptPlayer(orphan, clientId);
       orphan.name = name;
+      if (characterId !== undefined) orphan.characterId = characterId;
       player = orphan;
     } else {
       if (this.players.size >= PLAYER_COLORS.length) {
@@ -309,6 +318,7 @@ export class DuckHunterController {
         playerKey: playerKey ?? randomUUID(),
         name,
         color: PLAYER_COLORS[this.colorSeq++ % PLAYER_COLORS.length],
+        characterId: characterId ?? null,
         connected: true,
         disconnectedAt: null,
         aimX: 0.5,
@@ -344,9 +354,19 @@ export class DuckHunterController {
       playerKey: p.playerKey,
       name: p.name,
       color: p.color,
+      characterId: p.characterId ?? undefined,
       score: p.score,
       camInputActive: p.camInputId != null,
     });
+  }
+
+  /** Change the player's hunter character (phone re-pick, e.g. in the lobby). */
+  setCharacter(clientId: string, characterId: ShooterCharacterId): void {
+    const p = this.players.get(clientId);
+    if (!p || p.characterId === characterId) return;
+    p.characterId = characterId;
+    this.publish();
+    this.broadcastState();
   }
 
   /** A rejected request, addressed to the client that made it. */
@@ -447,7 +467,6 @@ export class DuckHunterController {
               : null,
           startsAt: now + MATCH_COUNTDOWN_MS,
           endsAt: null,
-          character: cmd.character ?? null,
           winner: null,
           finalScores: [],
           topScores: [],
@@ -519,7 +538,6 @@ export class DuckHunterController {
           : m.phase === 'playing' && m.endsAt != null
             ? Math.max(0, m.endsAt - now)
             : undefined,
-      character: m.character ?? undefined,
       winner: m.phase === 'ended' ? m.winner : undefined,
       finalScores: m.phase === 'ended' ? m.finalScores : undefined,
       topScores: m.phase === 'ended' ? m.topScores : undefined,
@@ -1060,6 +1078,7 @@ export class DuckHunterController {
         clientId: p.clientId,
         name: p.name,
         color: p.color,
+        characterId: p.characterId ?? undefined,
         score: p.score,
         connected: p.connected,
         camLive: p.camConnected,
@@ -1081,6 +1100,7 @@ export class DuckHunterController {
         clientId: p.clientId,
         name: p.name,
         color: p.color,
+        characterId: p.characterId ?? undefined,
         score: p.score,
       }))
       .sort((a, b) => b.score - a.score);
@@ -1100,7 +1120,7 @@ export class DuckHunterController {
     if (m.winner) {
       m.topScoreRank = this.deps.recordTopScore({
         name: m.winner.name,
-        characterId: m.character?.id,
+        characterId: m.winner.characterId,
         score: m.winner.score,
         mode: m.mode,
         at: now,
@@ -1270,6 +1290,7 @@ export class DuckHunterController {
           y: p.dispY,
           color: p.color,
           name: p.name,
+          characterId: p.characterId ?? undefined,
           ...ammoState(p),
         })),
       scores: [...this.players.values()]
@@ -1277,6 +1298,7 @@ export class DuckHunterController {
           clientId: p.clientId,
           name: p.name,
           color: p.color,
+          characterId: p.characterId ?? undefined,
           score: p.score,
           ...ammoState(p),
         }))
@@ -1311,11 +1333,9 @@ export class DuckHunterController {
               name: m.winner.name,
               color: m.winner.color,
               score: m.winner.score,
+              characterId: m.winner.characterId,
             }
           : null,
-      character: m.character
-        ? { name: m.character.name, color: m.character.color }
-        : null,
     };
   }
 }

@@ -7,6 +7,8 @@
 export type ShooterSession = {
   playerKey?: string;
   name?: string;
+  /** Hunter character picked on this phone (survives refresh/reconnect). */
+  characterId?: string;
 };
 
 export const shooterSessionKey = (roomId: string) => `duck-hunter-${roomId}`;

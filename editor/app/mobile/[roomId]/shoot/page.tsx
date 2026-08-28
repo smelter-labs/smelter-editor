@@ -32,6 +32,7 @@ import {
 } from '@/components/duck-hunter/phone/phone-shell';
 import { ConnectStep } from '@/components/duck-hunter/phone/connect-step';
 import { NameStep } from '@/components/duck-hunter/phone/name-step';
+import { CharacterStep } from '@/components/duck-hunter/phone/character-step';
 import { WeaponStep } from '@/components/duck-hunter/phone/weapon-step';
 import {
   CalibrateStep,
@@ -75,9 +76,17 @@ const RECONNECT_MAX_MS = 8000;
 const REPUBLISH_MAX_MS = 8000;
 const REPUBLISH_STUCK_AFTER = 4;
 
-// The guided wizard: boot sequence → call sign → weapon → (gyro) calibration
-// → briefing → the hunt. Steps before 'play' render inside PhoneShell.
-type Step = 'connect' | 'name' | 'weapon' | 'calibrate' | 'ready' | 'play';
+// The guided wizard: boot sequence → call sign → hunter → weapon → (gyro)
+// calibration → briefing → the hunt. Steps before 'play' render inside
+// PhoneShell.
+type Step =
+  | 'connect'
+  | 'name'
+  | 'character'
+  | 'weapon'
+  | 'calibrate'
+  | 'ready'
+  | 'play';
 
 const STEP_META: Record<
   Exclude<Step, 'play'>,
@@ -85,10 +94,12 @@ const STEP_META: Record<
 > = {
   connect: { index: 0, label: 'CONNECTING' },
   name: { index: 1, label: 'CALL SIGN' },
-  weapon: { index: 2, label: 'WEAPON SELECT' },
-  calibrate: { index: 3, label: 'CALIBRATION' },
-  ready: { index: 4, label: 'BRIEFING' },
+  character: { index: 2, label: 'HUNTER SELECT' },
+  weapon: { index: 3, label: 'WEAPON SELECT' },
+  calibrate: { index: 4, label: 'CALIBRATION' },
+  ready: { index: 5, label: 'BRIEFING' },
 };
+const STEP_COUNT = 6;
 
 // Practice ducks in the calibration test range (normalized coords; the range
 // box fills whatever space the viewport gives it).
@@ -120,6 +131,11 @@ export default function ShootControllerPage() {
 
   const [step, setStep] = useState<Step>('connect');
   const [name, setName] = useState('');
+  // Hunter character picked on this phone (rides shoot_join; changeable via
+  // shoot_character once joined). Mirrored to a ref for the WS open replay.
+  const [characterId, setCharacterId] = useState<string | null>(null);
+  const characterIdRef = useRef<string | null>(null);
+  characterIdRef.current = characterId;
   const [connected, setConnected] = useState(false);
   const [room, setRoom] = useState<RoomState | null>(null);
   const [roomStatus, setRoomStatus] = useState<'loading' | 'ok' | 'not-found'>(
@@ -252,6 +268,7 @@ export default function ShootControllerPage() {
       }
       const session = readShooterSession(String(roomId));
       if (session.name) setName(session.name);
+      if (session.characterId) setCharacterId(session.characterId);
     } catch {
       /* ignore malformed storage */
     }
@@ -779,11 +796,15 @@ export default function ShootControllerPage() {
       // (score, color, camera) even when the old socket hasn't closed yet.
       if (wantsJoinRef.current) {
         const playerKey = sessionRef.current.playerKey;
+        // Same dual-site rule as playerKey: any join field must ride BOTH
+        // this reconnect replay and joinAndPlay.
+        const characterId = characterIdRef.current;
         ws.send(
           JSON.stringify({
             type: 'shoot_join',
             name: nameRef.current.trim() || 'Player',
             ...(playerKey ? { playerKey } : {}),
+            ...(characterId ? { characterId } : {}),
           }),
         );
         // The authoritative id arrives in shooter_joined; drop the stale one.
@@ -834,9 +855,13 @@ export default function ShootControllerPage() {
         const joined = data as ShooterJoinedEvent;
         setMyClientId(joined.clientId);
         setScore(joined.score);
+        // An adopted entry may carry a pick from a previous session — adopt
+        // it locally so the wizard and session agree with the server.
+        if (joined.characterId) setCharacterId(joined.characterId);
         sessionRef.current = writeShooterSession(String(roomId), {
           playerKey: joined.playerKey,
           name: joined.name,
+          ...(joined.characterId ? { characterId: joined.characterId } : {}),
         });
         return;
       }
@@ -1021,15 +1046,32 @@ export default function ShootControllerPage() {
     wantsJoinRef.current = true;
     setJoined(true);
     const playerKey = sessionRef.current.playerKey;
+    const charId = characterIdRef.current;
     send({
       type: 'shoot_join',
       name: name.trim() || 'Player',
       ...(playerKey ? { playerKey } : {}),
+      ...(charId ? { characterId: charId } : {}),
     });
     // If the player enabled their camera earlier, spin up its live input now
     // that they've joined.
     if (camStreamRef.current) sendCamStart();
   }, [send, sendCamStart, name]);
+
+  // Pick (or re-pick) the hunter character: persist it for the next refresh,
+  // tell the server if we're already on the roster, and advance the wizard.
+  const pickCharacter = useCallback(
+    (id: string) => {
+      setCharacterId(id);
+      characterIdRef.current = id;
+      sessionRef.current = writeShooterSession(String(roomId), {
+        characterId: id,
+      });
+      if (wantsJoinRef.current) send({ type: 'shoot_character', characterId: id });
+      setStep('weapon');
+    },
+    [roomId, send],
+  );
 
   // Mirror of the arcade's phase-follow: once the player has committed, enter
   // the hunt the moment the gate opens. Restricted to the briefing screen so
@@ -1129,7 +1171,7 @@ export default function ShootControllerPage() {
       <div className={fontClass}>
         <PhoneShell
           stepIndex={meta.index}
-          stepCount={5}
+          stepCount={STEP_COUNT}
           stepLabel={meta.label}
           compact={step === 'calibrate'}>
           {step === 'connect' ? (
@@ -1148,8 +1190,11 @@ export default function ShootControllerPage() {
               camErr={camErr}
               onToggleCamera={() => void toggleCamera()}
               attachCamVideo={attachCamVideo}
-              onContinue={() => setStep('weapon')}
+              onContinue={() => setStep('character')}
             />
+          ) : null}
+          {step === 'character' ? (
+            <CharacterStep selectedId={characterId} onPick={pickCharacter} />
           ) : null}
           {step === 'weapon' ? (
             <WeaponStep

@@ -190,6 +190,35 @@ describe('join / adoption / disconnect grace', () => {
     h.controller.dispose();
   });
 
+  it('characterId rides join, survives adoption, and re-picks via setCharacter', () => {
+    const h = harness();
+    h.controller.join('c1', 'Bob', undefined, 'crane-hunter');
+    expect(h.joinedFor('c1')!.characterId).toBe('crane-hunter');
+    expect(h.lastState()!.players[0].characterId).toBe('crane-hunter');
+
+    // Adoption keeps the pick when the re-join doesn't carry one…
+    const key = h.joinedFor('c1')!.playerKey;
+    h.controller.handleDisconnect('c1');
+    h.controller.join('c2', 'Bob', key);
+    expect(h.joinedFor('c2')!.characterId).toBe('crane-hunter');
+
+    // …and a re-join carrying one refreshes it (same for the joined fast path).
+    h.controller.join('c2', 'Bob', key, 'pink-spotter');
+    expect(h.joinedFor('c2')!.characterId).toBe('pink-spotter');
+
+    h.controller.setCharacter('c2', 'improwizator');
+    expect(h.lastState()!.players[0].characterId).toBe('improwizator');
+    h.controller.dispose();
+  });
+
+  it('a join without a character leaves it unset', () => {
+    const h = harness();
+    h.controller.join('c1', 'Bob');
+    expect(h.joinedFor('c1')!.characterId).toBeUndefined();
+    expect(h.lastState()!.players[0].characterId).toBeUndefined();
+    h.controller.dispose();
+  });
+
   it('name adoption only matches disconnected entries and keyless joins', () => {
     const h = harness();
     h.controller.join('c1', 'Bob');
@@ -437,7 +466,7 @@ describe('match lifecycle and the 30 Hz loop', () => {
   it('records the winner into TOP SCORES exactly once, repeat stops no-op', async () => {
     const h = harness();
     h.sceneState.peopleBoxes['stage'] = ghostTarget();
-    h.controller.join('c1', 'Bob');
+    h.controller.join('c1', 'Bob', undefined, 'crane-hunter');
     h.controller.join('c2', 'Eve');
     h.controller.controlMatch({ action: 'start', mode: 'time' });
     await vi.advanceTimersByTimeAsync(3100);
@@ -447,7 +476,12 @@ describe('match lifecycle and the 30 Hz loop', () => {
     // StrictMode remount) all funnel through stop/endMatch — repeat it.
     h.controller.controlMatch({ action: 'stop' });
     expect(h.topScores).toHaveLength(1);
-    expect(h.topScores[0]).toMatchObject({ name: 'Bob', score: 1, mode: 'time' });
+    expect(h.topScores[0]).toMatchObject({
+      name: 'Bob',
+      score: 1,
+      mode: 'time',
+      characterId: 'crane-hunter',
+    });
     const snap = h.controller.getMatchSnapshot();
     expect(snap.topScores).toHaveLength(1);
     expect(snap.topScoreRank).toBe(1);

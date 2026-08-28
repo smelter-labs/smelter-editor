@@ -1142,12 +1142,7 @@ function MatchHud({
           height: parent.height,
           overflow: 'visible',
         }}>
-        {chip(
-          match.character
-            ? `${modeLabel} · ${match.character.name}`
-            : modeLabel,
-          match.character?.color ?? '#FFFFFF',
-        )}
+        {chip(modeLabel, '#FFFFFF')}
         <View
           style={{
             top: Math.round((parent.height - bigFs * 1.3) / 2),

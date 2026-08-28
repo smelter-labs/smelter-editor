@@ -156,10 +156,16 @@ export type {
   PongServerEvent,
 } from "./pong-events.js";
 
+export {
+  SHOOTER_CHARACTERS,
+  SHOOTER_CHARACTER_IDS,
+} from "./shooter-events.js";
 export type {
   ShooterPlayer,
   ShooterAmmoConfig,
   ShooterJoinMessage,
+  ShooterCharacterMessage,
+  ShooterCharacterId,
   ShooterAimMessage,
   ShooterFireMessage,
   ShooterLeaveMessage,
@@ -167,7 +173,6 @@ export type {
   ShooterClientMessage,
   ShooterMatchMode,
   ShooterMatchPhase,
-  ShooterHostCharacter,
   ShooterTopScoreEntry,
   ShooterMatchConfig,
   ShooterJoinedEvent,

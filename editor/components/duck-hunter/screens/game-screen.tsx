@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from 'react';
 import { connectWhep } from '@/lib/webrtc/whep-connect';
 import { resolveMediaUrl } from '@/lib/server-url';
 import type { MatchSetup } from '../arcade';
-import type { ArcadeCharacter } from '../characters';
 import type { DuckHunterRoom } from '../use-duck-hunter-room';
 import type { ShooterFeed } from '../use-shooter-feed';
 import {
@@ -26,13 +25,11 @@ import { useArcadeKeys } from '../use-arcade-input';
  * players argue about. Esc aborts the round (with confirm).
  */
 export function GameScreen({
-  character,
   setup,
   room,
   feed,
   onAbort,
 }: {
-  character: ArcadeCharacter;
   setup: MatchSetup;
   room: DuckHunterRoom;
   feed: ShooterFeed;
@@ -214,20 +211,6 @@ export function GameScreen({
           zIndex: 5,
           pointerEvents: 'none',
         }}>
-        <PixelPanel
-          accent={character.accent}
-          cut={8}
-          fill='rgba(4,8,15,0.82)'
-          innerStyle={{ padding: '6px 12px' }}>
-          <span
-            style={{
-              fontFamily: pixelFont,
-              fontSize: 9,
-              color: ACCENT_LINE[character.accent],
-            }}>
-            {character.name}
-          </span>
-        </PixelPanel>
         {scores.slice(0, 4).map((p, i) => (
           <div
             key={p.clientId}

@@ -6,6 +6,8 @@ export type ShooterPlayer = {
   name: string;
   /** Hex color assigned to this player's crosshair + scoreboard row. */
   color: string;
+  /** Hunter character picked on the phone (see SHOOTER_CHARACTERS). */
+  characterId?: string;
   score: number;
   /**
    * The player's control socket is connected. A dropped phone stays on the
@@ -23,6 +25,38 @@ export type ShooterPlayer = {
  */
 export type ShooterAmmoConfig = { maxAmmo?: number; reloadMs?: number };
 
+/**
+ * The playable hunter characters. Each phone picks one for its player
+ * (duplicates allowed — the assigned crosshair color still separates
+ * players). The server validates ids against this list; the editor keeps
+ * the per-character clip/accent presentation mapping locally.
+ */
+export const SHOOTER_CHARACTERS = [
+  {
+    id: "improwizator",
+    name: "IMPROWIZATOR",
+    title: "DIY Ranger",
+    color: "#4fc3f7",
+  },
+  {
+    id: "crane-hunter",
+    name: "CRANE HUNTER",
+    title: "Kimono Blaster",
+    color: "#ff9210",
+  },
+  {
+    id: "pink-spotter",
+    name: "PINK SPOTTER",
+    title: "Visor Scout",
+    color: "#FF4081",
+  },
+] as const;
+
+export type ShooterCharacterId = (typeof SHOOTER_CHARACTERS)[number]["id"];
+
+export const SHOOTER_CHARACTER_IDS: readonly ShooterCharacterId[] =
+  SHOOTER_CHARACTERS.map((c) => c.id);
+
 // Client -> Server
 export type ShooterJoinMessage = {
   type: "shoot_join";
@@ -33,6 +67,13 @@ export type ShooterJoinMessage = {
    * color and camera included — instead of forking a fresh one.
    */
   playerKey?: string;
+  /** Hunter character picked on the phone (invalid ids are ignored). */
+  characterId?: string;
+};
+/** Change the player's hunter character after joining (e.g. in the lobby). */
+export type ShooterCharacterMessage = {
+  type: "shoot_character";
+  characterId: string;
 };
 /** Aim position in normalized content space [0,1] (0,0 = top-left). */
 export type ShooterAimMessage = { type: "shoot_aim"; x: number; y: number };
@@ -65,6 +106,7 @@ export type ShooterSpectateMessage = { type: "shoot_spectate" };
 
 export type ShooterClientMessage =
   | ShooterJoinMessage
+  | ShooterCharacterMessage
   | ShooterAimMessage
   | ShooterFireMessage
   | ShooterLeaveMessage
@@ -86,9 +128,6 @@ export type ShooterMatchPhase =
   | "playing"
   | "ended";
 
-/** Host identity chosen on the arcade character-select screen. */
-export type ShooterHostCharacter = { id: string; name: string; color: string };
-
 /**
  * One row of the global arcade TOP SCORES table. Recorded server-side by the
  * idempotent match end (never by clients), persisted across rooms/restarts.
@@ -109,7 +148,6 @@ export type ShooterMatchConfig = {
   durationMs?: number;
   /** Points mode target, clamped server-side to 1..200. */
   targetScore?: number;
-  character?: ShooterHostCharacter;
 };
 
 // Server -> Client
@@ -127,6 +165,8 @@ export type ShooterJoinedEvent = {
   playerKey: string;
   name: string;
   color: string;
+  /** Hunter character on the (possibly adopted) entry, if one was picked. */
+  characterId?: string;
   /** Restored score (nonzero when this join adopted an existing entry). */
   score: number;
   /** An earlier camera session is still registered for this player. */
@@ -214,7 +254,6 @@ export type ShooterMatchEvent = {
   endsAtMs?: number;
   /** Server-computed remaining ms (clients interpolate between ticks). */
   remainingMs?: number;
-  character?: ShooterHostCharacter;
   /** 'ended' only; null = draw. */
   winner?: ShooterPlayer | null;
   /** 'ended' only: scoreboard frozen at the final whistle. */

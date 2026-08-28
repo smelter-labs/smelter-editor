@@ -279,6 +279,8 @@ export type ShooterCrosshair = {
   y: number;
   color: string;
   name: string;
+  /** Hunter character picked on the phone (see SHOOTER_CHARACTERS). */
+  characterId?: string;
   /** Smelter input id of the player's live camera (WHIP), if the camera is on. */
   camInputId?: string;
   /** The camera publish is heartbeat-live (false = registered but dark). */
@@ -296,6 +298,8 @@ export type ShooterScoreRow = {
   clientId: string;
   name: string;
   color: string;
+  /** Hunter character picked on the phone (see SHOOTER_CHARACTERS). */
+  characterId?: string;
   score: number;
   /** Smelter input id of the player's live camera (WHIP), if the camera is on. */
   camInputId?: string;
@@ -339,9 +343,12 @@ export type ShooterMatchOverlay = {
   /** Time mode deadline (wall-clock ms); null in points mode. */
   endsAt: number | null;
   /** 'ended' only; null while live (or on a draw). */
-  winner: { name: string; color: string; score: number } | null;
-  /** Host identity from the arcade character-select screen. */
-  character: { name: string; color: string } | null;
+  winner: {
+    name: string;
+    color: string;
+    score: number;
+    characterId?: string;
+  } | null;
 };
 
 /** One player tile's chrome on the Kettlebell Tournament broadcast. */

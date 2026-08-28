@@ -2674,13 +2674,6 @@ const DuckHunterMatchSchema = Type.Object({
   ),
   durationMs: Type.Optional(Type.Number()),
   targetScore: Type.Optional(Type.Number()),
-  character: Type.Optional(
-    Type.Object({
-      id: Type.String(),
-      name: Type.String(),
-      color: Type.String(),
-    }),
-  ),
 });
 
 routes.post<RoomIdParams & { Body: Static<typeof DuckHunterMatchSchema> }>(
@@ -2694,7 +2687,6 @@ routes.post<RoomIdParams & { Body: Static<typeof DuckHunterMatchSchema> }>(
       mode: req.body.mode,
       durationMs: req.body.durationMs,
       targetScore: req.body.targetScore,
-      character: req.body.character?.id,
     });
     const room = state.getRoom(roomId);
     const match = room.controlDuckHunterMatch({
@@ -2702,7 +2694,6 @@ routes.post<RoomIdParams & { Body: Static<typeof DuckHunterMatchSchema> }>(
       mode: req.body.mode,
       durationMs: req.body.durationMs,
       targetScore: req.body.targetScore,
-      character: req.body.character,
     });
     res.status(200).send({ status: 'ok', match });
   },

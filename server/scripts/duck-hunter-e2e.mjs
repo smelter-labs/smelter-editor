@@ -114,19 +114,47 @@ await api('POST', `/room/${roomId}/duck-hunter/config`, {
   reloadMs: 3000,
 });
 
-// ── 2. Joins: ack + playerKey + the 6-player cap ────────────────────────────
+// ── 2. Joins: ack + playerKey + characterId + the 6-player cap ──────────────
 const phones = [];
 for (let i = 0; i < 6; i++) {
   const p = phone(roomId, `HUNTER${i}`);
   phones.push(p);
   await p.open;
-  p.ws.send(j({ type: 'shoot_join', name: p.name }));
+  // Phone 0 joins with a character; phone 1 with a bogus id (must be dropped).
+  p.ws.send(
+    j({
+      type: 'shoot_join',
+      name: p.name,
+      ...(i === 0 ? { characterId: 'crane-hunter' } : {}),
+      ...(i === 1 ? { characterId: 'bogus-hunter' } : {}),
+    }),
+  );
 }
 await sleep(400);
 check(
   'all 6 joins acked with playerKeys',
   phones.every((p) => !!p.playerKey && !!p.clientId),
   JSON.stringify(phones.map((p) => [p.name, p.playerKey?.slice(0, 8)])),
+);
+check(
+  'characterId echoed in the join ack + roster; bogus id dropped',
+  phones[0].joined?.characterId === 'crane-hunter' &&
+    phones[1].joined?.characterId === undefined &&
+    phones[0]
+      .lastState()
+      ?.players.find((p) => p.clientId === phones[0].clientId)?.characterId ===
+      'crane-hunter',
+  JSON.stringify([phones[0].joined?.characterId, phones[1].joined?.characterId]),
+);
+phones[0].ws.send(j({ type: 'shoot_character', characterId: 'pink-spotter' }));
+await sleep(300);
+check(
+  'shoot_character re-pick lands in the roster broadcast',
+  phones[1]
+    .lastState()
+    ?.players.find((p) => p.clientId === phones[0].clientId)?.characterId ===
+    'pink-spotter',
+  JSON.stringify(phones[1].lastState()?.players),
 );
 const [a, b] = phones;
 check(

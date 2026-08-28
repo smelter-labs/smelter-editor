@@ -54,6 +54,8 @@ import {
   DEFAULT_DUCK_PAUSE_MS,
 } from '../duckHunter/duckFlight';
 import type { ShooterMatchEvent } from '@smelter-editor/types';
+import type { ShooterCharacterId } from '@smelter-editor/types';
+import { SHOOTER_CHARACTER_IDS } from '@smelter-editor/types';
 import {
   KettlebellCoachController,
   type KettlebellResultData,
@@ -1717,9 +1719,17 @@ export class RoomState {
       x?: unknown;
       y?: unknown;
       playerKey?: unknown;
+      characterId?: unknown;
       nativeWidth?: unknown;
       nativeHeight?: unknown;
     };
+    // Unknown/invalid ids are dropped, not errored — an older phone build
+    // simply keeps its previous (or no) character.
+    const characterId =
+      typeof msg.characterId === 'string' &&
+      (SHOOTER_CHARACTER_IDS as readonly string[]).includes(msg.characterId)
+        ? (msg.characterId as ShooterCharacterId)
+        : undefined;
     switch (msg.type) {
       case 'shoot_join':
         this.duckHunter.join(
@@ -1728,7 +1738,11 @@ export class RoomState {
           typeof msg.playerKey === 'string' && msg.playerKey.length <= 64
             ? msg.playerKey
             : undefined,
+          characterId,
         );
+        break;
+      case 'shoot_character':
+        if (characterId) this.duckHunter.setCharacter(clientId, characterId);
         break;
       case 'shoot_aim':
         if (typeof msg.x === 'number' && typeof msg.y === 'number') {

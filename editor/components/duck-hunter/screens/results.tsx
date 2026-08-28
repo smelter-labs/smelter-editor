@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { characterVideoUrl, type ArcadeCharacter } from '../characters';
+import { characterById, characterVideoUrl } from '../characters';
 import type { ShooterFeed } from '../use-shooter-feed';
 import {
   ACCENT_LINE,
@@ -20,25 +20,25 @@ import {
 import { useArcadeKeys } from '../use-arcade-input';
 
 /**
- * GAME OVER: winner card next to the host character clip, the frozen final
- * scoreboard, and the global TOP SCORES table. The table (and the winner's
- * rank in it) rides the shooter_match 'ended' event — the server records the
- * score exactly once at match end, so remounts/refreshes can't duplicate it.
- * PLAY AGAIN keeps the room (phones stay in).
+ * GAME OVER: winner card next to the winner's own character clip, the frozen
+ * final scoreboard, and the global TOP SCORES table. The table (and the
+ * winner's rank in it) rides the shooter_match 'ended' event — the server
+ * records the score exactly once at match end, so remounts/refreshes can't
+ * duplicate it. PLAY AGAIN keeps the room (phones stay in).
  */
 export function Results({
-  character,
   feed,
   onPlayAgain,
   onExit,
 }: {
-  character: ArcadeCharacter;
   feed: ShooterFeed;
   onPlayAgain: () => void;
   onExit: () => void;
 }) {
   const match = feed.match;
   const winner = match?.winner ?? null;
+  // The clip celebrates the WINNER's own pick (made on their phone).
+  const winnerCharacter = characterById(winner?.characterId);
   const finalScores = useMemo(
     () => match?.finalScores ?? [],
     [match?.finalScores],
@@ -91,7 +91,7 @@ export function Results({
           minHeight: 0,
           marginTop: 18,
         }}>
-        {/* Winner + host character */}
+        {/* Winner + their character clip */}
         <div
           style={{
             width: 330,
@@ -102,25 +102,27 @@ export function Results({
           <PanelTitle color={winner ? winner.color : R5.cyan}>
             {winner ? 'WINNER' : 'RESULT'}
           </PanelTitle>
-          <PixelPanel
-            accent={character.accent}
-            cut={10}
-            glow={0.5}
-            innerStyle={{ padding: 0 }}>
-            <video
-              src={characterVideoUrl(character)}
-              autoPlay
-              loop
-              muted
-              playsInline
-              style={{
-                display: 'block',
-                width: '100%',
-                aspectRatio: '16 / 9',
-                objectFit: 'cover',
-              }}
-            />
-          </PixelPanel>
+          {winnerCharacter ? (
+            <PixelPanel
+              accent={winnerCharacter.accent}
+              cut={10}
+              glow={0.5}
+              innerStyle={{ padding: 0 }}>
+              <video
+                src={characterVideoUrl(winnerCharacter)}
+                autoPlay
+                loop
+                muted
+                playsInline
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  aspectRatio: '16 / 9',
+                  objectFit: 'cover',
+                }}
+              />
+            </PixelPanel>
+          ) : null}
           <div
             style={{
               display: 'flex',
@@ -151,15 +153,17 @@ export function Results({
                 DRAW
               </span>
             )}
-            <span
-              style={{
-                fontFamily: monoFont,
-                fontSize: 10,
-                color: R5.inkMuted,
-                textTransform: 'uppercase',
-              }}>
-              hunting as {character.name}
-            </span>
+            {winnerCharacter ? (
+              <span
+                style={{
+                  fontFamily: monoFont,
+                  fontSize: 10,
+                  color: R5.inkMuted,
+                  textTransform: 'uppercase',
+                }}>
+                hunting as {winnerCharacter.name}
+              </span>
+            ) : null}
           </div>
         </div>
 
