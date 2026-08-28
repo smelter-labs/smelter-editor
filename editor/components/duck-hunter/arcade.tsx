@@ -201,12 +201,7 @@ export function DuckHunterArcade() {
         />
       ) : null}
       {screen === 'game' ? (
-        <GameScreen
-          setup={setup}
-          room={room}
-          feed={feed}
-          onAbort={() => void room.stopMatch()}
-        />
+        <GameScreen room={room} onAbort={() => void room.stopMatch()} />
       ) : null}
       {screen === 'results' ? (
         <Results

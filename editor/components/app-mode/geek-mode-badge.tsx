@@ -1,11 +1,13 @@
 'use client';
 
+import { useIsChromelessRoute } from '@/lib/chromeless-routes';
 import { useAppMode } from './app-mode-context';
 
 export function GeekModeBadge() {
   const { mode } = useAppMode();
+  const isChromeless = useIsChromelessRoute();
 
-  if (mode !== 'geek') return null;
+  if (mode !== 'geek' || isChromeless) return null;
 
   return (
     <div
