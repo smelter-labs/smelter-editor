@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { ArcadeStage as SharedArcadeStage } from '@/lib/arcade/stage';
 
 /* ------------------------------------------------------------------ *
  * Retro kit for the /duck-hunter arcade page — a straight port of the
@@ -85,8 +86,7 @@ export const chamfer = (px: number): string => {
 
 /* --------------------------- arcade stage --------------------------- */
 
-export const STAGE_W = 1280;
-export const STAGE_H = 720;
+export { STAGE_W, STAGE_H } from '@/lib/arcade/stage';
 
 /**
  * Fullscreen wrapper that letterboxes and scales a fixed 1280×720 design
@@ -94,40 +94,7 @@ export const STAGE_H = 720;
  * rendered at, so fullscreen video and panel overlays always line up.
  */
 export function ArcadeStage({ children }: { children: React.ReactNode }) {
-  const [scale, setScale] = useState(1);
-  useEffect(() => {
-    const update = () =>
-      setScale(
-        Math.min(window.innerWidth / STAGE_W, window.innerHeight / STAGE_H),
-      );
-    update();
-    window.addEventListener('resize', update);
-    return () => window.removeEventListener('resize', update);
-  }, []);
-  return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: R5.bgDeep,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        overflow: 'hidden',
-      }}>
-      <div
-        style={{
-          width: STAGE_W,
-          height: STAGE_H,
-          transform: `scale(${scale})`,
-          transformOrigin: 'center center',
-          position: 'relative',
-          flexShrink: 0,
-        }}>
-        {children}
-      </div>
-    </div>
-  );
+  return <SharedArcadeStage background={R5.bgDeep}>{children}</SharedArcadeStage>;
 }
 
 /* --------------------------- pixel panel --------------------------- */

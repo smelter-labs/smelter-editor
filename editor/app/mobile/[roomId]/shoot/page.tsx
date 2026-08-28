@@ -12,7 +12,8 @@ import {
   getEffectiveClientServerUrl,
   getPublicDefaultServerUrl,
   getStoredClientServerUrl,
-  isLoopbackHost,
+  remoteOrigin,
+  resolveMediaUrl,
   toWsUrl,
 } from '@/lib/server-url';
 import { doto, pressStart, robotoMono } from '@/app/duck-hunter/fonts';
@@ -1230,30 +1231,3 @@ function sourceRate(
   }
 }
 
-// When the page is served from a remote origin (a tunnel/proxy), route the WS
-// and WHEP to that SAME origin so there is no cross-origin CORS or mixed
-// content — the proxy forwards /room and /whep to the backend services.
-// On localhost we keep the configured server URL (editor and server differ).
-function remoteOrigin(): string | null {
-  if (typeof window === 'undefined') return null;
-  const o = window.location.origin;
-  return /(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])/.test(o) ? null : o;
-}
-
-// Media endpoints (WHIP/WHEP) come from the server, which may only know its
-// loopback address. When such a URL would be unreachable from the phone, graft
-// its path onto the explicit `?server=` base (which may include a proxy path
-// prefix) or, failing that, onto this page's own origin. URLs that are already
-// public (e.g. an instance behind nginx) pass through untouched.
-function resolveMediaUrl(url: string): string {
-  const base =
-    getStoredClientServerUrl() ?? getPublicDefaultServerUrl() ?? remoteOrigin();
-  if (!base) return url;
-  try {
-    const u = new URL(url);
-    if (!isLoopbackHost(u.hostname)) return url;
-    return base + u.pathname + u.search;
-  } catch {
-    return url;
-  }
-}

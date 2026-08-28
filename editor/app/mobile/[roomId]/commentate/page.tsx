@@ -15,6 +15,7 @@ import {
   getEffectiveClientServerUrl,
   getPublicDefaultServerUrl,
   getStoredClientServerUrl,
+  remoteOrigin,
   resolveMediaUrl,
   toWsUrl,
 } from '@/lib/server-url';
@@ -58,12 +59,6 @@ const STEP_META: Record<Step, { index: number; label: string }> = {
 const NAME_KEY = 'kbt-commentator-name';
 const RECONNECT_MAX_MS = 8000;
 const REPUBLISH_MAX_MS = 8000;
-
-function remoteOrigin(): string | null {
-  if (typeof window === 'undefined') return null;
-  const o = window.location.origin;
-  return /(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])/.test(o) ? null : o;
-}
 
 export default function CommentatorPage() {
   const { roomId } = useParams();

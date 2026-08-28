@@ -15,6 +15,7 @@ import type {
   ShooterMatchOverlay,
 } from '../app/store';
 import { config } from '../config';
+import { clamp, clamp01 } from '../core/mathUtils';
 import { roomEventBus } from '../core/roomEventBus';
 import { SmelterInstance } from '../smelter';
 import type { DuckEntity, DuckFlightParams, DuckViewport } from './duckFlight';
@@ -1056,10 +1057,3 @@ function duckViewport(
   };
 }
 
-function clamp01(v: number): number {
-  return Math.max(0, Math.min(1, v));
-}
-
-function clamp(v: number, lo: number, hi: number): number {
-  return Math.max(lo, Math.min(hi, v));
-}

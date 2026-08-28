@@ -1,17 +1,12 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type {
   ShooterMatchEvent,
   ShooterPlayer,
   ShooterServerEvent,
 } from '@smelter-editor/types';
-import {
-  getEffectiveClientServerUrl,
-  getPublicDefaultServerUrl,
-  getStoredClientServerUrl,
-  toWsUrl,
-} from '@/lib/server-url';
+import { useRoomSocketFeed } from '@/lib/arcade/use-room-feed';
 
 export type ShooterFeed = {
   connected: boolean;
@@ -27,90 +22,34 @@ export type ShooterFeed = {
  * player) and then consumes the `shooter_state` / `shooter_match`
  * broadcasts. Reconnects with backoff while the page stays mounted.
  */
-export function useShooterFeed(roomId: string | null): ShooterFeed {
-  const [connected, setConnected] = useState(false);
+export function useShooterFeed(
+  roomId: string | null,
+  onRoomGone?: () => void,
+): ShooterFeed {
   const [players, setPlayers] = useState<ShooterPlayer[]>([]);
   const [targetActive, setTargetActive] = useState(false);
   const [match, setMatch] = useState<ShooterMatchEvent | null>(null);
-  const attemptRef = useRef(0);
 
   useEffect(() => {
-    if (!roomId) {
-      setConnected(false);
-      setPlayers([]);
-      setTargetActive(false);
-      setMatch(null);
-      return;
-    }
-
-    let ws: WebSocket | null = null;
-    let closed = false;
-    let retryTimer: number | null = null;
-
-    const connect = () => {
-      if (closed) return;
-      // Same resolution chain as the phone controller: stored URL → public
-      // build-time default → the effective (same-origin/tunnel) fallback.
-      const base =
-        getStoredClientServerUrl() ??
-        getPublicDefaultServerUrl() ??
-        getEffectiveClientServerUrl();
-      let socket: WebSocket;
-      try {
-        socket = new WebSocket(
-          `${toWsUrl(base)}/room/${encodeURIComponent(roomId)}/ws`,
-        );
-      } catch {
-        scheduleRetry();
-        return;
-      }
-      ws = socket;
-      socket.onopen = () => {
-        attemptRef.current = 0;
-        setConnected(true);
-        socket.send(JSON.stringify({ type: 'shoot_spectate' }));
-      };
-      socket.onmessage = (ev) => {
-        let parsed: ShooterServerEvent;
-        try {
-          parsed = JSON.parse(String(ev.data)) as ShooterServerEvent;
-        } catch {
-          return;
-        }
-        if (parsed.type === 'shooter_state') {
-          setPlayers(parsed.players);
-          setTargetActive(parsed.targetActive);
-        } else if (parsed.type === 'shooter_match') {
-          setMatch(parsed);
-        }
-      };
-      socket.onclose = () => {
-        if (ws === socket) ws = null;
-        setConnected(false);
-        scheduleRetry();
-      };
-      socket.onerror = () => {
-        socket.close();
-      };
-    };
-
-    const scheduleRetry = () => {
-      if (closed || retryTimer != null) return;
-      const delay = Math.min(8000, 500 * 2 ** attemptRef.current);
-      attemptRef.current += 1;
-      retryTimer = window.setTimeout(() => {
-        retryTimer = null;
-        connect();
-      }, delay);
-    };
-
-    connect();
-    return () => {
-      closed = true;
-      if (retryTimer != null) window.clearTimeout(retryTimer);
-      ws?.close();
-    };
+    if (roomId) return;
+    setPlayers([]);
+    setTargetActive(false);
+    setMatch(null);
   }, [roomId]);
+
+  const { connected } = useRoomSocketFeed(roomId, {
+    spectateMessage: { type: 'shoot_spectate' },
+    onEvent: (event) => {
+      const parsed = event as ShooterServerEvent;
+      if (parsed.type === 'shooter_state') {
+        setPlayers(parsed.players);
+        setTargetActive(parsed.targetActive);
+      } else if (parsed.type === 'shooter_match') {
+        setMatch(parsed);
+      }
+    },
+    onRoomGone,
+  });
 
   return { connected, players, targetActive, match };
 }

@@ -2,22 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
-/**
- * Whether the viewport is landscape. The phone wizard restructures its JSX per
- * orientation (side rail vs footer), which CSS media queries can't do — all
- * phone styling is inline objects. SSR-safe: false until mounted.
- */
-export function useIsLandscape(): boolean {
-  const [landscape, setLandscape] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia('(orientation: landscape)');
-    const update = () => setLandscape(mq.matches);
-    update();
-    mq.addEventListener('change', update);
-    return () => mq.removeEventListener('change', update);
-  }, []);
-  return landscape;
-}
+export { useIsLandscape } from '@/lib/arcade/use-viewport';
 
 /**
  * Live pixel size of an element (ResizeObserver on a callback ref). Drives the
