@@ -94,7 +94,9 @@ export { STAGE_W, STAGE_H } from '@/lib/arcade/stage';
  * rendered at, so fullscreen video and panel overlays always line up.
  */
 export function ArcadeStage({ children }: { children: React.ReactNode }) {
-  return <SharedArcadeStage background={R5.bgDeep}>{children}</SharedArcadeStage>;
+  return (
+    <SharedArcadeStage background={R5.bgDeep}>{children}</SharedArcadeStage>
+  );
 }
 
 /* --------------------------- pixel panel --------------------------- */

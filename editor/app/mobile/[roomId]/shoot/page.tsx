@@ -2,11 +2,20 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
-import type { ShooterMatchEvent } from '@smelter-editor/types';
+import type {
+  ShooterJoinedEvent,
+  ShooterMatchEvent,
+} from '@smelter-editor/types';
+import { WS_CLOSE_ROOM_NOT_FOUND } from '@smelter-editor/types';
 import type { RoomState } from '@/lib/types';
 import { getRoomInfo } from '@/app/actions/actions';
 import { connectWhep } from '@/lib/webrtc/whep-connect';
 import { startPublish } from '@/components/control-panel/whip-input/utils/whip-publisher';
+import { useWhipHeartbeat } from '@/components/control-panel/whip-input/hooks/use-whip-heartbeat';
+import {
+  readShooterSession,
+  writeShooterSession,
+} from '@/components/duck-hunter/phone/shooter-session';
 import {
   applyServerUrlFromQueryParam,
   getEffectiveClientServerUrl,
@@ -58,6 +67,13 @@ const GYRO_MAX_STEP_DEG = 25;
 // Tap detection: short press with little movement counts as a shot.
 const TAP_MS = 400;
 const TAP_MOVE_PX = 16;
+
+// Reconnect/republish backoff: 1 s → ×2 → cap. After REPUBLISH_STUCK_AFTER
+// failed republish attempts the camera error surfaces a manual retry hint
+// instead of an infinite silent spinner.
+const RECONNECT_MAX_MS = 8000;
+const REPUBLISH_MAX_MS = 8000;
+const REPUBLISH_STUCK_AFTER = 4;
 
 // The guided wizard: boot sequence → call sign → weapon → (gyro) calibration
 // → briefing → the hunt. Steps before 'play' render inside PhoneShell.
@@ -141,6 +157,25 @@ export default function ShootControllerPage() {
   // a stale closure when the server's `shooter_cam_offer` arrives.
   const camPcRef = useRef<RTCPeerConnection | null>(null);
   const camStreamRef = useRef<MediaStream | null>(null);
+  // The server-assigned camera input id (drives the heartbeat) + whether the
+  // publish peer connection is actually up (gates the heartbeat: acking with
+  // the PC down would mask a dead camera server-side).
+  const [camInputId, setCamInputId] = useState<string | null>(null);
+  const [camLive, setCamLive] = useState(false);
+  // The user wants the camera on — the republish self-heal only runs then.
+  const wantsCamRef = useRef(false);
+  const republishTimerRef = useRef<number | null>(null);
+  const republishDelayRef = useRef(1000);
+  const republishAttemptsRef = useRef(0);
+  // Reconnect state for the room WS: backoff delay + "we closed it ourselves"
+  // (unmount / explicit exit), which disables auto-reconnect.
+  const reconnectDelayRef = useRef(1000);
+  const closedByUsRef = useRef(false);
+  // Per-room resume session (playerKey + name), replayed on every re-join.
+  const sessionRef = useRef<ReturnType<typeof readShooterSession>>({});
+  // Transient server-refusal notice (room full, camera failed).
+  const [notice, setNotice] = useState<string | null>(null);
+  const noticeTimerRef = useRef<number | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -201,7 +236,7 @@ export default function ShootControllerPage() {
   useEffect(() => {
     try {
       // Seed the name from the intro's display name, then let a saved shoot
-      // name override it.
+      // name override it, then the per-room resume session (most specific).
       const dn = localStorage.getItem('smelter-display-name');
       if (dn) setName(dn);
       const raw = localStorage.getItem(AXIS_CFG_KEY);
@@ -215,10 +250,12 @@ export default function ShootControllerPage() {
         if (p.vert) setVertCfg({ ...DEFAULT_VERT, ...p.vert });
         if (typeof p.name === 'string' && p.name) setName(p.name);
       }
+      const session = readShooterSession(String(roomId));
+      if (session.name) setName(session.name);
     } catch {
       /* ignore malformed storage */
     }
-  }, []);
+  }, [roomId]);
   useEffect(() => {
     if (firstAxisSaveRef.current) {
       firstAxisSaveRef.current = false;
@@ -255,19 +292,69 @@ export default function ShootControllerPage() {
     camPcRef.current = null;
   }, []);
 
-  // Camera: toggle the front camera on/off. While playing, turning it on asks
-  // the server for a WHIP input (it replies with `shooter_cam_offer`, which we
-  // publish into); turning it off tears the publisher down on both ends.
-  const toggleCamera = useCallback(async () => {
-    if (camStream) {
-      camStream.getTracks().forEach((t) => t.stop());
-      setCamStream(null);
-      camStreamRef.current = null;
-      stopCamPublish();
-      send({ type: 'shoot_cam_stop' });
-      return;
+  // Camera request with the ACTUAL track dimensions so the server registers
+  // the input with its true aspect (portrait cams get cover-cropped without).
+  const sendCamStart = useCallback(() => {
+    const settings = camStreamRef.current?.getVideoTracks()[0]?.getSettings();
+    send({
+      type: 'shoot_cam_start',
+      ...(settings?.width && settings?.height
+        ? { nativeWidth: settings.width, nativeHeight: settings.height }
+        : {}),
+    });
+  }, [send]);
+  const sendCamStartRef = useRef(sendCamStart);
+  sendCamStartRef.current = sendCamStart;
+
+  const scheduleRepublishRef = useRef<(() => void) | null>(null);
+
+  /**
+   * Self-heal a dead publish while the control socket is fine: back off
+   * 1s→8s, re-acquire the camera if its track died with the phone being
+   * backgrounded, then re-request a slot (the server retires the old input
+   * and mints a fresh one — the same path a reconnect uses).
+   */
+  const scheduleRepublish = useCallback(() => {
+    if (!wantsCamRef.current || closedByUsRef.current) return;
+    if (republishTimerRef.current != null) return;
+    setCamLive(false);
+    const delay = republishDelayRef.current;
+    republishDelayRef.current = Math.min(REPUBLISH_MAX_MS, delay * 2);
+    republishAttemptsRef.current += 1;
+    if (republishAttemptsRef.current > REPUBLISH_STUCK_AFTER) {
+      setCamErr('CAMERA DROPPED — tap 📷 off and on to retry.');
     }
-    setCamErr(null);
+    republishTimerRef.current = window.setTimeout(() => {
+      republishTimerRef.current = null;
+      if (!wantsCamRef.current || camPcRef.current != null) return;
+      const track = camStreamRef.current?.getVideoTracks()[0];
+      const streamDead = !track || track.readyState === 'ended';
+      const fire = () => {
+        const ws = wsRef.current;
+        if (ws?.readyState === WebSocket.OPEN) {
+          sendCamStartRef.current();
+        } else {
+          // WS is down too — its own reconnect replays the cam request, but
+          // keep this loop alive in case that path lost the race.
+          scheduleRepublishRef.current?.();
+        }
+      };
+      if (streamDead) {
+        void acquireCameraRef.current?.().then((ok) => {
+          if (ok) fire();
+          else scheduleRepublishRef.current?.();
+        });
+      } else {
+        fire();
+      }
+    }, delay);
+  }, []);
+  scheduleRepublishRef.current = scheduleRepublish;
+
+  const acquireCameraRef = useRef<(() => Promise<boolean>) | null>(null);
+
+  /** Get the front camera and arm the OS-level track-death listener. */
+  const acquireCamera = useCallback(async (): Promise<boolean> => {
     try {
       const s = await navigator.mediaDevices.getUserMedia({
         video: {
@@ -279,13 +366,60 @@ export default function ShootControllerPage() {
       });
       setCamStream(s);
       camStreamRef.current = s;
-      // Before joining, the publish is kicked off by joinAndPlay; while already
-      // playing, ask the server to spin up our camera input now.
-      if (step === 'play') send({ type: 'shoot_cam_start' });
+      // Camera loss at the OS level (screen lock, iOS backgrounding, unplug)
+      // fires NO peer-connection event — only the track's 'ended'. The
+      // identity guard keeps a deliberate stream swap from false-positiving.
+      const track = s.getVideoTracks()[0];
+      track?.addEventListener('ended', () => {
+        if (camStreamRef.current === s) {
+          stopCamPublish();
+          setCamLive(false);
+          scheduleRepublishRef.current?.();
+        }
+      });
+      return true;
     } catch {
       setCamErr('Camera access denied — check your browser permissions.');
+      return false;
     }
-  }, [camStream, send, step, stopCamPublish]);
+  }, [stopCamPublish]);
+  acquireCameraRef.current = acquireCamera;
+
+  // Camera: toggle the front camera on/off. While playing, turning it on asks
+  // the server for a WHIP input (it replies with `shooter_cam_offer`, which we
+  // publish into); turning it off tears the publisher down on both ends.
+  const toggleCamera = useCallback(async () => {
+    if (camStream) {
+      wantsCamRef.current = false;
+      if (republishTimerRef.current != null) {
+        window.clearTimeout(republishTimerRef.current);
+        republishTimerRef.current = null;
+      }
+      republishDelayRef.current = 1000;
+      republishAttemptsRef.current = 0;
+      camStream.getTracks().forEach((t) => t.stop());
+      setCamStream(null);
+      camStreamRef.current = null;
+      stopCamPublish();
+      setCamInputId(null);
+      setCamLive(false);
+      send({ type: 'shoot_cam_stop' });
+      return;
+    }
+    setCamErr(null);
+    const ok = await acquireCamera();
+    if (!ok) return;
+    wantsCamRef.current = true;
+    republishDelayRef.current = 1000;
+    republishAttemptsRef.current = 0;
+    // Before joining, the publish is kicked off by joinAndPlay; while already
+    // playing, ask the server to spin up our camera input now.
+    if (step === 'play') sendCamStart();
+  }, [camStream, send, sendCamStart, step, stopCamPublish, acquireCamera]);
+
+  // Worker-driven heartbeat (+ wake lock): tells the server our publish is up.
+  // Gated on `camLive` — see the comment in useWhipHeartbeat.
+  useWhipHeartbeat(String(roomId), camInputId, !!camStream && camLive);
 
   // One <video> element exists per screen (name step preview / play bubble);
   // this ref callback attaches the live camera stream to whichever is mounted.
@@ -635,28 +769,54 @@ export default function ShootControllerPage() {
     ws.onopen = () => {
       setConnected(true);
       setWsDbg('');
+      reconnectDelayRef.current = 1000;
       // Observe the room right away (state + match snapshot, no player is
       // created) so the briefing screen knows the marsh status pre-join.
       ws.send(JSON.stringify({ type: 'shoot_spectate' }));
       // Join only once the player has committed (JOIN THE HUNT); handles the
       // case where the socket opens after that tap. On a reconnect the server
-      // minted a fresh client, so re-arm the camera input too if it's on.
+      // minted a fresh clientId — the stored playerKey re-adopts our entry
+      // (score, color, camera) even when the old socket hasn't closed yet.
       if (wantsJoinRef.current) {
+        const playerKey = sessionRef.current.playerKey;
         ws.send(
           JSON.stringify({
             type: 'shoot_join',
             name: nameRef.current.trim() || 'Player',
+            ...(playerKey ? { playerKey } : {}),
           }),
         );
-        if (camStreamRef.current) {
-          ws.send(JSON.stringify({ type: 'shoot_cam_start' }));
+        // The authoritative id arrives in shooter_joined; drop the stale one.
+        setMyClientId(null);
+        if (wantsCamRef.current && camStreamRef.current) {
+          // The reconnect replay owns the cam re-request; a pending republish
+          // timer would race it with a second (stale) request.
+          if (republishTimerRef.current != null) {
+            window.clearTimeout(republishTimerRef.current);
+            republishTimerRef.current = null;
+          }
+          sendCamStartRef.current();
         }
       }
     };
     ws.onerror = () => setWsDbg(`WS error: ${url}`);
     ws.onclose = (ev) => {
       setConnected(false);
-      setWsDbg(`WS closed (${ev.code}) — ${url}`);
+      if (closedByUsRef.current) return;
+      if (ev.code === WS_CLOSE_ROOM_NOT_FOUND) {
+        // The room is gone (deleted/GC'd) — reconnecting is pointless.
+        setRoomStatus('not-found');
+        setWsDbg(`room not found — ${url}`);
+        return;
+      }
+      setWsDbg(`WS closed (${ev.code}) — retrying…`);
+      const delay = reconnectDelayRef.current;
+      reconnectDelayRef.current = Math.min(RECONNECT_MAX_MS, delay * 2);
+      window.setTimeout(() => {
+        // The identity check keeps two sockets from racing after a manual
+        // retry already replaced wsRef.
+        if (!closedByUsRef.current && wsRef.current === ws) connectWs();
+      }, delay);
     };
     ws.onmessage = (ev) => {
       let data: unknown;
@@ -666,8 +826,38 @@ export default function ShootControllerPage() {
         return;
       }
       const m = data as { type?: string; clientId?: string };
+      if (m.type === 'shooter_joined') {
+        // The authoritative identity ack: overwrite the cached clientId (it
+        // changes on every reconnect — keeping the first one seen left the
+        // phone resolving someone else's color after a reconnect) and persist
+        // the resume token for the next one.
+        const joined = data as ShooterJoinedEvent;
+        setMyClientId(joined.clientId);
+        setScore(joined.score);
+        sessionRef.current = writeShooterSession(String(roomId), {
+          playerKey: joined.playerKey,
+          name: joined.name,
+        });
+        return;
+      }
+      if (m.type === 'shooter_error') {
+        const err = data as { code?: string; message?: string };
+        if (err.code === 'camera_failed') {
+          setCamErr(err.message ?? 'Camera slot failed — retry.');
+          return;
+        }
+        setNotice(err.message ?? 'Request refused.');
+        if (noticeTimerRef.current != null) {
+          window.clearTimeout(noticeTimerRef.current);
+        }
+        noticeTimerRef.current = window.setTimeout(() => {
+          noticeTimerRef.current = null;
+          setNotice(null);
+        }, 4000);
+        return;
+      }
       // shooter_hit / shooter_ammo are addressed to us and carry our clientId;
-      // capture it once so we can resolve our own color from the scoreboard.
+      // adopt it as a fallback for servers predating shooter_joined.
       if (m.clientId) setMyClientId((prev) => prev ?? m.clientId!);
       if (m.type === 'shooter_hit') {
         setScore((data as { score: number }).score);
@@ -716,6 +906,7 @@ export default function ShootControllerPage() {
         // Fresh session: drop any previous publisher PC first.
         camPcRef.current?.close();
         camPcRef.current = null;
+        setCamInputId(o.inputId);
         const whipUrl = resolveMediaUrl(o.whipUrl);
         void startPublish(
           o.inputId,
@@ -724,34 +915,58 @@ export default function ShootControllerPage() {
           camPcRef,
           camStreamRef,
           () => {
+            // Publish died (pc failed/closed, or 'disconnected' past the
+            // grace) — self-heal instead of leaving a frozen avatar tile.
             camPcRef.current = null;
+            setCamLive(false);
+            scheduleRepublishRef.current?.();
           },
           'user',
           false,
           stream,
           'h264',
-        ).catch(() => {
-          camPcRef.current = null;
-        });
+        )
+          .then(() => {
+            setCamLive(true);
+            setCamErr(null);
+            republishDelayRef.current = 1000;
+            republishAttemptsRef.current = 0;
+          })
+          .catch(() => {
+            // The WHIP POST itself failed — same recovery path.
+            camPcRef.current = null;
+            setCamLive(false);
+            scheduleRepublishRef.current?.();
+          });
       }
     };
   }, [roomId]);
 
   const fetchRoom = useCallback(() => {
-    void getRoomInfo(String(roomId)).then((info) => {
-      if (info && info !== 'not-found') {
-        setRoom(info);
-        setRoomStatus('ok');
-      } else {
+    void getRoomInfo(String(roomId))
+      .then((info) => {
+        if (info && info !== 'not-found') {
+          setRoom(info);
+          setRoomStatus('ok');
+        } else {
+          setRoomStatus('not-found');
+        }
+      })
+      .catch(() => {
+        // Server unreachable (503, network): without this the boot screen
+        // hangs on LINKING ROOM… forever with no RETRY button.
         setRoomStatus('not-found');
-      }
-    });
+      });
   }, [roomId]);
 
   // Retry the boot sequence (room lookup + WS uplink) from the connect step.
   const retryConnect = useCallback(() => {
     setWsDbg('');
-    wsRef.current?.close();
+    closedByUsRef.current = false;
+    reconnectDelayRef.current = 1000;
+    const old = wsRef.current;
+    wsRef.current = null; // detach first so old.onclose fails the identity check
+    old?.close();
     if (roomStatus !== 'ok') {
       setRoomStatus('loading');
       fetchRoom();
@@ -805,14 +1020,16 @@ export default function ShootControllerPage() {
   const joinAndPlay = useCallback(() => {
     wantsJoinRef.current = true;
     setJoined(true);
+    const playerKey = sessionRef.current.playerKey;
     send({
       type: 'shoot_join',
       name: name.trim() || 'Player',
+      ...(playerKey ? { playerKey } : {}),
     });
     // If the player enabled their camera earlier, spin up its live input now
     // that they've joined.
-    if (camStreamRef.current) send({ type: 'shoot_cam_start' });
-  }, [send, name]);
+    if (camStreamRef.current) sendCamStart();
+  }, [send, sendCamStart, name]);
 
   // Mirror of the arcade's phase-follow: once the player has committed, enter
   // the hunt the moment the gate opens. Restricted to the briefing screen so
@@ -826,13 +1043,27 @@ export default function ShootControllerPage() {
 
   // Connect + fetch room info on mount; the boot step visualizes both.
   useEffect(() => {
+    sessionRef.current = readShooterSession(String(roomId));
     fetchRoom();
+    // Re-arm after a StrictMode unmount/remount — the cleanup below set the
+    // flag, and without the reset auto-reconnect would stay off for good.
+    closedByUsRef.current = false;
     connectWs();
     return () => {
+      closedByUsRef.current = true;
       wsRef.current?.close();
       wsRef.current = null;
+      if (republishTimerRef.current != null) {
+        window.clearTimeout(republishTimerRef.current);
+        republishTimerRef.current = null;
+      }
+      if (noticeTimerRef.current != null) {
+        window.clearTimeout(noticeTimerRef.current);
+        noticeTimerRef.current = null;
+      }
     };
-  }, [fetchRoom, connectWs]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomId]);
 
   // Boot step auto-advances once the room resolved and the radio is up.
   useEffect(() => {
@@ -875,16 +1106,18 @@ export default function ShootControllerPage() {
     if (stream) v.play().catch(() => {});
   }, [stream, step]);
 
-  // Cleanup on unmount.
+  // Cleanup on unmount. Deliberately NO shoot_leave here: an accidental
+  // refresh must keep the server-side entry alive so the session's playerKey
+  // re-adopts it (score, color, camera); truly gone phones are reaped by the
+  // disconnect grace. (The old leave was dead code anyway — the connect
+  // effect's cleanup nulled wsRef before this ran.)
   useEffect(() => {
     return () => {
-      send({ type: 'shoot_leave' });
       camPcRef.current?.close();
       camPcRef.current = null;
-      wsRef.current?.close();
       whepCloseRef.current?.();
     };
-  }, [send]);
+  }, []);
 
   const fontClass = `${pressStart.variable} ${doto.variable} ${robotoMono.variable}`;
 
@@ -949,18 +1182,28 @@ export default function ShootControllerPage() {
             />
           ) : null}
           {step === 'ready' ? (
-            <ReadyStep
-              name={name}
-              gyroMode={gyroMode}
-              camOn={!!camStream}
-              targetActive={targetActive}
-              playersCount={scores.length}
-              match={match}
-              joined={joined}
-              canEnter={canEnterPlay}
-              onJoin={joinAndPlay}
-              onBack={() => setStep('weapon')}
-            />
+            <>
+              {notice ? <WarnPanel>{notice}</WarnPanel> : null}
+              <ReadyStep
+                name={name}
+                gyroMode={gyroMode}
+                camOn={!!camStream}
+                targetActive={targetActive}
+                playersCount={scores.length}
+                match={match}
+                joined={joined}
+                canEnter={canEnterPlay}
+                onJoin={joinAndPlay}
+                onBack={() => {
+                  // Backing out un-commits the join, so the gate effect can't
+                  // yank the player straight back into play mid-recalibration.
+                  setJoined(false);
+                  wantsJoinRef.current = false;
+                  send({ type: 'shoot_leave' });
+                  setStep('weapon');
+                }}
+              />
+            </>
           ) : null}
         </PhoneShell>
       </div>
@@ -1230,4 +1473,3 @@ function sourceRate(
     }
   }
 }
-
