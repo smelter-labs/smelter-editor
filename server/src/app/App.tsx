@@ -12,9 +12,11 @@ import {
   useViewport,
   useTranscriptionSideChannelInputIds,
   useKbTournament,
+  useShooterOverlay,
 } from './store';
 import { Input } from '../inputs/inputs';
 import { KbtMatchHud } from '../inputs/KbtHud';
+import { ShooterResultsScene } from '../inputs/ShooterResultsScene';
 import { wrapWithShaders } from '../utils/shaderUtils';
 import { AudioStoreContext } from '../audio/AudioStoreContext';
 import type { AudioStoreState } from '../audio/audioStore';
@@ -367,6 +369,9 @@ function OutputScene() {
       {/* Kettlebell Tournament chrome sits above every layer (per-tile HUD
           renders inside each Input; this is the heat clock/banner/standings). */}
       <KbtHudSlot resolution={resolution} />
+      {/* Duck-hunter GAME OVER scene — full-frame retro results over the
+          ended match (the in-tile HUD hides itself for that phase). */}
+      <ShooterHudSlot resolution={resolution} />
     </View>
   );
 
@@ -394,6 +399,21 @@ function KbtHudSlot({
   resolution: { width: number; height: number };
 }) {
   const kbTournament = useKbTournament();
+  const shooter = useShooterOverlay();
   if (!kbTournament) return null;
+  // A live duck-hunter overlay owns the output — the KBT lobby/scene chrome
+  // (JOIN THE TOURNAMENT panel, branding) would obscure the game.
+  if (shooter) return null;
   return <KbtMatchHud hud={kbTournament} resolution={resolution} />;
+}
+
+/** Same subscription isolation for the duck-hunter results scene (~30 Hz). */
+function ShooterHudSlot({
+  resolution,
+}: {
+  resolution: { width: number; height: number };
+}) {
+  const shooter = useShooterOverlay();
+  if (!shooter) return null;
+  return <ShooterResultsScene shooter={shooter} resolution={resolution} />;
 }

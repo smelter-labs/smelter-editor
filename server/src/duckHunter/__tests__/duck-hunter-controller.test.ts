@@ -488,6 +488,28 @@ describe('match lifecycle and the 30 Hz loop', () => {
     h.controller.dispose();
   });
 
+  it('the ended overlay carries the results-scene payload', async () => {
+    const h = harness();
+    h.sceneState.peopleBoxes['stage'] = ghostTarget();
+    h.controller.join('c1', 'Bob', undefined, 'improwizator');
+    h.controller.join('c2', 'Eve');
+    h.controller.controlMatch({ action: 'start', mode: 'time' });
+    await vi.advanceTimersByTimeAsync(3100);
+    h.controller.fire('c1');
+    h.controller.controlMatch({ action: 'stop' });
+    const overlay = h.lastOverlay();
+    expect(overlay?.match?.phase).toBe('ended');
+    expect(overlay?.match?.winner).toMatchObject({
+      name: 'Bob',
+      characterId: 'improwizator',
+    });
+    expect(overlay?.match?.finalScores).toHaveLength(2);
+    expect(overlay?.match?.topScores).toHaveLength(1);
+    expect(overlay?.match?.topScoreRank).toBe(1);
+    expect(overlay?.match?.endedAt).not.toBeNull();
+    h.controller.dispose();
+  });
+
   it('a draw records no top score but still snapshots the table', async () => {
     const h = harness();
     h.controller.join('c1', 'Bob');

@@ -1336,6 +1336,18 @@ export class DuckHunterController {
               characterId: m.winner.characterId,
             }
           : null,
+      finalScores:
+        m.phase === 'ended'
+          ? m.finalScores.map((p) => ({
+              name: p.name,
+              color: p.color,
+              score: p.score,
+              characterId: p.characterId,
+            }))
+          : [],
+      topScores: m.phase === 'ended' ? m.topScores : [],
+      topScoreRank: m.phase === 'ended' ? m.topScoreRank : null,
+      endedAt: m.endedAt,
     };
   }
 }

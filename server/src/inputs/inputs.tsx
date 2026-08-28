@@ -28,6 +28,9 @@ import { KettlebellOverlay } from './KettlebellOverlay';
 import { KettlebellSkeletonWrapper } from './KettlebellSkeletonWrapper';
 import { KbtShakeWrapper } from './KbtShakeWrapper';
 import { KbtTileHud } from './KbtHud';
+import { ArcadeBigText, RETRO, RetroPanel } from './RetroPanel';
+import { chipRect, scoreboardRect } from './retroHudLayout';
+import { SHOOTER_CHARACTERS } from '@smelter-editor/types';
 
 type Resolution = { width: number; height: number };
 
@@ -730,6 +733,9 @@ function ShooterHud({
   const chSize = Math.max(28, Math.round(parent.width * 0.05));
   const th = Math.max(2, Math.round(chSize * 0.06));
   const now = Date.now();
+  // The full-frame results scene (output root) owns the ended phase — skip
+  // the in-tile chrome underneath it (each badge/panel is a shader pass).
+  const ended = shooter.match?.phase === 'ended';
 
   return (
     <View
@@ -935,7 +941,9 @@ function ShooterHud({
           rotated/bordered Views render displaced/oversized on this engine
           build, which visibly broke the reticle — the outline is built from
           four filled bars instead so it stays centered on the dot. */}
-      {shooter.crosshairs.map((c) => {
+      {ended
+        ? null
+        : shooter.crosshairs.map((c) => {
         const { px, py } = toPx(c.x, c.y);
         const u = Math.max(3, th); // chunky "pixel" unit
         const d = Math.round(chSize * 0.58); // scope square side
@@ -1046,8 +1054,8 @@ function ShooterHud({
         );
       })}
 
-      {/* Scoreboard, top-right. */}
-      {shooter.scores.length > 0 ? (
+      {/* Scoreboard, top-right (hidden under the ended-phase results scene). */}
+      {shooter.scores.length > 0 && !ended ? (
         <ShooterScoreboard scores={shooter.scores} parent={parent} now={now} />
       ) : null}
 
@@ -1065,10 +1073,11 @@ function ShooterHud({
 }
 
 /**
- * Arcade match overlay (the /duck-hunter page): a top-center chip with the
- * round clock (time mode) or target + leader (points mode), a giant 3-2-1
- * countdown before the round, and the GAME OVER banner after it. Pixel-art
- * styling to match the rest of the HUD (Doto font, chunky frames, no rotation).
+ * Arcade match overlay (the /duck-hunter page): a top-center retro chip with
+ * the round clock (time mode) or target + leader (points mode) and a giant
+ * 3-2-1 / GO! beat around the start. Chip chrome comes from the retro-panel
+ * shader (chamfered cut corners — the editor retro-kit look); the ended phase
+ * renders nothing here — ShooterResultsScene owns the output then.
  */
 function MatchHud({
   match,
@@ -1081,39 +1090,34 @@ function MatchHud({
   parent: { width: number; height: number };
   now: number;
 }) {
-  const fs = Math.max(18, Math.round(parent.height * 0.03));
-  const border = Math.max(3, Math.round(fs * 0.16));
-
-  const chip = (label: string, color: string) => {
-    const chipFs = Math.round(fs * 1.15);
-    const width =
-      Math.round(chipFs * 0.62 * (label.length + 1)) + Math.round(chipFs * 1.2);
-    const height = Math.round(chipFs * 1.9);
+  const chip = (label: string, accent: string, flash = 0) => {
+    const r = chipRect(parent, label);
     return (
-      <View
-        style={{
-          top: Math.round(parent.width * 0.02),
-          left: Math.round((parent.width - width) / 2),
-          width,
-          height,
-          backgroundColor: HUD_BG,
-          borderWidth: border,
-          borderColor: '#FFFFFF',
-          overflow: 'hidden',
-        }}>
+      <RetroPanel
+        x={r.left}
+        y={r.top}
+        w={r.width}
+        h={r.height}
+        cut={Math.round(r.height * 0.28)}
+        line={accent}
+        flash={flash}
+        glow={0.35}
+        glowPx={Math.round(r.height * 0.35)}
+        scanline={0.5}
+        scanPx={3}>
         <View
           style={{
-            top: Math.round((height - chipFs * 1.4) / 2),
+            top: Math.round((r.height - r.fontSize * 1.4) / 2),
             left: 0,
-            width,
-            height: Math.round(chipFs * 1.5),
+            width: r.width,
+            height: Math.round(r.fontSize * 1.5),
             overflow: 'hidden',
           }}>
           <Text
             style={{
-              fontSize: chipFs,
-              color,
-              width,
+              fontSize: r.fontSize,
+              color: accent,
+              width: r.width,
               align: 'center',
               fontFamily: HUD_FONT,
               fontWeight: 'black',
@@ -1121,7 +1125,7 @@ function MatchHud({
             {label}
           </Text>
         </View>
-      </View>
+      </RetroPanel>
     );
   };
 
@@ -1142,27 +1146,14 @@ function MatchHud({
           height: parent.height,
           overflow: 'visible',
         }}>
-        {chip(modeLabel, '#FFFFFF')}
-        <View
-          style={{
-            top: Math.round((parent.height - bigFs * 1.3) / 2),
-            left: 0,
-            width: parent.width,
-            height: Math.round(bigFs * 1.4),
-            overflow: 'visible',
-          }}>
-          <Text
-            style={{
-              fontSize: bigFs,
-              color: '#FFDE59',
-              width: parent.width,
-              align: 'center',
-              fontFamily: HUD_FONT,
-              fontWeight: 'black',
-            }}>
-            {`${n}`}
-          </Text>
-        </View>
+        {chip(modeLabel, RETRO.green)}
+        <ArcadeBigText
+          text={`${n}`}
+          fontSize={bigFs}
+          color={RETRO.yellow}
+          top={Math.round((parent.height - bigFs * 1.3) / 2)}
+          width={parent.width}
+        />
       </View>
     );
   }
@@ -1172,12 +1163,17 @@ function MatchHud({
     const sinceStart = now - match.startsAt;
     const showGo = sinceStart < 600;
     let label: string;
-    let color = '#FFFFFF';
+    let accent: string = RETRO.cyan;
+    let flash = 0;
     if (match.mode === 'time') {
       const left = Math.max(0, (match.endsAt ?? now) - now);
       label = formatClock(left);
+      accent = RETRO.yellow;
       // Hard arcade blink for the final 10 seconds.
-      if (left <= 10_000 && now % 500 < 250) color = '#FF4030';
+      if (left <= 10_000) {
+        accent = RETRO.red;
+        flash = now % 500 < 250 ? 1 : 0;
+      }
     } else {
       const leader = scores[0];
       label = leader
@@ -1194,117 +1190,23 @@ function MatchHud({
           height: parent.height,
           overflow: 'visible',
         }}>
-        {chip(label, color)}
+        {chip(label, accent, flash)}
         {showGo ? (
-          <View
-            style={{
-              top: Math.round((parent.height - goFs * 1.3) / 2),
-              left: 0,
-              width: parent.width,
-              height: Math.round(goFs * 1.4),
-              overflow: 'visible',
-            }}>
-            <Text
-              style={{
-                fontSize: goFs,
-                color: '#3fd05a',
-                width: parent.width,
-                align: 'center',
-                fontFamily: HUD_FONT,
-                fontWeight: 'black',
-              }}>
-              GO!
-            </Text>
-          </View>
+          <ArcadeBigText
+            text='GO!'
+            fontSize={goFs}
+            color={RETRO.green}
+            top={Math.round((parent.height - goFs * 1.3) / 2)}
+            width={parent.width}
+          />
         ) : null}
       </View>
     );
   }
 
-  // ended — GAME OVER banner with the winner (or DRAW).
-  const panelW = Math.round(parent.width * 0.5);
-  const titleFs = Math.round(parent.height * 0.07);
-  const nameFs = Math.round(parent.height * 0.05);
-  const scoreFs = Math.round(parent.height * 0.09);
-  const pad = Math.round(titleFs * 0.7);
-  const panelH = pad * 2 + Math.round((titleFs + nameFs + scoreFs) * 1.5);
-  const winner = match.winner;
-  return (
-    <View
-      style={{
-        top: Math.round((parent.height - panelH) / 2),
-        left: Math.round((parent.width - panelW) / 2),
-        width: panelW,
-        height: panelH,
-        backgroundColor: HUD_BG,
-        borderWidth: border,
-        borderColor: '#FFFFFF',
-        overflow: 'hidden',
-      }}>
-      <View
-        style={{
-          top: pad,
-          left: 0,
-          width: panelW,
-          height: Math.round(titleFs * 1.5),
-          overflow: 'hidden',
-        }}>
-        <Text
-          style={{
-            fontSize: titleFs,
-            color: '#FF4030',
-            width: panelW,
-            align: 'center',
-            fontFamily: HUD_FONT,
-            fontWeight: 'black',
-          }}>
-          GAME OVER
-        </Text>
-      </View>
-      <View
-        style={{
-          top: pad + Math.round(titleFs * 1.5),
-          left: 0,
-          width: panelW,
-          height: Math.round(nameFs * 1.5),
-          overflow: 'hidden',
-        }}>
-        <Text
-          style={{
-            fontSize: nameFs,
-            color: winner ? winner.color : '#FFFFFFCC',
-            width: panelW,
-            align: 'center',
-            fontFamily: HUD_FONT,
-            fontWeight: 'bold',
-          }}>
-          {winner ? `${winner.name} WINS` : 'DRAW'}
-        </Text>
-      </View>
-      {winner ? (
-        <View
-          style={{
-            top: pad + Math.round((titleFs + nameFs) * 1.5),
-            left: 0,
-            width: panelW,
-            height: Math.round(scoreFs * 1.5),
-            overflow: 'hidden',
-          }}>
-          <Text
-            style={{
-              fontSize: scoreFs,
-              color: '#FFDE59',
-              width: panelW,
-              align: 'center',
-              fontFamily: HUD_FONT,
-              fontWeight: 'black',
-            }}>
-            {`${winner.score}`}
-          </Text>
-        </View>
-      ) : null}
-    </View>
-  );
+  // ended — the full-frame results scene (mounted at the output root by
+  // ShooterHudSlot) owns the frame; nothing extra inside the tile.
+  return null;
 }
 
 /** `M:SS` from ms (blank for null). */
@@ -1522,18 +1424,15 @@ function PlayerBadge({
   const textLeft = padH + (hasAvatar ? av + gap : 0);
   const textTop = Math.round((badgeH - textColH) / 2);
   return (
-    <View
-      style={{
-        top: absTop - Math.round(py - chSize / 2),
-        left: absLeft - Math.round(px - chSize / 2),
-        width: badgeW,
-        height: badgeH,
-        backgroundColor: HUD_BG,
-        borderRadius: Math.round(fs * 0.45),
-        borderWidth: 3,
-        borderColor: player.color,
-        overflow: 'visible',
-      }}>
+    <RetroPanel
+      x={absLeft - Math.round(px - chSize / 2)}
+      y={absTop - Math.round(py - chSize / 2)}
+      w={badgeW}
+      h={badgeH}
+      cut={Math.round(fs * 0.5)}
+      line={player.color}
+      glow={0.3}
+      glowPx={Math.round(fs * 0.6)}>
       {hasAvatar ? (
         <LiveCamTile
           inputId={player.camInputId}
@@ -1560,7 +1459,7 @@ function PlayerBadge({
         player={player}
         now={now}
       />
-    </View>
+    </RetroPanel>
   );
 }
 
@@ -1568,9 +1467,15 @@ function PlayerBadge({
 // scoreboard stays in the pixel font.
 const RANK_COLORS = ['#FFD700', '#C0C0C0', '#CD7F32'];
 
+// Wire character catalog → per-row sub-label (name + color) on the broadcast.
+const CHARACTER_BY_ID = new Map<string, { name: string; color: string }>(
+  SHOOTER_CHARACTERS.map((c) => [c.id, { name: c.name, color: c.color }]),
+);
+
 /**
- * Scoreboard, top-right: ranked rows with the player's camera avatar, name,
- * ammo pips + reload countdown, and the score right-aligned.
+ * Scoreboard, top-right: a chamfered retro shell (retro-panel shader) with
+ * ranked rows — camera avatar, name, character sub-label, ammo pips + reload
+ * countdown, and the score right-aligned.
  */
 function ShooterScoreboard({
   scores: allScores,
@@ -1585,18 +1490,13 @@ function ShooterScoreboard({
   // more rows than this would overflow the frame (and mount a live camera
   // tile per row). Rows arrive sorted by score, so the tail is droppable.
   const scores = allScores.slice(0, 8);
-  const margin = Math.round(parent.width * 0.02);
-  const fs = Math.max(18, Math.round(parent.height * 0.03));
-  const padH = Math.round(fs * 0.6);
-  const padV = Math.round(fs * 0.5);
+  const shell = scoreboardRect(parent, scores.length);
+  const { fontSize: fs, rowH, rowGap, padH, padV } = shell;
   const av = Math.round(fs * 1.9);
-  const rowH = Math.round(av * 1.2);
-  const rowGap = Math.round(fs * 0.4);
   const rankW = Math.round(fs * 1.5);
   const gap = Math.round(fs * 0.4);
   const scoreW = Math.round(fs * 2.4);
-  const width = Math.round(parent.width * 0.24);
-  const height = padV * 2 + scores.length * rowH + (scores.length - 1) * rowGap;
+  const width = shell.width;
   const pipSize = Math.max(5, Math.round(fs * 0.3));
   // Clear breathing room between the avatar's chunky frame and the name
   // column — at gap (fs*0.4) the first letters visually sat on the frame.
@@ -1604,19 +1504,23 @@ function ShooterScoreboard({
   const nameLeft = padH + rankW + av + avGap;
   const nameW = width - nameLeft - scoreW - padH - gap;
   return (
-    <View
-      style={{
-        top: margin,
-        left: parent.width - width - margin,
-        width,
-        height,
-        backgroundColor: HUD_BG,
-        borderWidth: Math.max(3, Math.round(fs * 0.16)),
-        borderColor: '#FFFFFF',
-        overflow: 'hidden',
-      }}>
+    <RetroPanel
+      x={shell.left}
+      y={shell.top}
+      w={shell.width}
+      h={shell.height}
+      cut={Math.round(fs * 0.6)}
+      line={RETRO.lineBright}
+      fillA={0.85}
+      glow={0.25}
+      glowPx={Math.round(fs * 0.7)}
+      scanline={0.5}
+      scanPx={3}>
       {scores.map((s, i) => {
         const rowTop = padV + i * (rowH + rowGap);
+        const character = s.characterId
+          ? CHARACTER_BY_ID.get(s.characterId)
+          : undefined;
         const reloadLeftS =
           s.reloadEndsAt == null
             ? null
@@ -1681,6 +1585,26 @@ function ShooterScoreboard({
               player={s}
               now={now}
             />
+            {character ? (
+              <View
+                style={{
+                  top: Math.round(fs * 2.0),
+                  left: nameLeft,
+                  width: Math.max(fs, nameW),
+                  height: Math.round(fs * 0.72),
+                  overflow: 'hidden',
+                }}>
+                <Text
+                  style={{
+                    fontSize: Math.round(fs * 0.5),
+                    color: character.color,
+                    fontFamily: HUD_FONT,
+                    fontWeight: 'bold',
+                  }}>
+                  {character.name}
+                </Text>
+              </View>
+            ) : null}
             {reloadLeftS != null ? (
               <View
                 style={{
@@ -1724,6 +1648,6 @@ function ShooterScoreboard({
           </View>
         );
       })}
-    </View>
+    </RetroPanel>
   );
 }

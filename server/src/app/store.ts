@@ -13,7 +13,10 @@ import type {
   ShaderConfig,
   ViewportProperties,
 } from '../types';
-import type { KbtViewTransitionStyle } from '@smelter-editor/types';
+import type {
+  KbtViewTransitionStyle,
+  ShooterTopScoreEntry,
+} from '@smelter-editor/types';
 import type { HandsStore } from '../hands/handStore';
 import type { DuckEntity } from '../duckHunter/duckFlight';
 import { createContext, useContext } from 'react';
@@ -349,6 +352,19 @@ export type ShooterMatchOverlay = {
     score: number;
     characterId?: string;
   } | null;
+  /** 'ended' only: scoreboard frozen at the final whistle (sorted). */
+  finalScores: {
+    name: string;
+    color: string;
+    score: number;
+    characterId?: string;
+  }[];
+  /** 'ended' only: the global TOP SCORES table for this match's mode. */
+  topScores: ShooterTopScoreEntry[];
+  /** 'ended' only: 1-based rank the winner took in it; null = off-table. */
+  topScoreRank: number | null;
+  /** Wall-clock ms the match ended (drives the results-scene blink). */
+  endedAt: number | null;
 };
 
 /** One player tile's chrome on the Kettlebell Tournament broadcast. */
@@ -848,6 +864,12 @@ export function useViewport() {
 export function useKbTournament() {
   const store = useContext(StoreContext);
   return useStore(store, (state) => state.kbTournament);
+}
+
+/** Isolates the shooter overlay subscription (same rationale as KBT's). */
+export function useShooterOverlay() {
+  const store = useContext(StoreContext);
+  return useStore(store, (state) => state.shooter);
 }
 
 /** Interval for the JS-driven overlay animation tickers. */
