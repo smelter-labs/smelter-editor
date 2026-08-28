@@ -1,11 +1,13 @@
 'use client';
 
+import { useIsChromelessRoute } from '@/lib/chromeless-routes';
 import { useAppMode } from './app-mode-context';
 
 export function AdminModeBadge() {
   const { adminMode } = useAppMode();
+  const isChromeless = useIsChromelessRoute();
 
-  if (!adminMode) return null;
+  if (!adminMode || isChromeless) return null;
 
   return (
     <div

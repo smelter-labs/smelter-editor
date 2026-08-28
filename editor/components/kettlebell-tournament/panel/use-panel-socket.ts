@@ -18,6 +18,7 @@ import {
   getEffectiveClientServerUrl,
   getPublicDefaultServerUrl,
   getStoredClientServerUrl,
+  remoteOrigin,
   toWsUrl,
 } from '@/lib/server-url';
 import {
@@ -29,12 +30,6 @@ const RECONNECT_MAX_MS = 8000;
 const TICKER_LEN = 6;
 // Rep-apex stills gallery (only reps that carried a screenshotUrl).
 const SHOTS_LEN = 12;
-
-function remoteOrigin(): string | null {
-  if (typeof window === 'undefined') return null;
-  const o = window.location.origin;
-  return /(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])/.test(o) ? null : o;
-}
 
 export type PanelSocket = {
   connected: boolean;

@@ -16,6 +16,7 @@
  */
 
 import type { TrackedPersonBox } from '../app/store';
+import { clamp } from '../core/mathUtils';
 import { contentToPx, type DuckViewport } from '../duckHunter/duckFlight';
 
 /** Hard cap on the ghost pool (also mirrored by the panel slider). */
@@ -87,10 +88,6 @@ export function haunterState(g: HaunterGhost, now: number): HaunterState {
     return 'looking';
   }
   return 'hunting';
-}
-
-function clamp(v: number, lo: number, hi: number): number {
-  return Math.max(lo, Math.min(hi, v));
 }
 
 export function clampHaunterCount(count: number): number {

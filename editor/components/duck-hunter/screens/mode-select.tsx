@@ -3,10 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getMP4Suggestions } from '@/app/actions/actions';
 import type { MatchSetup } from '../arcade';
-import type { ArcadeCharacter } from '../characters';
 import type { DuckHunterSliderConfig } from '../use-duck-hunter-room';
 import {
-  ACCENT_LINE,
   ACCENT_RGB,
   LedText,
   PanelTitle,
@@ -46,7 +44,6 @@ const SLIDER_DEFS: Array<{
  * detected and spawned) and the room tuning sliders.
  */
 export function ModeSelect({
-  character,
   setup,
   onSetup,
   sliders,
@@ -56,7 +53,6 @@ export function ModeSelect({
   onConfirm,
   onBack,
 }: {
-  character: ArcadeCharacter;
   setup: MatchSetup;
   onSetup: (s: MatchSetup) => void;
   sliders: DuckHunterSliderConfig;
@@ -187,7 +183,6 @@ export function ModeSelect({
     <RetroFrame
       title='GAME SETUP'
       eyebrow='DUCK HUNTER'
-      subtitle={`HUNTER: ${character.name}`}
       titleSize={26}
       footer={
         <RetroFooter
@@ -360,7 +355,7 @@ export function ModeSelect({
             flexDirection: 'column',
             gap: 12,
           }}>
-          <PanelTitle color={ACCENT_LINE[character.accent]}>TUNING</PanelTitle>
+          <PanelTitle>TUNING</PanelTitle>
           <PixelPanel
             cut={10}
             innerStyle={{

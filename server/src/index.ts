@@ -78,6 +78,11 @@ async function run() {
 
   process.on('SIGTERM', () => void gracefulShutdown('SIGTERM'));
   process.on('SIGINT', () => void gracefulShutdown('SIGINT'));
+  // A rejected fire-and-forget promise (e.g. a voided broadcast or input
+  // teardown) must never take the whole server down mid-show.
+  process.on('unhandledRejection', (reason) => {
+    console.error('[unhandled-rejection]', reason);
+  });
 
   initDashboard();
 }

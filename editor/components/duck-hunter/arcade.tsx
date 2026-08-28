@@ -1,23 +1,23 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ShooterMatchMode } from '@smelter-editor/types';
-import { ArcadeStage } from './retro-kit';
-import { CHARACTERS, type ArcadeCharacter } from './characters';
+import { ArcadeStage, R5, monoFont } from './retro-kit';
 import {
   useDuckHunterRoom,
   type DuckHunterSliderConfig,
 } from './use-duck-hunter-room';
 import { useShooterFeed } from './use-shooter-feed';
 import { TitleScreen } from './screens/title-screen';
-import { CharacterSelect } from './screens/character-select';
 import { ModeSelect } from './screens/mode-select';
 import { Lobby } from './screens/lobby';
 import { GameScreen } from './screens/game-screen';
 import { Results } from './screens/results';
 import './retro.css';
 
-type Screen = 'title' | 'select' | 'config' | 'lobby' | 'game' | 'results';
+// Characters are picked per player on the phones, so the host flow goes
+// straight from the title to the match config.
+type Screen = 'title' | 'config' | 'lobby' | 'game' | 'results';
 
 export type MatchSetup = {
   mode: ShooterMatchMode;
@@ -58,7 +58,6 @@ function loadSliders(): DuckHunterSliderConfig {
 /** The /duck-hunter screen machine. */
 export function DuckHunterArcade() {
   const [screen, setScreen] = useState<Screen>('title');
-  const [character, setCharacter] = useState<ArcadeCharacter>(CHARACTERS[0]);
   const [setup, setSetup] = useState<MatchSetup>({
     mode: 'time',
     durationMs: 60_000,
@@ -68,8 +67,13 @@ export function DuckHunterArcade() {
     useState<DuckHunterSliderConfig>(DEFAULT_SLIDERS);
   const [stageFile, setStageFile] = useState<string>(DEFAULT_STAGE_FILE);
 
+  const [roomGone, setRoomGone] = useState(false);
+
   const room = useDuckHunterRoom();
-  const feed = useShooterFeed(room.roomId);
+  // The room vanished under us (deleted/GC'd): the feed stops retrying, so
+  // show the operator what happened instead of a silently frozen lobby.
+  const onRoomGone = useCallback(() => setRoomGone(true), []);
+  const feed = useShooterFeed(room.roomId, onRoomGone);
 
   // Load persisted slider tuning once on mount.
   useEffect(() => {
@@ -96,6 +100,19 @@ export function DuckHunterArcade() {
     }
   }, [phase, screen]);
 
+  // After a refresh re-attached to a running room, land on the screen the
+  // match phase dictates (once — EXIT TO TITLE must not be fought over).
+  const restoreHandledRef = useRef(false);
+  useEffect(() => {
+    if (restoreHandledRef.current || !room.restored) return;
+    if (!phase) return; // wait for the spectate snapshot
+    restoreHandledRef.current = true;
+    if (phase === 'lobby') setScreen('lobby');
+    else if (phase === 'countdown' || phase === 'playing') setScreen('game');
+    else if (phase === 'ended') setScreen('results');
+    // 'idle' stays on the title — nothing to rejoin.
+  }, [room.restored, phase]);
+
   // Track whether the room's stage input matches the chosen file, so coming
   // back from the results screen with a different pick swaps the video.
   const roomStageFileRef = useRef<string | null>(null);
@@ -121,28 +138,42 @@ export function DuckHunterArcade() {
 
   const exitToTitle = async () => {
     roomStageFileRef.current = null;
+    restoreHandledRef.current = true; // a later snapshot must not re-route us
+    setRoomGone(false);
     setScreen('title');
     await room.exitAndDelete();
   };
 
+  const banner = roomGone
+    ? 'ROOM LOST — THE SERVER CLOSED IT. EXIT TO TITLE AND START OVER.'
+    : room.error;
+
   return (
     <ArcadeStage>
-      {screen === 'title' ? (
-        <TitleScreen onStart={() => setScreen('select')} />
+      {banner ? (
+        <div
+          style={{
+            position: 'absolute',
+            top: 8,
+            left: 8,
+            right: 8,
+            zIndex: 50,
+            padding: '8px 12px',
+            background: 'rgba(40, 8, 8, 0.92)',
+            border: `2px solid ${R5.red}`,
+            color: R5.ink,
+            fontFamily: monoFont,
+            fontSize: 13,
+            letterSpacing: 1,
+          }}>
+          {banner}
+        </div>
       ) : null}
-      {screen === 'select' ? (
-        <CharacterSelect
-          selected={character}
-          onPick={(c) => {
-            setCharacter(c);
-            setScreen('config');
-          }}
-          onBack={() => setScreen('title')}
-        />
+      {screen === 'title' ? (
+        <TitleScreen onStart={() => setScreen('config')} />
       ) : null}
       {screen === 'config' ? (
         <ModeSelect
-          character={character}
           setup={setup}
           onSetup={setSetup}
           sliders={sliders}
@@ -150,12 +181,11 @@ export function DuckHunterArcade() {
           stageFile={stageFile}
           onStageFile={setStageFile}
           onConfirm={() => void openLobby()}
-          onBack={() => setScreen('select')}
+          onBack={() => setScreen('title')}
         />
       ) : null}
       {screen === 'lobby' ? (
         <Lobby
-          character={character}
           setup={setup}
           room={room}
           feed={feed}
@@ -165,28 +195,16 @@ export function DuckHunterArcade() {
               durationMs: setup.mode === 'time' ? setup.durationMs : undefined,
               targetScore:
                 setup.mode === 'points' ? setup.targetScore : undefined,
-              character: {
-                id: character.id,
-                name: character.name,
-                color: character.color,
-              },
             })
           }
           onBack={() => setScreen('config')}
         />
       ) : null}
       {screen === 'game' ? (
-        <GameScreen
-          character={character}
-          setup={setup}
-          room={room}
-          feed={feed}
-          onAbort={() => void room.stopMatch()}
-        />
+        <GameScreen room={room} onAbort={() => void room.stopMatch()} />
       ) : null}
       {screen === 'results' ? (
         <Results
-          character={character}
           feed={feed}
           onPlayAgain={() => {
             // No resetMatch here: the match stays 'ended' until openLobby arms

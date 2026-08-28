@@ -25,6 +25,8 @@ import type {
   AIModelInfo,
   ShooterMatchConfig,
   ShooterMatchEvent,
+  ShooterMatchMode,
+  ShooterTopScoreEntry,
   KbtCameraView,
   KbtConfig,
   KbtExerciseKey,
@@ -199,6 +201,9 @@ interface SmelterApiClient {
     } & Partial<ShooterMatchConfig>,
   ): Promise<ShooterMatchEvent>;
   getDuckHunterMatch(roomId: string): Promise<ShooterMatchEvent>;
+  getDuckHunterTopScores(): Promise<
+    Record<ShooterMatchMode, ShooterTopScoreEntry[]>
+  >;
 
   setKbtConfig(
     roomId: string,
@@ -669,6 +674,11 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
     async getDuckHunterMatch(roomId) {
       const data = await req('get', `/room/${enc(roomId)}/duck-hunter/match`);
       return data.match as ShooterMatchEvent;
+    },
+
+    async getDuckHunterTopScores() {
+      const data = await req('get', `/duck-hunter/top-scores`);
+      return data.scores as Record<ShooterMatchMode, ShooterTopScoreEntry[]>;
     },
 
     async setKbtConfig(roomId, config) {

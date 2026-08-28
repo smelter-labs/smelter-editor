@@ -43,6 +43,7 @@ import {
   kbtCasterVisible,
   kbtParkRect,
 } from '../app/store';
+import { clamp } from '../core/mathUtils';
 
 /** Command from the arcade page's match endpoint. */
 export type KbtMatchCommand = {
@@ -335,9 +336,6 @@ function analysisFpsFor(playerCount: number): number {
   return 10;
 }
 
-function clamp(v: number, lo: number, hi: number): number {
-  return Math.max(lo, Math.min(hi, v));
-}
 
 /** HUD consumers read the heat clock at ≥500 ms granularity (blink phase,
  * whole seconds), so coarser snapshots stay pixel-identical — and identical

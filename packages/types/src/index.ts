@@ -19,6 +19,9 @@ export type {
 
 export type { RoomNameEntry } from "./room-names.js";
 
+export type { RoomSocketErrorEvent } from "./room-socket-events.js";
+export { WS_CLOSE_ROOM_NOT_FOUND } from "./room-socket-events.js";
+
 export { Layouts } from "./layout.js";
 export type {
   Layout,
@@ -153,10 +156,16 @@ export type {
   PongServerEvent,
 } from "./pong-events.js";
 
+export {
+  SHOOTER_CHARACTERS,
+  SHOOTER_CHARACTER_IDS,
+} from "./shooter-events.js";
 export type {
   ShooterPlayer,
   ShooterAmmoConfig,
   ShooterJoinMessage,
+  ShooterCharacterMessage,
+  ShooterCharacterId,
   ShooterAimMessage,
   ShooterFireMessage,
   ShooterLeaveMessage,
@@ -164,8 +173,11 @@ export type {
   ShooterClientMessage,
   ShooterMatchMode,
   ShooterMatchPhase,
-  ShooterHostCharacter,
+  ShooterTopScoreEntry,
   ShooterMatchConfig,
+  ShooterJoinedEvent,
+  ShooterErrorCode,
+  ShooterErrorEvent,
   ShooterStateEvent,
   ShooterHitEvent,
   ShooterMissEvent,

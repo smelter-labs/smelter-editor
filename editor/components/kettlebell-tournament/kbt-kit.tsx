@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { ArcadeStage } from '@/lib/arcade/stage';
+import { useIsLandscape } from '@/lib/arcade/use-viewport';
 
 /* ------------------------------------------------------------------ *
  * kbt kit — the kb_design language ("Smelter Overlays") for the KBT
@@ -63,8 +65,7 @@ export const skewBar = (px = 7): string =>
 
 /* ------------------------------- stage ------------------------------- */
 
-export const STAGE_W = 1280;
-export const STAGE_H = 720;
+export { STAGE_W, STAGE_H } from '@/lib/arcade/stage';
 
 /**
  * Fullscreen wrapper that letterboxes and scales a fixed 1280×720 design
@@ -72,40 +73,7 @@ export const STAGE_H = 720;
  * fullscreen video and overlays keep lining up).
  */
 export function Stage({ children }: { children: React.ReactNode }) {
-  const [scale, setScale] = useState(1);
-  useEffect(() => {
-    const update = () =>
-      setScale(
-        Math.min(window.innerWidth / STAGE_W, window.innerHeight / STAGE_H),
-      );
-    update();
-    window.addEventListener('resize', update);
-    return () => window.removeEventListener('resize', update);
-  }, []);
-  return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: KBT.page,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        overflow: 'hidden',
-      }}>
-      <div
-        style={{
-          width: STAGE_W,
-          height: STAGE_H,
-          transform: `scale(${scale})`,
-          transformOrigin: 'center center',
-          position: 'relative',
-          flexShrink: 0,
-        }}>
-        {children}
-      </div>
-    </div>
-  );
+  return <ArcadeStage background={KBT.page}>{children}</ArcadeStage>;
 }
 
 /** Faint 1px grid + one big skewed ember bar + vignette — the backdrop. */
@@ -1092,21 +1060,7 @@ export function PodiumBlock({
 
 /* ---------------------------- phone shell ---------------------------- */
 
-/**
- * Whether the viewport is landscape. SSR-safe: false until mounted.
- * (Local copy — the kit stays free of duck-hunter imports.)
- */
-export function useIsLandscape(): boolean {
-  const [landscape, setLandscape] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia('(orientation: landscape)');
-    const update = () => setLandscape(mq.matches);
-    update();
-    mq.addEventListener('change', update);
-    return () => mq.removeEventListener('change', update);
-  }, []);
-  return landscape;
-}
+export { useIsLandscape } from '@/lib/arcade/use-viewport';
 
 /**
  * kb_design shell for the phone wizard — same prop contract as the

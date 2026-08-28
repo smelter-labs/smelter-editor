@@ -7,11 +7,10 @@ import {
   getStoredClientServerUrl,
 } from '@/lib/server-url';
 import type { MatchSetup } from '../arcade';
-import { characterVideoUrl, type ArcadeCharacter } from '../characters';
+import { characterById } from '../characters';
 import type { DuckHunterRoom } from '../use-duck-hunter-room';
 import type { ShooterFeed } from '../use-shooter-feed';
 import {
-  ACCENT_LINE,
   LedText,
   PanelTitle,
   PixelButton,
@@ -41,14 +40,12 @@ function defaultPublicBase(): string {
  * the attract mode.
  */
 export function Lobby({
-  character,
   setup,
   room,
   feed,
   onStart,
   onBack,
 }: {
-  character: ArcadeCharacter;
   setup: MatchSetup;
   room: DuckHunterRoom;
   feed: ShooterFeed;
@@ -223,7 +220,7 @@ export function Lobby({
           </label>
         </div>
 
-        {/* Hunters + host character */}
+        {/* Hunters (each row shows the character picked on that phone) */}
         <div
           style={{
             flex: 1,
@@ -257,82 +254,58 @@ export function Lobby({
                 {statusLine}
               </span>
             ) : (
-              feed.players.map((p) => (
-                <PixelPanel
-                  key={p.clientId}
-                  cut={8}
-                  innerStyle={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 12,
-                    padding: '8px 12px',
-                  }}>
-                  <span
-                    style={{
-                      width: 14,
-                      height: 14,
-                      background: p.color,
-                      boxShadow: `0 0 8px ${p.color}`,
-                      flexShrink: 0,
-                    }}
-                  />
-                  <span
-                    style={{
-                      fontFamily: pixelFont,
-                      fontSize: 11,
-                      color: R5.ink,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
+              feed.players.map((p) => {
+                const ch = characterById(p.characterId);
+                return (
+                  <PixelPanel
+                    key={p.clientId}
+                    accent={ch?.accent ?? 'blue'}
+                    cut={8}
+                    innerStyle={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      padding: '8px 12px',
                     }}>
-                    {p.name}
-                  </span>
-                </PixelPanel>
-              ))
+                    <span
+                      style={{
+                        width: 14,
+                        height: 14,
+                        background: p.color,
+                        boxShadow: `0 0 8px ${p.color}`,
+                        flexShrink: 0,
+                      }}
+                    />
+                    <span
+                      style={{
+                        fontFamily: pixelFont,
+                        fontSize: 11,
+                        color: R5.ink,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}>
+                      {p.name}
+                    </span>
+                    <span style={{ flex: 1 }} />
+                    {/* The hunter this player picked on their phone. */}
+                    <span
+                      style={{
+                        fontFamily: monoFont,
+                        fontSize: 10,
+                        letterSpacing: 1,
+                        color: ch ? ch.color : R5.inkMuted,
+                        textShadow: ch ? `0 0 6px ${ch.color}` : undefined,
+                        textTransform: 'uppercase',
+                        whiteSpace: 'nowrap',
+                        flexShrink: 0,
+                      }}>
+                      {ch ? ch.name : 'PICKING…'}
+                    </span>
+                  </PixelPanel>
+                );
+              })
             )}
-          </div>
-        </div>
-
-        {/* Host character card */}
-        <div
-          style={{
-            width: 300,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 12,
-          }}>
-          <PanelTitle color={ACCENT_LINE[character.accent]}>
-            YOUR HUNTER
-          </PanelTitle>
-          <PixelPanel
-            accent={character.accent}
-            cut={10}
-            glow={0.4}
-            innerStyle={{ padding: 0 }}>
-            <video
-              src={characterVideoUrl(character)}
-              autoPlay
-              loop
-              muted
-              playsInline
-              style={{
-                display: 'block',
-                width: '100%',
-                aspectRatio: '16 / 9',
-                objectFit: 'cover',
-              }}
-            />
-          </PixelPanel>
-          <div style={{ textAlign: 'center' }}>
-            <span
-              style={{
-                fontFamily: pixelFont,
-                fontSize: 12,
-                color: ACCENT_LINE[character.accent],
-                textShadow: `0 0 8px ${ACCENT_LINE[character.accent]}`,
-              }}>
-              {character.name}
-            </span>
           </div>
           <div
             style={{

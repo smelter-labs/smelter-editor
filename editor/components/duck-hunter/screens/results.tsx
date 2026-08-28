@@ -1,9 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { characterVideoUrl, type ArcadeCharacter } from '../characters';
+import { useMemo } from 'react';
+import { characterById, characterVideoUrl } from '../characters';
 import type { ShooterFeed } from '../use-shooter-feed';
-import { readTopScores, submitTopScore, type TopScoreEntry } from '../top-scores';
 import {
   ACCENT_LINE,
   ArcadeText,
@@ -21,45 +20,32 @@ import {
 import { useArcadeKeys } from '../use-arcade-input';
 
 /**
- * GAME OVER: winner card next to the host character clip, the frozen final
- * scoreboard, and the local TOP SCORES table (the winner is submitted once
- * on mount, arcade-style). PLAY AGAIN keeps the room (phones stay in).
+ * GAME OVER: winner card next to the winner's own character clip, the frozen
+ * final scoreboard, and the global TOP SCORES table. The table (and the
+ * winner's rank in it) rides the shooter_match 'ended' event — the server
+ * records the score exactly once at match end, so remounts/refreshes can't
+ * duplicate it. PLAY AGAIN keeps the room (phones stay in).
  */
 export function Results({
-  character,
   feed,
   onPlayAgain,
   onExit,
 }: {
-  character: ArcadeCharacter;
   feed: ShooterFeed;
   onPlayAgain: () => void;
   onExit: () => void;
 }) {
   const match = feed.match;
   const winner = match?.winner ?? null;
+  // The clip celebrates the WINNER's own pick (made on their phone).
+  const winnerCharacter = characterById(winner?.characterId);
   const finalScores = useMemo(
     () => match?.finalScores ?? [],
     [match?.finalScores],
   );
 
-  const [table, setTable] = useState<TopScoreEntry[]>([]);
-  const [newRank, setNewRank] = useState<number | null>(null);
-
-  // Submit the winning score once per results screen.
-  useEffect(() => {
-    if (winner && match?.mode) {
-      const { rank } = submitTopScore({
-        name: winner.name,
-        characterId: character.id,
-        score: winner.score,
-        mode: match.mode,
-      });
-      setNewRank(rank);
-    }
-    setTable(readTopScores());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const table = match?.topScores ?? [];
+  const newRank = match?.topScoreRank ?? null;
 
   useArcadeKeys({ confirm: onPlayAgain, back: onExit });
 
@@ -105,7 +91,7 @@ export function Results({
           minHeight: 0,
           marginTop: 18,
         }}>
-        {/* Winner + host character */}
+        {/* Winner + their character clip */}
         <div
           style={{
             width: 330,
@@ -116,25 +102,27 @@ export function Results({
           <PanelTitle color={winner ? winner.color : R5.cyan}>
             {winner ? 'WINNER' : 'RESULT'}
           </PanelTitle>
-          <PixelPanel
-            accent={character.accent}
-            cut={10}
-            glow={0.5}
-            innerStyle={{ padding: 0 }}>
-            <video
-              src={characterVideoUrl(character)}
-              autoPlay
-              loop
-              muted
-              playsInline
-              style={{
-                display: 'block',
-                width: '100%',
-                aspectRatio: '16 / 9',
-                objectFit: 'cover',
-              }}
-            />
-          </PixelPanel>
+          {winnerCharacter ? (
+            <PixelPanel
+              accent={winnerCharacter.accent}
+              cut={10}
+              glow={0.5}
+              innerStyle={{ padding: 0 }}>
+              <video
+                src={characterVideoUrl(winnerCharacter)}
+                autoPlay
+                loop
+                muted
+                playsInline
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  aspectRatio: '16 / 9',
+                  objectFit: 'cover',
+                }}
+              />
+            </PixelPanel>
+          ) : null}
           <div
             style={{
               display: 'flex',
@@ -165,15 +153,17 @@ export function Results({
                 DRAW
               </span>
             )}
-            <span
-              style={{
-                fontFamily: monoFont,
-                fontSize: 10,
-                color: R5.inkMuted,
-                textTransform: 'uppercase',
-              }}>
-              hunting as {character.name}
-            </span>
+            {winnerCharacter ? (
+              <span
+                style={{
+                  fontFamily: monoFont,
+                  fontSize: 10,
+                  color: R5.inkMuted,
+                  textTransform: 'uppercase',
+                }}>
+                hunting as {winnerCharacter.name}
+              </span>
+            ) : null}
           </div>
         </div>
 

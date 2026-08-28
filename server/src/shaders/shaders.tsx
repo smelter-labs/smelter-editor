@@ -1747,6 +1747,15 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
     shaderFile: 'pacman-ghosts.wgsl',
   },
   {
+    id: 'retro-panel',
+    isActive: true,
+    isVisible: false,
+    name: 'Retro Panel',
+    description:
+      'Chamfered retro-arcade panel chrome (accent line, dark gap, navy fill, blueprint grid, scanlines, glow) for the duck-hunter broadcast HUD, driven by RetroPanel.tsx.',
+    shaderFile: 'retro-panel.wgsl',
+  },
+  {
     id: 'haunted-city',
     isActive: true,
     isVisible: false,

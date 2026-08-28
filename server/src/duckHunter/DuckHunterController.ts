@@ -1,10 +1,14 @@
+import { randomUUID } from 'node:crypto';
 import type {
-  ShooterHostCharacter,
+  RoomEvent,
+  ShooterCharacterId,
+  ShooterErrorCode,
   ShooterMatchConfig,
   ShooterMatchEvent,
   ShooterMatchMode,
   ShooterPlayer,
   ShooterStateEvent,
+  ShooterTopScoreEntry,
 } from '@smelter-editor/types';
 import type { StoreApi } from 'zustand';
 import type {
@@ -14,9 +18,7 @@ import type {
   ShooterBurst,
   ShooterMatchOverlay,
 } from '../app/store';
-import { config } from '../config';
-import { roomEventBus } from '../core/roomEventBus';
-import { SmelterInstance } from '../smelter';
+import { clamp, clamp01 } from '../core/mathUtils';
 import type { DuckEntity, DuckFlightParams, DuckViewport } from './duckFlight';
 import {
   DEFAULT_DUCK_FLY_FRAC_PER_SEC,
@@ -30,10 +32,48 @@ import {
   validViewport,
 } from './duckFlight';
 
+/**
+ * How the controller talks to the room. Cameras go through InputManager (via
+ * RoomState) so they get the WHIP heartbeat monitor, the stale-input sweep and
+ * `onInputsRemoved` notifications — never through the engine directly. The
+ * `now` hook makes the whole controller clock-controllable in tests.
+ */
+export type DuckHunterDeps = {
+  broadcast: (event: RoomEvent) => void;
+  sendTo: (clientId: string, event: RoomEvent) => void;
+  /** Register a hidden WHIP camera input through InputManager. */
+  registerShooterCam: (
+    name: string,
+    dims?: { width: number; height: number },
+  ) => Promise<{ inputId: string; whipUrl: string; bearerToken: string }>;
+  removeInput: (inputId: string) => Promise<void>;
+  /** WHIP input is actually publishing (heartbeat-acked within the TTL). */
+  isInputLive: (inputId: string) => boolean;
+  /**
+   * Record the finished round's winning score into the global TOP SCORES
+   * table. Called only from the idempotent match end — exactly once per
+   * round (clients never submit scores themselves).
+   */
+  recordTopScore: (
+    entry: Omit<ShooterTopScoreEntry, 'initials' | 'at'> & { at: number },
+  ) => { rank: number | null };
+  /** Current global TOP SCORES table for one mode (sorted, capped). */
+  readTopScores: (mode: ShooterMatchMode) => ShooterTopScoreEntry[];
+  now?: () => number;
+};
+
 type Player = {
   clientId: string;
+  /** Resume token: minted on first join, replayed by the phone on reconnect. */
+  playerKey: string;
   name: string;
   color: string;
+  /** Hunter character picked on the phone (duplicates across players are
+   * allowed — the assigned color still separates them). */
+  characterId: ShooterCharacterId | null;
+  /** Control socket state; a disconnected player lingers through the grace. */
+  connected: boolean;
+  disconnectedAt: number | null;
   aimX: number;
   aimY: number;
   /** Eased, rendered crosshair position (smooths the broadcast crosshair). */
@@ -56,6 +96,15 @@ type Player = {
    * live inside the player's avatar circle by the overlay renderer.
    */
   camInputId: string | null;
+  /**
+   * Bumped on every camera start/stop; an awaited registration only commits
+   * when the generation it captured is still current, so a stop (or a second
+   * start) during the in-flight register cancels it instead of leaking the
+   * input and pinning a dead avatar tile.
+   */
+  camGen: number;
+  /** The publish is heartbeat-live (flips via pollCameras, not registration). */
+  camConnected: boolean;
 };
 
 /** Per-player ammo config sent from the phone (calibration screen). */
@@ -79,10 +128,14 @@ type MatchState = {
   startsAt: number;
   /** Time-mode deadline; null in points mode. */
   endsAt: number | null;
-  character: ShooterHostCharacter | null;
   winner: ShooterPlayer | null;
   finalScores: ShooterPlayer[];
+  /** 'ended' only: global TOP SCORES snapshot + the winner's rank in it. */
+  topScores: ShooterTopScoreEntry[];
+  topScoreRank: number | null;
   lastBroadcastAt: number;
+  /** Set on 'ended'; gates the loop-stop linger. */
+  endedAt: number | null;
 };
 
 /** Distinct, bright crosshair colors (kept away from the ghost palette). */
@@ -124,10 +177,13 @@ const MATCH_MAX_TARGET = 200;
 const MATCH_DEFAULT_TARGET = 10;
 const MATCH_BROADCAST_MS = 1000; // clock tick rate for shooter_match events
 
-/** Keep the WHIP input id to URL-safe characters (it becomes a path segment). */
-function sanitizeId(id: string): string {
-  return id.replace(/[^a-zA-Z0-9_-]/g, '_');
-}
+// A dropped phone keeps its roster entry (score, color, camera) this long so
+// a reconnect adopts it — but never reaped mid-round, where losing a row
+// would corrupt the final scoreboard.
+const DISCONNECT_REAP_MS = 120_000;
+// After a match ends, keep ticking this long (game-over banner reaches the
+// broadcast, final shooter_match goes out) before the loop is allowed to stop.
+const ENDED_LINGER_MS = 5000;
 
 function normalizeAmmoConfig(cfg?: AmmoConfig): {
   maxAmmo: number;
@@ -170,9 +226,11 @@ export class DuckHunterController {
   private nextBurstId = 1;
   private dogReveals: DogReveal[] = [];
   private nextDogId = 1;
-  private nextCamSeq = 1;
   private colorSeq = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
+  private lastCamPoll = 0;
+  /** Real time of the previous tick, for lag-proof hit-stop advancement. */
+  private lastTickAt = 0;
   // Room-wide ammo rules, set by the operator in the Duck Hunter panel and
   // applied to every player (current + future joiners).
   private roomMaxAmmo = DEFAULT_MAX_AMMO;
@@ -191,14 +249,78 @@ export class DuckHunterController {
   constructor(
     private readonly roomId: string,
     private readonly store: StoreApi<RoomStore>,
+    private readonly deps: DuckHunterDeps,
   ) {}
 
-  join(clientId: string, name: string): void {
-    if (!this.players.has(clientId)) {
-      this.players.set(clientId, {
+  private now(): number {
+    return this.deps.now?.() ?? Date.now();
+  }
+
+  /**
+   * Register (or reconnect) a player. A join carrying a known playerKey
+   * adopts that entry even when its old socket still looks open — a fast
+   * refresh beats the stale socket's close, and forking the player would
+   * split scores (the stale close later finds no player under its clientId
+   * and no-ops). Without a key, a join whose name exactly matches a
+   * *disconnected* player adopts it (legacy phones); a key that matches
+   * nothing skips name adoption — that phone is a genuinely new entrant,
+   * and adopting by name could hijack someone else's slot.
+   */
+  join(
+    clientId: string,
+    rawName: string,
+    playerKey?: string,
+    characterId?: ShooterCharacterId,
+  ): void {
+    const name = rawName.slice(0, 24).trim() || 'Player';
+    const existing = this.players.get(clientId);
+    if (existing) {
+      // Already joined (e.g. re-entering after the calibration screen): keep
+      // the player but refresh the chosen name + character.
+      existing.name = name;
+      if (characterId !== undefined) existing.characterId = characterId;
+      existing.connected = true;
+      existing.disconnectedAt = null;
+      this.sendJoined(clientId, existing);
+      this.ensureRunning();
+      this.publish();
+      this.broadcastState();
+      this.sendAmmo(clientId);
+      return;
+    }
+    const byKey = playerKey
+      ? [...this.players.values()].find((p) => p.playerKey === playerKey)
+      : undefined;
+    const orphan =
+      byKey ??
+      (playerKey == null
+        ? [...this.players.values()].find(
+            (p) => !p.connected && p.name === name,
+          )
+        : undefined);
+    let player: Player;
+    if (orphan) {
+      this.adoptPlayer(orphan, clientId);
+      orphan.name = name;
+      if (characterId !== undefined) orphan.characterId = characterId;
+      player = orphan;
+    } else {
+      if (this.players.size >= PLAYER_COLORS.length) {
+        this.sendError(
+          clientId,
+          'room_full',
+          `Room is full (${PLAYER_COLORS.length} hunters max)`,
+        );
+        return;
+      }
+      player = {
         clientId,
-        name: name.slice(0, 24) || 'Player',
+        playerKey: playerKey ?? randomUUID(),
+        name,
         color: PLAYER_COLORS[this.colorSeq++ % PLAYER_COLORS.length],
+        characterId: characterId ?? null,
+        connected: true,
+        disconnectedAt: null,
         aimX: 0.5,
         aimY: 0.5,
         dispX: 0.5,
@@ -211,17 +333,71 @@ export class DuckHunterController {
         lastHitAt: 0,
         streak: 0,
         camInputId: null,
-      });
-    } else {
-      // Already joined (e.g. re-entering after the calibration screen): keep the
-      // player but refresh the chosen name.
-      const p = this.players.get(clientId)!;
-      p.name = name.slice(0, 24) || p.name;
+        camGen: 0,
+        camConnected: false,
+      };
+      this.players.set(clientId, player);
     }
+    this.sendJoined(clientId, player);
     this.ensureRunning();
     this.publish();
     this.broadcastState();
     this.sendAmmo(clientId);
+  }
+
+  /** The joiner's private ack (carries the bearer playerKey + restored score). */
+  private sendJoined(clientId: string, p: Player): void {
+    this.deps.sendTo(clientId, {
+      type: 'shooter_joined',
+      roomId: this.roomId,
+      clientId,
+      playerKey: p.playerKey,
+      name: p.name,
+      color: p.color,
+      characterId: p.characterId ?? undefined,
+      score: p.score,
+      camInputActive: p.camInputId != null,
+    });
+  }
+
+  /** Change the player's hunter character (phone re-pick, e.g. in the lobby). */
+  setCharacter(clientId: string, characterId: ShooterCharacterId): void {
+    const p = this.players.get(clientId);
+    if (!p || p.characterId === characterId) return;
+    p.characterId = characterId;
+    this.publish();
+    this.broadcastState();
+  }
+
+  /** A rejected request, addressed to the client that made it. */
+  private sendError(
+    clientId: string,
+    code: ShooterErrorCode,
+    message: string,
+  ): void {
+    this.deps.sendTo(clientId, {
+      type: 'shooter_error',
+      roomId: this.roomId,
+      code,
+      message,
+    });
+  }
+
+  /** Re-key a (usually disconnected) player's whole trail onto the new clientId. */
+  private adoptPlayer(orphan: Player, clientId: string): void {
+    const oldId = orphan.clientId;
+    this.players.delete(oldId);
+    orphan.clientId = clientId;
+    orphan.connected = true;
+    orphan.disconnectedAt = null;
+    this.players.set(clientId, orphan);
+    const m = this.match;
+    if (m) {
+      if (m.winner?.clientId === oldId) m.winner.clientId = clientId;
+      for (const row of m.finalScores) {
+        if (row.clientId === oldId) row.clientId = clientId;
+      }
+    }
   }
 
   /**
@@ -241,7 +417,7 @@ export class DuckHunterController {
       p.reloadMs = reloadMs;
       if (p.ammo > maxAmmo) p.ammo = maxAmmo;
       if (p.ammo >= maxAmmo) p.reloadStartedAt = null;
-      else if (p.reloadStartedAt == null) p.reloadStartedAt = Date.now();
+      else if (p.reloadStartedAt == null) p.reloadStartedAt = this.now();
       this.sendAmmo(p.clientId);
     }
   }
@@ -261,7 +437,7 @@ export class DuckHunterController {
    *   tell phones to hold on the briefing screen until start.
    */
   controlMatch(cmd: MatchCommand): ShooterMatchEvent {
-    const now = Date.now();
+    const now = this.now();
     switch (cmd.action) {
       case 'start': {
         const mode: ShooterMatchMode =
@@ -291,10 +467,12 @@ export class DuckHunterController {
               : null,
           startsAt: now + MATCH_COUNTDOWN_MS,
           endsAt: null,
-          character: cmd.character ?? null,
           winner: null,
           finalScores: [],
+          topScores: [],
+          topScoreRank: null,
           lastBroadcastAt: now,
+          endedAt: null,
         };
         // A fresh round starts from zero for everyone, magazines full.
         for (const p of this.players.values()) {
@@ -329,7 +507,7 @@ export class DuckHunterController {
       }
     }
     const snapshot = this.getMatchSnapshot();
-    roomEventBus.broadcast(this.roomId, snapshot);
+    this.deps.broadcast(snapshot);
     this.publish();
     this.broadcastState();
     return snapshot;
@@ -345,7 +523,7 @@ export class DuckHunterController {
         phase: this.lobbyArmed ? 'lobby' : 'idle',
       };
     }
-    const now = Date.now();
+    const now = this.now();
     return {
       type: 'shooter_match',
       roomId: this.roomId,
@@ -360,9 +538,10 @@ export class DuckHunterController {
           : m.phase === 'playing' && m.endsAt != null
             ? Math.max(0, m.endsAt - now)
             : undefined,
-      character: m.character ?? undefined,
       winner: m.phase === 'ended' ? m.winner : undefined,
       finalScores: m.phase === 'ended' ? m.finalScores : undefined,
+      topScores: m.phase === 'ended' ? m.topScores : undefined,
+      topScoreRank: m.phase === 'ended' ? m.topScoreRank : undefined,
     };
   }
 
@@ -373,8 +552,8 @@ export class DuckHunterController {
    * fills the gap of an initial snapshot on connect.
    */
   spectate(clientId: string): void {
-    roomEventBus.sendTo(this.roomId, clientId, this.stateSnapshot());
-    roomEventBus.sendTo(this.roomId, clientId, this.getMatchSnapshot());
+    this.deps.sendTo(clientId, this.stateSnapshot());
+    this.deps.sendTo(clientId, this.getMatchSnapshot());
   }
 
   leave(clientId: string): void {
@@ -387,49 +566,57 @@ export class DuckHunterController {
   }
 
   /**
-   * Turn the player's live camera on: register a dedicated Smelter WHIP input
-   * for this client and reply with the endpoint + bearer token so the phone can
-   * publish its front camera. The input is composited only inside the player's
-   * avatar circle (see the overlay renderer), never as a full-screen input.
+   * Turn the player's live camera on: register a dedicated WHIP input through
+   * InputManager (hidden — composited only inside the player's avatar circle
+   * by the overlay renderer, never as a layout tile) and reply with the
+   * endpoint + bearer token so the phone can publish its front camera.
    *
    * Idempotent-ish: an existing camera input is torn down first so a reconnect
    * (or a rapid off→on toggle) always gets a fresh WHIP session/token.
    */
-  async startCamera(clientId: string): Promise<void> {
+  async startCamera(
+    clientId: string,
+    dims?: { width: number; height: number },
+  ): Promise<void> {
     const p = this.players.get(clientId);
     if (!p) return;
     // Drop any previous session so the phone always publishes into a fresh input.
     this.retireCameraInput(p);
 
-    // Unique per start so a fresh registration never collides with an old input
-    // that is still being torn down (unregister is fire-and-forget).
-    const seq = this.nextCamSeq++;
-    const inputId = sanitizeId(`shooter-cam-${this.roomId}-${clientId}-${seq}`);
-    let bearerToken: string;
+    const gen = ++p.camGen;
+    let cam: { inputId: string; whipUrl: string; bearerToken: string };
     try {
-      bearerToken = await SmelterInstance.registerInput(inputId, {
-        type: 'whip',
-      });
+      cam = await this.deps.registerShooterCam(p.name, dims);
     } catch (err) {
       console.error(
         `[duck-hunter] camera input register failed for ${clientId}`,
         err,
       );
+      if (this.players.get(clientId) === p) {
+        this.sendError(clientId, 'camera_failed', 'Camera slot failed — retry');
+      }
       return;
     }
-    // The player may have left (or toggled the camera off again) while we awaited.
-    if (this.players.get(clientId) !== p || p.camInputId != null) {
-      void SmelterInstance.unregisterInput(inputId).catch(() => {});
+    // The player may have left, toggled the camera off, or re-requested while
+    // we awaited — only the registration matching the current generation may
+    // commit; anything else must clean up its now-orphaned input.
+    if (
+      this.players.get(clientId) !== p ||
+      p.camGen !== gen ||
+      p.camInputId != null
+    ) {
+      void this.deps.removeInput(cam.inputId).catch(() => {});
       return;
     }
-    p.camInputId = inputId;
-    roomEventBus.sendTo(this.roomId, clientId, {
+    p.camInputId = cam.inputId;
+    p.camConnected = false; // flips true once the publish acks (pollCameras)
+    this.deps.sendTo(clientId, {
       type: 'shooter_cam_offer',
       roomId: this.roomId,
       clientId,
-      inputId,
-      whipUrl: `${config.whipBaseUrl}/${inputId}`,
-      bearerToken,
+      inputId: cam.inputId,
+      whipUrl: cam.whipUrl,
+      bearerToken: cam.bearerToken,
     });
     this.publish();
   }
@@ -437,17 +624,62 @@ export class DuckHunterController {
   /** Turn the player's live camera off and tear down its WHIP input. */
   stopCamera(clientId: string): void {
     const p = this.players.get(clientId);
-    if (!p || p.camInputId == null) return;
+    if (!p) return;
+    // Bump even with no committed input — this cancels an in-flight register
+    // (its generation check fails on resolve), the exact window the old
+    // `camInputId == null` early-return leaked.
+    p.camGen++;
+    if (p.camInputId == null) return;
     this.retireCameraInput(p);
     this.publish();
   }
 
-  /** Unregister the player's camera WHIP input (if any) and clear it. */
+  /** Remove the player's camera WHIP input (if any) and clear it. */
   private retireCameraInput(p: Player): void {
     if (p.camInputId == null) return;
     const inputId = p.camInputId;
     p.camInputId = null;
-    void SmelterInstance.unregisterInput(inputId).catch(() => {});
+    p.camConnected = false;
+    void this.deps.removeInput(inputId).catch(() => {});
+  }
+
+  /**
+   * The room reaped inputs behind our back (stale-WHIP sweep). Drop every
+   * reference so the avatar tile stops rendering a dead input and the phone
+   * learns its cam is gone on the next state broadcast. No deps.removeInput
+   * here — the inputs are already gone from the engine.
+   */
+  onInputsRemoved(inputIds: string[]): void {
+    const gone = new Set(inputIds);
+    let changed = false;
+    for (const p of this.players.values()) {
+      if (p.camInputId != null && gone.has(p.camInputId)) {
+        p.camInputId = null;
+        p.camConnected = false;
+        changed = true;
+      }
+    }
+    if (!changed) return;
+    this.publish();
+    this.broadcastState();
+  }
+
+  /** 1 Hz: reflect WHIP ack liveness into camLive on the wire + HUD. */
+  private pollCameras(now: number): void {
+    if (now - this.lastCamPoll < 1000) return;
+    this.lastCamPoll = now;
+    let changed = false;
+    for (const p of this.players.values()) {
+      const live = p.camInputId != null && this.deps.isInputLive(p.camInputId);
+      if (live !== p.camConnected) {
+        p.camConnected = live;
+        changed = true;
+      }
+    }
+    if (changed) {
+      this.publish();
+      this.broadcastState();
+    }
   }
 
   aim(clientId: string, x: number, y: number): void {
@@ -500,7 +732,7 @@ export class DuckHunterController {
 
     // Out of ammo: no shot, just tell the phone to click empty.
     if (p.ammo <= 0) {
-      roomEventBus.sendTo(this.roomId, clientId, {
+      this.deps.sendTo(clientId, {
         type: 'shooter_empty',
         roomId: this.roomId,
         clientId,
@@ -510,7 +742,7 @@ export class DuckHunterController {
     }
     // Spend a round (starts the reload cycle if the mag was full).
     p.ammo -= 1;
-    if (p.reloadStartedAt == null) p.reloadStartedAt = Date.now();
+    if (p.reloadStartedAt == null) p.reloadStartedAt = this.now();
     this.sendAmmo(clientId);
 
     const targetId = this.getTargetInputId();
@@ -553,7 +785,7 @@ export class DuckHunterController {
       return;
     }
 
-    const now = Date.now();
+    const now = this.now();
     this.deadGhosts.set(best.id, now + RESPAWN_MS);
     // Bird mode: mark the duck shot so it plays its death beat (hang → fall)
     // from where it was hit, and drops out of the live flock / hit-test.
@@ -580,7 +812,7 @@ export class DuckHunterController {
       kind: 'hit',
     });
     this.ensureRunning();
-    roomEventBus.sendTo(this.roomId, clientId, {
+    this.deps.sendTo(clientId, {
       type: 'shooter_hit',
       roomId: this.roomId,
       clientId,
@@ -600,9 +832,37 @@ export class DuckHunterController {
     this.broadcastState();
   }
 
-  /** Handle WS disconnect for a client (may or may not be a player). */
+  /**
+   * Handle WS disconnect for a client (may or may not be a player). The
+   * player entry is NOT removed: score, color and camera survive so a
+   * reconnect (playerKey or name) adopts them. The WHIP publish also outlives
+   * the control socket — a phone whose WS blipped keeps streaming; a truly
+   * dead camera is reaped by the stale-input sweep. Idle disconnected entries
+   * are reaped in tick() after DISCONNECT_REAP_MS.
+   */
   handleDisconnect(clientId: string): void {
-    this.leave(clientId);
+    const p = this.players.get(clientId);
+    if (!p) return;
+    p.connected = false;
+    p.disconnectedAt = this.now();
+    this.publish();
+    this.broadcastState();
+  }
+
+  /** Remove long-disconnected players — but never mid-round. */
+  private reapDisconnected(now: number): void {
+    if (this.match?.phase === 'countdown' || this.match?.phase === 'playing') {
+      return;
+    }
+    for (const p of [...this.players.values()]) {
+      if (
+        !p.connected &&
+        p.disconnectedAt != null &&
+        now - p.disconnectedAt >= DISCONNECT_REAP_MS
+      ) {
+        this.leave(p.clientId);
+      }
+    }
   }
 
   /**
@@ -669,7 +929,7 @@ export class DuckHunterController {
     const v = duckViewport(this.store.getState().resolution, target.pb);
     if (!validViewport(v)) return null;
     const params = flightParams(target.pb);
-    const now = Date.now();
+    const now = this.now();
     const scale = Math.max(v.width / v.frameW, v.height / v.frameH);
     const dispW = v.frameW * scale;
     const dispH = v.frameH * scale;
@@ -729,7 +989,7 @@ export class DuckHunterController {
    * it leaves detection and re-enters; a shot duck plays its death beat then is
    * dropped. This is the sole owner of duck state — the renderer only draws it.
    */
-  private reconcileDucks(now: number): void {
+  private reconcileDucks(now: number, dt: number): void {
     const target = this.getTargetPb();
     if (!target || target.pb.sprite !== 'bird') {
       this.ducks.clear();
@@ -750,7 +1010,10 @@ export class DuckHunterController {
         if (
           this.ducks.has(b.id) ||
           this.departed.has(b.id) ||
-          this.deadGhosts.has(b.id)
+          this.deadGhosts.has(b.id) ||
+          // Cap the LIVE flock, not just this frame's detections — tracker id
+          // churn otherwise accumulates ducks across ticks without bound.
+          this.ducks.size >= MAX_DUCKS
         ) {
           continue;
         }
@@ -784,7 +1047,7 @@ export class DuckHunterController {
         continue;
       }
       if (hitStop) {
-        d.spawnAt += PUBLISH_MS;
+        d.spawnAt += dt;
         continue;
       }
       if (!geomOk) continue;
@@ -800,7 +1063,7 @@ export class DuckHunterController {
   }
 
   private sendMiss(clientId: string): void {
-    roomEventBus.sendTo(this.roomId, clientId, {
+    this.deps.sendTo(clientId, {
       type: 'shooter_miss',
       roomId: this.roomId,
       clientId,
@@ -815,14 +1078,17 @@ export class DuckHunterController {
         clientId: p.clientId,
         name: p.name,
         color: p.color,
+        characterId: p.characterId ?? undefined,
         score: p.score,
+        connected: p.connected,
+        camLive: p.camConnected,
       })),
       targetActive: this.getTargetInputId() !== null,
     };
   }
 
   private broadcastState(): void {
-    roomEventBus.broadcast(this.roomId, this.stateSnapshot());
+    this.deps.broadcast(this.stateSnapshot());
   }
 
   /** Freeze the round: crown the top score (null on a draw) and broadcast. */
@@ -834,16 +1100,35 @@ export class DuckHunterController {
         clientId: p.clientId,
         name: p.name,
         color: p.color,
+        characterId: p.characterId ?? undefined,
         score: p.score,
       }))
       .sort((a, b) => b.score - a.score);
     const top = rows[0];
-    const isDraw = !top || (rows.length > 1 && rows[1].score === top.score);
+    // A lone zero-point player is not crowned — nothing was actually won.
+    const isDraw =
+      !top ||
+      top.score === 0 ||
+      (rows.length > 1 && rows[1].score === top.score);
     m.phase = 'ended';
+    m.endedAt = now;
     m.finalScores = rows;
     m.winner = isDraw ? null : top;
+    // The ended-guard above makes this exactly-once per round; the client
+    // never submits scores itself (StrictMode double-mounts and host-refresh
+    // remounts used to double every row of the table).
+    if (m.winner) {
+      m.topScoreRank = this.deps.recordTopScore({
+        name: m.winner.name,
+        characterId: m.winner.characterId,
+        score: m.winner.score,
+        mode: m.mode,
+        at: now,
+      }).rank;
+    }
+    m.topScores = this.deps.readTopScores(m.mode);
     m.lastBroadcastAt = now;
-    roomEventBus.broadcast(this.roomId, this.getMatchSnapshot());
+    this.deps.broadcast(this.getMatchSnapshot());
   }
 
   private ensureRunning(): void {
@@ -859,6 +1144,15 @@ export class DuckHunterController {
   }
 
   private maybeStop(): void {
+    // A live match keeps the loop ticking (countdown clock, 1 Hz match
+    // broadcast); an ended one only through a short linger — the match object
+    // itself stays (results screens read getMatchSnapshot on demand), so the
+    // PLAY AGAIN path must not leave the 30 Hz loop running forever.
+    const matchHoldsLoop =
+      this.match != null &&
+      (this.match.phase !== 'ended' ||
+        this.match.endedAt == null ||
+        this.now() - this.match.endedAt < ENDED_LINGER_MS);
     if (
       this.players.size === 0 &&
       this.deadGhosts.size === 0 &&
@@ -866,9 +1160,7 @@ export class DuckHunterController {
       this.dogReveals.length === 0 &&
       this.ducks.size === 0 &&
       !this.hasBirdTarget() &&
-      // A live or just-finished match keeps the loop ticking (countdown clock,
-      // 1 Hz match broadcast, game-over banner) even with an empty flock.
-      this.match == null
+      !matchHoldsLoop
     ) {
       this.stop();
       this.store.getState().setShooter(null);
@@ -886,7 +1178,7 @@ export class DuckHunterController {
         m.endsAt = m.startsAt + m.durationMs;
       }
       m.lastBroadcastAt = now;
-      roomEventBus.broadcast(this.roomId, this.getMatchSnapshot());
+      this.deps.broadcast(this.getMatchSnapshot());
       return;
     }
     if (m.phase === 'playing' && m.endsAt != null && now >= m.endsAt) {
@@ -895,13 +1187,20 @@ export class DuckHunterController {
     }
     if (m.phase !== 'ended' && now - m.lastBroadcastAt >= MATCH_BROADCAST_MS) {
       m.lastBroadcastAt = now;
-      roomEventBus.broadcast(this.roomId, this.getMatchSnapshot());
+      this.deps.broadcast(this.getMatchSnapshot());
     }
   }
 
   private tick(): void {
-    const now = Date.now();
+    const now = this.now();
+    // Real elapsed time since the previous tick — under event-loop lag (GPU
+    // encode stalls, sidecar spikes) this exceeds PUBLISH_MS, and anything
+    // that "pushes clocks forward" must push by this, not the nominal rate.
+    const dt = this.lastTickAt > 0 ? now - this.lastTickAt : PUBLISH_MS;
+    this.lastTickAt = now;
     this.tickMatch(now);
+    this.pollCameras(now);
+    this.reapDisconnected(now);
     // Announce target availability flips (the YOLO sidecar warming up or the
     // ghost input going away) — lobby screens gate "start" on this and joins
     // are the only other trigger for a state broadcast.
@@ -931,7 +1230,7 @@ export class DuckHunterController {
     }
     // Advance the duck flock (bird mode) — the authoritative position both the
     // renderer and the hit-test read from.
-    this.reconcileDucks(now);
+    this.reconcileDucks(now, dt);
     this.publish();
     this.maybeStop();
   }
@@ -942,8 +1241,8 @@ export class DuckHunterController {
     const reloadRemainingMs =
       p.reloadStartedAt == null
         ? 0
-        : Math.max(0, p.reloadMs - (Date.now() - p.reloadStartedAt));
-    roomEventBus.sendTo(this.roomId, clientId, {
+        : Math.max(0, p.reloadMs - (this.now() - p.reloadStartedAt));
+    this.deps.sendTo(clientId, {
       type: 'shooter_ammo',
       roomId: this.roomId,
       clientId,
@@ -971,6 +1270,7 @@ export class DuckHunterController {
     // badge and the scoreboard carry the full ammo state per player.
     const ammoState = (p: Player) => ({
       camInputId: p.camInputId ?? undefined,
+      camLive: p.camConnected,
       ammo: p.ammo,
       maxAmmo: p.maxAmmo,
       reloadMs: p.reloadMs,
@@ -979,19 +1279,26 @@ export class DuckHunterController {
     });
     this.store.getState().setShooter({
       targetInputId: target.id,
-      crosshairs: [...this.players.values()].map((p) => ({
-        clientId: p.clientId,
-        x: p.dispX,
-        y: p.dispY,
-        color: p.color,
-        name: p.name,
-        ...ammoState(p),
-      })),
+      // A disconnected phone can't aim — its crosshair would sit frozen on
+      // the broadcast, so only connected players render one. The scoreboard
+      // keeps every row (scores survive the disconnect grace).
+      crosshairs: [...this.players.values()]
+        .filter((p) => p.connected)
+        .map((p) => ({
+          clientId: p.clientId,
+          x: p.dispX,
+          y: p.dispY,
+          color: p.color,
+          name: p.name,
+          characterId: p.characterId ?? undefined,
+          ...ammoState(p),
+        })),
       scores: [...this.players.values()]
         .map((p) => ({
           clientId: p.clientId,
           name: p.name,
           color: p.color,
+          characterId: p.characterId ?? undefined,
           score: p.score,
           ...ammoState(p),
         }))
@@ -1026,11 +1333,21 @@ export class DuckHunterController {
               name: m.winner.name,
               color: m.winner.color,
               score: m.winner.score,
+              characterId: m.winner.characterId,
             }
           : null,
-      character: m.character
-        ? { name: m.character.name, color: m.character.color }
-        : null,
+      finalScores:
+        m.phase === 'ended'
+          ? m.finalScores.map((p) => ({
+              name: p.name,
+              color: p.color,
+              score: p.score,
+              characterId: p.characterId,
+            }))
+          : [],
+      topScores: m.phase === 'ended' ? m.topScores : [],
+      topScoreRank: m.phase === 'ended' ? m.topScoreRank : null,
+      endedAt: m.endedAt,
     };
   }
 }
@@ -1056,10 +1373,3 @@ function duckViewport(
   };
 }
 
-function clamp01(v: number): number {
-  return Math.max(0, Math.min(1, v));
-}
-
-function clamp(v: number, lo: number, hi: number): number {
-  return Math.max(lo, Math.min(hi, v));
-}

@@ -253,13 +253,18 @@ class SmelterManager {
     const ducksDir = (await pathExists(ducksHiDir))
       ? ducksHiDir
       : path.join(__dirname, '../imgs/ducks');
-    for (let c = 0; c < 3; c++) {
-      for (const f of ['0', '1', '2', 'shot']) {
-        await this.registerImage(`duck-${c}-${f}`, {
-          serverPath: path.join(ducksDir, `duck-${c}-${f}.png`),
-          assetType: 'png',
-        });
+    const haveDuckArt = await pathExists(ducksDir);
+    if (haveDuckArt) {
+      for (let c = 0; c < 3; c++) {
+        for (const f of ['0', '1', '2', 'shot']) {
+          await this.registerImage(`duck-${c}-${f}`, {
+            serverPath: path.join(ducksDir, `duck-${c}-${f}.png`),
+            assetType: 'png',
+          });
+        }
       }
+    } else {
+      console.warn('[smelter] imgs/ducks missing — duck sprites not registered');
     }
 
     // Duck Hunt dog holding two ducks, shown when a player bags two in a row.
@@ -268,10 +273,14 @@ class SmelterManager {
     const dogDir = (await pathExists(dogHiDir))
       ? dogHiDir
       : path.join(__dirname, '../imgs/dog');
-    await this.registerImage('dog-catch', {
-      serverPath: path.join(dogDir, 'dog-catch.png'),
-      assetType: 'png',
-    });
+    if (await pathExists(dogDir)) {
+      await this.registerImage('dog-catch', {
+        serverPath: path.join(dogDir, 'dog-catch.png'),
+        assetType: 'png',
+      });
+    } else {
+      console.warn('[smelter] imgs/dog missing — dog-catch not registered');
+    }
 
     // Haunting-ghosts sprites (HaunterGhostsInput): one ghost with three arc
     // states — bored (nobody in range), looking (just noticed someone),
@@ -285,14 +294,18 @@ class SmelterManager {
         '[smelter] imgs/ghosts missing — using duck sprites as haunter placeholders',
       );
     }
-    for (const s of ['bored', 'looking', 'hunting'] as const) {
-      const serverPath = haveGhostArt
-        ? path.join(ghostsDir, `ghost_${s}.png`)
-        : path.join(ducksDir, `duck-0-${s === 'hunting' ? 'shot' : '0'}.png`);
-      await this.registerImage(`haunter-${s}`, {
-        serverPath,
-        assetType: 'png',
-      });
+    if (haveGhostArt || haveDuckArt) {
+      for (const s of ['bored', 'looking', 'hunting'] as const) {
+        const serverPath = haveGhostArt
+          ? path.join(ghostsDir, `ghost_${s}.png`)
+          : path.join(ducksDir, `duck-0-${s === 'hunting' ? 'shot' : '0'}.png`);
+        await this.registerImage(`haunter-${s}`, {
+          serverPath,
+          assetType: 'png',
+        });
+      }
+    } else {
+      console.warn('[smelter] no ghost or duck art — haunter sprites not registered');
     }
 
     // Car Ads overlay art (CarAdsInput): the image corner-pinned onto detected
@@ -348,10 +361,14 @@ class SmelterManager {
       '../fonts/ibm-plex-mono/IBMPlexMono-SemiBold.ttf',
     ];
     for (const fontFile of fontFiles) {
-      const font = await readFile(path.join(__dirname, fontFile));
-      await this.registerFont(
-        font.buffer.slice(font.byteOffset, font.byteOffset + font.byteLength),
-      );
+      try {
+        const font = await readFile(path.join(__dirname, fontFile));
+        await this.registerFont(
+          font.buffer.slice(font.byteOffset, font.byteOffset + font.byteLength),
+        );
+      } catch (err) {
+        console.warn(`[smelter] font ${fontFile} failed to register:`, err);
+      }
     }
 
     for (const shader of shadersController.shaders) {

@@ -16,6 +16,7 @@ import {
   getEffectiveClientServerUrl,
   getPublicDefaultServerUrl,
   getStoredClientServerUrl,
+  remoteOrigin,
   resolveMediaUrl,
   toWsUrl,
 } from '@/lib/server-url';
@@ -100,12 +101,6 @@ function readLifterSession(roomId: string): LifterSession {
   } catch {
     return {};
   }
-}
-
-function remoteOrigin(): string | null {
-  if (typeof window === 'undefined') return null;
-  const o = window.location.origin;
-  return /(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])/.test(o) ? null : o;
 }
 
 export default function LiftControllerPage() {

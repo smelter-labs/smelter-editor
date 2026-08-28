@@ -17,6 +17,8 @@ import type {
 } from '@fastify/type-provider-typebox';
 import { state } from '../core/serverState';
 import { roomEventBus } from '../core/roomEventBus';
+import type { RoomSocketErrorEvent } from '@smelter-editor/types';
+import { WS_CLOSE_ROOM_NOT_FOUND } from '@smelter-editor/types';
 import {
   handlePongClientDisconnect,
   handlePongClientMessage,
@@ -45,6 +47,7 @@ import audioSuggestionsMonitor from '../audio-files/audioSuggestionMonitor';
 import { getAudioWaveformPath } from '../audio-files/audioWaveform';
 import { KickChannelSuggestions } from '../kick/KickChannelMonitor';
 import shadersController from '../shaders/shaders';
+import { duckHunterTopScores } from '../duckHunter/topScores';
 import { DATA_DIR } from '../dataDir';
 import { ModelRegistry, registerAIModels } from '../ai-models';
 import { uploadRoutes, sanitizeFolderPath } from '../core/routes/uploadRoutes';
@@ -1114,6 +1117,28 @@ routes.after(() => {
       const { roomId } = req.params;
       const clientId = uuidv4();
 
+      // Refuse sockets to rooms that don't exist (deleted, GC'd, typo'd URL).
+      // Without this the socket connects fine and every message is silently
+      // swallowed by the `Room no longer exists — ignore` catches below, so a
+      // phone shows a green "connected" dot against a dead room forever.
+      try {
+        state.getRoom(roomId);
+      } catch {
+        const err: RoomSocketErrorEvent = {
+          type: 'room_error',
+          roomId,
+          code: 'room_not_found',
+          message: `Room ${roomId} does not exist`,
+        };
+        try {
+          socket.send(JSON.stringify(err));
+        } catch {
+          // Socket already dying — the close below is all that matters.
+        }
+        socket.close(WS_CLOSE_ROOM_NOT_FOUND, 'room not found');
+        return;
+      }
+
       // Application-level heartbeat: without it a phone that vanished (lock,
       // network flip) holds its TCP socket open for minutes, and its KBT
       // player entry stays 'connected' — blocking name-based adoption on
@@ -1201,6 +1226,13 @@ routes.after(() => {
           parsed = JSON.parse(text);
         } catch {
           return;
+        }
+        // Any parsed game message counts as room activity for the idle GC —
+        // a booth game driven purely over WS never touches the REST snapshot.
+        try {
+          state.getRoom(roomId).markActivity();
+        } catch {
+          // Room no longer exists — per-message handlers below ignore it too.
         }
         if (
           parsed &&
@@ -2642,13 +2674,6 @@ const DuckHunterMatchSchema = Type.Object({
   ),
   durationMs: Type.Optional(Type.Number()),
   targetScore: Type.Optional(Type.Number()),
-  character: Type.Optional(
-    Type.Object({
-      id: Type.String(),
-      name: Type.String(),
-      color: Type.String(),
-    }),
-  ),
 });
 
 routes.post<RoomIdParams & { Body: Static<typeof DuckHunterMatchSchema> }>(
@@ -2662,7 +2687,6 @@ routes.post<RoomIdParams & { Body: Static<typeof DuckHunterMatchSchema> }>(
       mode: req.body.mode,
       durationMs: req.body.durationMs,
       targetScore: req.body.targetScore,
-      character: req.body.character?.id,
     });
     const room = state.getRoom(roomId);
     const match = room.controlDuckHunterMatch({
@@ -2670,7 +2694,6 @@ routes.post<RoomIdParams & { Body: Static<typeof DuckHunterMatchSchema> }>(
       mode: req.body.mode,
       durationMs: req.body.durationMs,
       targetScore: req.body.targetScore,
-      character: req.body.character,
     });
     res.status(200).send({ status: 'ok', match });
   },
@@ -2684,6 +2707,18 @@ routes.get<RoomIdParams>(
     res.status(200).send({ status: 'ok', match: room.getDuckHunterMatch() });
   },
 );
+
+// Global arcade TOP SCORES table (no room — the cabinet outlives rooms).
+// Written only by the server's idempotent match end; this is read-only.
+routes.get('/duck-hunter/top-scores', async (_req, res) => {
+  res.status(200).send({
+    status: 'ok',
+    scores: {
+      time: duckHunterTopScores.snapshot('time'),
+      points: duckHunterTopScores.snapshot('points'),
+    },
+  });
+});
 
 // ── Kettlebell Tournament ──────────────────────────────────────
 

@@ -2,7 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import { useEffect, useState } from 'react';
-import { usePathname } from 'next/navigation';
+import { useIsChromelessRoute } from '@/lib/chromeless-routes';
 import { useVoiceCommandsEnabledSetting } from '@/lib/voice/macroSettings';
 
 const SpeechToTextWithCommands = dynamic(
@@ -40,18 +40,17 @@ const Analytics = dynamic(
   { ssr: false },
 );
 
-const PREVIEW_PREFIXES = ['/raw-preview', '/room-preview'];
-
 /**
  * Wraps browser-only layout addons (toast, analytics, voice UI).
  * Renders nothing until mounted so server HTML matches the client on hydration
  * (next/dynamic with ssr:false otherwise emits <script> vs <Suspense> on Next 15).
  * Dynamic imports use ssr:false so deps that touch window never run during prerender.
+ * Chromeless routes (previews, the duck-hunter cabinet) get no visual addons
+ * at all — the page is the output, so even toasts stay off it.
  */
 export default function ClientLayoutAddons() {
   const [mounted, setMounted] = useState(false);
-  const pathname = usePathname();
-  const isPreview = PREVIEW_PREFIXES.some((p) => pathname.startsWith(p));
+  const isChromeless = useIsChromelessRoute();
   const [voiceCommandsEnabled] = useVoiceCommandsEnabledSetting();
 
   useEffect(() => {
@@ -64,10 +63,10 @@ export default function ClientLayoutAddons() {
 
   return (
     <>
-      {!isPreview && voiceCommandsEnabled && <SpeechToTextWithCommands />}
-      {!isPreview && <VoiceActionFeedback />}
-      {!isPreview && <TimelineEventFeedback />}
-      <SonnerToaster />
+      {!isChromeless && voiceCommandsEnabled && <SpeechToTextWithCommands />}
+      {!isChromeless && <VoiceActionFeedback />}
+      {!isChromeless && <TimelineEventFeedback />}
+      {!isChromeless && <SonnerToaster />}
       <Analytics />
     </>
   );
