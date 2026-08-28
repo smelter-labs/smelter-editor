@@ -110,8 +110,8 @@ const ASSETS = {
 
   // ── SOLO rep tracker, output pos: x=1570, y=720 ──────────────────────
   // Dynamic slots: counts right-aligned at x=255, rows y 60/122/184;
-  // bar fills at (25, row+34) h5 max-w 230 (SNATCH accent, CLEAN #ffb800,
-  // SWING #38e08a).
+  // bar fills at (25, row+34) h5 max-w 230 (SNATCH #c084fc, CLEAN #00e5ff,
+  // SWING #ffb800).
   'tracker-panel': [280, 290, `
     <div style="position:absolute;inset:0;background:${BG};border:${BORDER};clip-path:polygon(0 0,calc(100% - 18px) 0,100% 18px,100% 100%,0 100%);padding:25px">
       <div class="mono" style="font-size:13px;letter-spacing:3px;color:${DIM}">AI REP TRACKER</div>

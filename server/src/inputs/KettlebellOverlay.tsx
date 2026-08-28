@@ -94,10 +94,10 @@ function BellBox({
   const [left, top, w, h] = bell;
   const boxTop = Math.round(top);
   const boxLeft = Math.round(left);
-  // The border grows outward from the View while top/left measure its outer
-  // edge, so a View sized to the box rings the bell instead of tracing it.
-  // Inset by the border so the stroke's outer edge lands on the tracked rect
-  // (same correction as SmoothedBoxes).
+  // width/height exclude the border while top/left measure to its OUTER
+  // edge, so shrinking the size by 2*inset already lands the stroke's outer
+  // edge on the tracked rect — the position stays on the box (same
+  // correction as SmoothedBoxes).
   const inset = data.drawBoxes ? 4 : 2;
   const fontSize = Math.max(12, Math.round(parent.height * 0.022));
 
@@ -105,8 +105,8 @@ function BellBox({
     <>
       <View
         style={{
-          top: boxTop + inset,
-          left: boxLeft + inset,
+          top: boxTop,
+          left: boxLeft,
           width: Math.max(2, Math.round(w) - 2 * inset),
           height: Math.max(2, Math.round(h) - 2 * inset),
           borderWidth: inset,

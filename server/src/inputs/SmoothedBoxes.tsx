@@ -183,18 +183,17 @@ export function SmoothedBoxes({
         const [left, top, w, h] = rect;
         const boxTop = Math.round(top);
         const boxLeft = Math.round(left);
-        // The border grows outward from the View, so a View sized to the box
-        // draws its outline just *outside* the box — which leaves a marker
-        // burned into the video showing through inside the green. Inset the
-        // View by the border so the outline's outer edge lands on the box and
-        // the stroke covers the marker instead of ringing it.
+        // width/height exclude the border while top/left measure to its
+        // OUTER edge, so shrinking the size by 2*border already lands the
+        // stroke's outer edge on the tracked box. Insetting the position too
+        // shifts the outline down-right by the border width.
         const inset = Math.max(0, borderWidth);
         const els = [
           <View
             key={id}
             style={{
-              top: boxTop + inset,
-              left: boxLeft + inset,
+              top: boxTop,
+              left: boxLeft,
               width: Math.max(2, Math.round(w) - 2 * inset),
               height: Math.max(2, Math.round(h) - 2 * inset),
               borderWidth,

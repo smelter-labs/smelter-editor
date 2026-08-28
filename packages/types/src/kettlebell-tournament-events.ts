@@ -16,9 +16,9 @@ export const KBT_EXERCISE_KEYS: KbtExerciseKey[] = ["swing", "clean", "snatch"];
 
 /** Signature color per exercise (matches the broadcast HUD's rep tracker). */
 export const KBT_EXERCISE_COLORS: Record<KbtExerciseKey, string> = {
-  swing: "#38E08A",
-  clean: "#FFB800",
-  snatch: "#FF5A1F",
+  swing: "#FFB800",
+  clean: "#00E5FF",
+  snatch: "#C084FC",
 };
 
 /** Scoring rule for one exercise. Disabled reps still count, but score 0. */

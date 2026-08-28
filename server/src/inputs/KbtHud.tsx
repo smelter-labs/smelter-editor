@@ -259,15 +259,16 @@ export function KbtTileHud({
         overflow: 'hidden',
       }}>
       {/* Rep flash: the tile edge lights in the player's color for a beat.
-          The border grows outward from the View while top/left place its
-          outer edge, so inset by the border width or the right/bottom
-          strokes land past the parent and the root clip eats them (same
-          correction as SmoothedBoxes). */}
+          width/height exclude the border while top/left measure to its OUTER
+          edge, so only the size shrinks by 2*bw and the position stays 0 —
+          inset the position too and the whole frame shifts down-right by bw,
+          with the right/bottom strokes clipped by the root (same correction
+          as SmoothedBoxes). */}
       {tile.flash ? (
         <View
           style={{
-            top: bw,
-            left: bw,
+            top: 0,
+            left: 0,
             width: parent.width - 2 * bw,
             height: parent.height - 2 * bw,
             borderWidth: bw,

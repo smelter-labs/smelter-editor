@@ -237,6 +237,24 @@ describe('buildSkeletonParams', () => {
     const off = byName(buildSkeletonParams(pose(), 'neon', PARENT));
     expect(off.aura_i).toBe(0);
   });
+
+  it('scales the aura shell with the athlete, clamped, 0 when unreferenced', () => {
+    // pose(): shoulder mid (540,480) to hip mid (540,1000) → torso 520px.
+    const p = byName(buildSkeletonParams(pose(), 'neon', PARENT));
+    expect(p.aura_s).toBeCloseTo((0.22 * 520) / PARENT.height, 6);
+
+    // Hips hidden: shoulder span (160px) × 1.4 approximates the torso.
+    const noHips = pose();
+    noHips[11] = null;
+    noHips[12] = null;
+    const q = byName(buildSkeletonParams(noHips, 'neon', PARENT));
+    expect(q.aura_s).toBeCloseTo((0.22 * 160 * 1.4) / PARENT.height, 6);
+
+    // No torso reference at all → 0; the shader falls back to its fixed
+    // radius.
+    const none: (number[] | null)[] = new Array(JOINT_COUNT).fill(null);
+    expect(byName(buildSkeletonParams(none, 'neon', PARENT)).aura_s).toBe(0);
+  });
 });
 
 describe('coverTransform', () => {

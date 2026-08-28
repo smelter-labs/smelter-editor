@@ -247,6 +247,7 @@ export const SKELETON_PARAM_FIELDS: string[] = [
   'aura_g',
   'aura_b',
   'aura_i',
+  'aura_s',
 ];
 
 /** Palette order the shader indexes with BONE_G / JOINT_G. */
@@ -382,6 +383,30 @@ export function buildSkeletonParams(
   f32('aura_g', aura?.g ?? 0);
   f32('aura_b', aura?.b ?? 0);
   f32('aura_i', aura?.i ?? 0);
+
+  // Aura shell radius as a fraction of H, derived from the athlete like the
+  // head circle is. A fixed radius merged the limbs on a distant athlete but
+  // fell apart into per-limb outlines once the athlete filled the tile.
+  // Torso length (hip mid ↔ shoulder mid) is ~0.25·H at the framing the
+  // fixed 0.055·H was tuned at, and 0.22 × 0.25 = 0.055 — so that look is
+  // preserved while a tile-filling athlete gets a shell wide enough for the
+  // capsules to keep merging. Shoulder span (~torso/1.4) carries it when the
+  // hips are hidden; no reference at all emits 0 and the shader falls back
+  // to the fixed radius. Clamped here, not in the shader, so tests can pin it.
+  const lh = visible(L_HIP);
+  const rh = visible(R_HIP);
+  const hip =
+    lh && rh ? [(lh[0] + rh[0]) / 2, (lh[1] + rh[1]) / 2] : (lh ?? rh);
+  const shoulder = ls && rs ? neck : (ls ?? rs);
+  const span = ls && rs ? Math.hypot(rs[0] - ls[0], rs[1] - ls[1]) : 0;
+  const torso =
+    hip && shoulder
+      ? Math.hypot(shoulder[0] - hip[0], shoulder[1] - hip[1])
+      : span * 1.4;
+  f32(
+    'aura_s',
+    torso ? Math.min(0.11, Math.max(0.025, (0.22 * torso) / H)) : 0,
+  );
 
   return params;
 }

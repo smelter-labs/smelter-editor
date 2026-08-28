@@ -326,7 +326,7 @@ describe('KettlebellTournamentController', () => {
     expect(withFx.length).toBeGreaterThan(0);
     const first = withFx[0].tiles[in1].fx!;
     expect(first.exercise).toBe('swing');
-    expect(first.color).toBe('#38E08A');
+    expect(first.color).toBe('#FFB800');
     expect(first.p).toBeLessThan(0.2);
     // Progress advances with the 10 Hz publishes, then the effect expires.
     const last = withFx[withFx.length - 1].tiles[in1].fx!;

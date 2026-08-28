@@ -46,6 +46,9 @@ struct BaseShaderParameters {
 //   bone_*/jnt_*    - palette per body part, indexed 0 arm, 1 leg, 2 core
 //   aura_r/g/b      - milestone aura color (every-5th-rep celebration)
 //   aura_i          - aura intensity 0..1; 0 disables the whole aura pass
+//   aura_s          - athlete body scale for the aura shell, as a fraction of
+//                     the tile height (clamped CPU-side); 0 = unknown, which
+//                     falls back to the fixed radius
 struct ShaderOptions {
     j0_x: f32, j0_y: f32, j0_v: f32,
     j1_x: f32, j1_y: f32, j1_v: f32,
@@ -84,6 +87,7 @@ struct ShaderOptions {
     jnt_core_r: f32, jnt_core_g: f32, jnt_core_b: f32,
     aura_r: f32, aura_g: f32, aura_b: f32,
     aura_i: f32,
+    aura_s: f32,
 };
 
 @group(0) @binding(0) var textures: binding_array<texture_2d<f32>, 16>;
@@ -193,6 +197,15 @@ fn dist_to_segment(p: vec2<f32>, a: vec2<f32>, b: vec2<f32>) -> f32 {
     return length(p - (a + ab * t));
 }
 
+/// Polynomial smooth-min (from haunter-aura.wgsl): merges the limb capsules
+/// into one silhouette instead of a bundle of per-bone outlines. Safe against
+/// the 1e6 "nothing visible" sentinel — with a = 1e6, h clamps to 0 and the
+/// result is exactly b.
+fn smin(a: f32, b: f32, k: f32) -> f32 {
+    let h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+    return mix(b, a, h) - k * h * (1.0 - h);
+}
+
 /// Straight-alpha source-over. The Views this replaces composited in child
 /// order, so the shader does too. A per-channel max() accumulator (as the
 /// hand-skeleton shader uses) would invent color where two differently-hued
@@ -270,9 +283,12 @@ fn draw_bones(acc_in: vec4<f32>, p: vec2<f32>, res: vec2<f32>, hw: f32, feather:
     return acc;
 }
 
-/// Distance (px) from p to the rig: min over the bone segments plus the neck,
-/// with the same visibility guards as draw_bones. 1e6 when nothing is visible.
-fn rig_dist(p: vec2<f32>, res: vec2<f32>) -> f32 {
+/// Distance (px) from p to the rig: a smooth union (blend radius k) of the
+/// bone segments, the neck and every visible joint point, with the same
+/// visibility guards as draw_bones. The joint spheres matter — one
+/// low-confidence keypoint hides BOTH bones that share it, and without them
+/// the whole limb's aura blinked out. 1e6 when nothing is visible.
+fn rig_dist(p: vec2<f32>, res: vec2<f32>, k: f32) -> f32 {
     var d = 1000000.0;
     for (var i = 0; i < 12; i = i + 1) {
         let ja = joint(BONE_A[i]);
@@ -280,28 +296,53 @@ fn rig_dist(p: vec2<f32>, res: vec2<f32>) -> f32 {
         if ja.z < 0.5 || jb.z < 0.5 {
             continue;
         }
-        d = min(d, dist_to_segment(p, ja.xy * res, jb.xy * res));
+        d = smin(d, dist_to_segment(p, ja.xy * res, jb.xy * res), k);
     }
     let nose = joint(0);
     let ls = joint(5);
     let rs = joint(6);
     if nose.z >= 0.5 && ls.z >= 0.5 && rs.z >= 0.5 {
-        d = min(d, dist_to_segment(p, nose.xy * res, (ls.xy + rs.xy) * 0.5 * res));
+        d = smin(d, dist_to_segment(p, nose.xy * res, (ls.xy + rs.xy) * 0.5 * res), k);
+    }
+    // Eyes/ears (1-4) are never emitted visible, so this covers the 13 drawn
+    // joints without an extra table.
+    for (var i = 0; i < 17; i = i + 1) {
+        let j = joint(i);
+        if j.z < 0.5 {
+            continue;
+        }
+        d = smin(d, length(p - j.xy * res), k);
     }
     return d;
 }
 
 /// Milestone aura: a flame-displaced iso-line around the rig plus an outer
 /// glow, in the exercise's color, faded by aura_i (eased on the CPU side).
+/// The shell radius rides aura_s: a fixed radius merged the limbs on a
+/// distant athlete but degenerated into per-limb outlines once the athlete
+/// filled the tile.
 fn draw_aura(acc_in: vec4<f32>, p: vec2<f32>, res: vec2<f32>, t: f32) -> vec4<f32> {
-    let body_r = 0.055 * res.y;
-    let d = rig_dist(p, res) - body_r;
+    var body_r = 0.055 * res.y;
+    if shader_options.aura_s > 0.0 {
+        body_r = shader_options.aura_s * res.y;
+    }
+    // k = body_r: the union bridges ~k/4, which closes the arm-torso and
+    // between-leg creases whose iso-lines read as stray vertical strips.
+    let d = rig_dist(p, res, body_r) - body_r;
+    // smin <= min, so this early-out is still conservative.
     if d > body_r * 4.0 {
         return acc_in;
     }
-    let n = fbm(p * (6.0 / min(res.x, res.y)) + vec2(t * 0.4, -t * 0.6));
+    // f32 time thrashes the noise hash after ~30 min, so the phase ping-pongs
+    // over 64s — a direction flip, never a jump, and rarely inside a 3s burst.
+    let tp = 64.0 - abs((t % 128.0) - 64.0);
+    let n = fbm(p / (3.0 * body_r) + vec2(tp * 0.4, -tp * 0.6));
     let dd = d + (n - 0.5) * body_r * 0.8;
-    let rim = 1.0 - smoothstep(0.0, body_r * 0.35, abs(dd));
+    // The un-noised interior mask keeps the rim off whatever creases the
+    // union could not close (wide stances) — they hover just inside zero and
+    // otherwise flicker through as inner outlines.
+    let rim = (1.0 - smoothstep(0.0, body_r * 0.35, abs(dd)))
+        * smoothstep(-body_r * 0.35, 0.0, d);
     let glow = exp(-max(dd, 0.0) / (body_r * 0.9));
     let aura = vec3(shader_options.aura_r, shader_options.aura_g, shader_options.aura_b);
     return over(acc_in, aura, clamp((rim * 0.9 + glow * 0.5) * shader_options.aura_i, 0.0, 1.0));
