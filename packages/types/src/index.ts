@@ -19,6 +19,9 @@ export type {
 
 export type { RoomNameEntry } from "./room-names.js";
 
+export type { RoomSocketErrorEvent } from "./room-socket-events.js";
+export { WS_CLOSE_ROOM_NOT_FOUND } from "./room-socket-events.js";
+
 export { Layouts } from "./layout.js";
 export type {
   Layout,

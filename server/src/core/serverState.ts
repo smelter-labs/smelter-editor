@@ -223,6 +223,12 @@ export class ServerState {
       }
       for (const [roomId, room] of rooms) {
         if (Date.now() - room.lastReadTimestamp > 30 * 60_000) {
+          // A room with live WebSocket subscribers (arcade page, phones) is in
+          // use even if nobody polled REST for 30 min — a booth game idling in
+          // its lobby must not be deleted underneath its players. Dead sockets
+          // are terminated by the app-level ping loop within ~10 s, so this
+          // cannot keep a truly abandoned room alive.
+          if (roomEventBus.getConnectionCount(roomId) > 0) continue;
           try {
             console.log('Stop from inactivity');
             await this._deleteRoom(roomId);

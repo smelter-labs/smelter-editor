@@ -1090,6 +1090,15 @@ export class RoomState {
 
   // ── State snapshot ────────────────────────────────────────
 
+  /**
+   * Refresh the idle-GC clock without building a snapshot. Called from the
+   * room WebSocket on every parsed message so an active game (phones sending
+   * aim/reps) counts as activity even when nobody polls REST.
+   */
+  public markActivity(): void {
+    this.lastReadTimestamp = Date.now();
+  }
+
   public getState(): RoomSnapshot {
     this.lastReadTimestamp = Date.now();
     return {
