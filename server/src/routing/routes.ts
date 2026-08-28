@@ -47,6 +47,7 @@ import audioSuggestionsMonitor from '../audio-files/audioSuggestionMonitor';
 import { getAudioWaveformPath } from '../audio-files/audioWaveform';
 import { KickChannelSuggestions } from '../kick/KickChannelMonitor';
 import shadersController from '../shaders/shaders';
+import { duckHunterTopScores } from '../duckHunter/topScores';
 import { DATA_DIR } from '../dataDir';
 import { ModelRegistry, registerAIModels } from '../ai-models';
 import { uploadRoutes, sanitizeFolderPath } from '../core/routes/uploadRoutes';
@@ -2715,6 +2716,18 @@ routes.get<RoomIdParams>(
     res.status(200).send({ status: 'ok', match: room.getDuckHunterMatch() });
   },
 );
+
+// Global arcade TOP SCORES table (no room — the cabinet outlives rooms).
+// Written only by the server's idempotent match end; this is read-only.
+routes.get('/duck-hunter/top-scores', async (_req, res) => {
+  res.status(200).send({
+    status: 'ok',
+    scores: {
+      time: duckHunterTopScores.snapshot('time'),
+      points: duckHunterTopScores.snapshot('points'),
+    },
+  });
+});
 
 // ── Kettlebell Tournament ──────────────────────────────────────
 

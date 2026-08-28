@@ -89,6 +89,20 @@ export type ShooterMatchPhase =
 /** Host identity chosen on the arcade character-select screen. */
 export type ShooterHostCharacter = { id: string; name: string; color: string };
 
+/**
+ * One row of the global arcade TOP SCORES table. Recorded server-side by the
+ * idempotent match end (never by clients), persisted across rooms/restarts.
+ */
+export type ShooterTopScoreEntry = {
+  /** 3-char arcade initials (derived from the player name by default). */
+  initials: string;
+  name: string;
+  characterId?: string;
+  score: number;
+  mode: ShooterMatchMode;
+  at: number;
+};
+
 export type ShooterMatchConfig = {
   mode: ShooterMatchMode;
   /** Time mode round length, clamped server-side to 10s..10min. */
@@ -205,6 +219,10 @@ export type ShooterMatchEvent = {
   winner?: ShooterPlayer | null;
   /** 'ended' only: scoreboard frozen at the final whistle. */
   finalScores?: ShooterPlayer[];
+  /** 'ended' only: the global TOP SCORES table for this match's mode. */
+  topScores?: ShooterTopScoreEntry[];
+  /** 'ended' only: 1-based rank the winner took in it; null = off the table. */
+  topScoreRank?: number | null;
 };
 
 export type ShooterServerEvent =

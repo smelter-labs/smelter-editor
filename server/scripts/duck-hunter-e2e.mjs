@@ -258,6 +258,20 @@ check(
     match.finalScores?.length === 6,
   JSON.stringify([match.phase, match.winner, match.finalScores?.length]),
 );
+// A draw records nothing, but the ended snapshot still carries the global
+// table (real submissions need the bird model, out of scope for fake phones).
+check(
+  'ended snapshot carries topScores + null rank on a draw',
+  Array.isArray(match.topScores) && match.topScoreRank === null,
+  JSON.stringify([match.topScores, match.topScoreRank]),
+);
+const topScoresRes = await api('GET', `/duck-hunter/top-scores`);
+check(
+  'GET /duck-hunter/top-scores returns per-mode arrays',
+  Array.isArray(topScoresRes.scores?.time) &&
+    Array.isArray(topScoresRes.scores?.points),
+  JSON.stringify(topScoresRes),
+);
 
 // ── 6. Dead-room contract: room_error + close 4404, no silent black hole ────
 const ghost = phone('no-such-room', 'GHOST');

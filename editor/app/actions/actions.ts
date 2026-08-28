@@ -582,6 +582,15 @@ export async function getDuckHunterMatch(
   return (await getClient()).getDuckHunterMatch(roomId);
 }
 
+export async function getDuckHunterTopScores(): Promise<
+  Record<
+    import('@smelter-editor/types').ShooterMatchMode,
+    import('@smelter-editor/types').ShooterTopScoreEntry[]
+  >
+> {
+  return (await getClient()).getDuckHunterTopScores();
+}
+
 export async function setKbtConfig(
   roomId: string,
   config: {

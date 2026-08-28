@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { RoomEvent } from '@smelter-editor/types';
+import type { RoomEvent, ShooterTopScoreEntry } from '@smelter-editor/types';
 import type { StoreApi } from 'zustand';
 import type { PersonBoxes, RoomStore, ShooterOverlay } from '../../app/store';
 import { DuckHunterController } from '../DuckHunterController';
@@ -21,6 +21,8 @@ function harness(opts?: { manualCam?: boolean }) {
   const live = new Set<string>();
   const pendingCams: (() => void)[] = [];
   const shooterSets: (ShooterOverlay | null)[] = [];
+  // In-memory stand-in for the global TopScoresStore (same sort + cap).
+  const topScores: ShooterTopScoreEntry[] = [];
   let camSeq = 0;
 
   const sceneState: FakeSceneState = {
@@ -59,6 +61,15 @@ function harness(opts?: { manualCam?: boolean }) {
       live.delete(inputId);
     },
     isInputLive: (inputId) => live.has(inputId),
+    recordTopScore: (entry) => {
+      const full: ShooterTopScoreEntry = { initials: 'AAA', ...entry };
+      topScores.push(full);
+      topScores.sort((a, b) => b.score - a.score || a.at - b.at);
+      topScores.splice(10);
+      const rank = topScores.indexOf(full);
+      return { rank: rank === -1 ? null : rank + 1 };
+    },
+    readTopScores: (mode) => topScores.filter((e) => e.mode === mode),
   });
 
   return {
@@ -71,6 +82,7 @@ function harness(opts?: { manualCam?: boolean }) {
     pendingCams,
     sceneState,
     shooterSets,
+    topScores,
     joinedFor(clientId: string) {
       const found = [...sent]
         .reverse()
@@ -419,6 +431,39 @@ describe('match lifecycle and the 30 Hz loop', () => {
     const snap = h.controller.getMatchSnapshot();
     expect(snap.winner?.clientId).toBe('c1');
     expect(snap.winner?.score).toBe(1);
+    h.controller.dispose();
+  });
+
+  it('records the winner into TOP SCORES exactly once, repeat stops no-op', async () => {
+    const h = harness();
+    h.sceneState.peopleBoxes['stage'] = ghostTarget();
+    h.controller.join('c1', 'Bob');
+    h.controller.join('c2', 'Eve');
+    h.controller.controlMatch({ action: 'start', mode: 'time' });
+    await vi.advanceTimersByTimeAsync(3100);
+    h.controller.fire('c1');
+    h.controller.controlMatch({ action: 'stop' });
+    // The double-submit paths that used to duplicate rows (host refresh,
+    // StrictMode remount) all funnel through stop/endMatch — repeat it.
+    h.controller.controlMatch({ action: 'stop' });
+    expect(h.topScores).toHaveLength(1);
+    expect(h.topScores[0]).toMatchObject({ name: 'Bob', score: 1, mode: 'time' });
+    const snap = h.controller.getMatchSnapshot();
+    expect(snap.topScores).toHaveLength(1);
+    expect(snap.topScoreRank).toBe(1);
+    h.controller.dispose();
+  });
+
+  it('a draw records no top score but still snapshots the table', async () => {
+    const h = harness();
+    h.controller.join('c1', 'Bob');
+    h.controller.controlMatch({ action: 'start', mode: 'time' });
+    await vi.advanceTimersByTimeAsync(3100);
+    h.controller.controlMatch({ action: 'stop' });
+    expect(h.topScores).toHaveLength(0);
+    const snap = h.controller.getMatchSnapshot();
+    expect(snap.topScores).toEqual([]);
+    expect(snap.topScoreRank).toBeNull();
     h.controller.dispose();
   });
 });

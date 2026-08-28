@@ -1,9 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { characterVideoUrl, type ArcadeCharacter } from '../characters';
 import type { ShooterFeed } from '../use-shooter-feed';
-import { readTopScores, submitTopScore, type TopScoreEntry } from '../top-scores';
 import {
   ACCENT_LINE,
   ArcadeText,
@@ -22,8 +21,10 @@ import { useArcadeKeys } from '../use-arcade-input';
 
 /**
  * GAME OVER: winner card next to the host character clip, the frozen final
- * scoreboard, and the local TOP SCORES table (the winner is submitted once
- * on mount, arcade-style). PLAY AGAIN keeps the room (phones stay in).
+ * scoreboard, and the global TOP SCORES table. The table (and the winner's
+ * rank in it) rides the shooter_match 'ended' event — the server records the
+ * score exactly once at match end, so remounts/refreshes can't duplicate it.
+ * PLAY AGAIN keeps the room (phones stay in).
  */
 export function Results({
   character,
@@ -43,23 +44,8 @@ export function Results({
     [match?.finalScores],
   );
 
-  const [table, setTable] = useState<TopScoreEntry[]>([]);
-  const [newRank, setNewRank] = useState<number | null>(null);
-
-  // Submit the winning score once per results screen.
-  useEffect(() => {
-    if (winner && match?.mode) {
-      const { rank } = submitTopScore({
-        name: winner.name,
-        characterId: character.id,
-        score: winner.score,
-        mode: match.mode,
-      });
-      setNewRank(rank);
-    }
-    setTable(readTopScores());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const table = match?.topScores ?? [];
+  const newRank = match?.topScoreRank ?? null;
 
   useArcadeKeys({ confirm: onPlayAgain, back: onExit });
 

@@ -168,6 +168,7 @@ export type {
   ShooterMatchMode,
   ShooterMatchPhase,
   ShooterHostCharacter,
+  ShooterTopScoreEntry,
   ShooterMatchConfig,
   ShooterJoinedEvent,
   ShooterErrorCode,

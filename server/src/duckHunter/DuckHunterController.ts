@@ -8,6 +8,7 @@ import type {
   ShooterMatchMode,
   ShooterPlayer,
   ShooterStateEvent,
+  ShooterTopScoreEntry,
 } from '@smelter-editor/types';
 import type { StoreApi } from 'zustand';
 import type {
@@ -48,6 +49,16 @@ export type DuckHunterDeps = {
   removeInput: (inputId: string) => Promise<void>;
   /** WHIP input is actually publishing (heartbeat-acked within the TTL). */
   isInputLive: (inputId: string) => boolean;
+  /**
+   * Record the finished round's winning score into the global TOP SCORES
+   * table. Called only from the idempotent match end — exactly once per
+   * round (clients never submit scores themselves).
+   */
+  recordTopScore: (
+    entry: Omit<ShooterTopScoreEntry, 'initials' | 'at'> & { at: number },
+  ) => { rank: number | null };
+  /** Current global TOP SCORES table for one mode (sorted, capped). */
+  readTopScores: (mode: ShooterMatchMode) => ShooterTopScoreEntry[];
   now?: () => number;
 };
 
@@ -117,6 +128,9 @@ type MatchState = {
   character: ShooterHostCharacter | null;
   winner: ShooterPlayer | null;
   finalScores: ShooterPlayer[];
+  /** 'ended' only: global TOP SCORES snapshot + the winner's rank in it. */
+  topScores: ShooterTopScoreEntry[];
+  topScoreRank: number | null;
   lastBroadcastAt: number;
   /** Set on 'ended'; gates the loop-stop linger. */
   endedAt: number | null;
@@ -436,6 +450,8 @@ export class DuckHunterController {
           character: cmd.character ?? null,
           winner: null,
           finalScores: [],
+          topScores: [],
+          topScoreRank: null,
           lastBroadcastAt: now,
           endedAt: null,
         };
@@ -506,6 +522,8 @@ export class DuckHunterController {
       character: m.character ?? undefined,
       winner: m.phase === 'ended' ? m.winner : undefined,
       finalScores: m.phase === 'ended' ? m.finalScores : undefined,
+      topScores: m.phase === 'ended' ? m.topScores : undefined,
+      topScoreRank: m.phase === 'ended' ? m.topScoreRank : undefined,
     };
   }
 
@@ -1076,6 +1094,19 @@ export class DuckHunterController {
     m.endedAt = now;
     m.finalScores = rows;
     m.winner = isDraw ? null : top;
+    // The ended-guard above makes this exactly-once per round; the client
+    // never submits scores itself (StrictMode double-mounts and host-refresh
+    // remounts used to double every row of the table).
+    if (m.winner) {
+      m.topScoreRank = this.deps.recordTopScore({
+        name: m.winner.name,
+        characterId: m.character?.id,
+        score: m.winner.score,
+        mode: m.mode,
+        at: now,
+      }).rank;
+    }
+    m.topScores = this.deps.readTopScores(m.mode);
     m.lastBroadcastAt = now;
     this.deps.broadcast(this.getMatchSnapshot());
   }

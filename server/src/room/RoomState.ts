@@ -48,6 +48,7 @@ import { kettlebellSkeletonMode } from '../app/store';
 import type { CarAdDetection } from '../app/store';
 import { DuckHunterController } from '../duckHunter/DuckHunterController';
 import type { MatchCommand } from '../duckHunter/DuckHunterController';
+import { duckHunterTopScores } from '../duckHunter/topScores';
 import {
   DEFAULT_DUCK_FLY_FRAC_PER_SEC,
   DEFAULT_DUCK_PAUSE_MS,
@@ -428,6 +429,8 @@ export class RoomState {
           bearerToken,
         };
       },
+      recordTopScore: (entry) => duckHunterTopScores.submit(entry),
+      readTopScores: (mode) => duckHunterTopScores.snapshot(mode),
       removeInput: (inputId) => this.removeInput(inputId),
       // Engine status for WHIP means "registered", not "publishing" — real
       // liveness comes from the phone's heartbeat acks.

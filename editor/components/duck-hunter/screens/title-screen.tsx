@@ -1,6 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
+import type { ShooterTopScoreEntry } from '@smelter-editor/types';
+import { getDuckHunterTopScores } from '@/app/actions/actions';
 import {
   ArcadeText,
   LedText,
@@ -13,7 +15,6 @@ import {
   pixelFont,
 } from '../retro-kit';
 import { CHARACTERS, characterVideoUrl } from '../characters';
-import { readTopScores } from '../top-scores';
 import { useArcadeKeys } from '../use-arcade-input';
 
 /**
@@ -34,7 +35,23 @@ export function TitleScreen({ onStart }: { onStart: () => void }) {
     return () => window.clearInterval(t);
   }, []);
 
-  const topScore = useMemo(() => readTopScores()[0] ?? null, []);
+  // Global (server-side) table; best across both modes. Failure shows nothing.
+  const [topScore, setTopScore] = useState<ShooterTopScoreEntry | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getDuckHunterTopScores()
+      .then((scores) => {
+        if (cancelled) return;
+        const best = [...scores.time, ...scores.points].sort(
+          (a, b) => b.score - a.score || a.at - b.at,
+        )[0];
+        setTopScore(best ?? null);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div onClick={onStart} style={{ position: 'absolute', inset: 0 }}>
