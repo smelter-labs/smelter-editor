@@ -59,6 +59,14 @@ export type DuckHunterDeps = {
   ) => { rank: number | null };
   /** Current global TOP SCORES table for one mode (sorted, capped). */
   readTopScores: (mode: ShooterMatchMode) => ShooterTopScoreEntry[];
+  /**
+   * Declare the character clips the broadcast needs on air right now (hunter
+   * lineup / podium). Idempotent and driven from the publish loop, so the
+   * implementation must no-op on an unchanged set.
+   */
+  mountCharacterClips?: (ids: ShooterCharacterId[]) => void;
+  /** Drop every clip claim (match left the scenes that show them, teardown). */
+  unmountCharacterClips?: () => void;
   now?: () => number;
 };
 
@@ -245,6 +253,8 @@ export class DuckHunterController {
   private lobbyArmed = false;
   /** Last targetActive broadcast, so lobby clients hear the flip. */
   private lastTargetActive = false;
+  /** Last character-clip set handed to deps, so the 30 Hz publish stays cheap. */
+  private clipCharacters: ShooterCharacterId[] = [];
 
   constructor(
     private readonly roomId: string,
@@ -877,6 +887,9 @@ export class DuckHunterController {
   dispose(): void {
     this.stop();
     this.match = null;
+    this.lobbyArmed = false;
+    this.clipCharacters = [];
+    this.deps.unmountCharacterClips?.();
     for (const p of this.players.values()) {
       this.retireCameraInput(p);
     }
@@ -1163,6 +1176,12 @@ export class DuckHunterController {
       !matchHoldsLoop
     ) {
       this.stop();
+      // publish() is what normally releases the clips; with the loop parked it
+      // never runs again, so the last scene's inputs would stay decoding.
+      if (this.clipCharacters.length > 0) {
+        this.clipCharacters = [];
+        this.deps.unmountCharacterClips?.();
+      }
       this.store.getState().setShooter(null);
     }
   }
@@ -1253,7 +1272,44 @@ export class DuckHunterController {
     });
   }
 
+  /**
+   * Keep the character clips the broadcast needs mounted as engine inputs, and
+   * nothing else: the hunter lineup (lobby + countdown) shows every joined
+   * player, the podium shows the top three, and a live round shows none. Driven
+   * from publish() rather than from the six state transitions that could change
+   * the answer, so there is one place that can be wrong; the set is diffed, so
+   * the steady state costs an array compare per frame.
+   */
+  private syncCharacterClips(): void {
+    const m = this.match;
+    let want: ShooterCharacterId[];
+    if (m?.phase === 'ended') {
+      want = m.finalScores
+        .slice(0, 3)
+        .map((p) => p.characterId)
+        .filter((id): id is ShooterCharacterId => id != null);
+    } else if (m?.phase === 'countdown' || (!m && this.lobbyArmed)) {
+      want = [...this.players.values()]
+        .map((p) => p.characterId)
+        .filter((id): id is ShooterCharacterId => id != null);
+    } else {
+      want = [];
+    }
+    const next = [...new Set(want)].sort();
+    if (
+      next.length === this.clipCharacters.length &&
+      next.every((id, i) => id === this.clipCharacters[i])
+    ) {
+      return;
+    }
+    this.clipCharacters = next;
+    this.deps.mountCharacterClips?.(next);
+  }
+
   private publish(): void {
+    // Runs ahead of the early returns below: the clips must also be released
+    // when the overlay itself goes away (no target, nobody playing).
+    this.syncCharacterClips();
     const target = this.getTargetPb();
     if (!target) {
       this.store.getState().setShooter(null);
@@ -1314,6 +1370,7 @@ export class DuckHunterController {
       })),
       ducks: isBird ? [...this.ducks.values()] : [],
       match: this.matchOverlay(),
+      lobbyArmed: this.lobbyArmed,
     });
   }
 
@@ -1372,4 +1429,3 @@ function duckViewport(
     frameH: pb.frameH,
   };
 }
-

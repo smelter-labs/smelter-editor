@@ -72,51 +72,177 @@ export function scoreboardRect(
   };
 }
 
+/** One place on the results podium: clip box, pedestal under it, name above. */
+export type PodiumSlot = {
+  /** 1-based finishing place (slots are returned left-to-right as 2, 1, 3). */
+  place: number;
+  /** 16:9 box for the character clip; it stands on top of the pedestal. */
+  clip: Rect;
+  /** Panel below the clip carrying the rank digit and the score. */
+  pedestal: Rect;
+  /** Band above the clip for the player name + character title. */
+  label: Rect;
+};
+
+/** A results list column, pre-split into the two row sub-columns it renders. */
+export type ResultsColumn = Rect & {
+  /** Inner padding (both axes). */
+  pad: number;
+  /** Width of one row sub-column. */
+  subWidth: number;
+  /** X of each sub-column, relative to the column box. */
+  subLefts: [number, number];
+};
+
 /**
  * Results-scene layout (full frame, authored at 1080p and scaled by k):
- * header on top, three columns below — WINNER, FINAL SCORES, TOP SCORES.
+ * header, a full-width TOP 3 podium of character clips on pedestals, and two
+ * wide list columns below — FINAL SCORES and TOP SCORES. The columns are short
+ * but wide, so each renders its rows in two sub-columns instead of dropping
+ * entries (8 finalists as 2x4, 10 top scores as 2x5).
  */
 export function resultsLayout(resolution: { width: number; height: number }): {
   k: number;
   headerTop: number;
   subTop: number;
+  podium: Rect;
+  slots: PodiumSlot[];
   columnsTop: number;
   columnsH: number;
   colGap: number;
-  winner: Rect;
-  finals: Rect;
-  tops: Rect;
+  finals: ResultsColumn;
+  tops: ResultsColumn;
 } {
   const k = hudScale(resolution);
-  const margin = Math.round(160 * k);
-  const headerTop = Math.round(80 * k);
-  const subTop = Math.round(190 * k);
-  const columnsTop = Math.round(280 * k);
-  const columnsH = Math.round(660 * k);
-  const colGap = Math.round(36 * k);
+  const margin = Math.round(100 * k);
+  const headerTop = Math.round(26 * k);
+  const subTop = Math.round(146 * k);
+  const podiumTop = Math.round(205 * k);
+  const podiumH = Math.round(420 * k);
+  const columnsTop = Math.round(650 * k);
+  const columnsH = Math.round(360 * k);
+  const colGap = Math.round(40 * k);
+  const pad = Math.round(24 * k);
   const innerW = resolution.width - margin * 2;
-  const winnerW = Math.round(innerW * 0.28);
-  const topsW = Math.round(innerW * 0.3);
-  const finalsW = innerW - winnerW - topsW - colGap * 2;
+
+  const podium: Rect = {
+    top: podiumTop,
+    left: margin,
+    width: innerW,
+    height: podiumH,
+  };
+
+  // Winner clip is the widest; the pedestal heights carry the ranking. Slots
+  // sit on a shared baseline at the bottom of the podium band.
+  const winnerClipW = Math.round(380 * k);
+  const runnerClipW = Math.round(280 * k);
+  const slotGap = Math.round(30 * k);
+  const labelH = Math.round(76 * k);
+  const clipH = (w: number) => Math.round((w * 9) / 16);
+  const spec: { place: number; clipW: number; pedH: number }[] = [
+    { place: 2, clipW: runnerClipW, pedH: Math.round(92 * k) },
+    { place: 1, clipW: winnerClipW, pedH: Math.round(130 * k) },
+    { place: 3, clipW: runnerClipW, pedH: Math.round(66 * k) },
+  ];
+  const rowW =
+    spec.reduce((sum, s) => sum + s.clipW, 0) + slotGap * (spec.length - 1);
+  const base = podiumTop + podiumH;
+  let x = margin + Math.round((innerW - rowW) / 2);
+  const slots: PodiumSlot[] = spec.map((s) => {
+    const h = clipH(s.clipW);
+    const pedestalTop = base - s.pedH;
+    const clipTop = pedestalTop - h;
+    const slot: PodiumSlot = {
+      place: s.place,
+      clip: { top: clipTop, left: x, width: s.clipW, height: h },
+      pedestal: { top: pedestalTop, left: x, width: s.clipW, height: s.pedH },
+      label: { top: clipTop - labelH, left: x, width: s.clipW, height: labelH },
+    };
+    x += s.clipW + slotGap;
+    return slot;
+  });
+
+  const finalsW = Math.round((innerW - colGap) / 2);
+  const topsW = innerW - finalsW - colGap;
+  const column = (left: number, width: number): ResultsColumn => {
+    const subWidth = Math.floor((width - pad * 2 - colGap) / 2);
+    return {
+      top: columnsTop,
+      left,
+      width,
+      height: columnsH,
+      pad,
+      subWidth,
+      subLefts: [pad, pad + subWidth + colGap],
+    };
+  };
+
   return {
     k,
     headerTop,
     subTop,
+    podium,
+    slots,
     columnsTop,
     columnsH,
     colGap,
-    winner: { top: columnsTop, left: margin, width: winnerW, height: columnsH },
-    finals: {
-      top: columnsTop,
-      left: margin + winnerW + colGap,
-      width: finalsW,
-      height: columnsH,
-    },
-    tops: {
-      top: columnsTop,
-      left: margin + winnerW + colGap + finalsW + colGap,
-      width: topsW,
-      height: columnsH,
-    },
+    finals: column(margin, finalsW),
+    tops: column(margin + finalsW + colGap, topsW),
+  };
+}
+
+/**
+ * Hunter-lineup layout (lobby + countdown): a centered row of square avatar
+ * tiles — the player's live camera when they share one, otherwise their
+ * character clip cropped to the square — with name and character title under
+ * each. The tile shrinks as the roster grows (the lobby caps at 6).
+ */
+export function lineupLayout(
+  resolution: { width: number; height: number },
+  playerCount: number,
+): {
+  k: number;
+  headerTop: number;
+  subTop: number;
+  tileSize: number;
+  gap: number;
+  rowTop: number;
+  rowLeft: number;
+  nameTop: number;
+  titleTop: number;
+  /** 3-2-1 digit, in the band the captions leave free above the footer. */
+  countdownTop: number;
+  countdownFs: number;
+  footerTop: number;
+} {
+  const k = hudScale(resolution);
+  const margin = Math.round(100 * k);
+  const innerW = resolution.width - margin * 2;
+  const gap = Math.round(32 * k);
+  const n = Math.max(1, playerCount);
+  const tileSize = Math.max(
+    Math.round(120 * k),
+    Math.min(Math.round(360 * k), Math.floor((innerW - gap * (n - 1)) / n)),
+  );
+  const rowW = n * tileSize + gap * (n - 1);
+  const rowTop = Math.round(330 * k);
+  const titleTop = rowTop + tileSize + Math.round(66 * k);
+  // The digit gets whatever is left under the captions; ArcadeBigText lays out
+  // on a 1.4x line box, so size it to that band instead of overrunning it.
+  const countdownTop = titleTop + Math.round(46 * k);
+  const countdownFs = Math.floor((resolution.height - countdownTop) / 1.4);
+  return {
+    k,
+    headerTop: Math.round(70 * k),
+    subTop: Math.round(210 * k),
+    tileSize,
+    gap,
+    rowTop,
+    rowLeft: margin + Math.round((innerW - rowW) / 2),
+    nameTop: rowTop + tileSize + Math.round(22 * k),
+    titleTop,
+    countdownTop,
+    countdownFs,
+    footerTop: Math.round(960 * k),
   };
 }

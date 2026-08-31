@@ -635,6 +635,12 @@ export type ShooterOverlay = {
   ducks: DuckEntity[];
   /** Arcade match chrome (countdown / clock / game-over), null in free-play. */
   match?: ShooterMatchOverlay | null;
+  /**
+   * The host opened the arcade lobby (always matchless). On the wire a lobby
+   * and plain free-play look identical — both are matchless with ducks flying —
+   * so the output needs this flag to know when to show the hunter lineup.
+   */
+  lobbyArmed?: boolean;
 };
 
 export function createRoomStore(

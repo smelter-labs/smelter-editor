@@ -733,9 +733,13 @@ function ShooterHud({
   const chSize = Math.max(28, Math.round(parent.width * 0.05));
   const th = Math.max(2, Math.round(chSize * 0.06));
   const now = Date.now();
-  // The full-frame results scene (output root) owns the ended phase — skip
-  // the in-tile chrome underneath it (each badge/panel is a shader pass).
-  const ended = shooter.match?.phase === 'ended';
+  // A full-frame scene at the output root (hunter lineup in the lobby and the
+  // countdown, results podium once the round ends) owns the frame — skip the
+  // in-tile chrome underneath it, since each badge/panel is a shader pass.
+  const fullFrameScene =
+    shooter.match?.phase === 'ended' ||
+    shooter.match?.phase === 'countdown' ||
+    (shooter.lobbyArmed === true && shooter.match == null);
 
   return (
     <View
@@ -941,7 +945,7 @@ function ShooterHud({
           rotated/bordered Views render displaced/oversized on this engine
           build, which visibly broke the reticle — the outline is built from
           four filled bars instead so it stays centered on the dot. */}
-      {ended
+      {fullFrameScene
         ? null
         : shooter.crosshairs.map((c) => {
         const { px, py } = toPx(c.x, c.y);
@@ -1054,8 +1058,8 @@ function ShooterHud({
         );
       })}
 
-      {/* Scoreboard, top-right (hidden under the ended-phase results scene). */}
-      {shooter.scores.length > 0 && !ended ? (
+      {/* Scoreboard, top-right (hidden under any full-frame shooter scene). */}
+      {shooter.scores.length > 0 && !fullFrameScene ? (
         <ShooterScoreboard scores={shooter.scores} parent={parent} now={now} />
       ) : null}
 
@@ -1130,32 +1134,10 @@ function MatchHud({
   };
 
   if (match.phase === 'countdown') {
-    const left = Math.max(0, match.startsAt - now);
-    const n = Math.max(1, Math.ceil(left / 1000));
-    const bigFs = Math.round(parent.height * 0.28);
-    const modeLabel =
-      match.mode === 'time'
-        ? `TIME ATTACK ${formatClock(match.endsAt != null ? match.endsAt - match.startsAt : null)}`
-        : `FIRST TO ${match.targetScore ?? '?'}`;
-    return (
-      <View
-        style={{
-          top: 0,
-          left: 0,
-          width: parent.width,
-          height: parent.height,
-          overflow: 'visible',
-        }}>
-        {chip(modeLabel, RETRO.green)}
-        <ArcadeBigText
-          text={`${n}`}
-          fontSize={bigFs}
-          color={RETRO.yellow}
-          top={Math.round((parent.height - bigFs * 1.3) / 2)}
-          width={parent.width}
-        />
-      </View>
-    );
+    // The full-frame hunter lineup (mounted at the output root) owns the
+    // countdown — root chrome draws above every layer, so a chip and a 3-2-1
+    // in here would just be buried under it.
+    return null;
   }
 
   if (match.phase === 'playing') {

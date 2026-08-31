@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { RoomEvent, ShooterTopScoreEntry } from '@smelter-editor/types';
+import type {
+  RoomEvent,
+  ShooterCharacterId,
+  ShooterTopScoreEntry,
+} from '@smelter-editor/types';
 import type { StoreApi } from 'zustand';
 import type { PersonBoxes, RoomStore, ShooterOverlay } from '../../app/store';
 import { DuckHunterController } from '../DuckHunterController';
@@ -21,6 +25,8 @@ function harness(opts?: { manualCam?: boolean }) {
   const live = new Set<string>();
   const pendingCams: (() => void)[] = [];
   const shooterSets: (ShooterOverlay | null)[] = [];
+  /** Character-clip claims in order; `null` = an explicit unmount-everything. */
+  const clipCalls: (ShooterCharacterId[] | null)[] = [];
   // In-memory stand-in for the global TopScoresStore (same sort + cap).
   const topScores: ShooterTopScoreEntry[] = [];
   let camSeq = 0;
@@ -70,6 +76,8 @@ function harness(opts?: { manualCam?: boolean }) {
       return { rank: rank === -1 ? null : rank + 1 };
     },
     readTopScores: (mode) => topScores.filter((e) => e.mode === mode),
+    mountCharacterClips: (ids) => clipCalls.push(ids),
+    unmountCharacterClips: () => clipCalls.push(null),
   });
 
   return {
@@ -83,6 +91,12 @@ function harness(opts?: { manualCam?: boolean }) {
     sceneState,
     shooterSets,
     topScores,
+    clipCalls,
+    /** The clip set currently on air (`[]` once everything is released). */
+    clipsNow(): string[] {
+      const last = clipCalls[clipCalls.length - 1];
+      return last == null ? [] : last;
+    },
     joinedFor(clientId: string) {
       const found = [...sent]
         .reverse()
@@ -336,15 +350,19 @@ describe('camera lifecycle', () => {
 
   it('register failure surfaces a typed camera_failed error', async () => {
     const h = harness();
-    const failing = new DuckHunterController(ROOM, {
-      getState: () => h.sceneState,
-    } as unknown as StoreApi<RoomStore>, {
-      broadcast: (e) => h.events.push(e),
-      sendTo: (clientId, event) => h.sent.push({ clientId, event }),
-      registerShooterCam: () => Promise.reject(new Error('boom')),
-      removeInput: async () => {},
-      isInputLive: () => false,
-    });
+    const failing = new DuckHunterController(
+      ROOM,
+      {
+        getState: () => h.sceneState,
+      } as unknown as StoreApi<RoomStore>,
+      {
+        broadcast: (e) => h.events.push(e),
+        sendTo: (clientId, event) => h.sent.push({ clientId, event }),
+        registerShooterCam: () => Promise.reject(new Error('boom')),
+        removeInput: async () => {},
+        isInputLive: () => false,
+      },
+    );
     failing.join('c1', 'Bob');
     await failing.startCamera('c1');
     expect(h.errorsFor('c1').map((e) => e.code)).toContain('camera_failed');
@@ -524,6 +542,124 @@ describe('match lifecycle and the 30 Hz loop', () => {
   });
 });
 
+describe('character clips on the broadcast', () => {
+  it('the armed lobby claims every joined hunter, deduped', () => {
+    const h = harness();
+    h.controller.join('c1', 'Bob', undefined, 'improwizator');
+    h.controller.join('c2', 'Eve', undefined, 'crane-hunter');
+    // Same hunter as Bob: one clip serves both players.
+    h.controller.join('c3', 'Ann', undefined, 'improwizator');
+    h.controller.join('c4', 'Zed'); // no pick — contributes nothing
+    expect(h.clipsNow()).toEqual([]); // free-play shows no lineup
+
+    h.controller.controlMatch({ action: 'lobby' });
+    expect(h.clipsNow()).toEqual(['crane-hunter', 'improwizator']);
+    h.controller.dispose();
+  });
+
+  it('a late pick in the lobby joins the lineup', () => {
+    const h = harness();
+    h.controller.join('c1', 'Bob');
+    h.controller.controlMatch({ action: 'lobby' });
+    expect(h.clipsNow()).toEqual([]);
+
+    h.controller.setCharacter('c1', 'pink-spotter');
+    expect(h.clipsNow()).toEqual(['pink-spotter']);
+    h.controller.dispose();
+  });
+
+  it('the countdown keeps the lineup, live play releases it', async () => {
+    const h = harness();
+    h.sceneState.peopleBoxes['stage'] = ghostTarget();
+    h.controller.join('c1', 'Bob', undefined, 'improwizator');
+    h.controller.controlMatch({ action: 'start', mode: 'time' });
+    expect(h.clipsNow()).toEqual(['improwizator']);
+
+    await vi.advanceTimersByTimeAsync(3100); // countdown → playing
+    expect(h.clipsNow()).toEqual([]);
+    h.controller.dispose();
+  });
+
+  it('the podium claims only the top three finishers', async () => {
+    const h = harness();
+    h.sceneState.peopleBoxes['stage'] = ghostTarget();
+    const picks: ShooterCharacterId[] = [
+      'improwizator',
+      'crane-hunter',
+      'pink-spotter',
+      'crane-hunter',
+    ];
+    picks.forEach((id, i) =>
+      h.controller.join(`c${i}`, `P${i}`, undefined, id),
+    );
+    h.controller.controlMatch({ action: 'start', mode: 'time' });
+    await vi.advanceTimersByTimeAsync(3100);
+    // Rank the roster: c0 > c1 > c2 > c3 (last one never scores).
+    for (let i = 0; i < 3; i++) h.controller.fire('c0');
+    for (let i = 0; i < 2; i++) h.controller.fire('c1');
+    h.controller.fire('c2');
+    h.controller.controlMatch({ action: 'stop' });
+
+    const overlay = h.lastOverlay();
+    expect(overlay?.match?.finalScores.map((p) => p.name)).toEqual([
+      'P0',
+      'P1',
+      'P2',
+      'P3',
+    ]);
+    // Fourth place's hunter is already on the podium through P1, so the
+    // deduped claim is exactly the three distinct top-three characters.
+    expect(h.clipsNow()).toEqual([
+      'crane-hunter',
+      'improwizator',
+      'pink-spotter',
+    ]);
+    h.controller.dispose();
+  });
+
+  it('leaving the results releases the clips, and so does dispose', async () => {
+    const h = harness();
+    h.sceneState.peopleBoxes['stage'] = ghostTarget();
+    h.controller.join('c1', 'Bob', undefined, 'improwizator');
+    h.controller.controlMatch({ action: 'start', mode: 'time' });
+    await vi.advanceTimersByTimeAsync(3100);
+    h.controller.fire('c1');
+    h.controller.controlMatch({ action: 'stop' });
+    expect(h.clipsNow()).toEqual(['improwizator']);
+
+    h.controller.controlMatch({ action: 'reset' });
+    expect(h.clipsNow()).toEqual([]);
+
+    h.controller.controlMatch({ action: 'lobby' });
+    expect(h.clipsNow()).toEqual(['improwizator']);
+    h.controller.dispose();
+    expect(h.clipCalls[h.clipCalls.length - 1]).toBeNull();
+  });
+
+  it('a parked loop drops its claim instead of decoding forever', async () => {
+    const h = harness();
+    // No players and no target: only the match holds the loop alive.
+    h.controller.controlMatch({ action: 'start', mode: 'time' });
+    await vi.advanceTimersByTimeAsync(3100);
+    h.controller.controlMatch({ action: 'stop' });
+    await vi.advanceTimersByTimeAsync(6000); // ended linger elapses
+    expect(h.shooterSets[h.shooterSets.length - 1]).toBeNull();
+    expect(h.clipsNow()).toEqual([]);
+    h.controller.dispose();
+  });
+
+  it('claims are only re-sent when the set actually changes', () => {
+    const h = harness();
+    h.controller.join('c1', 'Bob', undefined, 'improwizator');
+    h.controller.controlMatch({ action: 'lobby' });
+    const calls = h.clipCalls.length;
+    // Aim/publish churn must not re-register the same clip 30 times a second.
+    for (let i = 0; i < 10; i++) h.controller.aim('c1', 0.5, 0.5);
+    expect(h.clipCalls.length).toBe(calls);
+    h.controller.dispose();
+  });
+});
+
 describe('ducks', () => {
   function birdTarget(boxCount: number): PersonBoxes {
     return {
@@ -568,9 +704,7 @@ describe('ducks', () => {
     };
     h.controller.join('c1', 'Bob');
     await vi.advanceTimersByTimeAsync(50); // spawn both ducks
-    const before = h
-      .lastOverlay()!
-      .ducks.find((d) => d.id === 2)!.spawnAt;
+    const before = h.lastOverlay()!.ducks.find((d) => d.id === 2)!.spawnAt;
 
     h.controller.fire('c1'); // kills duck 1 → hang starts (hit-stop)
     await vi.advanceTimersByTimeAsync(100);
