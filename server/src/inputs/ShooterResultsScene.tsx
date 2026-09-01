@@ -1,13 +1,21 @@
 import React from 'react';
-import { Text, View } from '@swmansion/smelter';
-import { SHOOTER_CHARACTERS } from '@smelter-editor/types';
+import { Shader, Text, View } from '@swmansion/smelter';
 import type { ShooterOverlay } from '../app/store';
 import { ArcadeBigText, RETRO, RetroPanel } from './RetroPanel';
-import { hudScale, resultsLayout } from './retroHudLayout';
+import {
+  CharacterClip,
+  HudLine,
+  shooterCharacter,
+  useCharacterClipPlaying,
+} from './ShooterCharacterClip';
+import {
+  chamferClipCut,
+  hudScale,
+  resultsLayout,
+  type PodiumSlot,
+} from './retroHudLayout';
 
 const FONT = 'Doto';
-
-const CHARACTER_BY_ID = new Map(SHOOTER_CHARACTERS.map((c) => [c.id, c]));
 
 /** Small uppercase column header in the retro-kit PanelTitle spirit. */
 function ColumnTitle({
@@ -50,13 +58,168 @@ function ColumnTitle({
   );
 }
 
+type PodiumEntry = {
+  name: string;
+  color: string;
+  score: number;
+  characterId?: string;
+};
+
+/**
+ * One place on the podium: the finisher's character clip standing on a
+ * ranked pedestal. The pedestal is a retro panel in the player's color and
+ * doubles as the fallback surface — a hunter who never picked a character (or
+ * whose clip has not started decoding yet) simply gets an empty lit box, so
+ * the podium never changes shape while the input warms up.
+ */
+function PodiumPlace({
+  slot,
+  entry,
+  k,
+}: {
+  slot: PodiumSlot;
+  entry: PodiumEntry | undefined;
+  k: number;
+}) {
+  const first = slot.place === 1;
+  const accent = entry ? entry.color : RETRO.line;
+  const character = shooterCharacter(entry?.characterId);
+  const clipPlaying = useCharacterClipPlaying(entry?.characterId);
+  // Keeps the panel's chamfered stroke visible around the video.
+  const clipInset = Math.max(3, Math.round(6 * k));
+  const panelCut = Math.round(12 * k);
+  const clipW = slot.clip.width - clipInset * 2;
+  const clipH = slot.clip.height - clipInset * 2;
+  const nameFs = Math.round((first ? 36 : 30) * k);
+  const scoreFs = Math.round(slot.pedestal.height * (first ? 0.46 : 0.44));
+  const rankFs = Math.round(slot.pedestal.height * 0.26);
+  return (
+    <>
+      {/* Name + character title above the clip. */}
+      <HudLine
+        text={entry ? entry.name : '—'}
+        color={accent}
+        top={slot.label.top}
+        left={slot.label.left}
+        width={slot.label.width}
+        fontSize={nameFs}
+        weight='black'
+      />
+      {character ? (
+        <HudLine
+          text={character.name}
+          color={character.color}
+          top={slot.label.top + Math.round(nameFs * 1.35)}
+          left={slot.label.left}
+          width={slot.label.width}
+          fontSize={Math.round(22 * k)}
+        />
+      ) : null}
+
+      {/* Character clip, framed by a panel in the finisher's color. */}
+      <RetroPanel
+        x={slot.clip.left}
+        y={slot.clip.top}
+        w={slot.clip.width}
+        h={slot.clip.height}
+        cut={panelCut}
+        line={accent}
+        glow={first ? 0.55 : 0.3}
+        glowPx={Math.round((first ? 22 : 14) * k)}
+        fill={RETRO.panelDark}
+        fillA={0.92}
+        scanline={0.35}
+        scanPx={Math.max(3, Math.round(4 * k))}>
+        {/* The clip is stacked ON TOP of the panel chrome, so its square
+            corners would cover the 45° cuts — carve them out to match. */}
+        {clipPlaying ? (
+          <View
+            style={{
+              top: clipInset,
+              left: clipInset,
+              width: clipW,
+              height: clipH,
+              overflow: 'hidden',
+            }}>
+            <Shader
+              shaderId='chamfer-clip'
+              resolution={{ width: clipW, height: clipH }}
+              shaderParam={{
+                type: 'struct',
+                value: [
+                  {
+                    type: 'f32',
+                    fieldName: 'cut_px',
+                    value: chamferClipCut(panelCut, clipInset),
+                  },
+                  { type: 'f32', fieldName: 'feather_px', value: 1.5 },
+                ],
+              }}>
+              {/* Shader children must have a known size. */}
+              <View style={{ width: clipW, height: clipH, overflow: 'hidden' }}>
+                <CharacterClip
+                  characterId={entry?.characterId}
+                  width={clipW}
+                  height={clipH}
+                />
+              </View>
+            </Shader>
+          </View>
+        ) : null}
+      </RetroPanel>
+
+      {/* Pedestal: rank digit top-left, score across the face. */}
+      <RetroPanel
+        x={slot.pedestal.left}
+        y={slot.pedestal.top}
+        w={slot.pedestal.width}
+        h={slot.pedestal.height}
+        cut={Math.round(14 * k)}
+        line={accent}
+        glow={first ? 0.5 : 0.25}
+        glowPx={Math.round((first ? 20 : 12) * k)}
+        fill={RETRO.panel}
+        fillA={0.94}
+        scanline={0.5}
+        scanPx={Math.max(3, Math.round(4 * k))}>
+        <View
+          style={{
+            top: Math.round(8 * k),
+            left: Math.round(12 * k),
+            width: Math.round(rankFs * 1.6),
+            height: Math.round(rankFs * 1.4),
+            overflow: 'hidden',
+          }}>
+          <Text
+            style={{
+              fontSize: rankFs,
+              color: first ? RETRO.yellow : RETRO.inkMuted,
+              fontFamily: FONT,
+              fontWeight: 'black',
+            }}>
+            {`${slot.place}`}
+          </Text>
+        </View>
+        <ArcadeBigText
+          text={entry ? `${entry.score}` : '—'}
+          fontSize={scoreFs}
+          color={first ? RETRO.yellow : RETRO.ink}
+          top={Math.round((slot.pedestal.height - scoreFs * 1.4) / 2)}
+          width={slot.pedestal.width}
+        />
+      </RetroPanel>
+    </>
+  );
+}
+
 /**
  * Full-frame GAME OVER scene burned into the output while the match sits in
  * 'ended' (until the host arms the lobby again): translucent blueprint
- * backdrop over the live video, the winner card, the frozen FINAL SCORES and
- * the global TOP SCORES table — the same retro-kit look as the browser
- * results screen, drawn with the retro-panel shader + Doto text. Mounted at
- * the output root (like the KBT chrome), so it survives any layout.
+ * backdrop over the live video, a TOP 3 podium of character clips on ranked
+ * pedestals, and the frozen FINAL SCORES / global TOP SCORES tables below —
+ * the same retro-kit look as the browser results screen, drawn with the
+ * retro-panel shader + Doto text. Mounted at the output root (like the KBT
+ * chrome), so it survives any layout.
  */
 export function ShooterResultsScene({
   shooter,
@@ -70,18 +233,18 @@ export function ShooterResultsScene({
   const k = hudScale(resolution);
   const layout = resultsLayout(resolution);
   const winner = match.winner;
-  const winnerCharacter = winner?.characterId
-    ? CHARACTER_BY_ID.get(
-        winner.characterId as (typeof SHOOTER_CHARACTERS)[number]['id'],
-      )
-    : undefined;
+  const winnerCharacter = shooterCharacter(winner?.characterId);
   // Re-rendered on every publish (~30 Hz) — same blink pattern as MatchHud.
   const blinkOn = Date.now() % 700 < 400;
 
   const rowFs = Math.round(30 * k);
   const rowH = Math.round(rowFs * 1.9);
-  const pad = Math.round(24 * k);
+  const pad = layout.finals.pad;
   const listTop = Math.round(64 * k);
+  // Both lists render in two sub-columns: the columns are wide but short now
+  // that the podium owns the upper half, and splitting keeps every entry.
+  const finalsPerCol = 4;
+  const topsPerCol = 5;
 
   return (
     <View
@@ -111,152 +274,56 @@ export function ShooterResultsScene({
 
       <ArcadeBigText
         text='GAME OVER'
-        fontSize={Math.round(96 * k)}
+        fontSize={Math.round(84 * k)}
         color={RETRO.orangeBright}
         top={layout.headerTop}
         width={resolution.width}
       />
-      <View
-        style={{
-          top: layout.subTop,
-          left: 0,
-          width: resolution.width,
-          height: Math.round(40 * k),
-          overflow: 'hidden',
-        }}>
-        <Text
-          style={{
-            fontSize: Math.round(26 * k),
-            color: winner ? winner.color : RETRO.inkMuted,
-            width: resolution.width,
-            align: 'center',
-            fontFamily: FONT,
-            fontWeight: 'bold',
-          }}>
-          {winner
-            ? `★ ${winner.name} TAKES THE MARSH ★`
-            : '★ NOBODY BAGGED THE CROWN — DRAW ★'}
-        </Text>
-      </View>
+      <HudLine
+        text={
+          winner
+            ? `★ ${winner.name} TAKES THE MARSH${winnerCharacter ? ` AS ${winnerCharacter.title.toUpperCase()}` : ''} ★`
+            : '★ NOBODY BAGGED THE CROWN — DRAW ★'
+        }
+        color={winner ? winner.color : RETRO.inkMuted}
+        top={layout.subTop}
+        left={0}
+        width={resolution.width}
+        fontSize={Math.round(26 * k)}
+      />
 
-      {/* WINNER column */}
-      <RetroPanel
-        x={layout.winner.left}
-        y={layout.winner.top}
-        w={layout.winner.width}
-        h={layout.winner.height}
-        cut={Math.round(14 * k)}
-        line={winner ? winner.color : RETRO.cyan}
-        glow={0.4}
-        glowPx={Math.round(18 * k)}
-        fillA={0.9}
-        scanline={0.4}
-        scanPx={Math.max(3, Math.round(4 * k))}>
-        <ColumnTitle
-          text={winner ? 'WINNER' : 'RESULT'}
-          color={winner ? winner.color : RETRO.cyan}
-          left={0}
-          top={pad}
-          width={layout.winner.width}
-          k={k}
-        />
-        {winner ? (
-          <>
-            <View
-              style={{
-                top: Math.round(150 * k),
-                left: 0,
-                width: layout.winner.width,
-                height: Math.round(52 * k),
-                overflow: 'hidden',
-              }}>
-              <Text
-                style={{
-                  fontSize: Math.round(40 * k),
-                  color: winner.color,
-                  width: layout.winner.width,
-                  align: 'center',
-                  fontFamily: FONT,
-                  fontWeight: 'black',
-                }}>
-                {winner.name}
-              </Text>
-            </View>
-            <ArcadeBigText
-              text={`${winner.score}`}
-              fontSize={Math.round(150 * k)}
-              color={RETRO.yellow}
-              top={Math.round(230 * k)}
-              width={layout.winner.width}
+      {/* TOP 3 podium — character clips on ranked pedestals. */}
+      {winner ? (
+        layout.slots
+          // A 2-player round leaves the third pedestal out entirely rather
+          // than lighting an empty box next to the finishers.
+          .filter((slot) => match.finalScores[slot.place - 1] != null)
+          .map((slot) => (
+            <PodiumPlace
+              key={`podium-${slot.place}`}
+              slot={slot}
+              entry={match.finalScores[slot.place - 1]}
+              k={k}
             />
-            {winnerCharacter ? (
-              <>
-                <View
-                  style={{
-                    top: Math.round(470 * k),
-                    left: 0,
-                    width: layout.winner.width,
-                    height: Math.round(40 * k),
-                    overflow: 'hidden',
-                  }}>
-                  <Text
-                    style={{
-                      fontSize: Math.round(30 * k),
-                      color: winnerCharacter.color,
-                      width: layout.winner.width,
-                      align: 'center',
-                      fontFamily: FONT,
-                      fontWeight: 'black',
-                    }}>
-                    {winnerCharacter.name}
-                  </Text>
-                </View>
-                <View
-                  style={{
-                    top: Math.round(515 * k),
-                    left: 0,
-                    width: layout.winner.width,
-                    height: Math.round(32 * k),
-                    overflow: 'hidden',
-                  }}>
-                  <Text
-                    style={{
-                      fontSize: Math.round(22 * k),
-                      color: RETRO.inkMuted,
-                      width: layout.winner.width,
-                      align: 'center',
-                      fontFamily: FONT,
-                      fontWeight: 'bold',
-                    }}>
-                    {`HUNTING AS ${winnerCharacter.title.toUpperCase()}`}
-                  </Text>
-                </View>
-              </>
-            ) : null}
-          </>
-        ) : (
-          <View
-            style={{
-              top: Math.round(280 * k),
-              left: 0,
-              width: layout.winner.width,
-              height: Math.round(50 * k),
-              overflow: 'hidden',
-            }}>
-            <Text
-              style={{
-                fontSize: Math.round(36 * k),
-                color: RETRO.inkMuted,
-                width: layout.winner.width,
-                align: 'center',
-                fontFamily: FONT,
-                fontWeight: 'black',
-              }}>
-              DRAW
-            </Text>
-          </View>
-        )}
-      </RetroPanel>
+          ))
+      ) : (
+        <View
+          style={{
+            top: layout.podium.top,
+            left: layout.podium.left,
+            width: layout.podium.width,
+            height: layout.podium.height,
+            overflow: 'hidden',
+          }}>
+          <ArcadeBigText
+            text='DRAW'
+            fontSize={Math.round(120 * k)}
+            color={RETRO.inkMuted}
+            top={Math.round(layout.podium.height / 2 - 84 * k)}
+            width={layout.podium.width}
+          />
+        </View>
+      )}
 
       {/* FINAL SCORES column */}
       <RetroPanel
@@ -277,23 +344,16 @@ export function ShooterResultsScene({
           width={layout.finals.width}
           k={k}
         />
-        {match.finalScores.slice(0, 8).map((p, i) => {
-          const top = listTop + i * rowH;
-          const character = p.characterId
-            ? CHARACTER_BY_ID.get(
-                p.characterId as (typeof SHOOTER_CHARACTERS)[number]['id'],
-              )
-            : undefined;
+        {match.finalScores.slice(0, finalsPerCol * 2).map((p, i) => {
+          const col = Math.floor(i / finalsPerCol);
+          const left = layout.finals.subLefts[col];
+          const width = layout.finals.subWidth;
+          const top = listTop + (i % finalsPerCol) * rowH;
+          const character = shooterCharacter(p.characterId);
           return (
             <View
               key={`final-${i}`}
-              style={{
-                top,
-                left: pad,
-                width: layout.finals.width - pad * 2,
-                height: rowH,
-                overflow: 'hidden',
-              }}>
+              style={{ top, left, width, height: rowH, overflow: 'hidden' }}>
               <View
                 style={{
                   top: Math.round((rowH - rowFs * 1.3) / 2),
@@ -325,8 +385,7 @@ export function ShooterResultsScene({
                 style={{
                   top: Math.round((rowH - rowFs * 1.3) / 2),
                   left: Math.round(rowFs * 2.9),
-                  width:
-                    layout.finals.width - pad * 2 - Math.round(rowFs * 6.0),
+                  width: width - Math.round(rowFs * 6.0),
                   height: Math.round(rowFs * 1.4),
                   overflow: 'hidden',
                 }}>
@@ -343,7 +402,7 @@ export function ShooterResultsScene({
               <View
                 style={{
                   top: Math.round((rowH - rowFs * 1.4) / 2),
-                  left: layout.finals.width - pad * 2 - Math.round(rowFs * 3),
+                  left: width - Math.round(rowFs * 3),
                   width: Math.round(rowFs * 3),
                   height: Math.round(rowFs * 1.5),
                   overflow: 'hidden',
@@ -386,23 +445,21 @@ export function ShooterResultsScene({
           width={layout.tops.width}
           k={k}
         />
-        {match.topScores.slice(0, 10).map((e, i) => {
-          const isNew = match.topScoreRank != null && i === match.topScoreRank - 1;
+        {match.topScores.slice(0, topsPerCol * 2).map((e, i) => {
+          const isNew =
+            match.topScoreRank != null && i === match.topScoreRank - 1;
           const rowColor = isNew ? RETRO.yellow : RETRO.ink;
           const topRowH = Math.round(rowFs * 1.7);
-          const top = listTop + i * topRowH;
+          const col = Math.floor(i / topsPerCol);
+          const left = layout.tops.subLefts[col];
+          const width = layout.tops.subWidth;
+          const top = listTop + (i % topsPerCol) * topRowH;
           // The freshly earned row blinks arcade-style.
           if (isNew && !blinkOn) return null;
           return (
             <View
               key={`top-${i}`}
-              style={{
-                top,
-                left: pad,
-                width: layout.tops.width - pad * 2,
-                height: topRowH,
-                overflow: 'hidden',
-              }}>
+              style={{ top, left, width, height: topRowH, overflow: 'hidden' }}>
               <View
                 style={{
                   top: 0,
@@ -442,7 +499,7 @@ export function ShooterResultsScene({
               <View
                 style={{
                   top: 0,
-                  left: layout.tops.width - pad * 2 - Math.round(rowFs * 4.4),
+                  left: width - Math.round(rowFs * 4.4),
                   width: Math.round(rowFs * 3),
                   height: Math.round(rowFs * 1.4),
                   overflow: 'hidden',
@@ -462,7 +519,7 @@ export function ShooterResultsScene({
               <View
                 style={{
                   top: Math.round(rowFs * 0.25),
-                  left: layout.tops.width - pad * 2 - Math.round(rowFs * 1.2),
+                  left: width - Math.round(rowFs * 1.2),
                   width: Math.round(rowFs * 1.2),
                   height: Math.round(rowFs * 1.0),
                   overflow: 'hidden',

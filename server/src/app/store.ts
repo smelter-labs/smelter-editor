@@ -616,8 +616,36 @@ export type KbtCommentatorHudOverlay =
   | { kind: 'spotlight'; side: KbtStatSide; live: boolean }
   | { kind: 'h2h'; a: KbtStatSide; b: KbtStatSide; live: boolean };
 
+/**
+ * Opening-screen content for an armed arcade lobby (only while matchless).
+ * Everything here is host/server-side context the live roster can't carry: the
+ * QR is a registered engine image, the round is what the host staged on GAME
+ * SETUP before any match exists, and the table is snapshotted at arm time.
+ */
+export type ShooterLobbyOverlay = {
+  /** Registered engine image id of the join QR; null until it resolves. */
+  qrImageId: string | null;
+  /** Short human address printed under the QR (defaults to the URL host). */
+  joinLabel: string | null;
+  /** The staged round; null when the host armed the lobby without one. */
+  setup: {
+    mode: 'time' | 'points';
+    /** Time mode length; null in points mode. */
+    durationMs: number | null;
+    /** Points mode target; null in time mode. */
+    targetScore: number | null;
+  } | null;
+  /** Global TOP SCORES for the staged mode (attract-mode hall of fame). */
+  topScores: ShooterTopScoreEntry[];
+};
+
 /** Ghost Shooter overlay state rendered on the target (ghost-enabled) input. */
 export type ShooterOverlay = {
+  /**
+   * Input the in-tile HUD draws on. Empty while a host-driven full-frame scene
+   * (opening screen, countdown, GAME OVER) is up without a target — no real
+   * input id is ever empty, so nothing in-tile matches.
+   */
   targetInputId: string;
   crosshairs: ShooterCrosshair[];
   scores: ShooterScoreRow[];
@@ -635,6 +663,14 @@ export type ShooterOverlay = {
   ducks: DuckEntity[];
   /** Arcade match chrome (countdown / clock / game-over), null in free-play. */
   match?: ShooterMatchOverlay | null;
+  /**
+   * The host opened the arcade lobby (always matchless). On the wire a lobby
+   * and plain free-play look identical — both are matchless with ducks flying —
+   * so the output needs this flag to know when to show the hunter lineup.
+   */
+  lobbyArmed?: boolean;
+  /** Opening-screen chrome; null outside the lobby (see ShooterLobbyOverlay). */
+  lobby?: ShooterLobbyOverlay | null;
 };
 
 export function createRoomStore(

@@ -2633,6 +2633,10 @@ const DuckHunterConfigSchema = Type.Object({
   duckScale: Type.Optional(Type.Number()),
   duckPauseMs: Type.Optional(Type.Number()),
   duckFlySpeed: Type.Optional(Type.Number()),
+  // Join link for the broadcast opening screen's QR — the server can't know
+  // the public page base, so the host page pushes it down (same as KBT).
+  joinUrl: Type.Optional(Type.String({ maxLength: 2048 })),
+  joinLabel: Type.Optional(Type.String({ maxLength: 64 })),
 });
 
 routes.post<RoomIdParams & { Body: Static<typeof DuckHunterConfigSchema> }>(
@@ -2647,6 +2651,7 @@ routes.post<RoomIdParams & { Body: Static<typeof DuckHunterConfigSchema> }>(
       duckScale: req.body.duckScale,
       duckPauseMs: req.body.duckPauseMs,
       duckFlySpeed: req.body.duckFlySpeed,
+      joinUrl: req.body.joinUrl,
     });
     const room = state.getRoom(roomId);
     const config = room.setDuckHunterConfig({
@@ -2655,6 +2660,8 @@ routes.post<RoomIdParams & { Body: Static<typeof DuckHunterConfigSchema> }>(
       duckScale: req.body.duckScale,
       duckPauseMs: req.body.duckPauseMs,
       duckFlySpeed: req.body.duckFlySpeed,
+      joinUrl: req.body.joinUrl,
+      joinLabel: req.body.joinLabel,
     });
     res.status(200).send({ status: 'ok', config });
   },

@@ -29,7 +29,13 @@ import { KettlebellSkeletonWrapper } from './KettlebellSkeletonWrapper';
 import { KbtShakeWrapper } from './KbtShakeWrapper';
 import { KbtTileHud } from './KbtHud';
 import { ArcadeBigText, RETRO, RetroPanel } from './RetroPanel';
-import { chipRect, scoreboardRect } from './retroHudLayout';
+import {
+  chipRect,
+  dotoTextWidth,
+  hunterRowMetrics,
+  scoreboardRect,
+} from './retroHudLayout';
+import { HudLine } from './ShooterCharacterClip';
 import { SHOOTER_CHARACTERS } from '@smelter-editor/types';
 
 type Resolution = { width: number; height: number };
@@ -685,7 +691,10 @@ const DOG_ASPECT = 40 / 56; // dog-catch.png is 56×40
 const DOG_RISE_MS = 220; // spring up from below the bottom edge
 const DOG_DROP_MS = 320; // drop back down at the end
 const DOG_MS = 6000; // total on-screen time, matches DOG_REVEAL_MS
-const DOG_DIM = 0.4; // peak darkening of the rest of the frame while the dog is up
+// Peak darkening of the rest of the frame while the dog is up. This is now the
+// ONLY thing that dims the scene — an individual hit lights the duck up instead
+// (duck-hit-flash in PacmanBirdsInput) — so it can afford to be decisive.
+const DOG_DIM = 0.5;
 
 // Hue [0,1] of a hex color, for driving the hsl-adjust colorize shader.
 function hexToHue(hex: string): number {
@@ -733,9 +742,13 @@ function ShooterHud({
   const chSize = Math.max(28, Math.round(parent.width * 0.05));
   const th = Math.max(2, Math.round(chSize * 0.06));
   const now = Date.now();
-  // The full-frame results scene (output root) owns the ended phase — skip
-  // the in-tile chrome underneath it (each badge/panel is a shader pass).
-  const ended = shooter.match?.phase === 'ended';
+  // A full-frame scene at the output root (hunter lineup in the lobby and the
+  // countdown, results podium once the round ends) owns the frame — skip the
+  // in-tile chrome underneath it, since each badge/panel is a shader pass.
+  const fullFrameScene =
+    shooter.match?.phase === 'ended' ||
+    shooter.match?.phase === 'countdown' ||
+    (shooter.lobbyArmed === true && shooter.match == null);
 
   return (
     <View
@@ -941,121 +954,121 @@ function ShooterHud({
           rotated/bordered Views render displaced/oversized on this engine
           build, which visibly broke the reticle — the outline is built from
           four filled bars instead so it stays centered on the dot. */}
-      {ended
+      {fullFrameScene
         ? null
         : shooter.crosshairs.map((c) => {
-        const { px, py } = toPx(c.x, c.y);
-        const u = Math.max(3, th); // chunky "pixel" unit
-        const d = Math.round(chSize * 0.58); // scope square side
-        const lineLen = Math.round(chSize * 0.34);
-        const dot = Math.round(u * 1.4);
-        const mid = Math.round(chSize / 2 - u / 2);
-        const sq = Math.round((chSize - d) / 2); // square top-left corner
-        return (
-          <View
-            key={`ch-${c.clientId}`}
-            style={{
-              top: Math.round(py - chSize / 2),
-              left: Math.round(px - chSize / 2),
-              width: chSize,
-              height: chSize,
-              overflow: 'visible',
-            }}>
-            <View
-              style={{
-                top: sq,
-                left: sq,
-                width: d,
-                height: u,
-                backgroundColor: c.color,
-              }}
-            />
-            <View
-              style={{
-                top: sq + d - u,
-                left: sq,
-                width: d,
-                height: u,
-                backgroundColor: c.color,
-              }}
-            />
-            <View
-              style={{
-                top: sq,
-                left: sq,
-                width: u,
-                height: d,
-                backgroundColor: c.color,
-              }}
-            />
-            <View
-              style={{
-                top: sq,
-                left: sq + d - u,
-                width: u,
-                height: d,
-                backgroundColor: c.color,
-              }}
-            />
-            <View
-              style={{
-                top: 0,
-                left: mid,
-                width: u,
-                height: lineLen,
-                backgroundColor: c.color,
-              }}
-            />
-            <View
-              style={{
-                top: chSize - lineLen,
-                left: mid,
-                width: u,
-                height: lineLen,
-                backgroundColor: c.color,
-              }}
-            />
-            <View
-              style={{
-                top: mid,
-                left: 0,
-                width: lineLen,
-                height: u,
-                backgroundColor: c.color,
-              }}
-            />
-            <View
-              style={{
-                top: mid,
-                left: chSize - lineLen,
-                width: lineLen,
-                height: u,
-                backgroundColor: c.color,
-              }}
-            />
-            <View
-              style={{
-                top: Math.round(chSize / 2 - dot / 2),
-                left: Math.round(chSize / 2 - dot / 2),
-                width: dot,
-                height: dot,
-                backgroundColor: c.color,
-              }}
-            />
-            <PlayerBadge
-              player={c}
-              px={px}
-              py={py}
-              chSize={chSize}
-              parent={parent}
-              now={now}
-            />
-          </View>
-        );
-      })}
+            const { px, py } = toPx(c.x, c.y);
+            const u = Math.max(3, th); // chunky "pixel" unit
+            const d = Math.round(chSize * 0.58); // scope square side
+            const lineLen = Math.round(chSize * 0.34);
+            const dot = Math.round(u * 1.4);
+            const mid = Math.round(chSize / 2 - u / 2);
+            const sq = Math.round((chSize - d) / 2); // square top-left corner
+            return (
+              <View
+                key={`ch-${c.clientId}`}
+                style={{
+                  top: Math.round(py - chSize / 2),
+                  left: Math.round(px - chSize / 2),
+                  width: chSize,
+                  height: chSize,
+                  overflow: 'visible',
+                }}>
+                <View
+                  style={{
+                    top: sq,
+                    left: sq,
+                    width: d,
+                    height: u,
+                    backgroundColor: c.color,
+                  }}
+                />
+                <View
+                  style={{
+                    top: sq + d - u,
+                    left: sq,
+                    width: d,
+                    height: u,
+                    backgroundColor: c.color,
+                  }}
+                />
+                <View
+                  style={{
+                    top: sq,
+                    left: sq,
+                    width: u,
+                    height: d,
+                    backgroundColor: c.color,
+                  }}
+                />
+                <View
+                  style={{
+                    top: sq,
+                    left: sq + d - u,
+                    width: u,
+                    height: d,
+                    backgroundColor: c.color,
+                  }}
+                />
+                <View
+                  style={{
+                    top: 0,
+                    left: mid,
+                    width: u,
+                    height: lineLen,
+                    backgroundColor: c.color,
+                  }}
+                />
+                <View
+                  style={{
+                    top: chSize - lineLen,
+                    left: mid,
+                    width: u,
+                    height: lineLen,
+                    backgroundColor: c.color,
+                  }}
+                />
+                <View
+                  style={{
+                    top: mid,
+                    left: 0,
+                    width: lineLen,
+                    height: u,
+                    backgroundColor: c.color,
+                  }}
+                />
+                <View
+                  style={{
+                    top: mid,
+                    left: chSize - lineLen,
+                    width: lineLen,
+                    height: u,
+                    backgroundColor: c.color,
+                  }}
+                />
+                <View
+                  style={{
+                    top: Math.round(chSize / 2 - dot / 2),
+                    left: Math.round(chSize / 2 - dot / 2),
+                    width: dot,
+                    height: dot,
+                    backgroundColor: c.color,
+                  }}
+                />
+                <PlayerBadge
+                  player={c}
+                  px={px}
+                  py={py}
+                  chSize={chSize}
+                  parent={parent}
+                  now={now}
+                />
+              </View>
+            );
+          })}
 
-      {/* Scoreboard, top-right (hidden under the ended-phase results scene). */}
-      {shooter.scores.length > 0 && !ended ? (
+      {/* Scoreboard, top-right (hidden under any full-frame shooter scene). */}
+      {shooter.scores.length > 0 && !fullFrameScene ? (
         <ShooterScoreboard scores={shooter.scores} parent={parent} now={now} />
       ) : null}
 
@@ -1130,32 +1143,10 @@ function MatchHud({
   };
 
   if (match.phase === 'countdown') {
-    const left = Math.max(0, match.startsAt - now);
-    const n = Math.max(1, Math.ceil(left / 1000));
-    const bigFs = Math.round(parent.height * 0.28);
-    const modeLabel =
-      match.mode === 'time'
-        ? `TIME ATTACK ${formatClock(match.endsAt != null ? match.endsAt - match.startsAt : null)}`
-        : `FIRST TO ${match.targetScore ?? '?'}`;
-    return (
-      <View
-        style={{
-          top: 0,
-          left: 0,
-          width: parent.width,
-          height: parent.height,
-          overflow: 'visible',
-        }}>
-        {chip(modeLabel, RETRO.green)}
-        <ArcadeBigText
-          text={`${n}`}
-          fontSize={bigFs}
-          color={RETRO.yellow}
-          top={Math.round((parent.height - bigFs * 1.3) / 2)}
-          width={parent.width}
-        />
-      </View>
-    );
+    // The full-frame hunter lineup (mounted at the output root) owns the
+    // countdown — root chrome draws above every layer, so a chip and a 3-2-1
+    // in here would just be buried under it.
+    return null;
   }
 
   if (match.phase === 'playing') {
@@ -1374,11 +1365,14 @@ function LiveCamTile({
 }
 
 /**
- * Name badge above a crosshair: rounded dark pill with the player's live camera
- * avatar (when the phone shares one), name and live ammo state. Positioned in
- * crosshair-local coords (the container sits at the crosshair's top-left), but
- * clamped against the tile so it never slides off screen; flips below the
- * crosshair near the top edge.
+ * Name badge above a crosshair: a chamfered retro panel with the player's live
+ * camera avatar (when the phone shares one), name, live ammo state and their
+ * character. Deliberately the same row shape as a ShooterScoreboard entry —
+ * shared geometry in hunterRowMetrics, labels through HudLine so the pixel font
+ * can't be forgotten — because both are the same player, read side by side.
+ * Positioned in crosshair-local coords (the container sits at the crosshair's
+ * top-left), but clamped against the tile so it never slides off screen; flips
+ * below the crosshair near the top edge.
  */
 function PlayerBadge({
   player,
@@ -1396,21 +1390,24 @@ function PlayerBadge({
   now: number;
 }) {
   const fs = Math.max(16, Math.round(chSize * 0.34));
+  const m = hunterRowMetrics(fs);
   const hasAvatar = !!player.camInputId;
-  const av = Math.round(fs * 2.0);
+  const character = player.characterId
+    ? CHARACTER_BY_ID.get(player.characterId)
+    : undefined;
   const padH = Math.round(fs * 0.45);
   const padV = Math.round(fs * 0.3);
-  const gap = Math.round(fs * 0.35);
-  const nameH = Math.round(fs * 1.25);
-  const pipSize = Math.max(5, Math.round(fs * 0.32));
-  const pipRowGap = Math.round(fs * 0.18);
-  const textColH = nameH + pipRowGap + ammoBlockHeight(pipSize);
-  const contentH = Math.max(hasAvatar ? av : 0, textColH);
-  // Smelter Views don't auto-size to content, so estimate the name width.
-  const nameW =
-    Math.round(fs * 0.56 * player.name.length) + Math.round(fs * 0.3);
-  const innerW = Math.max(nameW, ammoPipsWidth(pipSize, player.maxAmmo));
-  const badgeW = padH * 2 + (hasAvatar ? av + gap : 0) + innerW;
+  const ammoH = ammoBlockHeight(m.pipSize);
+  const textColH =
+    m.nameH + m.pipRowGap + ammoH + (character ? m.pipRowGap + m.subH : 0);
+  const contentH = Math.max(hasAvatar ? m.av : 0, textColH);
+  // Smelter Views don't auto-size to content, so estimate the label widths.
+  const innerW = Math.max(
+    dotoTextWidth(fs, player.name.length),
+    character ? dotoTextWidth(m.subFs, character.name.length) : 0,
+    ammoPipsWidth(m.pipSize, player.maxAmmo),
+  );
+  const badgeW = padH * 2 + (hasAvatar ? m.av + m.avGap : 0) + innerW;
   const badgeH = padV * 2 + contentH;
 
   // Clamp within the tile; prefer above the crosshair, flip below near the top.
@@ -1421,44 +1418,59 @@ function PlayerBadge({
   let absTop = Math.round(py - chSize * 0.9 - badgeH);
   if (absTop < edge) absTop = Math.round(py + chSize * 0.9);
 
-  const textLeft = padH + (hasAvatar ? av + gap : 0);
+  const textLeft = padH + (hasAvatar ? m.av + m.avGap : 0);
   const textTop = Math.round((badgeH - textColH) / 2);
+  const ammoTop = textTop + m.nameH + m.pipRowGap;
   return (
     <RetroPanel
       x={absLeft - Math.round(px - chSize / 2)}
       y={absTop - Math.round(py - chSize / 2)}
       w={badgeW}
       h={badgeH}
-      cut={Math.round(fs * 0.5)}
+      cut={Math.round(fs * 0.6)}
       line={player.color}
-      glow={0.3}
-      glowPx={Math.round(fs * 0.6)}>
+      glow={0.25}
+      glowPx={Math.round(fs * 0.7)}>
       {hasAvatar ? (
         <LiveCamTile
           inputId={player.camInputId}
-          size={av}
+          size={m.av}
           fallbackColor={player.color}
-          top={Math.round((badgeH - av) / 2)}
+          top={Math.round((badgeH - m.av) / 2)}
           left={padH}
         />
       ) : null}
-      <View
-        style={{
-          top: textTop,
-          left: textLeft,
-          width: innerW,
-          height: nameH,
-          overflow: 'hidden',
-        }}>
-        <Text style={{ fontSize: fs, color: player.color }}>{player.name}</Text>
-      </View>
-      <AmmoPips
-        top={textTop + nameH + pipRowGap}
+      {/* Unlike the scoreboard this floats over live video, so the name takes
+          the hard pixel shadow to stay readable against a bright frame. */}
+      <HudLine
+        text={player.name}
+        color={player.color}
+        top={textTop}
         left={textLeft}
-        pipSize={pipSize}
+        width={innerW}
+        fontSize={fs}
+        weight='black'
+        align='left'
+        shadow
+      />
+      <AmmoPips
+        top={ammoTop}
+        left={textLeft}
+        pipSize={m.pipSize}
         player={player}
         now={now}
       />
+      {character ? (
+        <HudLine
+          text={character.name}
+          color={character.color}
+          top={ammoTop + ammoH + m.pipRowGap}
+          left={textLeft}
+          width={innerW}
+          fontSize={m.subFs}
+          align='left'
+        />
+      ) : null}
     </RetroPanel>
   );
 }
@@ -1492,15 +1504,15 @@ function ShooterScoreboard({
   const scores = allScores.slice(0, 8);
   const shell = scoreboardRect(parent, scores.length);
   const { fontSize: fs, rowH, rowGap, padH, padV } = shell;
-  const av = Math.round(fs * 1.9);
+  // Avatar size, avatar gap and pip size are shared with the crosshair badge
+  // (they had drifted apart, which is what made the badge read as a different
+  // HUD). avGap is generous on purpose: at fs*0.4 the first letters of the
+  // name visually sat on the avatar's chunky frame.
+  const { av, avGap, pipSize } = hunterRowMetrics(fs);
   const rankW = Math.round(fs * 1.5);
   const gap = Math.round(fs * 0.4);
   const scoreW = Math.round(fs * 2.4);
   const width = shell.width;
-  const pipSize = Math.max(5, Math.round(fs * 0.3));
-  // Clear breathing room between the avatar's chunky frame and the name
-  // column — at gap (fs*0.4) the first letters visually sat on the frame.
-  const avGap = Math.round(fs * 1.0);
   const nameLeft = padH + rankW + av + avGap;
   const nameW = width - nameLeft - scoreW - padH - gap;
   return (

@@ -73,7 +73,11 @@ export type DuckHunterRoom = {
   /** A page refresh re-attached to a still-running room (see the stash). */
   restored: boolean;
   /** Create the arcade room: stage mp4 input + duck sprites + config. */
-  createRoom(stageFile: string, cfg: DuckHunterSliderConfig): Promise<void>;
+  createRoom(
+    stageFile: string,
+    cfg: DuckHunterSliderConfig,
+    setup: ShooterMatchConfig,
+  ): Promise<void>;
   /** Swap the hunt-stage video in the existing room (PLAY AGAIN flow). */
   changeStage(stageFile: string): Promise<void>;
   pushConfig(cfg: DuckHunterSliderConfig): Promise<void>;
@@ -82,9 +86,10 @@ export type DuckHunterRoom = {
   /**
    * Tell the server the host is on the lobby screen ('lobby' match phase), so
    * phones hold on the briefing instead of treating the attract mode as open
-   * range. Cleared server-side by start/reset.
+   * range. Cleared server-side by start/reset. The staged round rides along
+   * so the broadcast opening screen can announce it before the match exists.
    */
-  armLobby(): Promise<void>;
+  armLobby(setup: ShooterMatchConfig): Promise<void>;
   /** EXIT TO TITLE — tear the room down. */
   exitAndDelete(): Promise<void>;
 };
@@ -180,11 +185,14 @@ export function useDuckHunterRoom(): DuckHunterRoom {
   );
 
   const armLobby = useCallback(
-    async (room?: string) => {
+    async (cfg: ShooterMatchConfig, room?: string) => {
       const target = room ?? roomId;
       if (!target) return;
       try {
-        await controlDuckHunterMatch(target, { action: 'lobby' });
+        // The staged round travels with the arm so the broadcast's opening
+        // screen can announce it — before 'start' the server has no match to
+        // read it from.
+        await controlDuckHunterMatch(target, { action: 'lobby', ...cfg });
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Lobby arm failed');
         if (room) throw err;
@@ -194,7 +202,11 @@ export function useDuckHunterRoom(): DuckHunterRoom {
   );
 
   const createRoom = useCallback(
-    async (stageFile: string, cfg: DuckHunterSliderConfig) => {
+    async (
+      stageFile: string,
+      cfg: DuckHunterSliderConfig,
+      setup: ShooterMatchConfig,
+    ) => {
       if (creatingRef.current || roomId) return;
       creatingRef.current = true;
       setCreating(true);
@@ -219,7 +231,7 @@ export function useDuckHunterRoom(): DuckHunterRoom {
         await pushConfig(cfg, created.roomId);
         // The room is born straight into the arcade lobby (roomId state hasn't
         // committed yet, so pass it explicitly).
-        await armLobby(created.roomId);
+        await armLobby(setup, created.roomId);
         setStageInputId(inputId);
         setWhepUrl(created.whepUrl);
         setRoomId(created.roomId);

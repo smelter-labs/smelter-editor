@@ -59,6 +59,21 @@ export type DuckHunterDeps = {
   ) => { rank: number | null };
   /** Current global TOP SCORES table for one mode (sorted, capped). */
   readTopScores: (mode: ShooterMatchMode) => ShooterTopScoreEntry[];
+  /**
+   * Declare the character clips the broadcast needs on air right now (hunter
+   * lineup / podium). Idempotent and driven from the publish loop, so the
+   * implementation must no-op on an unchanged set.
+   */
+  mountCharacterClips?: (ids: ShooterCharacterId[]) => void;
+  /** Drop every clip claim (match left the scenes that show them, teardown). */
+  unmountCharacterClips?: () => void;
+  /**
+   * Render `url` as a QR PNG and register it with the engine; resolves with
+   * the image id the opening screen hands to <Image>. Image content is
+   * immutable per id, so a changed url must mint a fresh id. Optional — test
+   * fakes omit it and the scene simply shows no QR.
+   */
+  registerJoinQr?: (url: string) => Promise<string>;
   now?: () => number;
 };
 
@@ -243,8 +258,31 @@ export class DuckHunterController {
    * are matchless with ducks flying, so phones can't tell them apart otherwise.
    */
   private lobbyArmed = false;
+  /** Join URL for the opening screen's QR, pushed down from the host page. */
+  private joinUrl: string | null = null;
+  private joinLabel: string | null = null;
+  private qrImageId: string | null = null;
+  /**
+   * The round the host staged on GAME SETUP, sent alongside the 'lobby'
+   * action. Drives the opening screen's ROUND banner and picks which TOP
+   * SCORES table it shows. Survives 'start' (a re-arm without a setup keeps
+   * the last one); cleared by 'reset', because free-play stages no round.
+   */
+  private pendingSetup: {
+    mode: ShooterMatchMode;
+    durationMs: number | null;
+    targetScore: number | null;
+  } | null = null;
+  /**
+   * TOP SCORES snapshotted when the lobby armed — they only change when a
+   * match ends, and every round re-arms the lobby afterwards, so re-reading
+   * them on the 30 Hz publish would be pure waste.
+   */
+  private lobbyTopScores: ShooterTopScoreEntry[] = [];
   /** Last targetActive broadcast, so lobby clients hear the flip. */
   private lastTargetActive = false;
+  /** Last character-clip set handed to deps, so the 30 Hz publish stays cheap. */
+  private clipCharacters: ShooterCharacterId[] = [];
 
   constructor(
     private readonly roomId: string,
@@ -428,6 +466,44 @@ export class DuckHunterController {
   }
 
   /**
+   * Join link for the broadcast opening screen, pushed down by the host page
+   * (only the browser knows the public base). Re-rendering the QR is async and
+   * mints a new immutable image id, so an unchanged URL is a no-op and the id
+   * is cleared while the new PNG renders rather than showing a stale code.
+   */
+  setJoinLink(cfg: { joinUrl?: string; joinLabel?: string }): void {
+    if (typeof cfg.joinLabel === 'string' && cfg.joinLabel.trim()) {
+      this.joinLabel = cfg.joinLabel.trim().slice(0, 40);
+    }
+    if (
+      typeof cfg.joinUrl !== 'string' ||
+      !cfg.joinUrl ||
+      cfg.joinUrl === this.joinUrl
+    ) {
+      return;
+    }
+    this.joinUrl = cfg.joinUrl;
+    if (!this.joinLabel) {
+      try {
+        this.joinLabel = new URL(cfg.joinUrl).host;
+      } catch {
+        this.joinLabel = cfg.joinUrl.slice(0, 40);
+      }
+    }
+    this.qrImageId = null;
+    const render = this.deps.registerJoinQr;
+    if (!render) return;
+    void render(cfg.joinUrl)
+      .then((imageId) => {
+        this.qrImageId = imageId;
+        this.publish();
+      })
+      .catch((err) =>
+        console.error('[duck-hunter] join QR registration failed', err),
+      );
+  }
+
+  /**
    * Drive the arcade match from the /duck-hunter page:
    * - start: reset all scores/ammo, 3s countdown, then shots count until the
    *   clock runs out (time mode) or someone reaches the target (points mode).
@@ -440,31 +516,13 @@ export class DuckHunterController {
     const now = this.now();
     switch (cmd.action) {
       case 'start': {
-        const mode: ShooterMatchMode =
-          cmd.mode === 'points' ? 'points' : 'time';
+        const setup = this.normalizeSetup(cmd);
+        this.pendingSetup = setup;
         this.match = {
           phase: 'countdown',
-          mode,
-          durationMs:
-            mode === 'time'
-              ? Math.round(
-                  clamp(
-                    cmd.durationMs ?? MATCH_DEFAULT_DURATION_MS,
-                    MATCH_MIN_DURATION_MS,
-                    MATCH_MAX_DURATION_MS,
-                  ),
-                )
-              : null,
-          targetScore:
-            mode === 'points'
-              ? Math.round(
-                  clamp(
-                    cmd.targetScore ?? MATCH_DEFAULT_TARGET,
-                    MATCH_MIN_TARGET,
-                    MATCH_MAX_TARGET,
-                  ),
-                )
-              : null,
+          mode: setup.mode,
+          durationMs: setup.durationMs,
+          targetScore: setup.targetScore,
           startsAt: now + MATCH_COUNTDOWN_MS,
           endsAt: null,
           winner: null,
@@ -496,13 +554,33 @@ export class DuckHunterController {
       case 'reset': {
         this.match = null;
         this.lobbyArmed = false;
+        // Free-play stages no round: the opening screen is gone, so its
+        // banner and table must not survive into the next lobby.
+        this.pendingSetup = null;
+        this.lobbyTopScores = [];
         this.maybeStop();
         break;
       }
       case 'lobby': {
         this.match = null;
         this.lobbyArmed = true;
-        this.maybeStop();
+        // Only overwrite when the caller actually staged a round: an older
+        // editor sends a bare {action:'lobby'} and must not silently reset the
+        // banner to the default.
+        if (
+          cmd.mode != null ||
+          cmd.durationMs != null ||
+          cmd.targetScore != null
+        ) {
+          this.pendingSetup = this.normalizeSetup(cmd);
+        }
+        this.lobbyTopScores = this.deps.readTopScores(
+          this.pendingSetup?.mode ?? 'time',
+        );
+        // The opening screen has to be on air the instant the host opens the
+        // lobby. Before the sidecar produces a target there is nothing else to
+        // hold the publish loop open, and maybeStop would park it.
+        this.ensureRunning();
         break;
       }
     }
@@ -511,6 +589,38 @@ export class DuckHunterController {
     this.publish();
     this.broadcastState();
     return snapshot;
+  }
+
+  /** Clamped round setup from a wire command, shared by 'start' and 'lobby'. */
+  private normalizeSetup(cmd: MatchCommand): {
+    mode: ShooterMatchMode;
+    durationMs: number | null;
+    targetScore: number | null;
+  } {
+    const mode: ShooterMatchMode = cmd.mode === 'points' ? 'points' : 'time';
+    return {
+      mode,
+      durationMs:
+        mode === 'time'
+          ? Math.round(
+              clamp(
+                cmd.durationMs ?? MATCH_DEFAULT_DURATION_MS,
+                MATCH_MIN_DURATION_MS,
+                MATCH_MAX_DURATION_MS,
+              ),
+            )
+          : null,
+      targetScore:
+        mode === 'points'
+          ? Math.round(
+              clamp(
+                cmd.targetScore ?? MATCH_DEFAULT_TARGET,
+                MATCH_MIN_TARGET,
+                MATCH_MAX_TARGET,
+              ),
+            )
+          : null,
+    };
   }
 
   /** Current match state as a wire event ('idle'/'lobby' when matchless). */
@@ -787,10 +897,14 @@ export class DuckHunterController {
 
     const now = this.now();
     this.deadGhosts.set(best.id, now + RESPAWN_MS);
-    // Bird mode: mark the duck shot so it plays its death beat (hang → fall)
-    // from where it was hit, and drops out of the live flock / hit-test.
+    // Bird mode: mark the duck shot so it plays its death beat (flash → hang →
+    // fall) from where it was hit, and drops out of the live flock / hit-test.
+    // The shooter's color rides along so the flash is tinted to them.
     const duck = this.ducks.get(best.id);
-    if (duck && duck.diedAt == null) duck.diedAt = now;
+    if (duck && duck.diedAt == null) {
+      duck.diedAt = now;
+      duck.hitColor = p.color;
+    }
     p.score += 1;
     // Streak: hits within STREAK_WINDOW_MS chain; the moment it reaches two,
     // the Duck Hunt dog pops up (holding two ducks) tinted to this player.
@@ -877,6 +991,9 @@ export class DuckHunterController {
   dispose(): void {
     this.stop();
     this.match = null;
+    this.lobbyArmed = false;
+    this.clipCharacters = [];
+    this.deps.unmountCharacterClips?.();
     for (const p of this.players.values()) {
       this.retireCameraInput(p);
     }
@@ -1144,6 +1261,9 @@ export class DuckHunterController {
   }
 
   private maybeStop(): void {
+    // The opening screen is on air with no players, no ducks and (before the
+    // sidecar warms up) no target at all — parking the loop would freeze it.
+    if (this.lobbyArmed) return;
     // A live match keeps the loop ticking (countdown clock, 1 Hz match
     // broadcast); an ended one only through a short linger — the match object
     // itself stays (results screens read getMatchSnapshot on demand), so the
@@ -1163,6 +1283,12 @@ export class DuckHunterController {
       !matchHoldsLoop
     ) {
       this.stop();
+      // publish() is what normally releases the clips; with the loop parked it
+      // never runs again, so the last scene's inputs would stay decoding.
+      if (this.clipCharacters.length > 0) {
+        this.clipCharacters = [];
+        this.deps.unmountCharacterClips?.();
+      }
       this.store.getState().setShooter(null);
     }
   }
@@ -1253,16 +1379,59 @@ export class DuckHunterController {
     });
   }
 
+  /**
+   * Keep the character clips the broadcast needs mounted as engine inputs, and
+   * nothing else: the hunter lineup (lobby + countdown) shows every joined
+   * player, the podium shows the top three, and a live round shows none. Driven
+   * from publish() rather than from the six state transitions that could change
+   * the answer, so there is one place that can be wrong; the set is diffed, so
+   * the steady state costs an array compare per frame.
+   */
+  private syncCharacterClips(): void {
+    const m = this.match;
+    let want: ShooterCharacterId[];
+    if (m?.phase === 'ended') {
+      want = m.finalScores
+        .slice(0, 3)
+        .map((p) => p.characterId)
+        .filter((id): id is ShooterCharacterId => id != null);
+    } else if (m?.phase === 'countdown' || (!m && this.lobbyArmed)) {
+      want = [...this.players.values()]
+        .map((p) => p.characterId)
+        .filter((id): id is ShooterCharacterId => id != null);
+    } else {
+      want = [];
+    }
+    const next = [...new Set(want)].sort();
+    if (
+      next.length === this.clipCharacters.length &&
+      next.every((id, i) => id === this.clipCharacters[i])
+    ) {
+      return;
+    }
+    this.clipCharacters = next;
+    this.deps.mountCharacterClips?.(next);
+  }
+
   private publish(): void {
+    // Runs ahead of the early returns below: the clips must also be released
+    // when the overlay itself goes away (no target, nobody playing).
+    this.syncCharacterClips();
     const target = this.getTargetPb();
-    if (!target) {
+    const isBird = target?.pb.sprite === 'bird';
+    // Host-driven chrome (opening screen, 3-2-1, GAME OVER) is not gameplay:
+    // it has to survive a missing target and an empty roster, or the scene the
+    // host just triggered flickers out from under them — the lobby is armed
+    // seconds before the sidecar delivers its first peopleBoxes push. Free-play
+    // keeps both early-outs exactly as they were.
+    const hostScene = this.lobbyArmed || this.match != null;
+    if (!target && !hostScene) {
       this.store.getState().setShooter(null);
       return;
     }
-    const isBird = target.pb.sprite === 'bird';
     // Ghost mode with nobody playing shows no overlay; bird mode keeps the ducks
     // flying on the broadcast even before anyone joins.
-    if (this.players.size === 0 && !isBird) {
+    if (this.players.size === 0 && !isBird && !hostScene) {
       this.store.getState().setShooter(null);
       return;
     }
@@ -1278,7 +1447,10 @@ export class DuckHunterController {
         p.reloadStartedAt == null ? null : p.reloadStartedAt + p.reloadMs,
     });
     this.store.getState().setShooter({
-      targetInputId: target.id,
+      // Empty when a host scene is up without a target: the only consumer
+      // compares it against real input ids, so no tile mounts the in-tile HUD
+      // and the full-frame scene at the output root draws alone.
+      targetInputId: target?.id ?? '',
       // A disconnected phone can't aim — its crosshair would sit frozen on
       // the broadcast, so only connected players render one. The scoreboard
       // keeps every row (scores survive the disconnect grace).
@@ -1312,8 +1484,21 @@ export class DuckHunterController {
         id,
         diedAt: respawnAt - RESPAWN_MS,
       })),
-      ducks: isBird ? [...this.ducks.values()] : [],
+      ducks: isBird && target ? [...this.ducks.values()] : [],
       match: this.matchOverlay(),
+      lobbyArmed: this.lobbyArmed,
+      // Opening-screen chrome, only while the lobby holds the frame. The
+      // countdown reuses the same scene component but the lineup branch, so it
+      // deliberately gets none of this.
+      lobby:
+        this.lobbyArmed && this.match == null
+          ? {
+              qrImageId: this.qrImageId,
+              joinLabel: this.joinLabel,
+              setup: this.pendingSetup,
+              topScores: this.lobbyTopScores,
+            }
+          : null,
     });
   }
 
@@ -1372,4 +1557,3 @@ function duckViewport(
     frameH: pb.frameH,
   };
 }
-

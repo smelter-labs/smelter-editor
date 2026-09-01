@@ -191,6 +191,9 @@ interface SmelterApiClient {
       duckScale?: number;
       duckPauseMs?: number;
       duckFlySpeed?: number;
+      /** Join link for the broadcast opening screen's QR (write-only). */
+      joinUrl?: string;
+      joinLabel?: string;
     },
   ): Promise<void>;
 

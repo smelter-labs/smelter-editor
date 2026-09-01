@@ -18,8 +18,8 @@ import {
 } from '../retro-kit';
 import { useArcadeKeys } from '../use-arcade-input';
 
-const TIME_PRESETS_MS = [60_000, 120_000] as const;
-const POINT_PRESETS = [10, 25] as const;
+const TIME_PRESETS_MS = [30_000, 60_000, 90_000, 120_000] as const;
+const POINT_PRESETS = [10, 25, 50] as const;
 
 // Slider bounds — mirror the server clamps (DuckHunterController/RoomState),
 // same as the dashboard DuckHunterPanel.
@@ -145,7 +145,10 @@ export function ModeSelect({
             style={{ fontFamily: monoFont, fontSize: 11, color: R5.inkMuted }}>
             {desc}
           </span>
-          <div style={{ display: 'flex', gap: 8 }}>{presets}</div>
+          {/* Wraps: four time presets overflow the 330px mode column otherwise. */}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {presets}
+          </div>
         </PixelPanel>
       </div>
     );

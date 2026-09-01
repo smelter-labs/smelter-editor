@@ -16,6 +16,7 @@ import {
 } from './store';
 import { Input } from '../inputs/inputs';
 import { KbtMatchHud } from '../inputs/KbtHud';
+import { ShooterLobbyScene } from '../inputs/ShooterLobbyScene';
 import { ShooterResultsScene } from '../inputs/ShooterResultsScene';
 import { wrapWithShaders } from '../utils/shaderUtils';
 import { AudioStoreContext } from '../audio/AudioStoreContext';
@@ -60,9 +61,13 @@ function CarouselSlot({
   // signedDist === visibleCount → entering from the right
   // signedDist === -1          → exiting to the left
   // others                     → hidden (snap to hiddenOffset)
-  const signedDistOf = (i: number, activeIndex: number, preferPositive: boolean): number => {
+  const signedDistOf = (
+    i: number,
+    activeIndex: number,
+    preferPositive: boolean,
+  ): number => {
     if (n === 0) return 0;
-    const raw = ((i - activeIndex) % n + n) % n;
+    const raw = (((i - activeIndex) % n) + n) % n;
     if (raw === 0) return 0;
     if (preferPositive) return raw > visibleCount ? raw - n : raw;
     return raw > n / 2 ? raw - n : raw;
@@ -85,7 +90,11 @@ function CarouselSlot({
         const cur = signedDistOf(i, carousel.activeIndex, direction === 'prev');
         const prev =
           carousel.previousActiveIndex !== undefined
-            ? signedDistOf(i, carousel.previousActiveIndex, direction === 'next')
+            ? signedDistOf(
+                i,
+                carousel.previousActiveIndex,
+                direction === 'next',
+              )
             : cur;
 
         const positionFor = (sd: number): number => {
@@ -104,9 +113,7 @@ function CarouselSlot({
         // snapping them instead.
         const participates = (sd: number) => sd >= -1 && sd <= visibleCount;
         const shouldAnimate =
-          participates(cur) &&
-          participates(prev) &&
-          Math.abs(cur - prev) <= 1;
+          participates(cur) && participates(prev) && Math.abs(cur - prev) <= 1;
         // When snapping, leave transition undefined so Smelter applies its
         // default (no animation) without remembering a 0ms transition that
         // would bleed into subsequent updates. For animated slides, set
@@ -130,14 +137,33 @@ function CarouselSlot({
           inner = (
             <Shader
               shaderId='crop'
-              resolution={{ width: Math.max(1, tileWidth), height: slot.height }}
+              resolution={{
+                width: Math.max(1, tileWidth),
+                height: slot.height,
+              }}
               shaderParam={{
                 type: 'struct',
                 value: [
-                  { type: 'f32', fieldName: 'crop_top', value: cT / slot.height },
-                  { type: 'f32', fieldName: 'crop_left', value: cL / Math.max(1, tileWidth) },
-                  { type: 'f32', fieldName: 'crop_right', value: cR / Math.max(1, tileWidth) },
-                  { type: 'f32', fieldName: 'crop_bottom', value: cB / slot.height },
+                  {
+                    type: 'f32',
+                    fieldName: 'crop_top',
+                    value: cT / slot.height,
+                  },
+                  {
+                    type: 'f32',
+                    fieldName: 'crop_left',
+                    value: cL / Math.max(1, tileWidth),
+                  },
+                  {
+                    type: 'f32',
+                    fieldName: 'crop_right',
+                    value: cR / Math.max(1, tileWidth),
+                  },
+                  {
+                    type: 'f32',
+                    fieldName: 'crop_bottom',
+                    value: cB / slot.height,
+                  },
                 ],
               }}>
               {inner}
@@ -163,7 +189,6 @@ function CarouselSlot({
     </View>
   );
 }
-
 
 /**
  * Keeps InputStreams alive for ALL connected inputs with transcription so
@@ -274,96 +299,98 @@ function OutputScene() {
           );
         }
         return (
-        <Rescaler
-          key={layer.id}
-          id={`layer-pos-${layer.id}`}
-          transition={layerOffsetTransition}
-          style={layerOffsetStyle}>
-        <View
-          style={{ width, height, overflow: 'visible' }}>
-          {layer.enabled === false
-            ? null
-            : layer.inputs.map((item) => {
-                const cT = item.cropTop ?? 0;
-                const cL = item.cropLeft ?? 0;
-                const cR = item.cropRight ?? 0;
-                const cB = item.cropBottom ?? 0;
-                const hasCrop = cT || cL || cR || cB;
+          <Rescaler
+            key={layer.id}
+            id={`layer-pos-${layer.id}`}
+            transition={layerOffsetTransition}
+            style={layerOffsetStyle}>
+            <View style={{ width, height, overflow: 'visible' }}>
+              {layer.enabled === false
+                ? null
+                : layer.inputs.map((item) => {
+                    const cT = item.cropTop ?? 0;
+                    const cL = item.cropLeft ?? 0;
+                    const cR = item.cropRight ?? 0;
+                    const cB = item.cropBottom ?? 0;
+                    const hasCrop = cT || cL || cR || cB;
 
-                const input = inputMap.get(item.inputId);
-                if (!input || input.hidden) return null;
-                let inner = <Input input={input} />;
+                    const input = inputMap.get(item.inputId);
+                    if (!input || input.hidden) return null;
+                    let inner = <Input input={input} />;
 
-                if (hasCrop) {
-                  inner = (
-                    <Shader
-                      shaderId='crop'
-                      resolution={{ width: item.width, height: item.height }}
-                      shaderParam={{
-                        type: 'struct',
-                        value: [
-                          {
-                            type: 'f32',
-                            fieldName: 'crop_top',
-                            value: cT / item.height,
-                          },
-                          {
-                            type: 'f32',
-                            fieldName: 'crop_left',
-                            value: cL / item.width,
-                          },
-                          {
-                            type: 'f32',
-                            fieldName: 'crop_right',
-                            value: cR / item.width,
-                          },
-                          {
-                            type: 'f32',
-                            fieldName: 'crop_bottom',
-                            value: cB / item.height,
-                          },
-                        ],
-                      }}>
-                      {inner}
-                    </Shader>
-                  );
-                }
-
-                // Keep identity stable across reorder so Smelter can animate moves
-                // instead of remounting the node when index changes.
-                const layerItemKey = `${layer.id}:${item.inputId}`;
-                return (
-                  <Rescaler
-                    key={layerItemKey}
-                    id={`layer-${layer.id}-${item.inputId}`}
-                    // durationMs 0 = hard cut: leave transition undefined so a
-                    // remembered 0ms transition can't bleed into later updates
-                    // (same rule as the carousel snap above). shouldInterrupt
-                    // keeps mid-flight moves from restarting at the old origin
-                    // when layouts land in quick succession.
-                    transition={
-                      item.transitionDurationMs === 0
-                        ? undefined
-                        : {
-                            durationMs: item.transitionDurationMs ?? 300,
-                            easingFunction: buildEasingFunction(
-                              item.transitionEasing,
-                            ),
-                            shouldInterrupt: true,
-                          }
+                    if (hasCrop) {
+                      inner = (
+                        <Shader
+                          shaderId='crop'
+                          resolution={{
+                            width: item.width,
+                            height: item.height,
+                          }}
+                          shaderParam={{
+                            type: 'struct',
+                            value: [
+                              {
+                                type: 'f32',
+                                fieldName: 'crop_top',
+                                value: cT / item.height,
+                              },
+                              {
+                                type: 'f32',
+                                fieldName: 'crop_left',
+                                value: cL / item.width,
+                              },
+                              {
+                                type: 'f32',
+                                fieldName: 'crop_right',
+                                value: cR / item.width,
+                              },
+                              {
+                                type: 'f32',
+                                fieldName: 'crop_bottom',
+                                value: cB / item.height,
+                              },
+                            ],
+                          }}>
+                          {inner}
+                        </Shader>
+                      );
                     }
-                    style={{
-                      top: item.y,
-                      left: item.x,
-                      width: item.width,
-                      height: item.height,
-                    }}>
-                    {inner}
-                  </Rescaler>
-                );
-              })}
-        </View>
-        </Rescaler>
+
+                    // Keep identity stable across reorder so Smelter can animate moves
+                    // instead of remounting the node when index changes.
+                    const layerItemKey = `${layer.id}:${item.inputId}`;
+                    return (
+                      <Rescaler
+                        key={layerItemKey}
+                        id={`layer-${layer.id}-${item.inputId}`}
+                        // durationMs 0 = hard cut: leave transition undefined so a
+                        // remembered 0ms transition can't bleed into later updates
+                        // (same rule as the carousel snap above). shouldInterrupt
+                        // keeps mid-flight moves from restarting at the old origin
+                        // when layouts land in quick succession.
+                        transition={
+                          item.transitionDurationMs === 0
+                            ? undefined
+                            : {
+                                durationMs: item.transitionDurationMs ?? 300,
+                                easingFunction: buildEasingFunction(
+                                  item.transitionEasing,
+                                ),
+                                shouldInterrupt: true,
+                              }
+                        }
+                        style={{
+                          top: item.y,
+                          left: item.x,
+                          width: item.width,
+                          height: item.height,
+                        }}>
+                        {inner}
+                      </Rescaler>
+                    );
+                  })}
+            </View>
+          </Rescaler>
         );
       })}
       {/* Kettlebell Tournament chrome sits above every layer (per-tile HUD
@@ -407,7 +434,9 @@ function KbtHudSlot({
   return <KbtMatchHud hud={kbTournament} resolution={resolution} />;
 }
 
-/** Same subscription isolation for the duck-hunter results scene (~30 Hz). */
+/** Same subscription isolation for the duck-hunter full-frame scenes (~30 Hz).
+ * Exactly one can be on air: the hunter lineup while the host holds the lobby
+ * and through the 3-2-1, the results podium once the round is over. */
 function ShooterHudSlot({
   resolution,
 }: {
@@ -415,5 +444,8 @@ function ShooterHudSlot({
 }) {
   const shooter = useShooterOverlay();
   if (!shooter) return null;
-  return <ShooterResultsScene shooter={shooter} resolution={resolution} />;
+  if (shooter.match?.phase === 'ended') {
+    return <ShooterResultsScene shooter={shooter} resolution={resolution} />;
+  }
+  return <ShooterLobbyScene shooter={shooter} resolution={resolution} />;
 }

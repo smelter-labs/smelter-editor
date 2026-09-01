@@ -34,10 +34,7 @@ import { ConnectStep } from '@/components/duck-hunter/phone/connect-step';
 import { NameStep } from '@/components/duck-hunter/phone/name-step';
 import { CharacterStep } from '@/components/duck-hunter/phone/character-step';
 import { WeaponStep } from '@/components/duck-hunter/phone/weapon-step';
-import {
-  CalibrateStep,
-  type PracticeTarget,
-} from '@/components/duck-hunter/phone/calibrate-step';
+import { CalibrateStep } from '@/components/duck-hunter/phone/calibrate-step';
 import { ReadyStep } from '@/components/duck-hunter/phone/ready-step';
 import {
   AmmoRow,
@@ -46,6 +43,7 @@ import {
   PlayTopBar,
 } from '@/components/duck-hunter/phone/play-hud';
 import {
+  clampMoveSens,
   defaultAxisSettings,
   loadAxisSettings,
   saveAxisSettings,
@@ -54,6 +52,19 @@ import {
   type AxisSource,
   type OrientationKey,
 } from '@/components/duck-hunter/phone/axis';
+import {
+  freshPractice,
+  markPracticeHit,
+  pickPracticeHit,
+  type PracticeTarget,
+} from '@/components/duck-hunter/phone/practice';
+import {
+  MOVE_ROT_GATE_DERIVED_DEG_S,
+  MOVE_ROT_GATE_DEG_S,
+  freshMoveState,
+  resetMoveState,
+  stepTranslation,
+} from '@/components/duck-hunter/phone/translation';
 import { useIsLandscape } from '@/components/duck-hunter/phone/use-viewport';
 import '@/components/duck-hunter/retro.css';
 
@@ -103,23 +114,6 @@ const STEP_META: Record<
   ready: { index: 5, label: 'BRIEFING' },
 };
 const STEP_COUNT = 6;
-
-// Practice ducks in the calibration test range (normalized coords; the range
-// box fills whatever space the viewport gives it).
-const PRACTICE_SPOTS = [
-  { x: 0.22, y: 0.3 },
-  { x: 0.72, y: 0.24 },
-  { x: 0.5, y: 0.62 },
-] as const;
-// Hit radius in normalized aim units, NOT screen pixels: the gyro moves the
-// crosshair by an equal fraction of each axis per degree of rotation, so a
-// round circle in this space costs the same wrist movement horizontally and
-// vertically no matter how tall the range box is. (0.12 ≈ 11° of rotation.)
-const PRACTICE_HIT_RADIUS = 0.12;
-
-function freshPractice(): PracticeTarget[] {
-  return PRACTICE_SPOTS.map((s, i) => ({ id: i, x: s.x, y: s.y, hit: false }));
-}
 
 type ScoreRow = {
   clientId: string;
@@ -214,7 +208,11 @@ export default function ShootControllerPage() {
   // horizontal aim can follow true yaw (swing left-right) instead of screen roll.
   const gravityRef = useRef<{ x: number; y: number; z: number } | null>(null);
   // Accumulated crosshair position [0,1] (relative aiming integrates into this).
-  const smoothRef = useRef({ x: 0.5, y: 0.5 });
+  // Rotation only — the translation offset is added at send time and must never
+  // be folded back in here, or it would turn into unbounded drift.
+  const aimRef = useRef({ x: 0.5, y: 0.5 });
+  // Leaky velocity/displacement behind the parallax offset (see translation.ts).
+  const moveRef = useRef(freshMoveState());
   // Per-axis gyro mapping (source + invert + sensitivity), tuned on the
   // calibration screen and persisted — one bucket per screen orientation,
   // since the raw rateX/Y/Z sources are device-frame and change meaning when
@@ -228,10 +226,13 @@ export default function ShootControllerPage() {
   const [axisPairs, setAxisPairs] = useState<AxisSettings>(defaultAxisSettings);
   const horizCfg = axisPairs[orientKey].horiz;
   const vertCfg = axisPairs[orientKey].vert;
+  const moveSens = axisPairs[orientKey].moveSens;
   const horizCfgRef = useRef(horizCfg);
   const vertCfgRef = useRef(vertCfg);
+  const moveSensRef = useRef(moveSens);
   horizCfgRef.current = horizCfg;
   vertCfgRef.current = vertCfg;
+  moveSensRef.current = moveSens;
   // Stable setters that write into the bucket for the orientation at call
   // time (ref read, not closure — a rotate-then-tap can't hit a stale slot).
   const setHorizCfg = useCallback((c: AxisCfg) => {
@@ -246,12 +247,20 @@ export default function ShootControllerPage() {
       return { ...p, [k]: { ...p[k], vert: c } };
     });
   }, []);
+  const setMoveSens = useCallback((v: number) => {
+    setAxisPairs((p) => {
+      const k = orientKeyRef.current;
+      return { ...p, [k]: { ...p[k], moveSens: clampMoveSens(v) } };
+    });
+  }, []);
   // Live crosshair position for the calibration test range.
   const [previewAim, setPreviewAim] = useState({ x: 0.5, y: 0.5 });
   const previewAimRef = useRef(previewAim);
   previewAimRef.current = previewAim;
   // Practice ducks in the test range (local only, no server traffic).
   const [practice, setPractice] = useState<PracticeTarget[]>(freshPractice);
+  const practiceRef = useRef(practice);
+  practiceRef.current = practice;
   // Opened calibration from the play HUD (⚙) — CONTINUE returns to the hunt.
   const [calibFromPlay, setCalibFromPlay] = useState(false);
   // The player pressed JOIN THE HUNT. Entering the game itself is gated on the
@@ -300,7 +309,10 @@ export default function ShootControllerPage() {
   }, [axisPairs, name]);
 
   const recenter = useCallback(() => {
-    smoothRef.current = { x: 0.5, y: 0.5 };
+    aimRef.current = { x: 0.5, y: 0.5 };
+    // Drop any in-flight shove too, or the parallax offset would immediately
+    // pull the freshly centred crosshair back off the middle.
+    resetMoveState(moveRef.current);
     setPreviewAim({ x: 0.5, y: 0.5 });
   }, []);
 
@@ -500,20 +512,16 @@ export default function ShootControllerPage() {
   // Test-range shot during calibration: hit-test against the practice ducks
   // (local only — nothing is sent to the server). FIRE shoots at the preview
   // crosshair; a direct tap on the range passes its own coordinates instead.
+  // The hit is decided here, outside the updater: `setPractice` may run its
+  // updater more than once on the same input (StrictMode in dev, render
+  // restarts otherwise), so it must stay pure — a "did I already bag one" flag
+  // latched in this closure would make the second pass drop the hit entirely.
   const testFire = useCallback((at?: { x: number; y: number }) => {
     const aim = at ?? previewAimRef.current;
-    let hitOne = false;
-    setPractice((prev) =>
-      prev.map((t) => {
-        if (t.hit || hitOne) return t;
-        if (Math.hypot(aim.x - t.x, aim.y - t.y) <= PRACTICE_HIT_RADIUS) {
-          hitOne = true;
-          return { ...t, hit: true };
-        }
-        return t;
-      }),
-    );
-    if (navigator.vibrate) navigator.vibrate(hitOne ? 60 : [15, 40, 15]);
+    const hitId = pickPracticeHit(practiceRef.current, aim);
+    if (hitId !== null) setPractice((prev) => markPracticeHit(prev, hitId));
+    if (navigator.vibrate)
+      navigator.vibrate(hitId !== null ? 60 : [15, 40, 15]);
   }, []);
 
   // Map a client point on the output <video> (object-contain) to output-space
@@ -641,7 +649,8 @@ export default function ShootControllerPage() {
     const previewing = step === 'calibrate';
     if (!previewing && !aiming) return;
     gyroLiveRef.current = false;
-    smoothRef.current = { x: 0.5, y: 0.5 };
+    aimRef.current = { x: 0.5, y: 0.5 };
+    resetMoveState(moveRef.current);
     setPreviewAim({ x: 0.5, y: 0.5 });
     lastMotionTsRef.current = null; // no dt until the first motion sample
     gravityRef.current = null;
@@ -701,14 +710,45 @@ export default function ShootControllerPage() {
           -GYRO_MAX_STEP_DEG,
           GYRO_MAX_STEP_DEG,
         );
-      const s = smoothRef.current;
+      const s = aimRef.current;
       s.x = clamp01(s.x + step2(hRate) * GYRO_GAIN * hc.sens);
       s.y = clamp01(s.y + step2(vRate) * GYRO_GAIN * vc.sens);
+
+      // Translation ("parallax"): physically shoving the phone nudges the
+      // crosshair, and the nudge relaxes back on its own. Prefer the device's
+      // own gravity-free linear acceleration; deriving it by subtracting the
+      // low-passed gravity is the fallback, and runs under a tighter rotation
+      // gate because that estimate goes stale quickly once the phone turns.
+      const lin = e.acceleration;
+      let ax = 0;
+      let ay = 0;
+      let gateDegS = MOVE_ROT_GATE_DEG_S;
+      if (lin && (lin.x != null || lin.y != null || lin.z != null)) {
+        ax = lin.x ?? 0;
+        ay = lin.y ?? 0;
+      } else if (ag && g) {
+        ax = (ag.x ?? 0) - g.x;
+        ay = (ag.y ?? 0) - g.y;
+        gateDegS = MOVE_ROT_GATE_DERIVED_DEG_S;
+      }
+      // Device Z (push/pull toward the screen) has no meaning for a 2D
+      // crosshair, so only the screen plane is projected.
+      const { offX, offY } = stepTranslation(
+        moveRef.current,
+        { right: ax * right[0] + ay * right[1], up: ax * up[0] + ay * up[1] },
+        Math.hypot(wx, wy, wz),
+        dt,
+        moveSensRef.current,
+        gateDegS,
+      );
+
+      const aimX = clamp01(s.x + offX);
+      const aimY = clamp01(s.y + offY);
       if (aiming) {
-        sendAim(s.x, s.y);
-        setLocalAim(normToLocal(s.x, s.y));
+        sendAim(aimX, aimY);
+        setLocalAim(normToLocal(aimX, aimY));
       } else {
-        setPreviewAim({ x: s.x, y: s.y });
+        setPreviewAim({ x: aimX, y: aimY });
       }
     };
     // Liveness probe for the warn timer (some devices only emit orientation).
@@ -1074,7 +1114,8 @@ export default function ShootControllerPage() {
       sessionRef.current = writeShooterSession(String(roomId), {
         characterId: id,
       });
-      if (wantsJoinRef.current) send({ type: 'shoot_character', characterId: id });
+      if (wantsJoinRef.current)
+        send({ type: 'shoot_character', characterId: id });
       setStep('weapon');
     },
     [roomId, send],
@@ -1220,6 +1261,8 @@ export default function ShootControllerPage() {
               vertCfg={vertCfg}
               onHoriz={setHorizCfg}
               onVert={setVertCfg}
+              moveSens={moveSens}
+              onMoveSens={setMoveSens}
               warn={gyroWarn}
               returnToPlay={calibFromPlay}
               onContinue={() => {

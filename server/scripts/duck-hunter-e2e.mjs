@@ -258,7 +258,20 @@ a.ws.send(j({ type: 'shoot_cam_stop' }));
 // The REST endpoints wrap the snapshot: { status: 'ok', match: {...} }.
 const getMatch = async () =>
   (await api('GET', `/room/${roomId}/duck-hunter/match`)).match;
-await api('POST', `/room/${roomId}/duck-hunter/match`, { action: 'lobby' });
+// The opening screen's join QR: the host page pushes the public URL down and
+// the server renders + registers the image. Fire-and-forget on the wire, so
+// this asserts the route accepts it (the image id is unit-tested).
+await api('POST', `/room/${roomId}/duck-hunter/config`, {
+  joinUrl: `https://example.dev/mobile/${roomId}/shoot`,
+  joinLabel: 'example.dev',
+});
+// Arming the lobby now carries the staged round, so the opening screen can
+// announce it before any match exists.
+await api('POST', `/room/${roomId}/duck-hunter/match`, {
+  action: 'lobby',
+  mode: 'points',
+  targetScore: 25,
+});
 let match = await getMatch();
 check('lobby armed', match.phase === 'lobby', JSON.stringify(match));
 

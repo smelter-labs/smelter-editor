@@ -562,6 +562,9 @@ export async function setDuckHunterConfig(
     duckScale?: number;
     duckPauseMs?: number;
     duckFlySpeed?: number;
+    /** Join link for the broadcast opening screen's QR (write-only). */
+    joinUrl?: string;
+    joinLabel?: string;
   },
 ): Promise<void> {
   return (await getClient()).setDuckHunterConfig(roomId, config);

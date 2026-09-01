@@ -1,18 +1,26 @@
 import React, { useEffect, useState } from 'react';
-import { View, Image, InputStream, Rescaler } from '@swmansion/smelter';
+import { View, Image, InputStream, Rescaler, Shader } from '@swmansion/smelter';
 import type { PersonBoxes } from '../app/store';
-import type { DuckEntity, DuckFlightParams } from '../duckHunter/duckFlight';
+import type {
+  DuckEntity,
+  DuckFlightParams,
+  HitFlashEnvelope,
+} from '../duckHunter/duckFlight';
 import {
   DEFAULT_DUCK_FLY_FRAC_PER_SEC,
   DEFAULT_DUCK_PAUSE_MS,
   DUCK_DEATH_MS,
   DUCK_FALL_MS,
   DUCK_HANG_MS,
+  HIT_PAD,
+  HIT_POP_SCALE,
   MAX_DUCKS,
   contentToPx,
   duckContentPos,
+  hitFlashEnvelope,
   validViewport,
 } from '../duckHunter/duckFlight';
+import { hexToRgb } from '../utils/shaderUtils';
 
 type PacmanBirdsInputProps = {
   sourceInputId: string;
@@ -29,29 +37,42 @@ const TICK_MS = 16;
 // Wing-flap animation: advance one of the 3 flap frames every N ticks.
 const FLAP_TICKS = 7; // ~112ms per frame
 
-// Death sequence timings (hang/fall/total) come from the shared duck model so
-// the renderer and the controller retire a shot duck in lock-step.
-const FLASH_MS = 140; // brief white flash at the instant of the hit
-const DIM_ALPHA = 0.6; // peak darkness of the overlay
+// Death sequence timings (hang/fall/total) and the hit-flash envelope come from
+// the shared duck model so the renderer and the controller retire a shot duck
+// in lock-step.
 
-function alphaHex(a: number): string {
-  return Math.round(Math.max(0, Math.min(1, a)) * 255)
-    .toString(16)
-    .padStart(2, '0');
-}
+// Halo reach as a fraction of the sprite side, at full expansion.
+const HIT_RIM_FRAC = 0.16;
+// Fallback tint when a duck died without a recorded shooter (shouldn't happen,
+// but a white flash still reads correctly as a hit).
+const HIT_TINT_FALLBACK = '#FFFFFF';
 
-// Overlay darkness for a death at `elapsed` ms: fade in fast, hold, fade out.
-function dimFor(elapsed: number): number {
-  if (elapsed < 0 || elapsed >= DUCK_DEATH_MS) return 0;
-  const fadeIn = Math.min(1, elapsed / 120);
-  const fadeOut = Math.min(1, (DUCK_DEATH_MS - elapsed) / 160);
-  return DIM_ALPHA * fadeIn * fadeOut;
-}
-
-// White hit-flash for a death at `elapsed` ms (brief, at the moment of impact).
-function flashFor(elapsed: number): number {
-  if (elapsed < 0 || elapsed >= FLASH_MS) return 0;
-  return 0.5 * (1 - elapsed / FLASH_MS);
+/** Uniforms for `duck-hit-flash`. Order must match the WGSL ShaderOptions. */
+function hitShaderParam(env: HitFlashEnvelope, hitColor: string, box: number) {
+  const tint = hexToRgb(hitColor);
+  const fields: Array<[string, number]> = [
+    // The impact zoom is a UV transform inside the shader, not a resize of the
+    // child View: that keeps the shader plane a constant size for the whole
+    // death beat, so the render target is never reallocated mid-animation and
+    // the box never jitters by a rounded pixel.
+    ['scale', 1 + HIT_POP_SCALE * env.pop],
+    ['flash', env.flash],
+    ['glow', env.glow],
+    ['rim', env.rim],
+    ['rim_t', env.rimT],
+    ['rim_px', box * HIT_RIM_FRAC],
+    ['tint_r', tint.r],
+    ['tint_g', tint.g],
+    ['tint_b', tint.b],
+  ];
+  return {
+    type: 'struct' as const,
+    value: fields.map(([fieldName, value]) => ({
+      type: 'f32' as const,
+      fieldName,
+      value,
+    })),
+  };
 }
 
 function flightParams(data: PersonBoxes): DuckFlightParams {
@@ -66,10 +87,14 @@ function flightParams(data: PersonBoxes): DuckFlightParams {
  * owned by the DuckHunterController (spawn point, 45° free-flight, death beat);
  * this component is a pure view of the published `ducks`, computing each sprite
  * position from the same shared model the hit-test uses — so a shot always lands
- * on the duck. On a hit a duck carries `diedAt`, and we play the Duck Hunt death
- * beat: a brief flash, the scene darkens, the shot duck hangs then drops off the
- * bottom. Sprites are registered in smelter.tsx as `duck-<color>-<frame>` (frame
- * ∈ {0,1,2,shot}); the flap frame is animated locally.
+ * on the duck. On a hit a duck carries `diedAt` + `hitColor`, and we play the
+ * death beat: the shot duck itself flashes white-hot, glows in the shooting
+ * player's color behind an expanding halo (the `duck-hit-flash` shader), then
+ * hangs and drops off the bottom. The frame deliberately does NOT dim here —
+ * screen dimming belongs to the dog pop-up (two in a row), so that beat stays
+ * the special one. Sprites are registered in smelter.tsx as
+ * `duck-<color>-<frame>` (frame ∈ {0,1,2,shot}); the flap frame is animated
+ * locally.
  */
 export function PacmanBirdsInput({
   sourceInputId,
@@ -98,22 +123,13 @@ export function PacmanBirdsInput({
   const live = list.filter((d) => d.diedAt == null);
   const dead = list.filter((d) => d.diedAt != null);
 
-  // Scene darkness / flash are the strongest across all in-progress deaths.
-  let dim = 0;
-  let flash = 0;
-  for (const d of dead) {
-    const elapsed = now - (d.diedAt ?? now);
-    dim = Math.max(dim, dimFor(elapsed));
-    flash = Math.max(flash, flashFor(elapsed));
-  }
-
   return (
     <View style={{ width, height }}>
       <Rescaler style={{ width, height, rescaleMode: 'fill' }}>
         <InputStream inputId={sourceInputId} volume={volume} />
       </Rescaler>
       <View style={{ top: 0, left: 0, width, height, overflow: 'hidden' }}>
-        {/* Live ducks (below the dim overlay so they darken on a hit). */}
+        {/* Live ducks, under the shot ones so a falling duck draws on top. */}
         {geomOk
           ? live.map((d) => {
               const pos = duckContentPos(d, now, params, v);
@@ -139,21 +155,11 @@ export function PacmanBirdsInput({
             })
           : null}
 
-        {/* Dim overlay: darkens the video + live ducks during a death beat. */}
-        {dim > 0 ? (
-          <View
-            style={{
-              top: 0,
-              left: 0,
-              width,
-              height,
-              backgroundColor: `#000000${alphaHex(dim)}`,
-            }}
-          />
-        ) : null}
-
-        {/* Shot ducks, above the dim so they stay lit: hang, then fall. Frozen
-            at the position they were hit (computed at diedAt from the same model). */}
+        {/* Shot ducks: flash, hang, then fall. Frozen at the position they were
+            hit (computed at diedAt from the same model). The hit-flash shader
+            box is padded around the sprite so the halo has room to spread; it
+            stays mounted for the whole death beat and decays to a passthrough,
+            rather than swapping node types mid-animation. */}
         {geomOk
           ? dead.map((d) => {
               const diedAt = d.diedAt ?? now;
@@ -169,36 +175,56 @@ export function PacmanBirdsInput({
                 const floor = height + side;
                 cy = py + (floor - py) * fp * fp;
               }
+              const env = hitFlashEnvelope(elapsed);
+              // Padded, square plane centred on the sprite: the halo lives in
+              // the padding. `box` derives only from the frozen sprite side, so
+              // it — and the shader resolution — stay constant for the whole
+              // beat; the impact zoom happens inside the shader instead.
+              const box = Math.round(side * HIT_PAD);
+              const off = Math.round((box - side) / 2);
               return (
                 <View
                   key={`dead-${d.id}`}
                   style={{
-                    top: Math.round(cy - side / 2),
-                    left: Math.round(px - side / 2),
-                    width: side,
-                    height: side,
+                    // Offsetting the rounded sprite origin by `off` lands the
+                    // duck on exactly the pixel it occupied before the box grew.
+                    top: Math.round(cy - side / 2) - off,
+                    left: Math.round(px - side / 2) - off,
+                    width: box,
+                    height: box,
                   }}>
-                  <Rescaler
-                    style={{ width: side, height: side, rescaleMode: 'fit' }}>
-                    <Image imageId={`duck-${d.color % 3}-shot`} />
-                  </Rescaler>
+                  <Shader
+                    shaderId='duck-hit-flash'
+                    resolution={{ width: box, height: box }}
+                    shaderParam={hitShaderParam(
+                      env,
+                      d.hitColor ?? HIT_TINT_FALLBACK,
+                      box,
+                    )}>
+                    {/* Shader children must have a known size. */}
+                    <View style={{ width: box, height: box }}>
+                      <View
+                        style={{
+                          top: off,
+                          left: off,
+                          width: side,
+                          height: side,
+                        }}>
+                        <Rescaler
+                          style={{
+                            width: side,
+                            height: side,
+                            rescaleMode: 'fit',
+                          }}>
+                          <Image imageId={`duck-${d.color % 3}-shot`} />
+                        </Rescaler>
+                      </View>
+                    </View>
+                  </Shader>
                 </View>
               );
             })
           : null}
-
-        {/* Brief white flash at the instant of the hit, on top. */}
-        {flash > 0 ? (
-          <View
-            style={{
-              top: 0,
-              left: 0,
-              width,
-              height,
-              backgroundColor: `#FFFFFF${alphaHex(flash)}`,
-            }}
-          />
-        ) : null}
       </View>
     </View>
   );
