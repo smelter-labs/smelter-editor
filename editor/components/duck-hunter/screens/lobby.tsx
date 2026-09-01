@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import QRCode from 'react-qr-code';
+import { setDuckHunterConfig } from '@/app/actions/actions';
 import {
   getPublicDefaultServerUrl,
   getStoredClientServerUrl,
@@ -71,6 +72,30 @@ export function Lobby({
     return api ? `${url}?server=${encodeURIComponent(api)}` : url;
   }, [base, room.roomId]);
 
+  // The server can't know the public page base, so push the join URL down and
+  // let the broadcast's opening screen burn in its own QR. Debounced: the
+  // public-address field below edits live, and every distinct URL writes a PNG
+  // and registers a fresh (immutable) engine image.
+  const roomId = room.roomId;
+  useEffect(() => {
+    if (!shootUrl || !roomId) return;
+    let label = base.trim();
+    try {
+      label = new URL(base.trim()).host;
+    } catch {
+      // Not a URL yet (mid-typing) — send the raw base as the label.
+    }
+    const timer = window.setTimeout(() => {
+      void setDuckHunterConfig(roomId, {
+        joinUrl: shootUrl,
+        joinLabel: label,
+      }).catch(() => {
+        // Non-fatal: the on-air QR just stays on PREPARING THE LINK.
+      });
+    }, 600);
+    return () => window.clearTimeout(timer);
+  }, [shootUrl, base, roomId]);
+
   const ready = feed.targetActive && !room.creating && !!room.roomId;
   const canStart = ready && feed.players.length > 0;
 
@@ -115,7 +140,12 @@ export function Lobby({
           }
           right={
             <div style={{ display: 'flex', gap: 12 }}>
-              <PixelButton accent='red' glyph='B' label='BACK' onClick={onBack} />
+              <PixelButton
+                accent='red'
+                glyph='B'
+                label='BACK'
+                onClick={onBack}
+              />
               <PixelButton
                 accent='green'
                 glyph='A'
@@ -230,8 +260,7 @@ export function Lobby({
             gap: 12,
           }}>
           <PanelTitle>
-            HUNTERS{' '}
-            {feed.players.length > 0 ? `(${feed.players.length})` : ''}
+            HUNTERS {feed.players.length > 0 ? `(${feed.players.length})` : ''}
           </PanelTitle>
           <div
             style={{

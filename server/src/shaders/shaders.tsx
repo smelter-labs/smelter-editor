@@ -1747,6 +1747,15 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
     shaderFile: 'pacman-ghosts.wgsl',
   },
   {
+    id: 'duck-hit-flash',
+    isActive: true,
+    isVisible: false,
+    name: 'Duck Hit Flash',
+    description:
+      'Hit feedback for a shot duck: a white-hot core, brightened/saturated colors tinted to the shooting player, and an expanding halo dilated from the sprite alpha. Driven by PacmanBirdsInput.tsx.',
+    shaderFile: 'duck-hit-flash.wgsl',
+  },
+  {
     id: 'retro-panel',
     isActive: true,
     isVisible: false,
@@ -1754,6 +1763,15 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
     description:
       'Chamfered retro-arcade panel chrome (accent line, dark gap, navy fill, blueprint grid, scanlines, glow) for the duck-hunter broadcast HUD, driven by RetroPanel.tsx.',
     shaderFile: 'retro-panel.wgsl',
+  },
+  {
+    id: 'chamfer-clip',
+    isActive: true,
+    isVisible: false,
+    name: 'Chamfer Clip',
+    description:
+      "Alpha-clips its child to a chamfered (cut-corner) rectangle matching retro-panel, so video inset inside a RetroPanel stops covering the panel's 45° corner cuts. Driven by ShooterCharacterClip.tsx.",
+    shaderFile: 'chamfer-clip.wgsl',
   },
   {
     id: 'haunted-city',

@@ -2,9 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   AXIS_CFG_KEY,
   DEFAULT_LANDSCAPE,
+  DEFAULT_MOVE_SENS,
   DEFAULT_PORTRAIT,
   LEGACY_AXIS_CFG_KEY,
+  MAX_MOVE_SENS,
   MAX_SENS,
+  MIN_MOVE_SENS,
   loadAxisSettings,
   parseStoredAxisSettings,
   saveAxisSettings,
@@ -65,10 +68,12 @@ describe('axis settings persistence', () => {
       portrait: {
         horiz: { source: 'rateY', invert: false, sens: 3 },
         vert: { source: 'yaw', invert: true, sens: 0.5 },
+        moveSens: 1.4,
       },
       landscape: {
         horiz: { source: 'pitch', invert: false, sens: 1.1 },
         vert: { source: 'rateZ', invert: true, sens: 2 },
+        moveSens: 0,
       },
       name: 'DUKE',
     };
@@ -113,6 +118,46 @@ describe('axis settings persistence', () => {
       sens: 1.5,
     });
     expect(s.landscape).toEqual(DEFAULT_LANDSCAPE);
+  });
+
+  it('adopts the default moveSens for blobs saved before it existed', () => {
+    const s = parseStoredAxisSettings(
+      JSON.stringify({
+        portrait: {
+          horiz: { source: 'rateY', invert: false, sens: 3 },
+          vert: { source: 'yaw', invert: true, sens: 0.5 },
+        },
+        landscape: {
+          horiz: { source: 'pitch', invert: false, sens: 1.1 },
+          vert: { source: 'rateZ', invert: true, sens: 2 },
+        },
+      }),
+      null,
+    );
+
+    expect(s.portrait.moveSens).toBe(DEFAULT_MOVE_SENS);
+    expect(s.landscape.moveSens).toBe(DEFAULT_MOVE_SENS);
+    // The point of the field-wise merge: no axis tuning is lost to the upgrade.
+    expect(s.portrait.horiz.source).toBe('rateY');
+    expect(s.landscape.vert.sens).toBe(2);
+  });
+
+  it('clamps and rejects bad moveSens values', () => {
+    const pair = {
+      horiz: { source: 'yaw', invert: false, sens: 1 },
+      vert: { source: 'pitch', invert: false, sens: 1 },
+    };
+    const parse = (moveSens: unknown) =>
+      parseStoredAxisSettings(
+        JSON.stringify({ portrait: { ...pair, moveSens } }),
+        null,
+      ).portrait.moveSens;
+
+    expect(parse(99)).toBe(MAX_MOVE_SENS);
+    expect(parse(-5)).toBe(MIN_MOVE_SENS);
+    expect(parse(0)).toBe(0); // off is a legitimate saved value, not "missing"
+    expect(parse('loud')).toBe(DEFAULT_MOVE_SENS);
+    expect(parse(null)).toBe(DEFAULT_MOVE_SENS);
   });
 
   it('round-trips through save + load', () => {

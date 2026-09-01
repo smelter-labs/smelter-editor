@@ -11,10 +11,15 @@ import {
   pixelFont,
 } from '../retro-kit';
 import { ActionButton, ChipButton, WarnPanel } from './phone-shell';
-import { AXIS_OPTIONS, clampSens, type AxisCfg } from './axis';
+import {
+  AXIS_OPTIONS,
+  MAX_MOVE_SENS,
+  MIN_MOVE_SENS,
+  clampSens,
+  type AxisCfg,
+} from './axis';
+import type { PracticeTarget } from './practice';
 import { useElementSize, useIsLandscape } from './use-viewport';
-
-export type PracticeTarget = { id: number; x: number; y: number; hit: boolean };
 
 /** Dark backdrop for controls/readouts overlaid on the range art. */
 const OVERLAY_BG = 'rgba(4,8,15,0.72)';
@@ -149,6 +154,61 @@ function AxisControls({
   );
 }
 
+/**
+ * Strength of the translation ("parallax") term — how much physically moving
+ * the phone nudges the crosshair on top of the rotation. Single slider, no
+ * axis picker: it is one 2D effect, and 0 switches it off completely.
+ */
+function MoveControls({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  const off = value <= MIN_MOVE_SENS;
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+        padding: '10px 0',
+        borderTop: `1px solid rgba(${R5.gridRgb},0.25)`,
+      }}>
+      <span
+        style={{
+          fontFamily: pixelFont,
+          fontSize: 9,
+          letterSpacing: 1,
+          color: R5.ink,
+        }}>
+        MOVEMENT ⇱ PARALLAX
+      </span>
+      <span style={{ fontFamily: monoFont, fontSize: 10, color: R5.inkMuted }}>
+        Shoving the phone nudges the crosshair; it drifts back on its own.
+      </span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span
+          style={{ fontFamily: monoFont, fontSize: 10, color: R5.inkMuted }}>
+          move
+        </span>
+        <input
+          type='range'
+          className='r5-range'
+          min={MIN_MOVE_SENS}
+          max={MAX_MOVE_SENS}
+          step={0.1}
+          value={value}
+          onChange={(e) => onChange(Number(e.target.value))}
+          style={{ flex: 1 }}
+        />
+        <LedText size={14}>{off ? 'OFF' : value.toFixed(1)}</LedText>
+      </div>
+    </div>
+  );
+}
+
 /** The big red trigger — the main interaction on this screen. */
 function FireButton({
   onClick,
@@ -187,12 +247,16 @@ function AdvancedSheet({
   vertCfg,
   onHoriz,
   onVert,
+  moveSens,
+  onMoveSens,
   onClose,
 }: {
   horizCfg: AxisCfg;
   vertCfg: AxisCfg;
   onHoriz: (c: AxisCfg) => void;
   onVert: (c: AxisCfg) => void;
+  moveSens: number;
+  onMoveSens: (v: number) => void;
   onClose: () => void;
 }) {
   return (
@@ -245,6 +309,7 @@ function AdvancedSheet({
             onChange={onHoriz}
           />
           <AxisControls title='VERTICAL ↑↓' cfg={vertCfg} onChange={onVert} />
+          <MoveControls value={moveSens} onChange={onMoveSens} />
           <ActionButton
             accent='green'
             dense
@@ -274,6 +339,8 @@ export function CalibrateStep({
   vertCfg,
   onHoriz,
   onVert,
+  moveSens,
+  onMoveSens,
   warn,
   returnToPlay,
   onContinue,
@@ -290,6 +357,9 @@ export function CalibrateStep({
   vertCfg: AxisCfg;
   onHoriz: (c: AxisCfg) => void;
   onVert: (c: AxisCfg) => void;
+  /** Strength of the translation/parallax term; 0 disables it. */
+  moveSens: number;
+  onMoveSens: (v: number) => void;
   warn: string | null;
   /** true when opened from the play HUD (⚙️ AXES) — changes the exit label. */
   returnToPlay: boolean;
@@ -633,6 +703,8 @@ export function CalibrateStep({
           vertCfg={vertCfg}
           onHoriz={onHoriz}
           onVert={onVert}
+          moveSens={moveSens}
+          onMoveSens={onMoveSens}
           onClose={() => setAdvanced(false)}
         />
       ) : null}

@@ -29,6 +29,8 @@ function harness(opts?: { manualCam?: boolean }) {
   const clipCalls: (ShooterCharacterId[] | null)[] = [];
   // In-memory stand-in for the global TopScoresStore (same sort + cap).
   const topScores: ShooterTopScoreEntry[] = [];
+  /** URLs handed to registerJoinQr, in order. */
+  const qrCalls: string[] = [];
   let camSeq = 0;
 
   const sceneState: FakeSceneState = {
@@ -78,6 +80,10 @@ function harness(opts?: { manualCam?: boolean }) {
     readTopScores: (mode) => topScores.filter((e) => e.mode === mode),
     mountCharacterClips: (ids) => clipCalls.push(ids),
     unmountCharacterClips: () => clipCalls.push(null),
+    registerJoinQr: async (url) => {
+      qrCalls.push(url);
+      return `qr-${qrCalls.length}`;
+    },
   });
 
   return {
@@ -92,6 +98,7 @@ function harness(opts?: { manualCam?: boolean }) {
     shooterSets,
     topScores,
     clipCalls,
+    qrCalls,
     /** The clip set currently on air (`[]` once everything is released). */
     clipsNow(): string[] {
       const last = clipCalls[clipCalls.length - 1];
@@ -542,6 +549,114 @@ describe('match lifecycle and the 30 Hz loop', () => {
   });
 });
 
+describe('armed lobby / opening screen', () => {
+  it('publishes the opening screen with no target and no players', async () => {
+    const h = harness();
+    // Exactly the window right after OPEN LOBBY: the YOLO sidecar has not
+    // pushed a single peopleBoxes yet, so there is no target to hang on.
+    h.controller.controlMatch({
+      action: 'lobby',
+      mode: 'time',
+      durationMs: 90_000,
+    });
+    const overlay = h.lastOverlay();
+    expect(overlay).not.toBeNull();
+    expect(overlay!.lobbyArmed).toBe(true);
+    expect(overlay!.match).toBeNull();
+    expect(overlay!.targetInputId).toBe('');
+    expect(overlay!.ducks).toEqual([]);
+    expect(overlay!.lobby?.setup).toEqual({
+      mode: 'time',
+      durationMs: 90_000,
+      targetScore: null,
+    });
+    // And the loop keeps running, so the scene does not freeze.
+    const publishes = h.shooterSets.length;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(h.shooterSets.length).toBeGreaterThan(publishes);
+    h.controller.dispose();
+  });
+
+  it('clamps the staged round like a start does', () => {
+    const h = harness();
+    h.controller.controlMatch({ action: 'lobby', mode: 'time', durationMs: 5 });
+    expect(h.lastOverlay()!.lobby?.setup?.durationMs).toBe(10_000);
+
+    h.controller.controlMatch({
+      action: 'lobby',
+      mode: 'points',
+      targetScore: 999,
+    });
+    expect(h.lastOverlay()!.lobby?.setup).toEqual({
+      mode: 'points',
+      durationMs: null,
+      targetScore: 200,
+    });
+    h.controller.dispose();
+  });
+
+  it('a bare lobby arm keeps the staged round (older editors)', () => {
+    const h = harness();
+    h.controller.controlMatch({
+      action: 'lobby',
+      mode: 'points',
+      targetScore: 25,
+    });
+    h.controller.controlMatch({ action: 'lobby' });
+    expect(h.lastOverlay()!.lobby?.setup?.targetScore).toBe(25);
+    // A reset drops back to free-play, so nothing is staged any more.
+    h.controller.controlMatch({ action: 'reset' });
+    h.controller.controlMatch({ action: 'lobby' });
+    expect(h.lastOverlay()!.lobby?.setup).toBeNull();
+    h.controller.dispose();
+  });
+
+  it('shows only the staged mode in the lobby TOP SCORES', async () => {
+    const h = harness();
+    h.sceneState.peopleBoxes['stage'] = ghostTarget();
+    h.controller.join('c1', 'Bob');
+    h.controller.controlMatch({ action: 'start', mode: 'time' });
+    await vi.advanceTimersByTimeAsync(3100);
+    h.controller.fire('c1'); // any score at all, so the table is non-empty
+    h.controller.controlMatch({ action: 'stop' });
+
+    h.controller.controlMatch({ action: 'lobby', mode: 'time' });
+    const timeRows = h.lastOverlay()!.lobby!.topScores;
+    expect(timeRows.every((e) => e.mode === 'time')).toBe(true);
+
+    h.controller.controlMatch({ action: 'lobby', mode: 'points' });
+    expect(h.lastOverlay()!.lobby!.topScores).toEqual([]);
+    h.controller.dispose();
+  });
+
+  it('free-play with no target and no players still publishes nothing', () => {
+    const h = harness();
+    h.controller.join('c1', 'Bob');
+    h.controller.controlMatch({ action: 'lobby' });
+    expect(h.lastOverlay()).not.toBeNull();
+    h.controller.controlMatch({ action: 'reset' });
+    expect(h.lastOverlay()).toBeNull();
+    h.controller.dispose();
+  });
+
+  it('renders the join QR once per distinct URL', async () => {
+    const h = harness();
+    h.controller.controlMatch({ action: 'lobby', mode: 'time' });
+    h.controller.setJoinLink({ joinUrl: 'https://arcade.example/x/shoot' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.qrCalls).toEqual(['https://arcade.example/x/shoot']);
+    expect(h.lastOverlay()!.lobby?.qrImageId).toBe('qr-1');
+    // Label defaults to the URL host when the host page sends none.
+    expect(h.lastOverlay()!.lobby?.joinLabel).toBe('arcade.example');
+
+    // Re-pushing the same URL must not mint a second (immutable) image.
+    h.controller.setJoinLink({ joinUrl: 'https://arcade.example/x/shoot' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.qrCalls).toHaveLength(1);
+    h.controller.dispose();
+  });
+});
+
 describe('character clips on the broadcast', () => {
   it('the armed lobby claims every joined hunter, deduped', () => {
     const h = harness();
@@ -710,6 +825,37 @@ describe('ducks', () => {
     await vi.advanceTimersByTimeAsync(100);
     const after = h.lastOverlay()!.ducks.find((d) => d.id === 2)!.spawnAt;
     expect(after).toBeGreaterThan(before); // clock pushed → flight frozen
+    h.controller.dispose();
+  });
+
+  // The hit flash is tinted to whoever pulled the trigger, so a frame with two
+  // simultaneous kills says *who* got which duck.
+  it('a shot duck carries the shooting player’s color', async () => {
+    const h = harness();
+    h.sceneState.peopleBoxes['stage'] = {
+      boxes: [
+        { id: 1, x: 0.45, y: 0.45, w: 0.1, h: 0.1, color: 0 },
+        { id: 2, x: 0.05, y: 0.05, w: 0.1, h: 0.1, color: 1 },
+      ],
+      frameW: 1920,
+      frameH: 1080,
+      ghost: true,
+      sprite: 'bird',
+    };
+    h.controller.join('c1', 'Bob');
+    await vi.advanceTimersByTimeAsync(50);
+    const shooter = h
+      .lastOverlay()!
+      .scores.find((s) => s.clientId === 'c1')!.color;
+
+    h.controller.fire('c1');
+    await vi.advanceTimersByTimeAsync(50);
+    const ducks = h.lastOverlay()!.ducks;
+    const shot = ducks.find((d) => d.id === 1)!;
+    expect(shot.diedAt).toBeDefined();
+    expect(shot.hitColor).toBe(shooter);
+    // A duck still in flight has no shooter attached.
+    expect(ducks.find((d) => d.id === 2)!.hitColor).toBeUndefined();
     h.controller.dispose();
   });
 });

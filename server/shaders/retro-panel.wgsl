@@ -71,6 +71,9 @@ fn vs_main(input: VertexInput) -> VertexOutput {
 
 // Signed distance to the chamfered rectangle filling the whole plane:
 // the axis-aligned rect intersected with four 45° corner cuts.
+// Copied verbatim into chamfer-clip.wgsl, which carves the same shape out of
+// the video this panel frames — WGSL has no includes and the two shapes have
+// to nest pixel-exactly, so THE COPIES MUST STAY IN SYNC.
 fn panel_sd(p: vec2<f32>, res: vec2<f32>, cut: f32) -> f32 {
     let h = res * 0.5;
     let q = abs(p - h);

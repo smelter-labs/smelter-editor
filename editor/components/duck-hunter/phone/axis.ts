@@ -15,7 +15,13 @@
 export type AxisSource = 'yaw' | 'pitch' | 'rateX' | 'rateY' | 'rateZ';
 export type AxisCfg = { source: AxisSource; invert: boolean; sens: number };
 export type OrientationKey = 'portrait' | 'landscape';
-export type AxisPair = { horiz: AxisCfg; vert: AxisCfg };
+/**
+ * `moveSens` scales the translation ("parallax") term — how much physically
+ * shoving the phone nudges the crosshair on top of the rotation. One value per
+ * pair rather than per axis: it is a single 2D effect, and one slider keeps the
+ * calibration sheet small. 0 turns it off entirely.
+ */
+export type AxisPair = { horiz: AxisCfg; vert: AxisCfg; moveSens: number };
 export type AxisSettings = Record<OrientationKey, AxisPair>;
 export type StoredAxisSettings = AxisSettings & { name?: string };
 
@@ -27,13 +33,18 @@ export const AXIS_OPTIONS: { id: AxisSource; label: string }[] = [
   { id: 'rateZ', label: 'Screen rotation — alpha' },
 ];
 
+/** Subtle by default — the weapon feels alive without fighting the player. */
+export const DEFAULT_MOVE_SENS = 0.6;
+
 export const DEFAULT_PORTRAIT: AxisPair = {
   horiz: { source: 'pitch', invert: true, sens: 2.5 },
   vert: { source: 'rateZ', invert: true, sens: 2.6 },
+  moveSens: DEFAULT_MOVE_SENS,
 };
 export const DEFAULT_LANDSCAPE: AxisPair = {
   horiz: { source: 'rateZ', invert: true, sens: 2.5 },
   vert: { source: 'rateX', invert: false, sens: 2.6 },
+  moveSens: DEFAULT_MOVE_SENS,
 };
 
 export const AXIS_CFG_KEY = 'shootAxisCfg-v2';
@@ -42,13 +53,26 @@ export const LEGACY_AXIS_CFG_KEY = 'shootAxisCfg';
 export const MIN_SENS = 0.3;
 export const MAX_SENS = 4;
 
+// The movement slider bottoms out at 0 (off), unlike the rotation sensitivity
+// which must stay usable — aiming with zero gyro gain would be a dead stick.
+export const MIN_MOVE_SENS = 0;
+export const MAX_MOVE_SENS = 3;
+
 export function clampSens(v: number): number {
   return Math.max(MIN_SENS, Math.min(MAX_SENS, Math.round(v * 10) / 10));
+}
+
+export function clampMoveSens(v: number): number {
+  return Math.max(
+    MIN_MOVE_SENS,
+    Math.min(MAX_MOVE_SENS, Math.round(v * 10) / 10),
+  );
 }
 
 const clonePair = (p: AxisPair): AxisPair => ({
   horiz: { ...p.horiz },
   vert: { ...p.vert },
+  moveSens: p.moveSens,
 });
 
 export function defaultAxisSettings(): AxisSettings {
@@ -71,11 +95,17 @@ function sanitizeAxisCfg(v: unknown, fallback: AxisCfg): AxisCfg {
   };
 }
 
+// Field-wise here too, which is what lets `moveSens` be introduced without a
+// storage-key bump: blobs saved before it existed simply take the default and
+// keep every axis tuning their owner had.
 function sanitizePair(v: unknown, fallback: AxisPair): AxisPair {
   const p = (v && typeof v === 'object' ? v : {}) as Partial<AxisPair>;
   return {
     horiz: sanitizeAxisCfg(p.horiz, fallback.horiz),
     vert: sanitizeAxisCfg(p.vert, fallback.vert),
+    moveSens: Number.isFinite(p.moveSens)
+      ? clampMoveSens(p.moveSens as number)
+      : fallback.moveSens,
   };
 }
 

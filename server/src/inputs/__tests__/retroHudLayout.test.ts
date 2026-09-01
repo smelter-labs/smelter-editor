@@ -1,14 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import {
+  chamferClipCut,
   chipRect,
   dotoTextWidth,
   hudScale,
+  hunterRowMetrics,
   lineupLayout,
+  openingLayout,
   resultsLayout,
   scoreboardRect,
 } from '../retroHudLayout';
 
 const FHD = { width: 1920, height: 1080 };
+const RESOLUTIONS = [
+  FHD,
+  { width: 2560, height: 1440 },
+  { width: 1280, height: 720 },
+];
 
 describe('retroHudLayout', () => {
   it('dotoTextWidth grows linearly with chars and font size', () => {
@@ -108,5 +116,99 @@ describe('retroHudLayout', () => {
         FHD.height,
       );
     }
+  });
+
+  it('chamferClipCut erodes by inset*(2 - sqrt2) and never goes negative', () => {
+    expect(chamferClipCut(36, 13)).toBeCloseTo(36 - 13 * (2 - Math.SQRT2), 6);
+    expect(chamferClipCut(36, 0)).toBe(36);
+    // A deeply inset box has no corner left to cut.
+    expect(chamferClipCut(10, 30)).toBe(0);
+    // The point of the erosion: the reveal of the panel stroke is `inset` wide
+    // all the way around, diagonals included. The panel's top-left cut line is
+    // x + y = panelCut; the inner box's is x + y = inner + 2*inset in the same
+    // coords, and two 45° lines that far apart sit inset px from each other.
+    const [panelCut, inset] = [36, 13];
+    const inner = chamferClipCut(panelCut, inset);
+    expect((inner + 2 * inset - panelCut) / Math.SQRT2).toBeCloseTo(inset, 6);
+    // Leaving the cut un-eroded is today's bug in reverse: an un-clipped square
+    // corner (x + y = 2*inset) falls inside the panel's cut and pokes out.
+    expect(2 * inset).toBeLessThan(panelCut);
+  });
+
+  it('hunterRowMetrics scales linearly and pips never collapse', () => {
+    expect(hunterRowMetrics(32).av).toBe(Math.round(32 * 1.9));
+    expect(hunterRowMetrics(64).av).toBe(2 * hunterRowMetrics(32).av);
+    expect(hunterRowMetrics(4).pipSize).toBe(5); // floor
+    // The sub-label is smaller than the name it hangs under.
+    expect(hunterRowMetrics(32).subFs).toBeLessThan(32);
+  });
+
+  it('opening columns tile the row without overlap and stay in frame', () => {
+    for (const res of RESOLUTIONS) {
+      const l = openingLayout(res, 6, 'TIME ATTACK · 1:00');
+      expect(l.join.left + l.join.width).toBeLessThan(l.howTo.left);
+      expect(l.howTo.left + l.howTo.width).toBeLessThan(l.tops.left);
+      expect(l.tops.left + l.tops.width).toBeLessThanOrEqual(res.width);
+      expect(l.howTo.width).toBeGreaterThan(l.tops.width);
+      // Header → banner → columns → tiles → captions → footer, in that order.
+      expect(l.titleTop).toBeGreaterThan(l.eyebrowTop);
+      expect(l.banner.top).toBeGreaterThan(l.starTop);
+      expect(l.join.top).toBeGreaterThanOrEqual(l.banner.top + l.banner.height);
+      expect(l.rowTop).toBeGreaterThanOrEqual(l.join.top + l.join.height);
+      expect(l.nameTop).toBeGreaterThanOrEqual(l.rowTop + l.tileSize);
+      expect(l.captionTop).toBeGreaterThan(l.nameTop);
+      expect(l.footerTop).toBeGreaterThan(l.captionTop + l.captionFs * 1.45);
+      expect(l.footerTop + l.footerFs * 1.45).toBeLessThanOrEqual(res.height);
+      // Every list column's rows clear the title and fit its padded box.
+      for (const col of [l.howTo, l.tops]) {
+        expect(col.rowTop).toBeGreaterThan(col.titleTop);
+        expect(col.rowTop + col.rows * col.rowH).toBeLessThanOrEqual(
+          col.height,
+        );
+      }
+      // The QR sits inside the join column, above its address label.
+      expect(l.join.qr.left).toBeGreaterThanOrEqual(l.join.pad);
+      expect(l.join.qr.left + l.join.qr.width).toBeLessThanOrEqual(
+        l.join.width - l.join.pad,
+      );
+      expect(l.join.qr.top).toBeGreaterThan(l.join.titleTop);
+      expect(l.join.qr.top + l.join.qr.height).toBeLessThanOrEqual(
+        l.join.labelTop,
+      );
+      expect(l.join.hintTop).toBeGreaterThan(l.join.labelTop);
+      expect(l.join.hintTop).toBeLessThan(l.join.height);
+    }
+  });
+
+  it('opening banner is centered and grows with the label', () => {
+    const a = openingLayout(FHD, 6, 'FIRST TO 10');
+    const b = openingLayout(FHD, 6, 'SCORE RUSH · FIRST TO 200');
+    expect(b.banner.width).toBeGreaterThanOrEqual(a.banner.width);
+    for (const l of [a, b]) {
+      expect(l.banner.left + l.banner.width / 2).toBeCloseTo(FHD.width / 2, -1);
+      expect(l.banner.left).toBeGreaterThan(0);
+    }
+  });
+
+  it('opening tile row is capped, centered and never overflows', () => {
+    const one = openingLayout(FHD, 1, 'X');
+    const six = openingLayout(FHD, 6, 'X');
+    // Capped, unlike lineupLayout — the tiles are one band among several here.
+    expect(one.tileSize).toBe(six.tileSize);
+    for (const [l, n] of [
+      [one, 1],
+      [six, 6],
+    ] as const) {
+      const rowW = n * l.tileSize + l.gap * (n - 1);
+      expect(l.rowLeft + rowW / 2).toBeCloseTo(FHD.width / 2, -1);
+      expect(l.rowLeft).toBeGreaterThanOrEqual(0);
+      expect(l.rowLeft + rowW).toBeLessThanOrEqual(FHD.width);
+    }
+    // A 720p frame still fits six tiles across.
+    const small = openingLayout({ width: 1280, height: 720 }, 6, 'X');
+    expect(small.rowLeft).toBeGreaterThanOrEqual(0);
+    expect(
+      small.rowLeft + 6 * small.tileSize + small.gap * 5,
+    ).toBeLessThanOrEqual(1280);
   });
 });

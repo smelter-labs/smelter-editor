@@ -15,6 +15,48 @@ export function hudScale(resolution: { height: number }): number {
   return resolution.height / 1080;
 }
 
+/**
+ * Chamfer for a box inset by `inset` inside a chamfered panel of chamfer
+ * `panelCut`, expressed in the inset box's own pixel space. A 45° edge pushed
+ * `inset` px inward travels inset*sqrt(2) along each axis while the box itself
+ * only loses `inset` per side, so its corner shrinks by inset*(2 - sqrt(2)).
+ * Anything larger and the inner corner still pokes past the panel's cut, which
+ * is exactly the bug this exists to fix (see chamfer-clip.wgsl).
+ */
+export function chamferClipCut(panelCut: number, inset: number): number {
+  return Math.max(0, panelCut - inset * (2 - Math.SQRT2));
+}
+
+/**
+ * Shared geometry for the "avatar · name · ammo · character" row that both the
+ * crosshair badge and the scoreboard draw. The two copies had already drifted
+ * (avatar size, avatar gap, pip size), which is what made the badge read as a
+ * different HUD, so the numbers live here — engine-free and unit-tested — and
+ * both call sites read them.
+ */
+export function hunterRowMetrics(fs: number): {
+  /** Square camera avatar. */
+  av: number;
+  /** Avatar → text column; the chunky frame needs air or letters sit on it. */
+  avGap: number;
+  nameH: number;
+  pipSize: number;
+  pipRowGap: number;
+  /** Character sub-label. */
+  subFs: number;
+  subH: number;
+} {
+  return {
+    av: Math.round(fs * 1.9),
+    avGap: Math.round(fs * 1.0),
+    nameH: Math.round(fs * 1.25),
+    pipSize: Math.max(5, Math.round(fs * 0.3)),
+    pipRowGap: Math.round(fs * 0.18),
+    subFs: Math.round(fs * 0.5),
+    subH: Math.round(fs * 0.72),
+  };
+}
+
 export type Rect = { top: number; left: number; width: number; height: number };
 
 /** Top-center match chip (clock / countdown label) for a given label. */
@@ -191,11 +233,168 @@ export function resultsLayout(resolution: { width: number; height: number }): {
   };
 }
 
+/** A panel on the opening screen: its box plus the inner padding it reserves. */
+export type OpeningColumn = Rect & { pad: number; titleTop: number };
+
+/** JOIN column: the QR sits above the address label and the scan hint. */
+export type OpeningJoinColumn = OpeningColumn & {
+  /** QR box, relative to the column. */
+  qr: Rect;
+  labelTop: number;
+  hintTop: number;
+};
+
+/** A column of stacked rows (HOW TO PLAY, TOP SCORES). */
+export type OpeningListColumn = OpeningColumn & {
+  /** First row's y, relative to the column. */
+  rowTop: number;
+  rowH: number;
+  /** How many rows the column has vertical room for. */
+  rows: number;
+};
+
 /**
- * Hunter-lineup layout (lobby + countdown): a centered row of square avatar
+ * Full-frame opening screen (armed lobby): branding band, a centered ROUND
+ * banner, three content columns (JOIN QR · HOW TO PLAY · TOP SCORES) and a row
+ * of live hunter tiles across the bottom. Authored at 1080p and scaled by k,
+ * like the results scene.
+ *
+ * Unlike lineupLayout the tile size is capped rather than grown to fill: here
+ * the tiles are one band among several, not the whole scene.
+ */
+export function openingLayout(
+  resolution: { width: number; height: number },
+  playerCount: number,
+  bannerLabel: string,
+): {
+  k: number;
+  eyebrowTop: number;
+  eyebrowFs: number;
+  titleTop: number;
+  titleFs: number;
+  starTop: number;
+  starFs: number;
+  banner: Rect & { fontSize: number };
+  join: OpeningJoinColumn;
+  howTo: OpeningListColumn;
+  tops: OpeningListColumn;
+  tileSize: number;
+  gap: number;
+  rowTop: number;
+  rowLeft: number;
+  nameTop: number;
+  nameFs: number;
+  captionTop: number;
+  captionFs: number;
+  footerTop: number;
+  footerFs: number;
+} {
+  const k = hudScale(resolution);
+  const px = (v: number) => Math.round(v * k);
+  const margin = px(60);
+  const innerW = resolution.width - margin * 2;
+
+  // The banner hugs its label (Views don't auto-size) but stays a headline.
+  const bannerFs = px(40);
+  const bannerW = Math.max(
+    px(560),
+    Math.min(px(1100), dotoTextWidth(bannerFs, bannerLabel.length) + px(120)),
+  );
+
+  const columnsTop = px(314);
+  const columnsH = px(352);
+  const colGap = px(36);
+  const joinW = px(400);
+  const topsW = px(500);
+  // HOW TO PLAY takes the slack: it holds the longest lines.
+  const howToW = innerW - joinW - topsW - colGap * 2;
+  const joinPad = px(22);
+  const qrSize = px(200);
+
+  const gap = px(28);
+  const n = Math.max(1, playerCount);
+  const tileSize = Math.max(
+    px(120),
+    Math.min(px(240), Math.floor((innerW - gap * (n - 1)) / n)),
+  );
+  const rowW = n * tileSize + gap * (n - 1);
+  const rowTop = px(690);
+  const nameFs = px(30);
+  const nameTop = rowTop + tileSize + px(12);
+  const captionTop = nameTop + Math.round(nameFs * 1.45);
+
+  return {
+    k,
+    eyebrowTop: px(26),
+    eyebrowFs: px(22),
+    titleTop: px(60),
+    titleFs: px(76),
+    starTop: px(168),
+    starFs: px(24),
+    banner: {
+      top: px(210),
+      left: Math.round((resolution.width - bannerW) / 2),
+      width: bannerW,
+      height: px(84),
+      fontSize: bannerFs,
+    },
+    join: {
+      top: columnsTop,
+      left: margin,
+      width: joinW,
+      height: columnsH,
+      pad: joinPad,
+      titleTop: joinPad,
+      qr: {
+        top: px(66),
+        left: Math.round((joinW - qrSize) / 2),
+        width: qrSize,
+        height: qrSize,
+      },
+      labelTop: px(278),
+      hintTop: px(314),
+    },
+    howTo: {
+      top: columnsTop,
+      left: margin + joinW + colGap,
+      width: howToW,
+      height: columnsH,
+      pad: px(26),
+      titleTop: px(26),
+      rowTop: px(82),
+      rowH: px(62),
+      rows: 4,
+    },
+    tops: {
+      top: columnsTop,
+      left: margin + joinW + colGap + howToW + colGap,
+      width: topsW,
+      height: columnsH,
+      pad: joinPad,
+      titleTop: joinPad,
+      rowTop: px(92),
+      rowH: px(48),
+      rows: 5,
+    },
+    tileSize,
+    gap,
+    rowTop,
+    rowLeft: margin + Math.round((innerW - rowW) / 2),
+    nameTop,
+    nameFs,
+    captionTop,
+    captionFs: px(20),
+    footerTop: px(1024),
+    footerFs: px(22),
+  };
+}
+
+/**
+ * Hunter-lineup layout (the 3-2-1 countdown): a centered row of square avatar
  * tiles — the player's live camera when they share one, otherwise their
  * character clip cropped to the square — with name and character title under
- * each. The tile shrinks as the roster grows (the lobby caps at 6).
+ * each. The tile grows to fill the row (the lobby caps the roster at 6),
+ * unlike openingLayout, where the tiles are one band among several.
  */
 export function lineupLayout(
   resolution: { width: number; height: number },

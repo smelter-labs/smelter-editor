@@ -27,6 +27,62 @@ export const DUCK_HANG_MS = 500;
 export const DUCK_FALL_MS = 500;
 export const DUCK_DEATH_MS = DUCK_HANG_MS + DUCK_FALL_MS;
 
+/**
+ * Hit flash: the shot duck lights up instead of the whole frame going dark.
+ * A white-hot pop cools into a glow in the shooting player's color with an
+ * expanding halo, and is fully over before the fall starts — so the drop
+ * itself looks exactly as it always has. Screen dimming is now reserved for
+ * the dog pop-up (two ducks in a row), which has its own envelope in inputs.tsx.
+ */
+export const HIT_FLASH_MS = 110; // white-hot core
+export const HIT_RIM_MS = 320; // expanding halo
+export const HIT_GLOW_MS = 460; // tint + brightness lift; < DUCK_HANG_MS
+export const HIT_POP_MS = 190; // sprite scale-up settle
+export const HIT_POP_SCALE = 0.28; // peak extra size (1.28x at the impact)
+/** Shader box padding around the sprite, so the halo has room to spread. */
+export const HIT_PAD = 1.45;
+
+/** Per-stage strengths of the hit flash, all in [0,1]. */
+export type HitFlashEnvelope = {
+  /** Blend toward white — the impact itself. */
+  flash: number;
+  /** Brightness/saturation lift + player-color tint. */
+  glow: number;
+  /** Halo opacity. */
+  rim: number;
+  /** Halo expansion, 0 at the sprite edge → 1 at full reach. */
+  rimT: number;
+  /** Extra sprite scale. */
+  pop: number;
+};
+
+function clamp01(v: number): number {
+  return Math.max(0, Math.min(1, v));
+}
+
+/** Hit-flash envelope for a duck `elapsed` ms after it was shot. */
+export function hitFlashEnvelope(elapsed: number): HitFlashEnvelope {
+  if (!(elapsed >= 0) || elapsed >= DUCK_DEATH_MS) {
+    return { flash: 0, glow: 0, rim: 0, rimT: 0, pop: 0 };
+  }
+  // White-hot core: full on at impact, fast quadratic decay.
+  const f = 1 - clamp01(elapsed / HIT_FLASH_MS);
+  // Halo: expands outward (rimT 0→1) while fading — a shockwave, not a steady
+  // glow. Squared falloff so it reads as a snap rather than a slow bloom.
+  const rimT = clamp01(elapsed / HIT_RIM_MS);
+  // Tint + brightness: holds, then eases out before the fall begins.
+  const g = 1 - clamp01(elapsed / HIT_GLOW_MS);
+  // Scale pop: a quick overshoot that settles back to the true sprite size.
+  const p = 1 - clamp01(elapsed / HIT_POP_MS);
+  return {
+    flash: f * f,
+    glow: g * g * (3 - 2 * g),
+    rim: (1 - rimT) * (1 - rimT),
+    rimT,
+    pop: p * p * p,
+  };
+}
+
 export type DuckFlightParams = {
   /** Hold-in-place time after spawning, ms. */
   pauseMs: number;
@@ -48,6 +104,9 @@ export type DuckEntity = {
   sideFrac: number;
   /** Wall-clock ms this duck was shot, or undefined while still flying. */
   diedAt?: number;
+  /** Hex color of the player who shot it; tints the hit flash so the frame
+   * says *who* scored. Undefined while still flying. */
+  hitColor?: string;
 };
 
 /** Output geometry needed to project the 45° flight into content space. */

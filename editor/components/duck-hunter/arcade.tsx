@@ -1,7 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ShooterMatchMode } from '@smelter-editor/types';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type {
+  ShooterMatchConfig,
+  ShooterMatchMode,
+} from '@smelter-editor/types';
 import { ArcadeStage, R5, monoFont } from './retro-kit';
 import {
   useDuckHunterRoom,
@@ -117,12 +120,23 @@ export function DuckHunterArcade() {
   // back from the results screen with a different pick swaps the video.
   const roomStageFileRef = useRef<string | null>(null);
 
+  // The staged round, in wire shape. Sent on the lobby arm as well as the
+  // start: the broadcast's opening screen announces it before a match exists.
+  const matchConfig = useMemo<ShooterMatchConfig>(
+    () => ({
+      mode: setup.mode,
+      durationMs: setup.mode === 'time' ? setup.durationMs : undefined,
+      targetScore: setup.mode === 'points' ? setup.targetScore : undefined,
+    }),
+    [setup],
+  );
+
   const openLobby = async () => {
     setScreen('lobby');
     if (!room.roomId) {
       // createRoom arms the 'lobby' phase itself (the fresh roomId hasn't
       // committed to state yet).
-      await room.createRoom(stageFile, sliders);
+      await room.createRoom(stageFile, sliders, matchConfig);
       roomStageFileRef.current = stageFile;
     } else {
       if (roomStageFileRef.current !== stageFile) {
@@ -132,7 +146,7 @@ export function DuckHunterArcade() {
       await room.pushConfig(sliders);
       // Clears a finished match and tells waiting phones to keep holding on
       // the briefing (attract-mode ducks are not open range).
-      await room.armLobby();
+      await room.armLobby(matchConfig);
     }
   };
 
@@ -189,14 +203,7 @@ export function DuckHunterArcade() {
           setup={setup}
           room={room}
           feed={feed}
-          onStart={() =>
-            void room.startMatch({
-              mode: setup.mode,
-              durationMs: setup.mode === 'time' ? setup.durationMs : undefined,
-              targetScore:
-                setup.mode === 'points' ? setup.targetScore : undefined,
-            })
-          }
+          onStart={() => void room.startMatch(matchConfig)}
           onBack={() => setScreen('config')}
         />
       ) : null}

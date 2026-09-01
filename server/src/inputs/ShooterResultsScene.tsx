@@ -1,13 +1,19 @@
 import React from 'react';
-import { Text, View } from '@swmansion/smelter';
+import { Shader, Text, View } from '@swmansion/smelter';
 import type { ShooterOverlay } from '../app/store';
 import { ArcadeBigText, RETRO, RetroPanel } from './RetroPanel';
 import {
   CharacterClip,
   HudLine,
   shooterCharacter,
+  useCharacterClipPlaying,
 } from './ShooterCharacterClip';
-import { hudScale, resultsLayout, type PodiumSlot } from './retroHudLayout';
+import {
+  chamferClipCut,
+  hudScale,
+  resultsLayout,
+  type PodiumSlot,
+} from './retroHudLayout';
 
 const FONT = 'Doto';
 
@@ -78,8 +84,12 @@ function PodiumPlace({
   const first = slot.place === 1;
   const accent = entry ? entry.color : RETRO.line;
   const character = shooterCharacter(entry?.characterId);
+  const clipPlaying = useCharacterClipPlaying(entry?.characterId);
   // Keeps the panel's chamfered stroke visible around the video.
   const clipInset = Math.max(3, Math.round(6 * k));
+  const panelCut = Math.round(12 * k);
+  const clipW = slot.clip.width - clipInset * 2;
+  const clipH = slot.clip.height - clipInset * 2;
   const nameFs = Math.round((first ? 36 : 30) * k);
   const scoreFs = Math.round(slot.pedestal.height * (first ? 0.46 : 0.44));
   const rankFs = Math.round(slot.pedestal.height * 0.26);
@@ -112,7 +122,7 @@ function PodiumPlace({
         y={slot.clip.top}
         w={slot.clip.width}
         h={slot.clip.height}
-        cut={Math.round(12 * k)}
+        cut={panelCut}
         line={accent}
         glow={first ? 0.55 : 0.3}
         glowPx={Math.round((first ? 22 : 14) * k)}
@@ -120,20 +130,42 @@ function PodiumPlace({
         fillA={0.92}
         scanline={0.35}
         scanPx={Math.max(3, Math.round(4 * k))}>
-        <View
-          style={{
-            top: clipInset,
-            left: clipInset,
-            width: slot.clip.width - clipInset * 2,
-            height: slot.clip.height - clipInset * 2,
-            overflow: 'hidden',
-          }}>
-          <CharacterClip
-            characterId={entry?.characterId}
-            width={slot.clip.width - clipInset * 2}
-            height={slot.clip.height - clipInset * 2}
-          />
-        </View>
+        {/* The clip is stacked ON TOP of the panel chrome, so its square
+            corners would cover the 45° cuts — carve them out to match. */}
+        {clipPlaying ? (
+          <View
+            style={{
+              top: clipInset,
+              left: clipInset,
+              width: clipW,
+              height: clipH,
+              overflow: 'hidden',
+            }}>
+            <Shader
+              shaderId='chamfer-clip'
+              resolution={{ width: clipW, height: clipH }}
+              shaderParam={{
+                type: 'struct',
+                value: [
+                  {
+                    type: 'f32',
+                    fieldName: 'cut_px',
+                    value: chamferClipCut(panelCut, clipInset),
+                  },
+                  { type: 'f32', fieldName: 'feather_px', value: 1.5 },
+                ],
+              }}>
+              {/* Shader children must have a known size. */}
+              <View style={{ width: clipW, height: clipH, overflow: 'hidden' }}>
+                <CharacterClip
+                  characterId={entry?.characterId}
+                  width={clipW}
+                  height={clipH}
+                />
+              </View>
+            </Shader>
+          </View>
+        ) : null}
       </RetroPanel>
 
       {/* Pedestal: rank digit top-left, score across the face. */}

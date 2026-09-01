@@ -437,6 +437,17 @@ export class RoomState {
       },
       recordTopScore: (entry) => duckHunterTopScores.submit(entry),
       readTopScores: (mode) => duckHunterTopScores.snapshot(mode),
+      registerJoinQr: (url) =>
+        this.registerJoinQrImage(url, {
+          dir: 'dh-qr',
+          imagePrefix: 'dh-qr',
+          // Retro palette, and a real quiet zone: unlike the KBT panel there
+          // is no baked light plate behind this one — it sits straight on the
+          // opening screen's navy chrome.
+          dark: '#081120ff',
+          light: '#e8f1ffff',
+          margin: 2,
+        }),
       // Character clips are engine inputs shared across rooms (two players on
       // the same hunter share one decoder), so the claim is keyed by room.
       mountCharacterClips: (ids) => {
@@ -541,32 +552,16 @@ export class RoomState {
       getResolution: () => this.output.store.getState().resolution,
       publishHud: (state) =>
         this.output.store.getState().setKbTournament(state),
-      // Lobby-scene QR: render the join URL to a PNG under the data dir and
-      // register it with the engine. The image id carries a content hash —
-      // registered images are immutable per id, so a changed URL must mint a
-      // fresh id for the HUD to pick up.
-      registerJoinQr: async (url) => {
-        const hash = createHash('sha1').update(url).digest('hex').slice(0, 8);
-        const safeRoom = idPrefix.replace(/[^a-zA-Z0-9_-]/g, '_');
-        const dir = path.join(DATA_DIR, 'kbt-qr');
-        await ensureDir(dir);
-        const file = path.join(dir, `${safeRoom}-${hash}.png`);
-        await QRCode.toFile(file, url, {
-          type: 'png',
-          width: 288,
-          margin: 0,
-          errorCorrectionLevel: 'M',
+      registerJoinQr: (url) =>
+        this.registerJoinQrImage(url, {
+          dir: 'kbt-qr',
+          imagePrefix: 'kbt-qr',
           // Drawn on the join panel's baked cream square — match its tone so
-          // the quiet zone blends in.
-          color: { dark: '#101114ff', light: '#e8e4daff' },
-        });
-        const imageId = `kbt-qr-${safeRoom}-${hash}`;
-        await SmelterInstance.registerImage(imageId, {
-          serverPath: file,
-          assetType: 'png',
-        });
-        return imageId;
-      },
+          // the quiet zone blends in (and needs no margin of its own).
+          dark: '#101114ff',
+          light: '#e8e4daff',
+          margin: 0,
+        }),
       // Profile photos follow the QR's immutability rule: the id embeds the
       // content hash, so a re-uploaded photo mints a fresh id.
       registerPlayerPhoto: async (photoPath, photoHash) => {
@@ -1956,13 +1951,20 @@ export class RoomState {
   private duckPauseMs = DEFAULT_DUCK_PAUSE_MS;
   private duckFlySpeed = DEFAULT_DUCK_FLY_FRAC_PER_SEC;
 
-  /** Set the room-wide Duck Hunter config (ammo + duck size/flight) from the panel. */
+  /**
+   * Set the room-wide Duck Hunter config (ammo + duck size/flight) from the
+   * panel. `joinUrl`/`joinLabel` are write-only chrome for the broadcast's
+   * opening screen (the server can't know the public page base) and, like
+   * KBT's, don't come back in the returned config.
+   */
   public setDuckHunterConfig(cfg: {
     maxAmmo?: number;
     reloadMs?: number;
     duckScale?: number;
     duckPauseMs?: number;
     duckFlySpeed?: number;
+    joinUrl?: string;
+    joinLabel?: string;
   }): {
     maxAmmo: number;
     reloadMs: number;
@@ -1971,6 +1973,12 @@ export class RoomState {
     duckFlySpeed: number;
   } {
     this.duckHunter.setRoomConfig(cfg);
+    if (cfg.joinUrl !== undefined || cfg.joinLabel !== undefined) {
+      this.duckHunter.setJoinLink({
+        joinUrl: cfg.joinUrl,
+        joinLabel: cfg.joinLabel,
+      });
+    }
     if (typeof cfg.duckScale === 'number' && Number.isFinite(cfg.duckScale)) {
       this.duckScale = Math.max(0.25, Math.min(3, cfg.duckScale));
     }
@@ -2825,6 +2833,44 @@ export class RoomState {
       this.frozenImages.delete(inputId);
       this.deferredUnregisterImage(imageId, jpegPath);
     }
+  }
+
+  /**
+   * Lobby-scene QR: render `url` to a PNG under the data dir and register it
+   * with the engine. The image id carries a content hash — registered images
+   * are immutable per id, so a changed URL must mint a fresh id for the HUD to
+   * pick it up. Shared by the KBT roster panel and the duck-hunter opening
+   * screen: same immutability rule, different palette and quiet zone (KBT sits
+   * on a baked cream plate, duck hunter on navy chrome).
+   */
+  private async registerJoinQrImage(
+    url: string,
+    style: {
+      dir: string;
+      imagePrefix: string;
+      dark: string;
+      light: string;
+      margin: number;
+    },
+  ): Promise<string> {
+    const hash = createHash('sha1').update(url).digest('hex').slice(0, 8);
+    const safeRoom = this.idPrefix.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const dir = path.join(DATA_DIR, style.dir);
+    await ensureDir(dir);
+    const file = path.join(dir, `${safeRoom}-${hash}.png`);
+    await QRCode.toFile(file, url, {
+      type: 'png',
+      width: 288,
+      margin: style.margin,
+      errorCorrectionLevel: 'M',
+      color: { dark: style.dark, light: style.light },
+    });
+    const imageId = `${style.imagePrefix}-${safeRoom}-${hash}`;
+    await SmelterInstance.registerImage(imageId, {
+      serverPath: file,
+      assetType: 'png',
+    });
+    return imageId;
   }
 
   private deferredUnregisterImage(imageId: string, jpegPath: string): void {
