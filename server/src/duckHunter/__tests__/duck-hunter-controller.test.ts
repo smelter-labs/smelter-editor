@@ -8,6 +8,12 @@ import type { StoreApi } from 'zustand';
 import type { PersonBoxes, RoomStore, ShooterOverlay } from '../../app/store';
 import { DuckHunterController } from '../DuckHunterController';
 import { MAX_DUCKS } from '../duckFlight';
+import {
+  DOG_FREEZE_MS,
+  DOG_POSE_ASPECT,
+  DOG_RISE_MS,
+  DOG_WIDTH_FRAC,
+} from '../dogTaunt';
 
 const ROOM = 'room-1';
 
@@ -856,6 +862,183 @@ describe('ducks', () => {
     expect(shot.hitColor).toBe(shooter);
     // A duck still in flight has no shooter attached.
     expect(ducks.find((d) => d.id === 2)!.hitColor).toBeUndefined();
+    h.controller.dispose();
+  });
+});
+
+/**
+ * A bird-sprite target with one duck parked in the top-left corner: a long pause
+ * keeps it frozen at its spawn, well clear of the centre, so every shot aimed at
+ * the middle of the frame is a genuine miss without the flock drifting into it.
+ */
+function birdTarget(): PersonBoxes {
+  return {
+    boxes: [{ id: 1, x: 0.02, y: 0.02, w: 0.06, h: 0.06, color: 0 }],
+    frameW: 1920,
+    frameH: 1080,
+    ghost: true,
+    sprite: 'bird',
+    duckPauseMs: 100_000,
+  };
+}
+
+// Center of the taunting dog in content space: it is DOG_WIDTH_FRAC of the
+// output wide, laugh-aspect tall, and stands on the bottom edge.
+const DOG_W = Math.round(1920 * DOG_WIDTH_FRAC);
+const DOG_H = Math.round(DOG_W * DOG_POSE_ASPECT.laugh);
+const DOG_AIM_Y = (1080 - DOG_H / 2) / 1080;
+
+/** Settle the eased crosshair onto `(x, y)` — fire() shoots at dispX/dispY. */
+async function aimAt(
+  h: ReturnType<typeof harness>,
+  clientId: string,
+  x: number,
+  y: number,
+) {
+  h.controller.aim(clientId, x, y);
+  await vi.advanceTimersByTimeAsync(400); // ~12 eased ticks; error < 1e-4
+}
+
+function dogsNow(h: ReturnType<typeof harness>) {
+  return h.lastOverlay()?.dogs ?? [];
+}
+
+describe('taunting dog', () => {
+  it('pops up after two misses in a row, not one', async () => {
+    const h = harness();
+    h.sceneState.peopleBoxes['stage'] = birdTarget();
+    h.controller.join('c1', 'Bob');
+    await aimAt(h, 'c1', 0.5, DOG_AIM_Y);
+
+    h.controller.fire('c1'); // miss 1
+    expect(dogsNow(h)).toHaveLength(0);
+    h.controller.fire('c1'); // miss 2 → the dog comes out to laugh
+    expect(dogsNow(h)).toHaveLength(1);
+    h.controller.dispose();
+  });
+
+  it('only lets itself be shot while laughing', async () => {
+    const h = harness();
+    h.sceneState.peopleBoxes['stage'] = birdTarget();
+    h.controller.join('c1', 'Bob');
+    await aimAt(h, 'c1', 0.5, DOG_AIM_Y);
+    h.controller.fire('c1');
+    h.controller.fire('c1'); // dog summoned, still springing up
+
+    h.controller.fire('c1'); // shot during the rise — too early
+    expect(dogsNow(h)[0]?.diedAt).toBeUndefined();
+    expect(h.lastOverlay()!.scores[0].dogScore).toBe(0);
+
+    await vi.advanceTimersByTimeAsync(DOG_RISE_MS + 100); // now laughing
+    h.controller.fire('c1');
+    expect(dogsNow(h)[0]?.diedAt).toBeGreaterThan(0);
+    expect(h.lastOverlay()!.scores[0].dogScore).toBe(1);
+    h.controller.dispose();
+  });
+
+  it('spends a round and leaves the duck score untouched', async () => {
+    const h = harness();
+    h.sceneState.peopleBoxes['stage'] = birdTarget();
+    h.controller.join('c1', 'Bob');
+    await aimAt(h, 'c1', 0.5, DOG_AIM_Y);
+    h.controller.fire('c1');
+    h.controller.fire('c1');
+    await vi.advanceTimersByTimeAsync(DOG_RISE_MS + 100);
+
+    const before = h.lastOverlay()!.scores[0].ammo;
+    h.controller.fire('c1');
+    const row = h.lastOverlay()!.scores[0];
+    expect(row.ammo).toBe(before - 1); // a dog costs a round like anything else
+    expect(row.dogScore).toBe(1);
+    expect(row.score).toBe(0); // ...but never the duck score
+    expect(h.lastState()!.players[0].score).toBe(0);
+
+    const hit = h.sent
+      .map((s) => s.event)
+      .filter((e) => e.type === 'shooter_hit')
+      .pop() as Extract<RoomEvent, { type: 'shooter_hit' }>;
+    expect(hit.target).toBe('dog');
+    expect(hit.dogScore).toBe(1);
+    expect(hit.score).toBe(0);
+    h.controller.dispose();
+  });
+
+  it('cannot be shot twice', async () => {
+    const h = harness();
+    h.sceneState.peopleBoxes['stage'] = birdTarget();
+    h.controller.join('c1', 'Bob');
+    await aimAt(h, 'c1', 0.5, DOG_AIM_Y);
+    h.controller.fire('c1');
+    h.controller.fire('c1');
+    await vi.advanceTimersByTimeAsync(DOG_RISE_MS + 100);
+
+    h.controller.fire('c1');
+    h.controller.fire('c1'); // same spot, mid death beat
+    expect(h.lastOverlay()!.scores[0].dogScore).toBe(1);
+    h.controller.dispose();
+  });
+
+  it('never wins a points round', async () => {
+    const h = harness();
+    h.sceneState.peopleBoxes['stage'] = birdTarget();
+    h.controller.join('c1', 'Bob');
+    h.controller.controlMatch({
+      action: 'start',
+      mode: 'points',
+      targetScore: 1,
+    });
+    await vi.advanceTimersByTimeAsync(3100); // countdown → playing
+    await aimAt(h, 'c1', 0.5, DOG_AIM_Y);
+    h.controller.fire('c1');
+    h.controller.fire('c1');
+    await vi.advanceTimersByTimeAsync(DOG_RISE_MS + 100);
+    h.controller.fire('c1');
+
+    expect(h.lastOverlay()!.scores[0].dogScore).toBe(1);
+    expect(h.controller.getMatchSnapshot().phase).toBe('playing');
+    expect(h.controller.getMatchSnapshot().winner).toBeFalsy();
+    h.controller.dispose();
+  });
+
+  it('freezes the flock for the yelp, then lets it resume', async () => {
+    const h = harness();
+    h.sceneState.peopleBoxes['stage'] = birdTarget();
+    h.controller.join('c1', 'Bob');
+    await aimAt(h, 'c1', 0.5, DOG_AIM_Y);
+    h.controller.fire('c1');
+    h.controller.fire('c1');
+    await vi.advanceTimersByTimeAsync(DOG_RISE_MS + 100);
+    h.controller.fire('c1'); // dog down — hit-stop begins
+
+    const atHit = h.lastOverlay()!.ducks[0].spawnAt;
+    await vi.advanceTimersByTimeAsync(DOG_FREEZE_MS / 2);
+    const frozen = h.lastOverlay()!.ducks[0].spawnAt;
+    // Frozen: the duck's clock is pushed forward with wall time, so it resumes
+    // in place rather than teleporting once the beat ends.
+    expect(frozen).toBeGreaterThan(atHit);
+
+    await vi.advanceTimersByTimeAsync(DOG_FREEZE_MS);
+    const resumed = h.lastOverlay()!.ducks[0].spawnAt;
+    await vi.advanceTimersByTimeAsync(200);
+    expect(h.lastOverlay()!.ducks[0].spawnAt).toBe(resumed);
+    h.controller.dispose();
+  });
+
+  it('is cleared, along with the dog tally, when a fresh round starts', async () => {
+    const h = harness();
+    h.sceneState.peopleBoxes['stage'] = birdTarget();
+    h.controller.join('c1', 'Bob');
+    await aimAt(h, 'c1', 0.5, DOG_AIM_Y);
+    h.controller.fire('c1');
+    h.controller.fire('c1');
+    await vi.advanceTimersByTimeAsync(DOG_RISE_MS + 100);
+    h.controller.fire('c1');
+    expect(h.lastOverlay()!.scores[0].dogScore).toBe(1);
+
+    h.controller.controlMatch({ action: 'start', mode: 'time' });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(dogsNow(h)).toHaveLength(0);
+    expect(h.lastOverlay()!.scores[0].dogScore).toBe(0);
     h.controller.dispose();
   });
 });

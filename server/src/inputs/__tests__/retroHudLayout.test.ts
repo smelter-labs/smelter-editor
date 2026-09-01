@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DOG_ICONS_MAX,
   chamferClipCut,
   chipRect,
+  dogIconPitch,
   dotoTextWidth,
   hudScale,
   hunterRowMetrics,
@@ -210,5 +212,61 @@ describe('retroHudLayout', () => {
     expect(
       small.rowLeft + 6 * small.tileSize + small.gap * 5,
     ).toBeLessThanOrEqual(1280);
+  });
+});
+
+describe('dog tally strip', () => {
+  // The strip lives in the score column, which is fs*3.8 wide once any player
+  // has bagged a dog (see ShooterScoreboard).
+  const stripFor = (fs: number) => Math.round(fs * 3.8);
+
+  it('scales the icon with the row font', () => {
+    for (const res of RESOLUTIONS) {
+      const { fontSize: fs } = scoreboardRect(res, 3);
+      const m = hunterRowMetrics(fs);
+      expect(m.dogIconH).toBeGreaterThanOrEqual(6);
+      expect(m.dogIconW).toBeGreaterThanOrEqual(m.dogIconH); // 29x28 source
+      expect(m.dogIconGap).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it('leaves the icon within the row height', () => {
+    for (const res of RESOLUTIONS) {
+      const { fontSize: fs, rowH } = scoreboardRect(res, 3);
+      const { dogIconH } = hunterRowMetrics(fs);
+      // The strip is drawn at fs*1.85 and must not spill out of the row.
+      expect(Math.round(fs * 1.85) + dogIconH).toBeLessThanOrEqual(rowH);
+    }
+  });
+
+  it('never lets the pile escape the strip, at any count', () => {
+    for (const res of RESOLUTIONS) {
+      const { fontSize: fs } = scoreboardRect(res, 3);
+      const { dogIconW, dogIconGap } = hunterRowMetrics(fs);
+      const stripW = stripFor(fs);
+      for (let n = 1; n <= DOG_ICONS_MAX; n++) {
+        const pitch = dogIconPitch(n, stripW, dogIconW, dogIconGap);
+        // Icons are laid out right-to-left from the strip's right edge.
+        const leftmost = stripW - dogIconW - (n - 1) * pitch;
+        expect(leftmost).toBeGreaterThanOrEqual(0);
+        expect(pitch).toBeGreaterThanOrEqual(0);
+      }
+    }
+  });
+
+  it('shingles rather than shrinking once the pile stops fitting', () => {
+    const { fontSize: fs } = scoreboardRect(FHD, 3);
+    const { dogIconW, dogIconGap } = hunterRowMetrics(fs);
+    const stripW = stripFor(fs);
+    const pitches = Array.from({ length: DOG_ICONS_MAX }, (_, i) =>
+      dogIconPitch(i + 1, stripW, dogIconW, dogIconGap),
+    );
+    // Monotonically tightening, never wider than a full icon + gap.
+    for (let i = 1; i < pitches.length; i++) {
+      expect(pitches[i]).toBeLessThanOrEqual(pitches[i - 1]);
+    }
+    expect(pitches[0]).toBe(dogIconW + dogIconGap);
+    // The icon itself never changes size — only the step between icons does.
+    expect(hunterRowMetrics(fs).dogIconW).toBe(dogIconW);
   });
 });

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Shader, Text, View } from '@swmansion/smelter';
+import { Image, Rescaler, Shader, Text, View } from '@swmansion/smelter';
 import type { ShooterOverlay } from '../app/store';
 import { ArcadeBigText, RETRO, RetroPanel } from './RetroPanel';
 import {
@@ -9,13 +9,64 @@ import {
   useCharacterClipPlaying,
 } from './ShooterCharacterClip';
 import {
+  DOG_ICONS_MAX,
   chamferClipCut,
+  dogIconPitch,
   hudScale,
   resultsLayout,
   type PodiumSlot,
 } from './retroHudLayout';
 
 const FONT = 'Doto';
+
+/**
+ * Dog tally: one sprite per dog bagged, laid out right-to-left so the pile stays
+ * flush with the strip's right edge and shingles instead of overflowing. Shares
+ * dogIconPitch with the broadcast scoreboard so both read the same way.
+ */
+function DogTally({
+  count,
+  top,
+  left,
+  stripW,
+  iconH,
+}: {
+  count: number;
+  top: number;
+  left: number;
+  stripW: number;
+  iconH: number;
+}) {
+  const n = Math.min(count, DOG_ICONS_MAX);
+  if (n <= 0) return null;
+  const iconW = Math.round((iconH * 29) / 28); // dog-tally.png is 29x28
+  const pitch = dogIconPitch(
+    n,
+    stripW,
+    iconW,
+    Math.max(2, Math.round(iconH * 0.17)),
+  );
+  return (
+    <View
+      style={{ top, left, width: stripW, height: iconH, overflow: 'hidden' }}>
+      {Array.from({ length: n }).map((_, i) => (
+        <View
+          key={`dog-${i}`}
+          style={{
+            top: 0,
+            left: Math.round(stripW - iconW - i * pitch),
+            width: iconW,
+            height: iconH,
+            overflow: 'hidden',
+          }}>
+          <Rescaler style={{ width: iconW, height: iconH, rescaleMode: 'fit' }}>
+            <Image imageId='dog-tally' />
+          </Rescaler>
+        </View>
+      ))}
+    </View>
+  );
+}
 
 /** Small uppercase column header in the retro-kit PanelTitle spirit. */
 function ColumnTitle({
@@ -245,6 +296,10 @@ export function ShooterResultsScene({
   // that the podium owns the upper half, and splitting keeps every entry.
   const finalsPerCol = 4;
   const topsPerCol = 5;
+  // Reserved once for the whole column so every row's score stays aligned.
+  const dogStripW = match.finalScores.some((p) => (p.dogScore ?? 0) > 0)
+    ? Math.round(rowFs * 2.6)
+    : 0;
 
   return (
     <View
@@ -385,7 +440,10 @@ export function ShooterResultsScene({
                 style={{
                   top: Math.round((rowH - rowFs * 1.3) / 2),
                   left: Math.round(rowFs * 2.9),
-                  width: width - Math.round(rowFs * 6.0),
+                  // The name yields the tally strip's width only when somebody
+                  // actually bagged a dog, so a dogless round is laid out
+                  // exactly as before.
+                  width: width - Math.round(rowFs * 6.0) - dogStripW,
                   height: Math.round(rowFs * 1.4),
                   overflow: 'hidden',
                 }}>
@@ -399,6 +457,14 @@ export function ShooterResultsScene({
                   {p.name}
                 </Text>
               </View>
+              {/* Dogs bagged, between the name and the score. */}
+              <DogTally
+                count={p.dogScore ?? 0}
+                top={Math.round((rowH - rowFs * 0.9) / 2)}
+                left={width - Math.round(rowFs * 3) - dogStripW}
+                stripW={Math.max(0, dogStripW - Math.round(rowFs * 0.3))}
+                iconH={Math.round(rowFs * 0.9)}
+              />
               <View
                 style={{
                   top: Math.round((rowH - rowFs * 1.4) / 2),

@@ -31,6 +31,7 @@ export function PhoneShell({
   stepLabel,
   compact = false,
   title = 'DUCK HUNTER',
+  topRight,
   children,
 }: {
   /** 0-based; negative hides the progress row (play stage). */
@@ -41,6 +42,13 @@ export function PhoneShell({
   compact?: boolean;
   /** Mini-logo text — other games reuse the shell with their own marque. */
   title?: string;
+  /**
+   * Corner utility slot (a chip or two). Floated over the shell rather than
+   * placed in the header row: the header is a centered column, so anything in
+   * it would shove the logo off-center — and in compact landscape the header
+   * isn't rendered at all, which would take the slot down with it.
+   */
+  topRight?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const landscape = useIsLandscape();
@@ -146,6 +154,21 @@ export function PhoneShell({
         }}>
         {children}
       </div>
+      {topRight ? (
+        <div
+          style={{
+            position: 'absolute',
+            top: 'calc(env(safe-area-inset-top, 0px) + 6px)',
+            right: 'calc(env(safe-area-inset-right, 0px) + 8px)',
+            // Over the content region (z 1), under the scanlines (z 30) so it
+            // keeps the CRT tint — they're pointer-events:none, so it still taps.
+            zIndex: 3,
+            display: 'flex',
+            gap: 6,
+          }}>
+          {topRight}
+        </div>
+      ) : null}
       <div className='r5-scanlines' />
     </div>
   );
@@ -225,6 +248,8 @@ export function ChipButton({
   label,
   active = false,
   dense = false,
+  href,
+  title,
   onClick,
   style,
 }: {
@@ -232,42 +257,84 @@ export function ChipButton({
   active?: boolean;
   /** Smaller padding + font (overlays on the calibration range). */
   dense?: boolean;
+  /**
+   * Turns the chip into a real link opening a new tab. A genuine anchor beats
+   * `window.open()` here: mobile browsers block popups that aren't a direct
+   * gesture, and nothing can unmount the panel out from under the player.
+   */
+  href?: string;
+  /** Tooltip + accessible name — icon-only chips have no readable label. */
+  title?: string;
   onClick?: () => void;
   style?: React.CSSProperties;
 }) {
+  const chrome: React.CSSProperties = {
+    clipPath: chamfer(6),
+    background: active ? R5.cyan : 'rgba(120,150,200,0.14)',
+    color: active ? R5.bgDeep : R5.ink,
+    fontFamily: pixelFont,
+    fontSize: dense ? 8 : 9,
+    letterSpacing: 1,
+    padding: dense ? '7px 9px' : '10px 12px',
+    whiteSpace: 'nowrap',
+    ...style,
+  };
+
+  if (href) {
+    return (
+      <a
+        className='r5-btn'
+        href={href}
+        target='_blank'
+        rel='noopener noreferrer'
+        title={title}
+        aria-label={title}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          textDecoration: 'none',
+          ...chrome,
+        }}>
+        {label}
+      </a>
+    );
+  }
+
   return (
     <button
       type='button'
       className='r5-btn'
       onClick={onClick}
-      style={{
-        clipPath: chamfer(6),
-        background: active ? R5.cyan : 'rgba(120,150,200,0.14)',
-        color: active ? R5.bgDeep : R5.ink,
-        fontFamily: pixelFont,
-        fontSize: dense ? 8 : 9,
-        letterSpacing: 1,
-        padding: dense ? '7px 9px' : '10px 12px',
-        whiteSpace: 'nowrap',
-        ...style,
-      }}>
+      title={title}
+      aria-label={title}
+      style={chrome}>
       {label}
     </button>
   );
 }
 
-/** Amber warning strip (gyro/camera problems) in the retro voice. */
-export function WarnPanel({ children }: { children: React.ReactNode }) {
+/**
+ * Amber warning strip (gyro/camera problems) in the retro voice. `bad` turns
+ * it red for a refusal — a blocked trigger or an empty magazine.
+ */
+export function WarnPanel({
+  children,
+  tone = 'warn',
+}: {
+  children: React.ReactNode;
+  tone?: 'warn' | 'bad';
+}) {
+  const rgb = tone === 'bad' ? R5.redRgb : R5.orangeRgb;
   return (
     <div
       style={{
         clipPath: chamfer(8),
-        background: `rgba(${R5.orangeRgb},0.16)`,
-        border: `1px solid rgba(${R5.orangeRgb},0.5)`,
+        background: `rgba(${rgb},0.16)`,
+        border: `1px solid rgba(${rgb},0.5)`,
         padding: '10px 12px',
         fontFamily: monoFont,
         fontSize: 11,
-        color: R5.orangeBright,
+        color: tone === 'bad' ? R5.red : R5.orangeBright,
       }}>
       {children}
     </div>

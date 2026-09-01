@@ -709,3 +709,59 @@ export function LedText({
     </span>
   );
 }
+
+/** Icon size of one dog in a tally, px. */
+const DOG_ICON = 16;
+/** Past this the pile shingles instead of growing (mirrors the broadcast HUD). */
+const DOG_ICONS_MAX = 8;
+
+/**
+ * Dogs bagged, drawn as sprite icons — no number, matching the broadcast
+ * scoreboard. Laid out left-to-right in a strip that stops growing once the pile
+ * no longer fits: the icons overlap like a fanned deck rather than shrinking or
+ * sprouting a count, so the score beside them never shifts.
+ */
+export function DogTally({
+  count,
+  size = DOG_ICON,
+}: {
+  count: number;
+  size?: number;
+}) {
+  const n = Math.min(count, DOG_ICONS_MAX);
+  if (n <= 0) return null;
+  const stripW = size * 4.6;
+  const full = size + 2;
+  const pitch = n <= 1 ? full : Math.min(full, (stripW - size) / (n - 1));
+  return (
+    <span
+      style={{
+        position: 'relative',
+        display: 'inline-block',
+        width: Math.round(size + (n - 1) * pitch),
+        height: size,
+        alignSelf: 'center',
+        flexShrink: 0,
+      }}>
+      {Array.from({ length: n }).map((_, i) => (
+        // A 528-byte pixel-art sprite: next/image would add a loader
+        // round-trip and fight the `pixelated` rendering this needs.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          key={i}
+          src='/duck-hunter/dog-tally.png'
+          alt=''
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: Math.round(i * pitch),
+            width: size,
+            height: size,
+            // NES pixel art: never let the browser smooth it.
+            imageRendering: 'pixelated',
+          }}
+        />
+      ))}
+    </span>
+  );
+}

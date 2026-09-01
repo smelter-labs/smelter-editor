@@ -45,7 +45,12 @@ export function hunterRowMetrics(fs: number): {
   /** Character sub-label. */
   subFs: number;
   subH: number;
+  /** Dog tally icon (dog-tally.png is 29x28). */
+  dogIconH: number;
+  dogIconW: number;
+  dogIconGap: number;
 } {
+  const dogIconH = Math.round(fs * 0.7);
   return {
     av: Math.round(fs * 1.9),
     avGap: Math.round(fs * 1.0),
@@ -54,7 +59,36 @@ export function hunterRowMetrics(fs: number): {
     pipRowGap: Math.round(fs * 0.18),
     subFs: Math.round(fs * 0.5),
     subH: Math.round(fs * 0.72),
+    dogIconH,
+    dogIconW: Math.round((dogIconH * 29) / 28),
+    dogIconGap: Math.max(2, Math.round(fs * 0.12)),
   };
+}
+
+/**
+ * Beyond this many dogs the strip stops growing: the icons would be shingled
+ * down to a couple of pixels of visible edge each, which reads as noise.
+ */
+export const DOG_ICONS_MAX = 12;
+
+/**
+ * Horizontal step between dog tally icons, laid out right-to-left in a strip of
+ * `stripW`. Once the pile no longer fits at full pitch the icons shingle — they
+ * overlap like a fanned deck — instead of shrinking or sprouting a "+n" count.
+ * That keeps the strip a constant width (so the score above it never moves) and
+ * keeps the tally icon-only, which is the whole point of it.
+ */
+export function dogIconPitch(
+  count: number,
+  stripW: number,
+  iconW: number,
+  gap: number,
+): number {
+  const full = iconW + gap;
+  if (count <= 1) return full;
+  // The last icon's left edge is stripW - iconW - (count-1)*pitch, so capping
+  // pitch here is what proves the pile can never escape the strip.
+  return Math.min(full, Math.max(0, (stripW - iconW) / (count - 1)));
 }
 
 export type Rect = { top: number; left: number; width: number; height: number };
