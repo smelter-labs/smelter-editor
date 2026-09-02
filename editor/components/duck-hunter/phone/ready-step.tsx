@@ -60,6 +60,9 @@ export function ReadyStep({
   camOn,
   targetActive,
   playersCount,
+  maxPlayers,
+  lobbyFull,
+  characterName,
   match,
   joined,
   canEnter,
@@ -71,6 +74,12 @@ export function ReadyStep({
   camOn: boolean;
   targetActive: boolean;
   playersCount: number;
+  /** Roster cap, shown beside the count so "3/3" explains a refused JOIN. */
+  maxPlayers: number;
+  /** Every slot is held by someone else — JOIN would be refused. */
+  lobbyFull: boolean;
+  /** The hunter this phone picked, or null if the pick was lost/taken. */
+  characterName: string | null;
   match: ShooterMatchEvent | null;
   /** The player pressed JOIN but the host hasn't opened the gate yet. */
   joined: boolean;
@@ -123,6 +132,11 @@ export function ReadyStep({
           color={R5.yellow}
         />
         <Row
+          label='hunter'
+          value={characterName ?? 'NOT PICKED'}
+          color={characterName ? undefined : R5.red}
+        />
+        <Row
           label='weapon'
           value={gyroMode ? 'GYRO CANNON' : 'FINGER BLASTER'}
         />
@@ -132,7 +146,11 @@ export function ReadyStep({
           value={targetActive ? 'LIVE' : 'WARMING UP…'}
           color={targetActive ? R5.green : R5.orange}
         />
-        <Row label='hunters in' value={String(playersCount)} />
+        <Row
+          label='hunters in'
+          value={`${playersCount}/${maxPlayers}`}
+          color={lobbyFull ? R5.red : undefined}
+        />
       </PixelPanel>
 
       <div style={{ textAlign: 'center' }}>
@@ -161,6 +179,23 @@ export function ReadyStep({
             phase === 'ended' ? 'ROUND OVER — STANDING BY' : 'STANDING BY…'
           }
           sub="you're in — the hunt starts when the host does"
+        />
+      ) : !characterName ? (
+        // A slot is a hunter, so there is nothing to join without one. Both
+        // this and the full-lobby case below only pre-empt a refusal the
+        // server would send anyway.
+        <ActionButton
+          accent='red'
+          disabled
+          label='PICK YOUR HUNTER'
+          sub='go back and choose a character first'
+        />
+      ) : lobbyFull ? (
+        <ActionButton
+          accent='red'
+          disabled
+          label='LOBBY FULL'
+          sub={`${maxPlayers} hunters are already in — wait for a slot`}
         />
       ) : (
         <ActionButton

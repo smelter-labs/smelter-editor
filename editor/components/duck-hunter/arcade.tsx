@@ -7,8 +7,10 @@ import type {
 } from '@smelter-editor/types';
 import { ArcadeStage, R5, monoFont } from './retro-kit';
 import {
+  stageKey,
   useDuckHunterRoom,
   type DuckHunterSliderConfig,
+  type StageRef,
 } from './use-duck-hunter-room';
 import { useShooterFeed } from './use-shooter-feed';
 import { TitleScreen } from './screens/title-screen';
@@ -29,7 +31,10 @@ export type MatchSetup = {
 };
 
 const AMMO_CFG_KEY = 'duck-hunter-ammo';
-export const DEFAULT_STAGE_FILE = 'DucksCompilation.mp4';
+export const DEFAULT_STAGE: StageRef = {
+  kind: 'mp4',
+  file: 'DucksCompilation.mp4',
+};
 
 const DEFAULT_SLIDERS: DuckHunterSliderConfig = {
   maxAmmo: 6,
@@ -68,7 +73,7 @@ export function DuckHunterArcade() {
   });
   const [sliders, setSliders] =
     useState<DuckHunterSliderConfig>(DEFAULT_SLIDERS);
-  const [stageFile, setStageFile] = useState<string>(DEFAULT_STAGE_FILE);
+  const [stage, setStage] = useState<StageRef>(DEFAULT_STAGE);
 
   const [roomGone, setRoomGone] = useState(false);
 
@@ -116,9 +121,10 @@ export function DuckHunterArcade() {
     // 'idle' stays on the title — nothing to rejoin.
   }, [room.restored, phase]);
 
-  // Track whether the room's stage input matches the chosen file, so coming
-  // back from the results screen with a different pick swaps the video.
-  const roomStageFileRef = useRef<string | null>(null);
+  // Track whether the room's stage input matches the chosen stage (by
+  // stageKey), so coming back from the results screen with a different pick
+  // swaps the video.
+  const roomStageKeyRef = useRef<string | null>(null);
 
   // The staged round, in wire shape. Sent on the lobby arm as well as the
   // start: the broadcast's opening screen announces it before a match exists.
@@ -136,12 +142,12 @@ export function DuckHunterArcade() {
     if (!room.roomId) {
       // createRoom arms the 'lobby' phase itself (the fresh roomId hasn't
       // committed to state yet).
-      await room.createRoom(stageFile, sliders, matchConfig);
-      roomStageFileRef.current = stageFile;
+      await room.createRoom(stage, sliders, matchConfig);
+      roomStageKeyRef.current = stageKey(stage);
     } else {
-      if (roomStageFileRef.current !== stageFile) {
-        await room.changeStage(stageFile);
-        roomStageFileRef.current = stageFile;
+      if (roomStageKeyRef.current !== stageKey(stage)) {
+        await room.changeStage(stage);
+        roomStageKeyRef.current = stageKey(stage);
       }
       await room.pushConfig(sliders);
       // Clears a finished match and tells waiting phones to keep holding on
@@ -151,7 +157,7 @@ export function DuckHunterArcade() {
   };
 
   const exitToTitle = async () => {
-    roomStageFileRef.current = null;
+    roomStageKeyRef.current = null;
     restoreHandledRef.current = true; // a later snapshot must not re-route us
     setRoomGone(false);
     setScreen('title');
@@ -192,8 +198,8 @@ export function DuckHunterArcade() {
           onSetup={setSetup}
           sliders={sliders}
           onSliders={setSliders}
-          stageFile={stageFile}
-          onStageFile={setStageFile}
+          stage={stage}
+          onStage={setStage}
           onConfirm={() => void openLobby()}
           onBack={() => setScreen('title')}
         />

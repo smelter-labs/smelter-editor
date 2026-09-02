@@ -4,6 +4,10 @@ import type {
   ShooterCharacterId,
   ShooterTopScoreEntry,
 } from '@smelter-editor/types';
+import {
+  MAX_SHOOTER_PLAYERS,
+  SHOOTER_CHARACTER_IDS,
+} from '@smelter-editor/types';
 import type { StoreApi } from 'zustand';
 import type { PersonBoxes, RoomStore, ShooterOverlay } from '../../app/store';
 import { DuckHunterController } from '../DuckHunterController';
@@ -92,6 +96,12 @@ function harness(opts?: { manualCam?: boolean }) {
     },
   });
 
+  /**
+   * Hunters already spoken for through joinPlayer — explicit picks included,
+   * so a defaulted join never collides with one the test named itself.
+   */
+  const usedCharacters = new Set<ShooterCharacterId>();
+
   return {
     controller,
     events,
@@ -105,6 +115,25 @@ function harness(opts?: { manualCam?: boolean }) {
     topScores,
     clipCalls,
     qrCalls,
+    /**
+     * `controller.join` with a hunter supplied when the caller doesn't care
+     * which one — the phone wizard always sends one, and the server refuses a
+     * new entrant without it. Tests that are ABOUT the character (or about
+     * joining without one) call `controller.join` directly instead.
+     */
+    joinPlayer(
+      clientId: string,
+      name: string,
+      playerKey?: string,
+      characterId?: ShooterCharacterId,
+    ) {
+      const pick =
+        characterId ??
+        SHOOTER_CHARACTER_IDS.find((id) => !usedCharacters.has(id)) ??
+        SHOOTER_CHARACTER_IDS[0];
+      usedCharacters.add(pick);
+      controller.join(clientId, name, playerKey, pick);
+    },
     /** The clip set currently on air (`[]` once everything is released). */
     clipsNow(): string[] {
       const last = clipCalls[clipCalls.length - 1];
@@ -170,31 +199,34 @@ afterEach(() => {
 });
 
 describe('join / adoption / disconnect grace', () => {
-  it('acks a join with a minted playerKey and caps the roster at 6', () => {
+  it('acks a join with a minted playerKey and caps the roster at MAX_SHOOTER_PLAYERS', () => {
     const h = harness();
-    for (let i = 0; i < 6; i++) h.controller.join(`c${i}`, `P${i}`);
-    expect(h.lastState()?.players).toHaveLength(6);
+    for (let i = 0; i < MAX_SHOOTER_PLAYERS; i++)
+      h.joinPlayer(`c${i}`, `P${i}`);
+    expect(h.lastState()?.players).toHaveLength(MAX_SHOOTER_PLAYERS);
     const joined = h.joinedFor('c0');
     expect(joined?.playerKey).toBeTruthy();
     expect(joined?.color).toBeTruthy();
 
-    h.controller.join('c6', 'Late');
-    expect(h.errorsFor('c6').map((e) => e.code)).toContain('room_full');
-    expect(h.lastState()?.players).toHaveLength(6);
-    expect(h.joinedFor('c6')).toBeNull();
+    // The cap is checked before the character is, so a late phone hears
+    // 'room_full' rather than being told its hunter is taken.
+    h.controller.join('late', 'Late', undefined, 'improwizator');
+    expect(h.errorsFor('late').map((e) => e.code)).toContain('room_full');
+    expect(h.lastState()?.players).toHaveLength(MAX_SHOOTER_PLAYERS);
+    expect(h.joinedFor('late')).toBeNull();
     h.controller.dispose();
   });
 
   it('adopts by playerKey after a disconnect: score, color and key survive', () => {
     const h = harness();
-    h.controller.join('c1', 'Bob');
+    h.joinPlayer('c1', 'Bob');
     const first = h.joinedFor('c1')!;
     h.controller.handleDisconnect('c1');
     expect(
       h.lastState()?.players.find((p) => p.clientId === 'c1')?.connected,
     ).toBe(false);
 
-    h.controller.join('c2', 'Bob', first.playerKey);
+    h.joinPlayer('c2', 'Bob', first.playerKey);
     const second = h.joinedFor('c2')!;
     expect(second.playerKey).toBe(first.playerKey);
     expect(second.color).toBe(first.color);
@@ -207,10 +239,10 @@ describe('join / adoption / disconnect grace', () => {
 
   it('adopts by playerKey even when the old socket still looks connected', () => {
     const h = harness();
-    h.controller.join('c1', 'Bob');
+    h.joinPlayer('c1', 'Bob');
     const key = h.joinedFor('c1')!.playerKey;
     // Fast refresh: the new socket joins before the old one closes.
-    h.controller.join('c2', 'Bob', key);
+    h.joinPlayer('c2', 'Bob', key);
     const state = h.lastState()!;
     expect(state.players).toHaveLength(1);
     expect(state.players[0].clientId).toBe('c2');
@@ -238,32 +270,143 @@ describe('join / adoption / disconnect grace', () => {
     h.controller.dispose();
   });
 
-  it('a join without a character leaves it unset', () => {
+  it('refuses a new entrant with no character at all', () => {
     const h = harness();
     h.controller.join('c1', 'Bob');
-    expect(h.joinedFor('c1')!.characterId).toBeUndefined();
-    expect(h.lastState()!.players[0].characterId).toBeUndefined();
+    expect(h.errorsFor('c1').map((e) => e.code)).toContain(
+      'character_required',
+    );
+    expect(h.joinedFor('c1')).toBeNull();
+    expect(h.lastState()).toBeNull();
+    h.controller.dispose();
+  });
+
+  it('refuses a join onto a hunter someone else already holds', () => {
+    const h = harness();
+    h.controller.join('c1', 'Bob', undefined, 'crane-hunter');
+    h.controller.join('c2', 'Eve', undefined, 'crane-hunter');
+    expect(h.errorsFor('c2').map((e) => e.code)).toContain('character_taken');
+    expect(h.joinedFor('c2')).toBeNull();
+    // The refused entrant must not consume a slot either.
+    expect(h.lastState()!.players).toHaveLength(1);
+
+    // The hunter frees up the moment its holder leaves.
+    h.controller.leave('c1');
+    h.controller.join('c2', 'Eve', undefined, 'crane-hunter');
+    expect(h.joinedFor('c2')!.characterId).toBe('crane-hunter');
+    h.controller.dispose();
+  });
+
+  it('refuses a re-pick onto a taken hunter and keeps the old one', () => {
+    const h = harness();
+    h.controller.join('c1', 'Bob', undefined, 'crane-hunter');
+    h.controller.join('c2', 'Eve', undefined, 'pink-spotter');
+
+    h.controller.setCharacter('c2', 'crane-hunter');
+    expect(h.errorsFor('c2').map((e) => e.code)).toContain('character_taken');
+    expect(
+      h.lastState()!.players.find((p) => p.clientId === 'c2')!.characterId,
+    ).toBe('pink-spotter');
+
+    // A free one still goes through.
+    h.controller.setCharacter('c2', 'improwizator');
+    expect(
+      h.lastState()!.players.find((p) => p.clientId === 'c2')!.characterId,
+    ).toBe('improwizator');
+    h.controller.dispose();
+  });
+
+  it('a re-join onto a taken hunter keeps the old one, without an error', () => {
+    const h = harness();
+    h.controller.join('c1', 'Bob', undefined, 'crane-hunter');
+    h.controller.join('c2', 'Eve', undefined, 'pink-spotter');
+
+    // Eve's phone replays a stale pick (she chose crane-hunter in a previous
+    // session). The re-join is not an entry, so it is not refused — the taken
+    // hunter is simply not applied and the ack states the truth.
+    const key = h.joinedFor('c2')!.playerKey;
+    h.controller.handleDisconnect('c2');
+    h.controller.join('c3', 'Eve', key, 'crane-hunter');
+    expect(h.joinedFor('c3')!.characterId).toBe('pink-spotter');
+    expect(h.errorsFor('c3')).toHaveLength(0);
+    h.controller.dispose();
+  });
+
+  it('a disconnected player still holds their hunter through the grace', () => {
+    const h = harness();
+    h.controller.join('c1', 'Bob', undefined, 'crane-hunter');
+    h.controller.handleDisconnect('c1');
+    // The entry survives so a reconnect can reclaim it — handing the character
+    // away in the meantime is exactly what that grace exists to prevent.
+    h.controller.join('c2', 'Eve', undefined, 'crane-hunter');
+    expect(h.errorsFor('c2').map((e) => e.code)).toContain('character_taken');
+    h.controller.dispose();
+  });
+
+  it('kick drops the player, notifies them, and frees slot + hunter', async () => {
+    const h = harness();
+    h.controller.join('c1', 'Bob', undefined, 'crane-hunter');
+    await h.controller.startCamera('c1');
+    const camInputId = h.offersFor('c1')[0].inputId;
+    expect(h.registered.has(camInputId)).toBe(true);
+
+    h.controller.controlMatch({ action: 'kick', clientId: 'c1' });
+
+    // The notice must reach the phone — it is what stops the stored playerKey
+    // from silently re-joining on the next reconnect.
+    expect(h.errorsFor('c1').map((e) => e.code)).toContain('kicked');
+    expect(h.lastState()!.players).toHaveLength(0);
+    expect(h.removed).toContain(camInputId);
+
+    // Both the slot and the hunter are immediately available again.
+    h.controller.join('c2', 'Eve', undefined, 'crane-hunter');
+    expect(h.joinedFor('c2')!.characterId).toBe('crane-hunter');
+    expect(h.lastState()!.players).toHaveLength(1);
+    h.controller.dispose();
+  });
+
+  it('a kicked phone replaying its playerKey comes back as a new player', () => {
+    const h = harness();
+    h.controller.join('c1', 'Bob', undefined, 'crane-hunter');
+    const key = h.joinedFor('c1')!.playerKey;
+    h.controller.controlMatch({ action: 'kick', clientId: 'c1' });
+
+    // There is no ban list: rejoining is allowed, it just isn't an adoption —
+    // the old entry is gone, so nothing (score included) carries over.
+    h.controller.join('c2', 'Bob', key, 'crane-hunter');
+    expect(h.joinedFor('c2')!.score).toBe(0);
+    expect(h.lastState()!.players).toHaveLength(1);
+    h.controller.dispose();
+  });
+
+  it('kick ignores an unknown or missing clientId', () => {
+    const h = harness();
+    h.controller.join('c1', 'Bob', undefined, 'crane-hunter');
+    h.controller.controlMatch({ action: 'kick', clientId: 'nobody' });
+    h.controller.controlMatch({ action: 'kick' });
+    expect(h.lastState()!.players).toHaveLength(1);
+    expect(h.errorsFor('c1')).toHaveLength(0);
     h.controller.dispose();
   });
 
   it('name adoption only matches disconnected entries and keyless joins', () => {
     const h = harness();
-    h.controller.join('c1', 'Bob');
+    h.joinPlayer('c1', 'Bob');
     const bobColor = h.joinedFor('c1')!.color;
 
     // Connected "Bob" + keyless join with the same name → a NEW player.
-    h.controller.join('c2', 'Bob');
+    h.joinPlayer('c2', 'Bob');
     expect(h.lastState()?.players).toHaveLength(2);
     expect(h.joinedFor('c2')!.color).not.toBe(bobColor);
 
     // A key that matches nothing must NOT fall back to name adoption.
     h.controller.handleDisconnect('c1');
-    h.controller.join('c3', 'Bob', 'no-such-key');
+    h.joinPlayer('c3', 'Bob', 'no-such-key');
     expect(h.lastState()?.players).toHaveLength(3);
     expect(h.joinedFor('c3')!.color).not.toBe(bobColor);
 
     // Keyless + disconnected + exact name → adopts the orphan.
-    h.controller.join('c4', 'Bob');
+    h.joinPlayer('c4', 'Bob');
     const state = h.lastState()!;
     expect(state.players).toHaveLength(3);
     expect(h.joinedFor('c4')!.color).toBe(bobColor);
@@ -273,7 +416,7 @@ describe('join / adoption / disconnect grace', () => {
   it('re-keys match winner and finalScores on adoption', async () => {
     const h = harness();
     h.sceneState.peopleBoxes['stage'] = ghostTarget();
-    h.controller.join('c1', 'Bob');
+    h.joinPlayer('c1', 'Bob');
     h.controller.controlMatch({ action: 'start', mode: 'time' });
     await vi.advanceTimersByTimeAsync(3100); // countdown → playing
     h.controller.fire('c1'); // default aim (0.5, 0.5) hits the centered box
@@ -282,7 +425,7 @@ describe('join / adoption / disconnect grace', () => {
 
     const key = h.joinedFor('c1')!.playerKey;
     h.controller.handleDisconnect('c1');
-    h.controller.join('c2', 'Bob', key);
+    h.joinPlayer('c2', 'Bob', key);
     const snap = h.controller.getMatchSnapshot();
     expect(snap.winner?.clientId).toBe('c2');
     expect(snap.finalScores?.map((r) => r.clientId)).toEqual(['c2']);
@@ -292,8 +435,8 @@ describe('join / adoption / disconnect grace', () => {
 
   it('reaps a disconnected player after the grace, but never mid-round', async () => {
     const h = harness();
-    h.controller.join('c1', 'Bob');
-    h.controller.join('c2', 'Eve');
+    h.joinPlayer('c1', 'Bob');
+    h.joinPlayer('c2', 'Eve');
     // 10-minute round so the match is still 'playing' when the grace elapses.
     h.controller.controlMatch({
       action: 'start',
@@ -313,7 +456,7 @@ describe('join / adoption / disconnect grace', () => {
 
   it('explicit shoot_leave removes the player immediately', () => {
     const h = harness();
-    h.controller.join('c1', 'Bob');
+    h.joinPlayer('c1', 'Bob');
     h.controller.leave('c1');
     expect(h.lastState()?.players).toHaveLength(0);
     h.controller.dispose();
@@ -323,7 +466,7 @@ describe('join / adoption / disconnect grace', () => {
 describe('camera lifecycle', () => {
   it('start → offer carries the InputManager-minted endpoint', async () => {
     const h = harness();
-    h.controller.join('c1', 'Bob');
+    h.joinPlayer('c1', 'Bob');
     await h.controller.startCamera('c1', { width: 720, height: 1280 });
     const offers = h.offersFor('c1');
     expect(offers).toHaveLength(1);
@@ -334,7 +477,7 @@ describe('camera lifecycle', () => {
 
   it('stopCamera during an in-flight register cancels it (no leak, no offer)', async () => {
     const h = harness({ manualCam: true });
-    h.controller.join('c1', 'Bob');
+    h.joinPlayer('c1', 'Bob');
     const pending = h.controller.startCamera('c1');
     h.controller.stopCamera('c1'); // camInputId is still null here
     h.pendingCams.shift()!();
@@ -347,7 +490,7 @@ describe('camera lifecycle', () => {
 
   it('a second start supersedes the first: late resolve cleans up, only the new input commits', async () => {
     const h = harness({ manualCam: true });
-    h.controller.join('c1', 'Bob');
+    h.joinPlayer('c1', 'Bob');
     const first = h.controller.startCamera('c1');
     const second = h.controller.startCamera('c1');
     h.pendingCams.shift()!(); // resolve the FIRST registration
@@ -376,7 +519,7 @@ describe('camera lifecycle', () => {
         isInputLive: () => false,
       },
     );
-    failing.join('c1', 'Bob');
+    failing.join('c1', 'Bob', undefined, 'improwizator');
     await failing.startCamera('c1');
     expect(h.errorsFor('c1').map((e) => e.code)).toContain('camera_failed');
     failing.dispose();
@@ -385,7 +528,7 @@ describe('camera lifecycle', () => {
 
   it('pollCameras reflects heartbeat liveness into camLive', async () => {
     const h = harness();
-    h.controller.join('c1', 'Bob');
+    h.joinPlayer('c1', 'Bob');
     await h.controller.startCamera('c1');
     const inputId = h.offersFor('c1')[0].inputId;
     expect(
@@ -408,7 +551,7 @@ describe('camera lifecycle', () => {
 
   it('onInputsRemoved (stale sweep) drops cam refs and re-broadcasts', async () => {
     const h = harness();
-    h.controller.join('c1', 'Bob');
+    h.joinPlayer('c1', 'Bob');
     await h.controller.startCamera('c1');
     const inputId = h.offersFor('c1')[0].inputId;
     h.live.add(inputId);
@@ -455,7 +598,7 @@ describe('match lifecycle and the 30 Hz loop', () => {
 
   it('a lone zero-point player is a draw, not a winner', async () => {
     const h = harness();
-    h.controller.join('c1', 'Bob');
+    h.joinPlayer('c1', 'Bob');
     h.controller.controlMatch({ action: 'start', mode: 'time' });
     await vi.advanceTimersByTimeAsync(3100);
     h.controller.controlMatch({ action: 'stop' });
@@ -468,8 +611,8 @@ describe('match lifecycle and the 30 Hz loop', () => {
   it('a tie is a draw', async () => {
     const h = harness();
     h.sceneState.peopleBoxes['stage'] = ghostTarget();
-    h.controller.join('c1', 'Bob');
-    h.controller.join('c2', 'Eve');
+    h.joinPlayer('c1', 'Bob');
+    h.joinPlayer('c2', 'Eve');
     h.controller.controlMatch({ action: 'stop' }); // no live match → no-op
     expect(h.controller.getMatchSnapshot().phase).toBe('idle');
     h.controller.controlMatch({ action: 'start', mode: 'time' });
@@ -482,8 +625,8 @@ describe('match lifecycle and the 30 Hz loop', () => {
   it('a decisive score is crowned', async () => {
     const h = harness();
     h.sceneState.peopleBoxes['stage'] = ghostTarget();
-    h.controller.join('c1', 'Bob');
-    h.controller.join('c2', 'Eve');
+    h.joinPlayer('c1', 'Bob');
+    h.joinPlayer('c2', 'Eve');
     h.controller.controlMatch({ action: 'start', mode: 'time' });
     await vi.advanceTimersByTimeAsync(3100);
     h.controller.fire('c1');
@@ -497,8 +640,8 @@ describe('match lifecycle and the 30 Hz loop', () => {
   it('records the winner into TOP SCORES exactly once, repeat stops no-op', async () => {
     const h = harness();
     h.sceneState.peopleBoxes['stage'] = ghostTarget();
-    h.controller.join('c1', 'Bob', undefined, 'crane-hunter');
-    h.controller.join('c2', 'Eve');
+    h.joinPlayer('c1', 'Bob', undefined, 'crane-hunter');
+    h.joinPlayer('c2', 'Eve');
     h.controller.controlMatch({ action: 'start', mode: 'time' });
     await vi.advanceTimersByTimeAsync(3100);
     h.controller.fire('c1');
@@ -522,8 +665,8 @@ describe('match lifecycle and the 30 Hz loop', () => {
   it('the ended overlay carries the results-scene payload', async () => {
     const h = harness();
     h.sceneState.peopleBoxes['stage'] = ghostTarget();
-    h.controller.join('c1', 'Bob', undefined, 'improwizator');
-    h.controller.join('c2', 'Eve');
+    h.joinPlayer('c1', 'Bob', undefined, 'improwizator');
+    h.joinPlayer('c2', 'Eve');
     h.controller.controlMatch({ action: 'start', mode: 'time' });
     await vi.advanceTimersByTimeAsync(3100);
     h.controller.fire('c1');
@@ -543,7 +686,7 @@ describe('match lifecycle and the 30 Hz loop', () => {
 
   it('a draw records no top score but still snapshots the table', async () => {
     const h = harness();
-    h.controller.join('c1', 'Bob');
+    h.joinPlayer('c1', 'Bob');
     h.controller.controlMatch({ action: 'start', mode: 'time' });
     await vi.advanceTimersByTimeAsync(3100);
     h.controller.controlMatch({ action: 'stop' });
@@ -620,7 +763,7 @@ describe('armed lobby / opening screen', () => {
   it('shows only the staged mode in the lobby TOP SCORES', async () => {
     const h = harness();
     h.sceneState.peopleBoxes['stage'] = ghostTarget();
-    h.controller.join('c1', 'Bob');
+    h.joinPlayer('c1', 'Bob');
     h.controller.controlMatch({ action: 'start', mode: 'time' });
     await vi.advanceTimersByTimeAsync(3100);
     h.controller.fire('c1'); // any score at all, so the table is non-empty
@@ -637,7 +780,7 @@ describe('armed lobby / opening screen', () => {
 
   it('free-play with no target and no players still publishes nothing', () => {
     const h = harness();
-    h.controller.join('c1', 'Bob');
+    h.joinPlayer('c1', 'Bob');
     h.controller.controlMatch({ action: 'lobby' });
     expect(h.lastOverlay()).not.toBeNull();
     h.controller.controlMatch({ action: 'reset' });
@@ -664,13 +807,12 @@ describe('armed lobby / opening screen', () => {
 });
 
 describe('character clips on the broadcast', () => {
-  it('the armed lobby claims every joined hunter, deduped', () => {
+  it('the armed lobby claims every joined hunter', () => {
     const h = harness();
     h.controller.join('c1', 'Bob', undefined, 'improwizator');
     h.controller.join('c2', 'Eve', undefined, 'crane-hunter');
-    // Same hunter as Bob: one clip serves both players.
+    // Picks are exclusive, so this one is refused and claims no clip.
     h.controller.join('c3', 'Ann', undefined, 'improwizator');
-    h.controller.join('c4', 'Zed'); // no pick — contributes nothing
     expect(h.clipsNow()).toEqual([]); // free-play shows no lineup
 
     h.controller.controlMatch({ action: 'lobby' });
@@ -678,11 +820,11 @@ describe('character clips on the broadcast', () => {
     h.controller.dispose();
   });
 
-  it('a late pick in the lobby joins the lineup', () => {
+  it('a re-pick in the lobby swaps the lineup', () => {
     const h = harness();
-    h.controller.join('c1', 'Bob');
+    h.controller.join('c1', 'Bob', undefined, 'improwizator');
     h.controller.controlMatch({ action: 'lobby' });
-    expect(h.clipsNow()).toEqual([]);
+    expect(h.clipsNow()).toEqual(['improwizator']);
 
     h.controller.setCharacter('c1', 'pink-spotter');
     expect(h.clipsNow()).toEqual(['pink-spotter']);
@@ -692,7 +834,7 @@ describe('character clips on the broadcast', () => {
   it('the countdown keeps the lineup, live play releases it', async () => {
     const h = harness();
     h.sceneState.peopleBoxes['stage'] = ghostTarget();
-    h.controller.join('c1', 'Bob', undefined, 'improwizator');
+    h.joinPlayer('c1', 'Bob', undefined, 'improwizator');
     h.controller.controlMatch({ action: 'start', mode: 'time' });
     expect(h.clipsNow()).toEqual(['improwizator']);
 
@@ -701,21 +843,18 @@ describe('character clips on the broadcast', () => {
     h.controller.dispose();
   });
 
-  it('the podium claims only the top three finishers', async () => {
+  it('the podium claims every finisher, ranked', async () => {
     const h = harness();
     h.sceneState.peopleBoxes['stage'] = ghostTarget();
     const picks: ShooterCharacterId[] = [
       'improwizator',
       'crane-hunter',
       'pink-spotter',
-      'crane-hunter',
     ];
-    picks.forEach((id, i) =>
-      h.controller.join(`c${i}`, `P${i}`, undefined, id),
-    );
+    picks.forEach((id, i) => h.joinPlayer(`c${i}`, `P${i}`, undefined, id));
     h.controller.controlMatch({ action: 'start', mode: 'time' });
     await vi.advanceTimersByTimeAsync(3100);
-    // Rank the roster: c0 > c1 > c2 > c3 (last one never scores).
+    // Rank the roster: c0 > c1 > c2.
     for (let i = 0; i < 3; i++) h.controller.fire('c0');
     for (let i = 0; i < 2; i++) h.controller.fire('c1');
     h.controller.fire('c2');
@@ -726,10 +865,9 @@ describe('character clips on the broadcast', () => {
       'P0',
       'P1',
       'P2',
-      'P3',
     ]);
-    // Fourth place's hunter is already on the podium through P1, so the
-    // deduped claim is exactly the three distinct top-three characters.
+    // The podium slices the top three, which the roster cap now makes the
+    // whole field — and picks are exclusive, so the claim is always distinct.
     expect(h.clipsNow()).toEqual([
       'crane-hunter',
       'improwizator',
@@ -741,7 +879,7 @@ describe('character clips on the broadcast', () => {
   it('leaving the results releases the clips, and so does dispose', async () => {
     const h = harness();
     h.sceneState.peopleBoxes['stage'] = ghostTarget();
-    h.controller.join('c1', 'Bob', undefined, 'improwizator');
+    h.joinPlayer('c1', 'Bob', undefined, 'improwizator');
     h.controller.controlMatch({ action: 'start', mode: 'time' });
     await vi.advanceTimersByTimeAsync(3100);
     h.controller.fire('c1');
@@ -771,7 +909,7 @@ describe('character clips on the broadcast', () => {
 
   it('claims are only re-sent when the set actually changes', () => {
     const h = harness();
-    h.controller.join('c1', 'Bob', undefined, 'improwizator');
+    h.joinPlayer('c1', 'Bob', undefined, 'improwizator');
     h.controller.controlMatch({ action: 'lobby' });
     const calls = h.clipCalls.length;
     // Aim/publish churn must not re-register the same clip 30 times a second.
@@ -823,7 +961,7 @@ describe('ducks', () => {
       ghost: true,
       sprite: 'bird',
     };
-    h.controller.join('c1', 'Bob');
+    h.joinPlayer('c1', 'Bob');
     await vi.advanceTimersByTimeAsync(50); // spawn both ducks
     const before = h.lastOverlay()!.ducks.find((d) => d.id === 2)!.spawnAt;
 
@@ -848,7 +986,7 @@ describe('ducks', () => {
       ghost: true,
       sprite: 'bird',
     };
-    h.controller.join('c1', 'Bob');
+    h.joinPlayer('c1', 'Bob');
     await vi.advanceTimersByTimeAsync(50);
     const shooter = h
       .lastOverlay()!
@@ -907,7 +1045,7 @@ describe('taunting dog', () => {
   it('pops up after two misses in a row, not one', async () => {
     const h = harness();
     h.sceneState.peopleBoxes['stage'] = birdTarget();
-    h.controller.join('c1', 'Bob');
+    h.joinPlayer('c1', 'Bob');
     await aimAt(h, 'c1', 0.5, DOG_AIM_Y);
 
     h.controller.fire('c1'); // miss 1
@@ -920,7 +1058,7 @@ describe('taunting dog', () => {
   it('only lets itself be shot while laughing', async () => {
     const h = harness();
     h.sceneState.peopleBoxes['stage'] = birdTarget();
-    h.controller.join('c1', 'Bob');
+    h.joinPlayer('c1', 'Bob');
     await aimAt(h, 'c1', 0.5, DOG_AIM_Y);
     h.controller.fire('c1');
     h.controller.fire('c1'); // dog summoned, still springing up
@@ -939,7 +1077,7 @@ describe('taunting dog', () => {
   it('spends a round and leaves the duck score untouched', async () => {
     const h = harness();
     h.sceneState.peopleBoxes['stage'] = birdTarget();
-    h.controller.join('c1', 'Bob');
+    h.joinPlayer('c1', 'Bob');
     await aimAt(h, 'c1', 0.5, DOG_AIM_Y);
     h.controller.fire('c1');
     h.controller.fire('c1');
@@ -966,7 +1104,7 @@ describe('taunting dog', () => {
   it('cannot be shot twice', async () => {
     const h = harness();
     h.sceneState.peopleBoxes['stage'] = birdTarget();
-    h.controller.join('c1', 'Bob');
+    h.joinPlayer('c1', 'Bob');
     await aimAt(h, 'c1', 0.5, DOG_AIM_Y);
     h.controller.fire('c1');
     h.controller.fire('c1');
@@ -981,7 +1119,7 @@ describe('taunting dog', () => {
   it('never wins a points round', async () => {
     const h = harness();
     h.sceneState.peopleBoxes['stage'] = birdTarget();
-    h.controller.join('c1', 'Bob');
+    h.joinPlayer('c1', 'Bob');
     h.controller.controlMatch({
       action: 'start',
       mode: 'points',
@@ -1003,7 +1141,7 @@ describe('taunting dog', () => {
   it('freezes the flock for the yelp, then lets it resume', async () => {
     const h = harness();
     h.sceneState.peopleBoxes['stage'] = birdTarget();
-    h.controller.join('c1', 'Bob');
+    h.joinPlayer('c1', 'Bob');
     await aimAt(h, 'c1', 0.5, DOG_AIM_Y);
     h.controller.fire('c1');
     h.controller.fire('c1');
@@ -1027,7 +1165,7 @@ describe('taunting dog', () => {
   it('is cleared, along with the dog tally, when a fresh round starts', async () => {
     const h = harness();
     h.sceneState.peopleBoxes['stage'] = birdTarget();
-    h.controller.join('c1', 'Bob');
+    h.joinPlayer('c1', 'Bob');
     await aimAt(h, 'c1', 0.5, DOG_AIM_Y);
     h.controller.fire('c1');
     h.controller.fire('c1');

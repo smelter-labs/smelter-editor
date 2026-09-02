@@ -427,7 +427,7 @@ export function openingLayout(
  * Hunter-lineup layout (the 3-2-1 countdown): a centered row of square avatar
  * tiles — the player's live camera when they share one, otherwise their
  * character clip cropped to the square — with name and character title under
- * each. The tile grows to fill the row (the lobby caps the roster at 6),
+ * each. The tile grows to fill the row (the lobby caps the roster at 3),
  * unlike openingLayout, where the tiles are one band among several.
  */
 export function lineupLayout(

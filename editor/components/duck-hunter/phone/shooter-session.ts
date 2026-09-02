@@ -41,3 +41,30 @@ export function writeShooterSession(
   }
   return merged;
 }
+
+/**
+ * Drop specific fields from the stored session; returns what is left.
+ *
+ * Deliberately not `writeShooterSession(roomId, { playerKey: undefined })`:
+ * that only works because JSON.stringify happens to skip undefined values, and
+ * a reader who did not know that would "fix" it into a no-op. The two callers
+ * are both un-resume cases — the host kicked this phone (forget `playerKey`,
+ * or the next reconnect silently rejoins) and the picked hunter was taken by
+ * someone else (forget `characterId`, or the next join re-sends a doomed id).
+ */
+export function forgetShooterSession(
+  roomId: string,
+  keys: readonly (keyof ShooterSession)[],
+): ShooterSession {
+  const next = { ...readShooterSession(roomId) };
+  for (const k of keys) delete next[k];
+  try {
+    window.localStorage.setItem(
+      shooterSessionKey(roomId),
+      JSON.stringify(next),
+    );
+  } catch {
+    // Storage blocked — nothing was persisted to forget in the first place.
+  }
+  return next;
+}

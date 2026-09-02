@@ -1756,6 +1756,15 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
     shaderFile: 'duck-hit-flash.wgsl',
   },
   {
+    id: 'duck-spawn-aura',
+    isActive: true,
+    isVisible: false,
+    name: 'Duck Spawn Aura',
+    description:
+      'Marks the real bird a duck hatched from: a segmented lock-on ring in the duck’s palette color, a shockwave at the spawn, and a dashed tether pointing back at the bird as it flies off. Driven by PacmanBirdsInput.tsx.',
+    shaderFile: 'duck-spawn-aura.wgsl',
+  },
+  {
     id: 'retro-panel',
     isActive: true,
     isVisible: false,

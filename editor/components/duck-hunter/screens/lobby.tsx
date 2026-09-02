@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import QRCode from 'react-qr-code';
+import { MAX_SHOOTER_PLAYERS } from '@smelter-editor/types';
 import { setDuckHunterConfig } from '@/app/actions/actions';
+import { useArmed } from '@/lib/arcade/use-armed';
 import {
   getPublicDefaultServerUrl,
   getStoredClientServerUrl,
@@ -19,12 +21,50 @@ import {
   R5,
   RetroFooter,
   RetroFrame,
+  chamfer,
   monoFont,
   pixelFont,
 } from '../retro-kit';
 import { useArcadeKeys } from '../use-arcade-input';
 
 const PUBLIC_BASE_KEY = 'smelter-public-base';
+
+/**
+ * Per-row remove button. Two presses: `✕` arms into `KICK?`, and the arm
+ * lapses on its own — the host drives this screen from across the room, and a
+ * stray click must not silently drop a hunter who is already calibrating.
+ */
+function KickChip({
+  armed,
+  name,
+  onClick,
+}: {
+  armed: boolean;
+  name: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type='button'
+      className='r5-btn'
+      title={`Remove ${name} from the lobby`}
+      aria-label={`Remove ${name} from the lobby`}
+      onClick={onClick}
+      style={{
+        clipPath: chamfer(5),
+        flexShrink: 0,
+        background: armed ? R5.red : 'rgba(255,90,90,0.14)',
+        color: armed ? R5.bgDeep : R5.red,
+        fontFamily: pixelFont,
+        fontSize: 8,
+        letterSpacing: 1,
+        padding: '7px 9px',
+        whiteSpace: 'nowrap',
+      }}>
+      {armed ? 'KICK?' : '✕'}
+    </button>
+  );
+}
 
 /** Default public base for the QR: env override, else the current origin. */
 function defaultPublicBase(): string {
@@ -98,6 +138,10 @@ export function Lobby({
 
   const ready = feed.targetActive && !room.creating && !!room.roomId;
   const canStart = ready && feed.players.length > 0;
+  // The roster and the hunter catalog are the same scarce thing (one character
+  // each), so a full lobby means the QR has nothing left to sell.
+  const full = feed.players.length >= MAX_SHOOTER_PLAYERS;
+  const kick = useArmed(3000);
 
   const [confirmEmpty, setConfirmEmpty] = useState(false);
   const tryStart = () => {
@@ -119,7 +163,9 @@ export function Lobby({
         ? 'SPINNING UP DUCKS…'
         : feed.players.length === 0
           ? 'WAITING FOR HUNTERS'
-          : 'READY';
+          : full
+            ? 'FULL — READY'
+            : 'READY';
 
   return (
     <RetroFrame
@@ -136,7 +182,9 @@ export function Lobby({
           tip={
             confirmEmpty
               ? 'no hunters joined — press start again to run anyway'
-              : 'scan to join · enter to start'
+              : full
+                ? `lobby full (${MAX_SHOOTER_PLAYERS} hunters) · ✕ to remove one · enter to start`
+                : 'scan to join · ✕ to remove a hunter · enter to start'
           }
           right={
             <div style={{ display: 'flex', gap: 12 }}>
@@ -168,15 +216,22 @@ export function Lobby({
             alignItems: 'center',
             gap: 12,
           }}>
-          <PanelTitle>JOIN WITH YOUR PHONE</PanelTitle>
+          <PanelTitle>
+            {full ? 'LOBBY FULL' : 'JOIN WITH YOUR PHONE'}
+          </PanelTitle>
           {shootUrl ? (
             <PixelPanel
-              accent='cyan'
+              accent={full ? 'red' : 'cyan'}
               cut={10}
               glow={0.35}
               fill='#ffffff'
               innerStyle={{ padding: 14 }}>
-              <QRCode value={shootUrl} size={200} />
+              {/* Dimmed rather than removed: a fourth phone that scans anyway
+                  gets a clean refusal, and the code is instantly live again
+                  the moment the host kicks someone. */}
+              <div style={{ opacity: full ? 0.25 : 1 }}>
+                <QRCode value={shootUrl} size={200} />
+              </div>
             </PixelPanel>
           ) : (
             <PixelPanel
@@ -260,7 +315,7 @@ export function Lobby({
             gap: 12,
           }}>
           <PanelTitle>
-            HUNTERS {feed.players.length > 0 ? `(${feed.players.length})` : ''}
+            HUNTERS ({feed.players.length}/{MAX_SHOOTER_PLAYERS})
           </PanelTitle>
           <div
             style={{
@@ -331,6 +386,18 @@ export function Lobby({
                       }}>
                       {ch ? ch.name : 'PICKING…'}
                     </span>
+                    <KickChip
+                      armed={kick.armed === p.clientId}
+                      name={p.name}
+                      onClick={() => {
+                        if (kick.armed !== p.clientId) {
+                          kick.arm(p.clientId);
+                          return;
+                        }
+                        kick.disarm();
+                        void room.kickPlayer(p.clientId);
+                      }}
+                    />
                   </PixelPanel>
                 );
               })

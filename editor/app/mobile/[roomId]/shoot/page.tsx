@@ -1,18 +1,22 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import type {
   ShooterJoinedEvent,
   ShooterMatchEvent,
 } from '@smelter-editor/types';
-import { WS_CLOSE_ROOM_NOT_FOUND } from '@smelter-editor/types';
+import {
+  MAX_SHOOTER_PLAYERS,
+  WS_CLOSE_ROOM_NOT_FOUND,
+} from '@smelter-editor/types';
 import type { RoomState } from '@/lib/types';
 import { getRoomInfo } from '@/app/actions/actions';
 import { connectWhep, type WhepConnection } from '@/lib/webrtc/whep-connect';
 import { startPublish } from '@/components/control-panel/whip-input/utils/whip-publisher';
 import { useWhipHeartbeat } from '@/components/control-panel/whip-input/hooks/use-whip-heartbeat';
 import {
+  forgetShooterSession,
   readShooterSession,
   writeShooterSession,
 } from '@/components/duck-hunter/phone/shooter-session';
@@ -34,6 +38,7 @@ import {
 import { ConnectStep } from '@/components/duck-hunter/phone/connect-step';
 import { NameStep } from '@/components/duck-hunter/phone/name-step';
 import { CharacterStep } from '@/components/duck-hunter/phone/character-step';
+import { characterById } from '@/components/duck-hunter/characters';
 import { WeaponStep } from '@/components/duck-hunter/phone/weapon-step';
 import { CalibrateStep } from '@/components/duck-hunter/phone/calibrate-step';
 import { ReadyStep } from '@/components/duck-hunter/phone/ready-step';
@@ -150,6 +155,12 @@ type ScoreRow = {
   score: number;
   /** Dogs bagged — a separate tally, shown as icons beside the score. */
   dogScore?: number;
+  /**
+   * The hunter this player holds. Characters are exclusive, so this is what
+   * lets the select screen gray out what is already gone — including before
+   * this phone has joined, since `shoot_spectate` delivers the roster on open.
+   */
+  characterId?: string;
 };
 
 export default function ShootControllerPage() {
@@ -188,7 +199,21 @@ export default function ShootControllerPage() {
   const triggerBlocked = phase === 'countdown' || phase === 'ended';
   // This player's own id (learned from server events addressed to us), used to
   // pick our assigned color out of the scoreboard so the phone can show it.
-  const [myClientId, setMyClientId] = useState<string | null>(null);
+  const [myClientId, setMyClientIdState] = useState<string | null>(null);
+  // Mirrored to a ref because the WS handler has to branch on it WITHIN a
+  // message (a 'character_taken' means different things on and off the
+  // roster), and a render-time mirror would still hold the previous value.
+  // Written through one setter so the two can't drift.
+  const myClientIdRef = useRef<string | null>(null);
+  const setMyClientId = useCallback(
+    (next: string | null | ((prev: string | null) => string | null)) => {
+      const value =
+        typeof next === 'function' ? next(myClientIdRef.current) : next;
+      myClientIdRef.current = value;
+      setMyClientIdState(value);
+    },
+    [],
+  );
   const [flash, setFlash] = useState<'hit' | 'miss' | null>(null);
   const [localAim, setLocalAim] = useState<{
     left: number;
@@ -572,6 +597,21 @@ export default function ShootControllerPage() {
     },
     [send],
   );
+
+  /**
+   * Transient banner for a refused request (room full, hunter taken, kicked).
+   * Stable, so the long-lived WS handler and the wizard callbacks can share it.
+   */
+  const showNotice = useCallback((text: string) => {
+    setNotice(text);
+    if (noticeTimerRef.current != null) {
+      window.clearTimeout(noticeTimerRef.current);
+    }
+    noticeTimerRef.current = window.setTimeout(() => {
+      noticeTimerRef.current = null;
+      setNotice(null);
+    }, 4000);
+  }, []);
 
   /**
    * One place for every refused shot — empty magazine, countdown still
@@ -1085,14 +1125,56 @@ export default function ShootControllerPage() {
           setCamErr(err.message ?? 'Camera slot failed — retry.');
           return;
         }
-        setNotice(err.message ?? 'Request refused.');
-        if (noticeTimerRef.current != null) {
-          window.clearTimeout(noticeTimerRef.current);
+        if (err.code === 'kicked') {
+          // The host dropped us. Forgetting the playerKey is the whole point:
+          // `ws.onopen` replays shoot_join from it on every reconnect, so
+          // leaving it in place would put us straight back on the roster
+          // without anyone touching the phone. Coming back has to be a tap.
+          wantsJoinRef.current = false;
+          setJoined(false);
+          setMyClientId(null);
+          setScore(0);
+          sessionRef.current = forgetShooterSession(String(roomId), [
+            'playerKey',
+          ]);
+          setStep('ready');
+        } else if (
+          err.code === 'character_taken' ||
+          err.code === 'character_required'
+        ) {
+          // Two very different situations behind one code, told apart by
+          // whether the server has us on the roster:
+          //
+          // On it — a deliberate re-pick was refused, and we still hold the
+          // hunter we had. Forgetting it here would leave the phone showing
+          // NOT PICKED for a player the server has fully kitted out.
+          //
+          // Off it — the join itself was refused, so the stored pick is a dead
+          // id that would be re-sent on the next attempt. Drop it and make
+          // them choose again.
+          if (myClientIdRef.current == null) {
+            // Un-commit the join too: `joined` still true would show STANDING
+            // BY for a player the server never put on the roster, and
+            // `wantsJoinRef` would replay the same doomed join on reconnect.
+            wantsJoinRef.current = false;
+            setJoined(false);
+            if (err.code === 'character_taken') {
+              setCharacterId(null);
+              characterIdRef.current = null;
+              sessionRef.current = forgetShooterSession(String(roomId), [
+                'characterId',
+              ]);
+            }
+            setStep('character');
+          }
+        } else if (err.code === 'room_full') {
+          // Refused at the door. Same un-commit as above, or the briefing
+          // would sit on STANDING BY for a hunt we were never let into.
+          wantsJoinRef.current = false;
+          setJoined(false);
+          setStep('ready');
         }
-        noticeTimerRef.current = window.setTimeout(() => {
-          noticeTimerRef.current = null;
-          setNotice(null);
-        }, 4000);
+        showNotice(err.message ?? 'Request refused.');
         return;
       }
       // shooter_hit / shooter_ammo are addressed to us and carry our clientId;
@@ -1212,7 +1294,7 @@ export default function ShootControllerPage() {
           });
       }
     };
-  }, [roomId, rejectFire]);
+  }, [roomId, rejectFire, showNotice, setMyClientId]);
 
   const fetchRoom = useCallback(() => {
     void getRoomInfo(String(roomId))
@@ -1296,6 +1378,25 @@ export default function ShootControllerPage() {
     setStep('ready');
   }, []);
 
+  // Hunters held by somebody else. `scores` is the live roster from
+  // `shooter_state`, which arrives on `shoot_spectate` — i.e. before this phone
+  // has joined, which is exactly when the select screen needs it. Our own row
+  // is excluded so re-opening the step never shows our pick as taken.
+  const takenCharacterIds = useMemo(
+    () =>
+      scores
+        .filter((p) => p.clientId !== myClientId && p.characterId)
+        .map((p) => p.characterId as string),
+    [scores, myClientId],
+  );
+  // A full roster of OTHER players leaves nothing to join. Counted this way so
+  // our own row never makes the lobby look full to us.
+  const lobbyFull =
+    scores.filter((p) => p.clientId !== myClientId).length >=
+    MAX_SHOOTER_PLAYERS;
+  // Display name of our own pick, for the briefing's loadout row.
+  const myCharacterName = characterById(characterId)?.name ?? null;
+
   // When the phone may actually enter the game: a round is live (jump in), or
   // pure free play (dashboard open range: no match ever armed, ducks flying).
   // 'lobby' (host prepping a round) and 'ended' (next round soon) hold on the
@@ -1309,25 +1410,50 @@ export default function ShootControllerPage() {
   // lobby lists joined hunters and needs players to enable START). The visual
   // switch to the game is owned by the gate effect below.
   const joinAndPlay = useCallback(() => {
+    const charId = characterIdRef.current;
+    // A slot IS a hunter now, so both gates are checked before we commit. The
+    // server refuses either case anyway; catching it here keeps the phone from
+    // flipping into "joined" for the half-second until the refusal lands.
+    if (!charId) {
+      showNotice('Pick your hunter first.');
+      setStep('character');
+      return;
+    }
+    if (takenCharacterIds.includes(charId)) {
+      setCharacterId(null);
+      characterIdRef.current = null;
+      sessionRef.current = forgetShooterSession(String(roomId), [
+        'characterId',
+      ]);
+      showNotice('That hunter was taken — pick another.');
+      setStep('character');
+      return;
+    }
     wantsJoinRef.current = true;
     setJoined(true);
     const playerKey = sessionRef.current.playerKey;
-    const charId = characterIdRef.current;
     send({
       type: 'shoot_join',
       name: name.trim() || 'Player',
       ...(playerKey ? { playerKey } : {}),
-      ...(charId ? { characterId: charId } : {}),
+      characterId: charId,
     });
     // If the player enabled their camera earlier, spin up its live input now
     // that they've joined.
     if (camStreamRef.current) sendCamStart();
-  }, [send, sendCamStart, name]);
+  }, [send, sendCamStart, name, roomId, takenCharacterIds, showNotice]);
 
   // Pick (or re-pick) the hunter character: persist it for the next refresh,
   // tell the server if we're already on the roster, and advance the wizard.
   const pickCharacter = useCallback(
     (id: string) => {
+      // The card is already disabled when taken; this is the guard against the
+      // roster changing between render and tap. The server is still the
+      // authority — it answers a lost race with 'character_taken'.
+      if (takenCharacterIds.includes(id)) {
+        showNotice('That hunter was just taken — pick another.');
+        return;
+      }
       setCharacterId(id);
       characterIdRef.current = id;
       sessionRef.current = writeShooterSession(String(roomId), {
@@ -1337,7 +1463,7 @@ export default function ShootControllerPage() {
         send({ type: 'shoot_character', characterId: id });
       setStep('weapon');
     },
-    [roomId, send],
+    [roomId, send, takenCharacterIds, showNotice],
   );
 
   // Mirror of the arcade's phase-follow: once the player has committed, enter
@@ -1490,6 +1616,10 @@ export default function ShootControllerPage() {
               label='👁 PREVIEW'
             />
           }>
+          {/* Refusals land on whichever step they send the player to — hunter
+              select for a taken pick, the briefing for a kick — so the banner
+              lives above the whole wizard rather than on one step. */}
+          {notice ? <WarnPanel>{notice}</WarnPanel> : null}
           {step === 'connect' ? (
             <ConnectStep
               roomStatus={roomStatus}
@@ -1510,7 +1640,11 @@ export default function ShootControllerPage() {
             />
           ) : null}
           {step === 'character' ? (
-            <CharacterStep selectedId={characterId} onPick={pickCharacter} />
+            <CharacterStep
+              selectedId={characterId}
+              takenIds={takenCharacterIds}
+              onPick={pickCharacter}
+            />
           ) : null}
           {step === 'weapon' ? (
             <WeaponStep
@@ -1550,13 +1684,15 @@ export default function ShootControllerPage() {
           ) : null}
           {step === 'ready' ? (
             <>
-              {notice ? <WarnPanel>{notice}</WarnPanel> : null}
               <ReadyStep
                 name={name}
                 gyroMode={gyroMode}
                 camOn={!!camStream}
                 targetActive={targetActive}
                 playersCount={scores.length}
+                maxPlayers={MAX_SHOOTER_PLAYERS}
+                lobbyFull={lobbyFull}
+                characterName={myCharacterName}
                 match={match}
                 joined={joined}
                 canEnter={canEnterPlay}

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ShooterMatchConfig } from '@smelter-editor/types';
 import {
+  addHlsInput,
   addMP4Input,
   controlDuckHunterMatch,
   createNewRoom,
@@ -17,6 +18,28 @@ import {
 // The AI model that replaces detected birds with Duck Hunt sprites — enabling
 // it (in ghost mode) on an input is what makes a shootable target.
 const BIRD_MODEL_ID = 'people-counter-yolo-birds';
+
+/** A hunting-grounds pick: a server-library mp4 or a (saved) HLS stream. */
+export type StageRef =
+  | { kind: 'mp4'; file: string }
+  | { kind: 'hls'; url: string; name: string };
+
+/** Stable identity for pinning/highlight/dirty checks across stage kinds. */
+export function stageKey(s: StageRef): string {
+  return s.kind === 'mp4' ? `mp4:${s.file}` : `hls:${s.url}`;
+}
+
+/** Row label in the stage list. */
+export function stageLabel(s: StageRef): string {
+  return s.kind === 'mp4' ? s.file : s.name;
+}
+
+/** Register the stage as a room input; both endpoints answer {inputId}. */
+async function addStageInput(roomId: string, stage: StageRef) {
+  return stage.kind === 'mp4'
+    ? await addMP4Input(roomId, stage.file)
+    : await addHlsInput(roomId, stage.url);
+}
 
 /** Slider values in UI units (seconds), converted to ms on push. */
 export type DuckHunterSliderConfig = {
@@ -72,14 +95,14 @@ export type DuckHunterRoom = {
   error: string | null;
   /** A page refresh re-attached to a still-running room (see the stash). */
   restored: boolean;
-  /** Create the arcade room: stage mp4 input + duck sprites + config. */
+  /** Create the arcade room: stage input (mp4/HLS) + duck sprites + config. */
   createRoom(
-    stageFile: string,
+    stage: StageRef,
     cfg: DuckHunterSliderConfig,
     setup: ShooterMatchConfig,
   ): Promise<void>;
   /** Swap the hunt-stage video in the existing room (PLAY AGAIN flow). */
-  changeStage(stageFile: string): Promise<void>;
+  changeStage(stage: StageRef): Promise<void>;
   pushConfig(cfg: DuckHunterSliderConfig): Promise<void>;
   startMatch(cfg: ShooterMatchConfig): Promise<void>;
   stopMatch(): Promise<void>;
@@ -90,6 +113,12 @@ export type DuckHunterRoom = {
    * so the broadcast opening screen can announce it before the match exists.
    */
   armLobby(setup: ShooterMatchConfig): Promise<void>;
+  /**
+   * Remove one hunter from the roster, freeing their slot and their character.
+   * The server notifies the phone, which drops back to its wizard — it may
+   * rejoin, but only on a deliberate tap.
+   */
+  kickPlayer(clientId: string): Promise<void>;
   /** EXIT TO TITLE — tear the room down. */
   exitAndDelete(): Promise<void>;
 };
@@ -203,7 +232,7 @@ export function useDuckHunterRoom(): DuckHunterRoom {
 
   const createRoom = useCallback(
     async (
-      stageFile: string,
+      stage: StageRef,
       cfg: DuckHunterSliderConfig,
       setup: ShooterMatchConfig,
     ) => {
@@ -216,7 +245,7 @@ export function useDuckHunterRoom(): DuckHunterRoom {
           width: 1920,
           height: 1080,
         });
-        const added = (await addMP4Input(created.roomId, stageFile)) as {
+        const added = (await addStageInput(created.roomId, stage)) as {
           inputId?: string;
         };
         let inputId = added?.inputId ?? null;
@@ -251,11 +280,11 @@ export function useDuckHunterRoom(): DuckHunterRoom {
   );
 
   const changeStage = useCallback(
-    async (stageFile: string) => {
+    async (stage: StageRef) => {
       if (!roomId) return;
       setError(null);
       try {
-        const added = (await addMP4Input(roomId, stageFile)) as {
+        const added = (await addStageInput(roomId, stage)) as {
           inputId?: string;
         };
         const newInputId = added?.inputId;
@@ -296,6 +325,18 @@ export function useDuckHunterRoom(): DuckHunterRoom {
     }
   }, [roomId]);
 
+  const kickPlayer = useCallback(
+    async (clientId: string) => {
+      if (!roomId) return;
+      try {
+        await controlDuckHunterMatch(roomId, { action: 'kick', clientId });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Kick failed');
+      }
+    },
+    [roomId],
+  );
+
   const exitAndDelete = useCallback(async () => {
     const target = roomId;
     setRoomId(null);
@@ -326,6 +367,7 @@ export function useDuckHunterRoom(): DuckHunterRoom {
     startMatch,
     stopMatch,
     armLobby,
+    kickPlayer,
     exitAndDelete,
   };
 }
