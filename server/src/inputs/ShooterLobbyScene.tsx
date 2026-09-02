@@ -1,5 +1,6 @@
 import React from 'react';
 import { Image, Rescaler, View } from '@swmansion/smelter';
+import { MAX_SHOOTER_PLAYERS } from '@smelter-editor/types';
 import type { ShooterLobbyOverlay, ShooterOverlay } from '../app/store';
 import { ArcadeBigText, RETRO, RetroPanel } from './RetroPanel';
 import { HudLine, HunterTile, shooterCharacter } from './ShooterCharacterClip';
@@ -11,8 +12,11 @@ import {
   type Rect,
 } from './retroHudLayout';
 
-/** Lobby caps the roster at 6, and 6 tiles is also what fits the row. */
-const MAX_TILES = 6;
+/**
+ * One tile per hunter. The server refuses a fourth join, so this only ever
+ * clamps a roster that arrived from an older/mismatched server.
+ */
+const MAX_TILES = MAX_SHOOTER_PLAYERS;
 
 /**
  * The briefing, in the order a newcomer needs it. Static: none of it depends

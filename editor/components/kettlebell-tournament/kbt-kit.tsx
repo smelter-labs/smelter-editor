@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { ArcadeStage } from '@/lib/arcade/stage';
+import { useArmed } from '@/lib/arcade/use-armed';
 import { useIsLandscape } from '@/lib/arcade/use-viewport';
 
 /* ------------------------------------------------------------------ *
@@ -848,33 +849,12 @@ export function KbtTextInput({
 
 /* --------------------------- confirm rail --------------------------- */
 
-/** Two-press arm state with an auto-disarm window. */
-export function useArmed(timeoutMs = 5000): {
-  armed: string | null;
-  arm: (id: string) => void;
-  disarm: () => void;
-} {
-  const [armed, setArmed] = useState<string | null>(null);
-  const timerRef = React.useRef<number | null>(null);
-  const disarm = React.useCallback(() => {
-    if (timerRef.current != null) window.clearTimeout(timerRef.current);
-    timerRef.current = null;
-    setArmed(null);
-  }, []);
-  const arm = React.useCallback(
-    (id: string) => {
-      setArmed(id);
-      if (timerRef.current != null) window.clearTimeout(timerRef.current);
-      timerRef.current = window.setTimeout(() => {
-        timerRef.current = null;
-        setArmed(null);
-      }, timeoutMs);
-    },
-    [timeoutMs],
-  );
-  useEffect(() => disarm, [disarm]);
-  return { armed, arm, disarm };
-}
+/**
+ * Two-press arm state with an auto-disarm window. Lives in the shared arcade
+ * lib now (Duck Hunter's lobby kick uses it too) and is re-exported here so
+ * KBT screens keep importing it from their own kit.
+ */
+export { useArmed };
 
 export type ConfirmAction = {
   id: string;

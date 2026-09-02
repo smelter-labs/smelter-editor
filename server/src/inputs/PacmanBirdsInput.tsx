@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Image, InputStream, Rescaler, Shader } from '@swmansion/smelter';
 import type { PersonBoxes } from '../app/store';
 import type { DuckEntity, DuckFlightParams } from '../duckHunter/duckFlight';
@@ -13,9 +13,12 @@ import {
   contentToPx,
   duckContentPos,
   hitFlashEnvelope,
+  spawnAuraEnvelope,
   validViewport,
 } from '../duckHunter/duckFlight';
 import { HIT_TINT_FALLBACK, hitShaderParam } from './hitFlashShader';
+import type { AuraSlot } from './spawnAuraShader';
+import { MAX_AURAS, auraPhase, spawnAuraParam } from './spawnAuraShader';
 
 type PacmanBirdsInputProps = {
   sourceInputId: string;
@@ -36,11 +39,33 @@ const FLAP_TICKS = 7; // ~112ms per frame
 // the shared duck model so the renderer and the controller retire a shot duck
 // in lock-step.
 
+// Spawn-aura box smoothing: raw detections jitter frame to frame, and a ring
+// inherits every wobble of the box it is drawn on. Same exponential easing the
+// green boxes use (SmoothedBoxes / CarHueWrapper).
+const AURA_SMOOTH = 0.25;
+// Grace period after a bird's detection drops out: the ring holds its last
+// position and fades, rather than strobing on every missed frame. A duck whose
+// bird stays gone simply flies on unmarked.
+const AURA_HOLD_MS = 400;
+
+/** A detection box in content space, eased over time for the aura ring. */
+type AuraBox = {
+  cx: number;
+  cy: number;
+  hw: number;
+  hh: number;
+  seenAt: number;
+};
+
 function flightParams(data: PersonBoxes): DuckFlightParams {
   return {
     pauseMs: data.duckPauseMs ?? DEFAULT_DUCK_PAUSE_MS,
     flySpeed: data.duckFlySpeed ?? DEFAULT_DUCK_FLY_FRAC_PER_SEC,
   };
+}
+
+function ease(from: number, to: number, k: number): number {
+  return from + (to - from) * k;
 }
 
 /**
@@ -56,6 +81,16 @@ function flightParams(data: PersonBoxes): DuckFlightParams {
  * the special one. Sprites are registered in smelter.tsx as
  * `duck-<color>-<frame>` (frame ∈ {0,1,2,shot}); the flap frame is animated
  * locally.
+ *
+ * The video underneath runs through the `duck-spawn-aura` shader, which marks
+ * the REAL bird each duck hatched from — otherwise a sprite just appears out of
+ * nowhere and nothing says which detection it came from. A duck carries its
+ * tracker box id, so the pairing is free here: `ducks[i].id` is the id of the
+ * box in `data.boxes` it was spawned on. Each pair gets a shockwave at the
+ * spawn, a soft lock-on ring in the duck's own palette color for as long as it
+ * lives, and a dashed tether that points back at the bird for the first moment
+ * after the duck detaches. Boxes are eased here, not upstream, because only the
+ * ring cares about jitter.
  */
 export function PacmanBirdsInput({
   sourceInputId,
@@ -66,10 +101,41 @@ export function PacmanBirdsInput({
 }: PacmanBirdsInputProps) {
   const { width, height } = resolution;
   const [tick, setTick] = useState(0);
+  const dataRef = useRef(data);
+  const ducksRef = useRef(ducks);
+  const auraBoxRef = useRef<Map<number, AuraBox>>(new Map());
 
-  // Re-render at ~60fps so the flight interpolates smoothly and wings flap.
+  useEffect(() => {
+    dataRef.current = data;
+    ducksRef.current = ducks;
+  }, [data, ducks]);
+
+  // Re-render at ~60fps so the flight interpolates smoothly and wings flap,
+  // and ease each aura box toward its latest detection on the same beat.
   useEffect(() => {
     const timer = setInterval(() => {
+      const at = Date.now();
+      const boxes = auraBoxRef.current;
+      const live = new Set((ducksRef.current ?? []).map((d) => d.id));
+      for (const b of dataRef.current.boxes) {
+        // Only ducks get a ring, so only their boxes are worth tracking.
+        if (!live.has(b.id)) continue;
+        const cx = b.x + b.w / 2;
+        const cy = b.y + b.h / 2;
+        const prev = boxes.get(b.id);
+        boxes.set(b.id, {
+          cx: prev ? ease(prev.cx, cx, AURA_SMOOTH) : cx,
+          cy: prev ? ease(prev.cy, cy, AURA_SMOOTH) : cy,
+          hw: prev ? ease(prev.hw, b.w / 2, AURA_SMOOTH) : b.w / 2,
+          hh: prev ? ease(prev.hh, b.h / 2, AURA_SMOOTH) : b.h / 2,
+          seenAt: at,
+        });
+      }
+      // Retire a box once its duck is gone, or once the detection has been
+      // missing for longer than the hold — nothing left to mark either way.
+      for (const [id, b] of boxes) {
+        if (!live.has(id) || at - b.seenAt > AURA_HOLD_MS) boxes.delete(id);
+      }
       setTick((t) => (t + 1) % 1_000_000);
     }, TICK_MS);
     return () => clearInterval(timer);
@@ -84,11 +150,68 @@ export function PacmanBirdsInput({
   const live = list.filter((d) => d.diedAt == null);
   const dead = list.filter((d) => d.diedAt != null);
 
+  // Aura slots: one per duck whose source bird is still known, freshest first
+  // (the newest link is the one a viewer still needs explained). Everything is
+  // converted to tile uv here — the shader draws in tile space, and the cover
+  // mapping is the same one the sprites are placed with.
+  const auras: AuraSlot[] = [];
+  if (geomOk) {
+    const ranked = [...list].sort((a, b) => b.spawnAt - a.spawnAt);
+    for (const d of ranked) {
+      if (auras.length >= MAX_AURAS) break;
+      const b = auraBoxRef.current.get(d.id);
+      if (!b) continue;
+      const env = spawnAuraEnvelope(
+        now - d.spawnAt,
+        params.pauseMs,
+        d.diedAt != null ? now - d.diedAt : null,
+      );
+      // Detection dropout: hold the last position and fade out rather than
+      // popping the ring off the moment a frame misses the bird.
+      const hold = 1 - Math.min(1, Math.max(0, now - b.seenAt) / AURA_HOLD_MS);
+      if (hold <= 0 || (env.glow <= 0 && env.pulse <= 0 && env.link <= 0)) {
+        continue;
+      }
+      const c = contentToPx(b.cx, b.cy, v);
+      const corner = contentToPx(b.cx + b.hw, b.cy + b.hh, v);
+      // A shot duck freezes where it was hit, exactly like its sprite — the
+      // tether is long gone by the time the fall starts, but the two should
+      // never disagree while both are on screen.
+      const dpos = duckContentPos(d, d.diedAt ?? now, params, v);
+      const dpx = contentToPx(dpos.x, dpos.y, v);
+      auras.push({
+        cx: c.px / width,
+        cy: c.py / height,
+        hw: (corner.px - c.px) / width,
+        hh: (corner.py - c.py) / height,
+        tone: d.color % 3,
+        phase: auraPhase(d.id),
+        dx: dpx.px / width,
+        dy: dpx.py / height,
+        env: {
+          glow: env.glow * hold,
+          pulse: env.pulse * hold,
+          pulseT: env.pulseT,
+          link: env.link * hold,
+        },
+      });
+    }
+  }
+
   return (
     <View style={{ width, height }}>
-      <Rescaler style={{ width, height, rescaleMode: 'fill' }}>
-        <InputStream inputId={sourceInputId} volume={volume} />
-      </Rescaler>
+      <Shader
+        shaderId='duck-spawn-aura'
+        resolution={resolution}
+        shaderParam={spawnAuraParam(auras)}>
+        {/* Shader children must have a known size — a sized View makes that
+            hold for the raw stream's Rescaler. */}
+        <View style={{ width, height }}>
+          <Rescaler style={{ width, height, rescaleMode: 'fill' }}>
+            <InputStream inputId={sourceInputId} volume={volume} />
+          </Rescaler>
+        </View>
+      </Shader>
       <View style={{ top: 0, left: 0, width, height, overflow: 'hidden' }}>
         {/* Live ducks, under the shot ones so a falling duck draws on top. */}
         {geomOk

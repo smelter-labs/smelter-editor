@@ -10,6 +10,7 @@ import type {
   ShooterStateEvent,
   ShooterTopScoreEntry,
 } from '@smelter-editor/types';
+import { MAX_SHOOTER_PLAYERS } from '@smelter-editor/types';
 import type { StoreApi } from 'zustand';
 import type {
   DogReveal,
@@ -92,8 +93,15 @@ type Player = {
   playerKey: string;
   name: string;
   color: string;
-  /** Hunter character picked on the phone (duplicates across players are
-   * allowed — the assigned color still separates them). */
+  /**
+   * Hunter character picked on the phone. Exclusive: no two players on the
+   * roster may hold the same one (see characterTaken), so this doubles as the
+   * player's slot — which is why the cap is the character count.
+   *
+   * Still nullable: a player adopted from an older session, or one whose
+   * character was somehow lost, must remain representable rather than crash
+   * the roster. New joins are refused without one.
+   */
   characterId: ShooterCharacterId | null;
   /** Control socket state; a disconnected player lingers through the grace. */
   connected: boolean;
@@ -146,7 +154,9 @@ export type AmmoConfig = { maxAmmo?: number; reloadMs?: number };
 
 /** Command from the arcade page's match endpoint. */
 export type MatchCommand = {
-  action: 'start' | 'stop' | 'reset' | 'lobby';
+  action: 'start' | 'stop' | 'reset' | 'lobby' | 'kick';
+  /** Target player for 'kick'; ignored by every other action. */
+  clientId?: string;
 } & Partial<ShooterMatchConfig>;
 
 /**
@@ -172,7 +182,12 @@ type MatchState = {
   endedAt: number | null;
 };
 
-/** Distinct, bright crosshair colors (kept away from the ghost palette). */
+/**
+ * Distinct, bright crosshair colors (kept away from the ghost palette). Longer
+ * than the roster cap on purpose: `colorSeq` advances on every join, so players
+ * cycling through a slot keep getting visibly different crosshairs instead of
+ * inheriting the last occupant's color. The cap itself is MAX_SHOOTER_PLAYERS.
+ */
 const PLAYER_COLORS = [
   '#FFEB3B', // yellow
   '#00E5FF', // cyan
@@ -343,9 +358,18 @@ export class DuckHunterController {
     const existing = this.players.get(clientId);
     if (existing) {
       // Already joined (e.g. re-entering after the calibration screen): keep
-      // the player but refresh the chosen name + character.
+      // the player but refresh the chosen name + character. A character
+      // somebody took meanwhile is silently not applied rather than errored —
+      // this player still holds a valid hunter, and `shooter_joined` below
+      // carries the authoritative one, so the phone corrects itself. Only a
+      // deliberate re-pick (setCharacter) is worth an error.
       existing.name = name;
-      if (characterId !== undefined) existing.characterId = characterId;
+      if (
+        characterId !== undefined &&
+        !this.characterTaken(characterId, clientId)
+      ) {
+        existing.characterId = characterId;
+      }
       existing.connected = true;
       existing.disconnectedAt = null;
       this.sendJoined(clientId, existing);
@@ -367,17 +391,41 @@ export class DuckHunterController {
         : undefined);
     let player: Player;
     if (orphan) {
+      // Adoption keeps the slot it already held, so neither the roster cap nor
+      // "a character is required" applies. Same as the branch above: a taken
+      // pick is quietly dropped, not errored — the adopted entry's own hunter
+      // stands, and the ack tells the phone which one that is.
       this.adoptPlayer(orphan, clientId);
       orphan.name = name;
-      if (characterId !== undefined) orphan.characterId = characterId;
+      if (
+        characterId !== undefined &&
+        !this.characterTaken(characterId, clientId)
+      ) {
+        orphan.characterId = characterId;
+      }
       player = orphan;
     } else {
-      if (this.players.size >= PLAYER_COLORS.length) {
+      // A genuinely new entrant. Slots and characters are the same scarce
+      // thing, so both gates live here and both refuse the join outright: an
+      // entry created without a character would hold a slot nobody can play.
+      if (this.players.size >= MAX_SHOOTER_PLAYERS) {
         this.sendError(
           clientId,
           'room_full',
-          `Room is full (${PLAYER_COLORS.length} hunters max)`,
+          `Room is full (${MAX_SHOOTER_PLAYERS} hunters max)`,
         );
+        return;
+      }
+      if (characterId == null) {
+        this.sendError(
+          clientId,
+          'character_required',
+          'Pick your hunter before joining',
+        );
+        return;
+      }
+      if (this.characterTaken(characterId)) {
+        this.sendCharacterTaken(clientId, characterId);
         return;
       }
       player = {
@@ -430,10 +478,59 @@ export class DuckHunterController {
     });
   }
 
-  /** Change the player's hunter character (phone re-pick, e.g. in the lobby). */
+  /**
+   * Is this hunter already held by someone other than `exceptClientId`?
+   *
+   * Disconnected players count: their entry survives the grace precisely so a
+   * reconnect can reclaim it, and handing their character to somebody else in
+   * the meantime is exactly what that grace exists to prevent.
+   */
+  private characterTaken(
+    characterId: ShooterCharacterId,
+    exceptClientId?: string,
+  ): boolean {
+    for (const p of this.players.values()) {
+      if (p.clientId === exceptClientId) continue;
+      if (p.characterId === characterId) return true;
+    }
+    return false;
+  }
+
+  /**
+   * The "someone else has that hunter" refusal. Sent from exactly two places,
+   * and the phone tells them apart by whether it is on the roster: a refused
+   * NEW join (no entry — the phone must drop its stored pick and choose again)
+   * and a refused re-pick via setCharacter (the player keeps the hunter they
+   * already had). A re-join never sends it; there the ack is authoritative.
+   */
+  private sendCharacterTaken(
+    clientId: string,
+    characterId: ShooterCharacterId,
+  ): void {
+    const holder = [...this.players.values()].find(
+      (p) => p.characterId === characterId && p.clientId !== clientId,
+    );
+    this.sendError(
+      clientId,
+      'character_taken',
+      holder
+        ? `${holder.name} already plays that hunter — pick another`
+        : 'That hunter is taken — pick another',
+    );
+  }
+
+  /**
+   * Change the player's hunter character (phone re-pick, e.g. in the lobby).
+   * Refused when someone else holds it — the phone drops its stored pick and
+   * returns to hunter select on 'character_taken'.
+   */
   setCharacter(clientId: string, characterId: ShooterCharacterId): void {
     const p = this.players.get(clientId);
     if (!p || p.characterId === characterId) return;
+    if (this.characterTaken(characterId, clientId)) {
+      this.sendCharacterTaken(clientId, characterId);
+      return;
+    }
     p.characterId = characterId;
     this.publish();
     this.broadcastState();
@@ -543,6 +640,8 @@ export class DuckHunterController {
    * - reset: back to free-play; the game-over banner clears.
    * - lobby: the host opened the arcade lobby — clear any finished match and
    *   tell phones to hold on the briefing screen until start.
+   * - kick: drop one player (by clientId) off the roster, freeing their slot
+   *   and their hunter.
    */
   controlMatch(cmd: MatchCommand): ShooterMatchEvent {
     const now = this.now();
@@ -618,6 +717,10 @@ export class DuckHunterController {
         // lobby. Before the sidecar produces a target there is nothing else to
         // hold the publish loop open, and maybeStop would park it.
         this.ensureRunning();
+        break;
+      }
+      case 'kick': {
+        this.kickPlayer(cmd.clientId);
         break;
       }
     }
@@ -710,6 +813,23 @@ export class DuckHunterController {
     this.publish();
     this.broadcastState();
     this.maybeStop();
+  }
+
+  /**
+   * The host removed a player from the lobby. Their slot and their hunter are
+   * both freed immediately, so the next phone to scan can take either.
+   *
+   * The notice goes out BEFORE the removal: `sendTo` addresses the client by
+   * id, and after `leave()` the roster no longer knows them. It matters — the
+   * phone replays `shoot_join` from its stored playerKey on every reconnect,
+   * so without hearing 'kicked' it would quietly put itself back on the roster
+   * the next time its socket blipped. There is deliberately no ban list: the
+   * player may rejoin, but only by tapping JOIN again.
+   */
+  private kickPlayer(clientId?: string): void {
+    if (!clientId || !this.players.has(clientId)) return;
+    this.sendError(clientId, 'kicked', 'The host removed you from the lobby');
+    this.leave(clientId);
   }
 
   /**

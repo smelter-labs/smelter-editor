@@ -32,10 +32,11 @@ export type ShooterPlayer = {
 export type ShooterAmmoConfig = { maxAmmo?: number; reloadMs?: number };
 
 /**
- * The playable hunter characters. Each phone picks one for its player
- * (duplicates allowed — the assigned crosshair color still separates
- * players). The server validates ids against this list; the editor keeps
- * the per-character clip/accent presentation mapping locally.
+ * The playable hunter characters. Each phone picks one for its player, and the
+ * pick is EXCLUSIVE — a character taken by one hunter is off the board for the
+ * rest of that game (the server rejects a duplicate with 'character_taken').
+ * The server validates ids against this list; the editor keeps the
+ * per-character clip/accent presentation mapping locally.
  */
 export const SHOOTER_CHARACTERS = [
   {
@@ -62,6 +63,15 @@ export type ShooterCharacterId = (typeof SHOOTER_CHARACTERS)[number]["id"];
 
 export const SHOOTER_CHARACTER_IDS: readonly ShooterCharacterId[] =
   SHOOTER_CHARACTERS.map((c) => c.id);
+
+/**
+ * Hard roster cap. Equal to the character count on purpose: picks are
+ * exclusive, so a slot IS a character — a fourth hunter would have nobody left
+ * to play. Enforced server-side on every join (lobby, countdown and mid-round
+ * alike); reconnects that adopt an existing entry are not new joins and so are
+ * never refused by it.
+ */
+export const MAX_SHOOTER_PLAYERS = SHOOTER_CHARACTER_IDS.length;
 
 // Client -> Server
 export type ShooterJoinMessage = {
@@ -179,8 +189,24 @@ export type ShooterJoinedEvent = {
   camInputActive: boolean;
 };
 
-/** Why a shooter request was refused (typed, so phones can show real copy). */
-export type ShooterErrorCode = "room_full" | "not_joined" | "camera_failed";
+/**
+ * Why a shooter request was refused (typed, so phones can show real copy).
+ *
+ * - `character_taken`: someone else already plays that hunter. The phone must
+ *   drop its stored pick and send the player back to hunter select.
+ * - `character_required`: a join with no character at all. Slots and characters
+ *   are the same scarce thing, so an unpicked hunter may not hold one.
+ * - `kicked`: the host removed this player from the lobby. The phone must
+ *   forget its playerKey and stop replaying `shoot_join` on reconnect — the
+ *   player may come back, but only by tapping JOIN again.
+ */
+export type ShooterErrorCode =
+  | "room_full"
+  | "not_joined"
+  | "camera_failed"
+  | "character_taken"
+  | "character_required"
+  | "kicked";
 
 export type ShooterErrorEvent = {
   type: "shooter_error";

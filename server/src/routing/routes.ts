@@ -4,6 +4,7 @@ import multipart from '@fastify/multipart';
 import websocket from '@fastify/websocket';
 import { v4 as uuidv4 } from 'uuid';
 import { STATUS_CODES } from 'node:http';
+import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import path from 'node:path';
 import { ensureDir, pathExists, readdir, readFile, stat } from 'fs-extra';
@@ -62,6 +63,7 @@ import {
 const execFileAsync = promisify(execFile);
 const THUMBNAILS_DIR = path.join(DATA_DIR, 'thumbnails', 'mp4');
 const HLS_THUMBNAILS_DIR = path.join(DATA_DIR, 'thumbnails', 'hls');
+const HLS_PREVIEWS_DIR = path.join(DATA_DIR, 'thumbnails', 'hls-previews');
 const HLS_STREAMS_DIR = path.join(DATA_DIR, 'hls-streams');
 const isSyncDebugEnabled = process.env.SMELTER_SYNC_DEBUG === 'true';
 const isWsDebugEnabled = process.env.SMELTER_WS_DEBUG === 'true';
@@ -230,6 +232,63 @@ async function ensureHlsThumbnail(jsonFileName: string): Promise<string> {
     ],
     { timeout: 10_000 },
   );
+
+  return thumbPath;
+}
+
+/**
+ * Still-frame preview for a raw (not yet saved) HLS URL — lets the UI verify
+ * a stream is actually decodable by ffmpeg before committing to it. Cached on
+ * disk by URL hash; failures are not cached so a down stream retries.
+ */
+async function ensureHlsUrlPreview(rawUrl: string): Promise<string> {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw Object.assign(new Error('Invalid URL'), { statusCode: 400 });
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw Object.assign(new Error('Only http(s) URLs are supported'), {
+      statusCode: 400,
+    });
+  }
+
+  const thumbName = `${createHash('sha256').update(rawUrl).digest('hex').slice(0, 16)}.jpg`;
+  const thumbPath = path.join(HLS_PREVIEWS_DIR, thumbName);
+
+  if (await pathExists(thumbPath)) {
+    return thumbPath;
+  }
+
+  await ensureDir(HLS_PREVIEWS_DIR);
+
+  try {
+    await execFileAsync(
+      'ffmpeg',
+      [
+        '-ss',
+        '2',
+        '-i',
+        rawUrl,
+        '-vframes',
+        '1',
+        '-vf',
+        'scale=320:-1',
+        '-q:v',
+        '4',
+        '-y',
+        thumbPath,
+      ],
+      // Cold remote m3u8s can take longer than the saved-stream thumbnails'
+      // 10s (playlist + segment fetches before the first frame).
+      { timeout: 15_000 },
+    );
+  } catch {
+    throw Object.assign(new Error('Stream unreachable or not decodable'), {
+      statusCode: 422,
+    });
+  }
 
   return thumbPath;
 }
@@ -428,6 +487,26 @@ routes.get<{ Params: { fileName: string } }>(
       const status = err?.statusCode ?? 500;
       const message = err?.message ?? 'Failed to generate HLS thumbnail';
       console.error('HLS thumbnail error', { fileName, err: message });
+      res.status(status).send({ error: message });
+    }
+  },
+);
+
+routes.get<{ Querystring: { url: string } }>(
+  '/suggestions/hls-preview',
+  { schema: { querystring: Type.Object({ url: Type.String() }) } },
+  async (req, res) => {
+    const { url } = req.query;
+    try {
+      const thumbPath = await ensureHlsUrlPreview(url);
+      const data = await readFile(thumbPath);
+      res.header('Content-Type', 'image/jpeg');
+      res.header('Cache-Control', 'public, max-age=300');
+      res.send(data);
+    } catch (err: any) {
+      const status = err?.statusCode ?? 500;
+      const message = err?.message ?? 'Failed to generate HLS preview';
+      console.error('HLS preview error', { url, err: message });
       res.status(status).send({ error: message });
     }
   },
@@ -2675,12 +2754,15 @@ const DuckHunterMatchSchema = Type.Object({
     Type.Literal('stop'),
     Type.Literal('reset'),
     Type.Literal('lobby'),
+    Type.Literal('kick'),
   ]),
   mode: Type.Optional(
     Type.Union([Type.Literal('time'), Type.Literal('points')]),
   ),
   durationMs: Type.Optional(Type.Number()),
   targetScore: Type.Optional(Type.Number()),
+  /** Target player for 'kick' (the roster's socket-scoped clientId). */
+  clientId: Type.Optional(Type.String({ maxLength: 64 })),
 });
 
 routes.post<RoomIdParams & { Body: Static<typeof DuckHunterMatchSchema> }>(
@@ -2694,6 +2776,7 @@ routes.post<RoomIdParams & { Body: Static<typeof DuckHunterMatchSchema> }>(
       mode: req.body.mode,
       durationMs: req.body.durationMs,
       targetScore: req.body.targetScore,
+      clientId: req.body.clientId,
     });
     const room = state.getRoom(roomId);
     const match = room.controlDuckHunterMatch({
@@ -2701,6 +2784,7 @@ routes.post<RoomIdParams & { Body: Static<typeof DuckHunterMatchSchema> }>(
       mode: req.body.mode,
       durationMs: req.body.durationMs,
       targetScore: req.body.targetScore,
+      clientId: req.body.clientId,
     });
     res.status(200).send({ status: 'ok', match });
   },

@@ -157,6 +157,7 @@ export type {
 } from "./pong-events.js";
 
 export {
+  MAX_SHOOTER_PLAYERS,
   SHOOTER_CHARACTERS,
   SHOOTER_CHARACTER_IDS,
 } from "./shooter-events.js";

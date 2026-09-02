@@ -21,9 +21,11 @@ import { SmelterInstance } from '../smelter';
  * know yet (the same guard LiveCamTile uses for player cameras).
  *
  * Mounting is on demand — refcounted per room, so two rooms never unregister
- * each other's clips, and two players on the same character share one decoder.
- * On demand also means the clip always starts at its first frame when a scene
- * appears, instead of dropping in at a random point of the loop.
+ * each other's clips. (The refcount used to also cover two players sharing a
+ * character; picks are exclusive now, so within one room that can no longer
+ * happen — the per-room sharing is what still matters.) On demand also means
+ * the clip always starts at its first frame when a scene appears, instead of
+ * dropping in at a random point of the loop.
  */
 
 const CLIPS_DIR = path.join(DATA_DIR, 'mp4s', 'duck-hunter-characters');

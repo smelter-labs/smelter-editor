@@ -14,10 +14,13 @@ import {
 function CharacterCard({
   character,
   selected,
+  taken,
   onPick,
 }: {
   character: ArcadeCharacter;
   selected: boolean;
+  /** Another hunter already holds this one — the card is dead. */
+  taken: boolean;
   onPick: () => void;
 }) {
   const color = ACCENT_LINE[character.accent];
@@ -26,12 +29,18 @@ function CharacterCard({
     <button
       type='button'
       className='r5-btn'
+      disabled={taken}
       onClick={onPick}
-      style={{ display: 'block', width: '100%' }}>
+      style={{
+        display: 'block',
+        width: '100%',
+        opacity: taken ? 0.4 : 1,
+        cursor: taken ? 'not-allowed' : undefined,
+      }}>
       <PixelPanel
         accent={character.accent}
         cut={12}
-        glow={selected ? 0.55 : 0.25}
+        glow={selected ? 0.55 : taken ? 0 : 0.25}
         fill={`rgba(${rgb},${selected ? 0.18 : 0.08})`}
         innerStyle={{
           display: 'flex',
@@ -74,17 +83,17 @@ function CharacterCard({
               }}>
               {character.name}
             </span>
-            {selected ? (
+            {selected || taken ? (
               <span
                 style={{
                   fontFamily: pixelFont,
                   fontSize: 7,
                   letterSpacing: 1,
                   color: R5.bgDeep,
-                  background: color,
+                  background: selected ? color : R5.inkMuted,
                   padding: '3px 6px',
                 }}>
-                PICKED
+                {selected ? 'PICKED' : 'TAKEN'}
               </span>
             ) : null}
           </span>
@@ -99,18 +108,26 @@ function CharacterCard({
 }
 
 /**
- * Step 3 — hunter select. Every player picks their own character here
- * (duplicates across phones are fine — the assigned crosshair color still
- * separates hunters). Tapping a card picks it and advances the wizard.
+ * Step 3 — hunter select. Each character belongs to exactly one player per
+ * game, so a card another phone already claimed is dead here. `takenIds` comes
+ * from the live roster broadcast, which the phone receives before it joins —
+ * but it is only the courtesy layer: two phones can tap the last free hunter in
+ * the same instant, and the server settles that with 'character_taken'.
  */
 export function CharacterStep({
   selectedId,
+  takenIds,
   onPick,
 }: {
   selectedId: string | null;
+  /** Characters held by OTHER players (never this phone's own pick). */
+  takenIds: readonly string[];
   /** Called with the picked character id; the page advances the step. */
   onPick: (id: ArcadeCharacter['id']) => void;
 }) {
+  const allTaken = CHARACTERS.every(
+    (c) => takenIds.includes(c.id) && selectedId !== c.id,
+  );
   return (
     <div
       style={{
@@ -125,6 +142,7 @@ export function CharacterStep({
           key={c.id}
           character={c}
           selected={selectedId === c.id}
+          taken={selectedId !== c.id && takenIds.includes(c.id)}
           onPick={() => onPick(c.id)}
         />
       ))}
@@ -132,12 +150,14 @@ export function CharacterStep({
         style={{
           fontFamily: monoFont,
           fontSize: 10,
-          color: R5.inkMuted,
+          color: allTaken ? R5.red : R5.inkMuted,
           textAlign: 'center',
           textTransform: 'uppercase',
           letterSpacing: 1,
         }}>
-        two hunters can share a character — your color stays yours
+        {allTaken
+          ? 'every hunter is taken — wait for a slot to open'
+          : 'one hunter each — first to pick keeps it'}
       </p>
     </div>
   );

@@ -83,6 +83,74 @@ export function hitFlashEnvelope(elapsed: number): HitFlashEnvelope {
   };
 }
 
+/**
+ * Spawn aura — the mark on the *real bird* a duck hatched from, so a viewer can
+ * see which detection in the video turned into which sprite. Drawn by the
+ * `duck-spawn-aura` shader on the video underneath the ducks.
+ *
+ * The loud part is short: a shockwave ring at the moment of the spawn. What
+ * lingers is a soft lock-on ring, and — for the first moment after the duck
+ * detaches and flies off — a tether pointing back at the bird. Everything is
+ * over by the time the duck leaves the frame.
+ */
+/** Birth shockwave: how long the ring takes to reach full expansion. */
+export const AURA_PULSE_MS = 620;
+/** Fade-in of the steady lock-on ring, so a spawn doesn't snap on. */
+export const AURA_IN_MS = 160;
+/** Tether lifetime, measured from the moment the duck starts flying. */
+export const AURA_LINK_MS = 900;
+/** Fade-out once the duck has been shot — the mark leaves with its duck. */
+export const AURA_OUT_MS = 380;
+
+/** Per-stage strengths of a bird's spawn aura, all in [0,1]. */
+export type SpawnAuraEnvelope = {
+  /** Steady lock-on ring + bloom + subject lift. */
+  glow: number;
+  /** Birth shockwave opacity. */
+  pulse: number;
+  /** Shockwave expansion, 0 at the ring → 1 at full reach. */
+  pulseT: number;
+  /** Tether opacity (bird → duck). */
+  link: number;
+};
+
+const AURA_SILENT: SpawnAuraEnvelope = {
+  glow: 0,
+  pulse: 0,
+  pulseT: 0,
+  link: 0,
+};
+
+/**
+ * Aura envelope for a duck `age` ms after it spawned. `pauseMs` is the duck's
+ * hold-in-place time (the tether only means something once the duck has
+ * actually left the bird), and `sinceDeath` is ms since it was shot, or null
+ * while it is still flying.
+ */
+export function spawnAuraEnvelope(
+  age: number,
+  pauseMs: number,
+  sinceDeath: number | null,
+): SpawnAuraEnvelope {
+  if (!(age >= 0)) return AURA_SILENT;
+  // A shot duck takes its mark with it, faster than the death beat itself —
+  // by the time the duck hangs, the bird it came from is unmarked again.
+  const dying = sinceDeath != null && sinceDeath >= 0;
+  const fade = dying ? 1 - clamp01(sinceDeath / AURA_OUT_MS) : 1;
+  if (fade <= 0) return AURA_SILENT;
+
+  // Shockwave: races outward while fading, squared so it reads as a snap.
+  const pulseT = clamp01(age / AURA_PULSE_MS);
+  const pulse = (1 - pulseT) * (1 - pulseT) * fade;
+  // Steady ring: eases in, then holds for as long as the duck is alive.
+  const glow = clamp01(age / AURA_IN_MS) * fade;
+  // Tether: nothing while the duck still sits on the bird, then a quick decay
+  // once it detaches — long enough to follow, short enough not to clutter.
+  const flown = age - Math.max(0, pauseMs);
+  const l = flown <= 0 ? 0 : 1 - clamp01(flown / AURA_LINK_MS);
+  return { glow, pulse, pulseT, link: l * l * fade };
+}
+
 export type DuckFlightParams = {
   /** Hold-in-place time after spawning, ms. */
   pauseMs: number;

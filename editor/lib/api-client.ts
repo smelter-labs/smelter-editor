@@ -200,7 +200,9 @@ interface SmelterApiClient {
   controlDuckHunterMatch(
     roomId: string,
     cmd: {
-      action: 'start' | 'stop' | 'reset' | 'lobby';
+      action: 'start' | 'stop' | 'reset' | 'lobby' | 'kick';
+      /** Target player for 'kick'; ignored by every other action. */
+      clientId?: string;
     } & Partial<ShooterMatchConfig>,
   ): Promise<ShooterMatchEvent>;
   getDuckHunterMatch(roomId: string): Promise<ShooterMatchEvent>;
