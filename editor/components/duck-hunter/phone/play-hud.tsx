@@ -528,8 +528,14 @@ export function ControlsRow({
         {gyroMode ? <ChipButton label='⚙' onClick={onAxes} /> : null}
         <ChipButton label='📷' active={camOn} onClick={onToggleCamera} />
       </div>
+      {/* `r5-btn` for its `touch-action: manipulation`, exactly as the
+          calibration trigger has it: without it iOS keeps the tap in play as a
+          possible double-tap-zoom and can cancel the pointer on rapid fire.
+          The class also sets `text-align: left`, hence the explicit centering
+          below (the rest of its rules are overridden by this inline style). */}
       <button
         type='button'
+        className='r5-btn'
         onPointerDown={onFire}
         style={{
           flex: 1,
@@ -540,6 +546,7 @@ export function ControlsRow({
           fontFamily: pixelFont,
           fontSize: 18,
           letterSpacing: 3,
+          textAlign: 'center',
           padding: '20px 10px',
           boxShadow: live
             ? `inset 0 3px 0 rgba(255,255,255,0.3), 0 0 14px rgba(${R5.redRgb},0.5)`

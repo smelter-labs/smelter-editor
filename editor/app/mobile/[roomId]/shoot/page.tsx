@@ -100,6 +100,10 @@ const TAP_MOVE_PX = 16;
 const FIRE_ALERT_MS = 1400;
 const REJECT_HAPTIC_MIN_MS = 350;
 const ERROR_BUZZ = [30, 60, 30, 60, 30];
+// A trigger pull on an empty magazine doubles as a "what do I really hold?"
+// question to the server (see `fire`). Rate-limited so mashing the button
+// doesn't turn into a shot storm the moment the server disagrees with us.
+const AMMO_RESYNC_MIN_MS = 500;
 
 // connectWhep resolves on a promise that never rejects and has no timeout of
 // its own: if the SDP exchange succeeds but no video track ever arrives, the
@@ -249,6 +253,7 @@ export default function ShootControllerPage() {
   const fireAlertIdRef = useRef(0);
   const fireAlertTimerRef = useRef<number | null>(null);
   const lastRejectHapticRef = useRef(0);
+  const lastAmmoResyncRef = useRef(0);
 
   const wsRef = useRef<WebSocket | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
@@ -379,9 +384,17 @@ export default function ShootControllerPage() {
     setPreviewAim({ x: 0.5, y: 0.5 });
   }, []);
 
-  const send = useCallback((msg: object) => {
+  /**
+   * Returns whether the message actually left the phone. Callers that spend
+   * something locally (see `fire`'s optimistic round) MUST check it: a silent
+   * drop here with the spend already applied desyncs us from the server for
+   * good, because `ammo` has no other source than the server's reply.
+   */
+  const send = useCallback((msg: object): boolean => {
     const ws = wsRef.current;
-    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+    if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+    ws.send(JSON.stringify(msg));
+    return true;
   }, []);
 
   // Tear down the live-camera WHIP publisher (leaves the local camera preview
@@ -596,13 +609,34 @@ export default function ShootControllerPage() {
       return;
     }
     if (ammo <= 0) {
-      // Empty mag: click, don't send.
+      // Empty mag: click. Also ask the server, rarely, what it thinks we hold —
+      // a phone that zeroed itself while the server's magazine stayed FULL is
+      // otherwise stuck forever (a full mag has no reload cycle running, so no
+      // regen tick will ever push a correcting `shooter_ammo`, and this branch
+      // is what stops us asking). The server answers an empty-mag shot with
+      // `shooter_empty` + the true magazine, so this costs nothing when we are
+      // genuinely out and self-heals when we are not.
       rejectFire('OUT OF AMMO — RELOADING');
+      const now = performance.now();
+      if (now - lastAmmoResyncRef.current >= AMMO_RESYNC_MIN_MS) {
+        lastAmmoResyncRef.current = now;
+        send({ type: 'shoot_fire' });
+      }
       return;
     }
-    setAmmo((a) => Math.max(0, a - 1)); // optimistic; server reconciles
-    send({ type: 'shoot_fire' });
+    // Spend only once the round is actually on the wire: `send` drops the
+    // message when the socket isn't OPEN, and an optimistic spend against a
+    // dropped shot drains the magazine with nothing coming back to refill it.
+    if (send({ type: 'shoot_fire' })) {
+      setAmmo((a) => Math.max(0, a - 1)); // optimistic; server reconciles
+    }
   }, [send, ammo, phase, triggerBlocked, rejectFire]);
+
+  // `fire` gets a fresh identity on every ammo change (it closes over `ammo`).
+  // Long-lived listeners must go through this ref instead of depending on it,
+  // or their effect tears down and re-runs once per shot.
+  const fireRef = useRef(fire);
+  fireRef.current = fire;
 
   // Test-range shot during calibration: hit-test against the practice ducks
   // (local only — nothing is sent to the server). FIRE shoots at the preview
@@ -888,25 +922,55 @@ export default function ShootControllerPage() {
   // volume *increase* as a shot, then snap the volume back to mid so there's
   // always headroom in both directions. (iOS media volume is read-only, so this
   // can't work there; some Android browsers also deliver a keydown, handled too.)
+  //
+  // iOS is not merely "this won't work" — done naively it FIRES BY ITSELF. The
+  // volume setter is a no-op there while the getter keeps reporting 1, so a
+  // baseline pinned to 0.5 makes every `volumechange` look like a volume-up and
+  // pull the trigger; re-asserting the volume from inside the handler feeds the
+  // next event, and depending on `fire` (whose identity changes with `ammo`)
+  // rebuilt the whole element once per shot, closing the loop. The magazine
+  // then drains untouched and every regenerated round is eaten on arrival —
+  // FIRE reads RELOADING forever. Hence: probe that the volume is really
+  // writable before arming anything, track the true previous value, ignore our
+  // own write-backs, and reach `fire` through a ref so this runs once per step.
   useEffect(() => {
     if (step !== 'play') return;
     const url = makeSilentWavUrl();
     const audio = new Audio(url);
     audio.loop = true;
     audio.volume = 0.5;
-    let prev = 0.5;
+    // Read back: a platform that ignores the setter (iOS) never gets a
+    // listener, so it cannot phantom-fire. The keydown path stays either way.
+    const volumeWritable = Math.abs(audio.volume - 0.5) < 0.01;
+    let prev = audio.volume;
+    let selfWrite = false;
     const onVol = () => {
+      if (selfWrite) {
+        // Our own re-arm, not the player's thumb.
+        selfWrite = false;
+        prev = audio.volume;
+        return;
+      }
       const v = audio.volume;
-      if (v > prev + 0.001) fire(); // volume up → shoot
-      prev = 0.5;
-      if (audio.volume !== 0.5) audio.volume = 0.5; // re-arm both directions
+      const up = v > prev + 0.001;
+      prev = v;
+      if (up) fireRef.current(); // volume up → shoot
+      // Snap back to mid so there's headroom in both directions.
+      if (v !== 0.5) {
+        selfWrite = true;
+        audio.volume = 0.5;
+        // The setter may be synchronous, asynchronous, or ignored entirely;
+        // only clear the guard once we know it took.
+        if (audio.volume === 0.5) prev = 0.5;
+        else selfWrite = false;
+      }
     };
-    audio.addEventListener('volumechange', onVol);
+    if (volumeWritable) audio.addEventListener('volumechange', onVol);
     void audio.play().catch(() => {});
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'AudioVolumeUp') {
         e.preventDefault();
-        fire();
+        fireRef.current();
       }
     };
     window.addEventListener('keydown', onKey);
@@ -916,7 +980,7 @@ export default function ShootControllerPage() {
       window.removeEventListener('keydown', onKey);
       URL.revokeObjectURL(url);
     };
-  }, [step, fire]);
+  }, [step]);
 
   const connectWs = useCallback(() => {
     // Explicit `?server=` wins; then the public build-time default (a phone on
@@ -1091,7 +1155,15 @@ export default function ShootControllerPage() {
         // The authoritative empty (we thought we had a round, the server
         // disagreed) gets the same treatment as the local one.
         setAmmo(0);
-        rejectFire('OUT OF AMMO — RELOADING');
+        // ...unless this is merely the echo of an empty-magazine resync probe,
+        // which `fire` already answered with a flash and a banner of its own.
+        // Re-running it here would double-blink on every empty trigger pull.
+        if (
+          performance.now() - lastAmmoResyncRef.current >=
+          AMMO_RESYNC_MIN_MS
+        ) {
+          rejectFire('OUT OF AMMO — RELOADING');
+        }
       } else if (m.type === 'shooter_cam_offer') {
         // The server registered our camera WHIP input; publish the front camera
         // into it. Read the stream from a ref so this stable handler always sees
