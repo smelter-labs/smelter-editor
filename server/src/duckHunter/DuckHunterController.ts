@@ -29,8 +29,17 @@ import {
   contentToPx,
   duckContentPos,
   duckSidePx,
+  pxToContent,
   validViewport,
 } from './duckFlight';
+import type { DogEntity } from './dogTaunt';
+import {
+  DOG_FREEZE_MS,
+  DOG_HIT_FACTOR,
+  dogExpired,
+  dogRectPx,
+  dogShootable,
+} from './dogTaunt';
 
 /**
  * How the controller talks to the room. Cameras go through InputManager (via
@@ -95,6 +104,12 @@ type Player = {
   dispX: number;
   dispY: number;
   score: number;
+  /**
+   * Dogs bagged. Deliberately a separate counter: shooting the taunting dog
+   * never touches `score`, so it cannot rank the scoreboard, end a points
+   * round, or reach the persisted top-score table.
+   */
+  dogScore: number;
   /** Ammo: firing consumes one; the magazine regenerates one per reloadMs. */
   ammo: number;
   maxAmmo: number;
@@ -105,6 +120,10 @@ type Player = {
   lastHitAt: number;
   /** Current run of consecutive hits (gaps < STREAK_WINDOW_MS keep it going). */
   streak: number;
+  /** Wall-clock ms of this player's last miss, for the miss-streak window. */
+  lastMissAt: number;
+  /** Current run of consecutive misses; two in a row summon the laughing dog. */
+  missStreak: number;
   /**
    * Smelter WHIP input id carrying this player's live front camera, or null
    * when the camera is off. Registered on demand (shoot_cam_start) and drawn
@@ -165,9 +184,12 @@ const PLAYER_COLORS = [
 
 const RESPAWN_MS = 3000; // how long a shot ghost stays down before returning
 const BURST_MS = 600; // shot-effect lifetime
-// Streak: two hits within this window trigger the Duck Hunt dog pop-up.
+// Streak: two hits within this window trigger the Duck Hunt dog pop-up, and two
+// misses within it summon the laughing dog the player can shoot back at.
 const STREAK_WINDOW_MS = 2000;
 const DOG_REVEAL_MS = 6000; // how long the dog stays on screen per pop-up
+// Floor between taunts, so a cold streak doesn't turn into a parade of dogs.
+const DOG_TAUNT_COOLDOWN_MS = 12_000;
 const PUBLISH_MS = 33; // ~30Hz overlay refresh while the game is active
 // Hit radius as a fraction of the visible sprite side. The sprite footprint
 // itself comes from the shared duck model (duckSidePx), so the hitbox always
@@ -240,6 +262,13 @@ export class DuckHunterController {
   private bursts: ShooterBurst[] = [];
   private nextBurstId = 1;
   private dogReveals: DogReveal[] = [];
+  /**
+   * The taunting dogs — the shootable ones. Separate from `dogReveals` (the
+   * "got two" celebration) so the celebration can never accidentally become a
+   * target. Ids come from the same counter, so the two never collide.
+   */
+  private dogs: DogEntity[] = [];
+  private lastDogTauntAt = 0;
   private nextDogId = 1;
   private colorSeq = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -364,12 +393,15 @@ export class DuckHunterController {
         dispX: 0.5,
         dispY: 0.5,
         score: 0,
+        dogScore: 0,
         ammo: this.roomMaxAmmo,
         maxAmmo: this.roomMaxAmmo,
         reloadMs: this.roomReloadMs,
         reloadStartedAt: null,
         lastHitAt: 0,
         streak: 0,
+        lastMissAt: 0,
+        missStreak: 0,
         camInputId: null,
         camGen: 0,
         camConnected: false,
@@ -535,14 +567,19 @@ export class DuckHunterController {
         // A fresh round starts from zero for everyone, magazines full.
         for (const p of this.players.values()) {
           p.score = 0;
+          p.dogScore = 0;
           p.streak = 0;
           p.lastHitAt = 0;
+          p.missStreak = 0;
+          p.lastMissAt = 0;
           p.ammo = p.maxAmmo;
           p.reloadStartedAt = null;
           this.sendAmmo(p.clientId);
         }
         this.bursts = [];
         this.dogReveals = [];
+        this.dogs = [];
+        this.lastDogTauntAt = 0;
         this.lobbyArmed = false;
         this.ensureRunning();
         break;
@@ -836,9 +873,17 @@ export class DuckHunterController {
     if (!p) return;
 
     // Match rounds only accept shots while 'playing' — the countdown and the
-    // game-over screen swallow the trigger silently (no ammo spend, no click).
-    // Aim stays live so crosshairs keep moving on the broadcast.
-    if (this.match && this.match.phase !== 'playing') return;
+    // game-over screen swallow the trigger (no ammo spend, no click). Aim stays
+    // live so crosshairs keep moving on the broadcast.
+    if (this.match && this.match.phase !== 'playing') {
+      // Still answer with the true magazine: a phone whose match snapshot is
+      // stale (mid-reconnect) may have optimistically spent a round, and with a
+      // full mag no regen tick would ever come along to correct it. Deliberately
+      // not 'shooter_empty' — that would flash and buzz for a shot the player
+      // never meant to have refused.
+      this.sendAmmo(clientId);
+      return;
+    }
 
     // Out of ammo: no shot, just tell the phone to click empty.
     if (p.ammo <= 0) {
@@ -855,15 +900,6 @@ export class DuckHunterController {
     if (p.reloadStartedAt == null) p.reloadStartedAt = this.now();
     this.sendAmmo(clientId);
 
-    const targetId = this.getTargetInputId();
-    const pb = targetId
-      ? this.store.getState().peopleBoxes[targetId]
-      : undefined;
-    if (!pb || pb.boxes.length === 0) {
-      this.sendMiss(clientId);
-      return;
-    }
-
     // Fire at the crosshair the player actually SEES on the broadcast, not the
     // raw latest aim. The rendered crosshair is eased (CROSSHAIR_SMOOTH) and so
     // lags the raw aim while the phone moves — using aimX/aimY here would land
@@ -871,6 +907,27 @@ export class DuckHunterController {
     // "shot appears above/beside the crosshair" bug.
     const shotX = p.dispX;
     const shotY = p.dispY;
+
+    // The taunting dog is tested BEFORE the "nothing to shoot at" early-out
+    // below: it is summoned by missing, so the sky is usually empty at exactly
+    // the moment it is on screen. Testing it after that return would make it
+    // unshootable in precisely the situation that produces it.
+    const dog = this.hitTestDog(shotX, shotY);
+    if (dog) {
+      this.hitDog(dog, p);
+      return;
+    }
+
+    const targetId = this.getTargetInputId();
+    const pb = targetId
+      ? this.store.getState().peopleBoxes[targetId]
+      : undefined;
+    if (!pb || pb.boxes.length === 0) {
+      // No ducks in the sky — a miss, but not one the dog laughs at (see
+      // registerMiss): shooting at nothing shouldn't summon anything.
+      this.sendMiss(clientId);
+      return;
+    }
 
     // Bird sprites fly a trajectory detached from the detection box, so we must
     // hit-test the ducks at their *current* drawn position (the same shared
@@ -890,6 +947,7 @@ export class DuckHunterController {
         at: Date.now(),
         kind: 'miss',
       });
+      this.registerMiss(p, shotX);
       this.publish();
       this.sendMiss(clientId);
       return;
@@ -910,6 +968,7 @@ export class DuckHunterController {
     // the Duck Hunt dog pops up (holding two ducks) tinted to this player.
     p.streak = now - p.lastHitAt < STREAK_WINDOW_MS ? p.streak + 1 : 1;
     p.lastHitAt = now;
+    p.missStreak = 0; // a hit breaks the cold streak the dog laughs at
     if (p.streak === 2) {
       this.dogReveals.push({
         id: this.nextDogId++,
@@ -1003,6 +1062,7 @@ export class DuckHunterController {
     this.departed.clear();
     this.bursts = [];
     this.dogReveals = [];
+    this.dogs = [];
     this.store.getState().setShooter(null);
   }
 
@@ -1067,6 +1127,126 @@ export class DuckHunterController {
     return best;
   }
 
+  /**
+   * Record a miss and, on the second in a row, summon the laughing dog.
+   *
+   * Only misses with something actually in the sky get here (see fire()) —
+   * otherwise a player pointing at an empty frame would conjure a dog every two
+   * trigger pulls. The counter resets on a hit and after each summon, so a long
+   * cold streak produces one dog per cooldown rather than a parade.
+   */
+  private registerMiss(p: Player, shotX: number): void {
+    const now = this.now();
+    p.missStreak = now - p.lastMissAt < STREAK_WINDOW_MS ? p.missStreak + 1 : 1;
+    p.lastMissAt = now;
+    if (p.missStreak < 2) return;
+    p.missStreak = 0;
+    this.summonDogTaunt(now, shotX);
+  }
+
+  /**
+   * Pop the taunting dog up at `x`. Every gate lives here so the trigger itself
+   * stays a one-line call.
+   */
+  private summonDogTaunt(now: number, x: number): void {
+    if (this.match && this.match.phase !== 'playing') return;
+    if (this.dogs.length > 0) return; // one dog at a time
+    if (now - this.lastDogTauntAt < DOG_TAUNT_COOLDOWN_MS) return;
+    this.lastDogTauntAt = now;
+    this.dogs.push({ id: this.nextDogId++, x: clamp01(x), at: now });
+    this.ensureRunning();
+  }
+
+  /**
+   * Shoot at the taunting dog where it is actually drawn, using the same shared
+   * model (dogRectPx) the renderer draws with. Rectangular rather than the
+   * ducks' screen-circle: the sprite is tall and narrow, so a radius would
+   * either miss the head or cover the empty air beside the paws.
+   */
+  private hitTestDog(shotX: number, shotY: number): DogEntity | null {
+    if (this.dogs.length === 0) return null;
+    const target = this.getTargetPb();
+    if (!target) return null;
+    const v = duckViewport(this.store.getState().resolution, target.pb);
+    if (!validViewport(v)) return null;
+    const now = this.now();
+    const { px, py } = contentToPx(shotX, shotY, v);
+    for (const d of this.dogs) {
+      if (!dogShootable(d, now)) continue;
+      const r = dogRectPx(d, now, v);
+      const halfW = (r.width * DOG_HIT_FACTOR) / 2;
+      const halfH = (r.height * DOG_HIT_FACTOR) / 2;
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      if (Math.abs(px - cx) <= halfW && Math.abs(py - cy) <= halfH) return d;
+    }
+    return null;
+  }
+
+  /**
+   * Bag a dog. Feeds the dog counter only — never `p.score`, never the hit
+   * streak (that is what summons the *celebration* dog), and never `deadGhosts`
+   * (that map is keyed by tracker box id, which shares an integer space with
+   * dog ids — inserting one would suppress a real duck's respawn).
+   */
+  private hitDog(dog: DogEntity, p: Player): void {
+    const now = this.now();
+    dog.diedAt = now;
+    dog.hitColor = p.color;
+    p.dogScore += 1;
+    const target = this.getTargetPb();
+    const v = target
+      ? duckViewport(this.store.getState().resolution, target.pb)
+      : null;
+    if (v && validViewport(v)) {
+      const r = dogRectPx(dog, now, v);
+      const c = pxToContent(r.left + r.width / 2, r.top + r.height / 2, v);
+      this.bursts.push({
+        id: this.nextBurstId++,
+        x: c.x,
+        y: c.y,
+        at: now,
+        kind: 'hit',
+      });
+    }
+    this.ensureRunning();
+    // Reuse shooter_hit rather than minting a new event: the phone's handler
+    // ignores unknown types, so a new one would silently no-op there. `score` is
+    // sent unchanged, so an old client keeps showing the right duck score.
+    this.deps.sendTo(p.clientId, {
+      type: 'shooter_hit',
+      roomId: this.roomId,
+      clientId: p.clientId,
+      ghostId: dog.id,
+      score: p.score,
+      target: 'dog',
+      dogScore: p.dogScore,
+    });
+    // Deliberately no endMatch() check: points mode is won on ducks only.
+    this.publish();
+    this.broadcastState();
+  }
+
+  /**
+   * Age the taunting dogs. A live dog rides the same hit-stop freeze as the
+   * flock — otherwise a duck death would silently eat half of the 2s window in
+   * which the dog can be shot, while the frame looks stopped.
+   */
+  private reconcileDogs(now: number, dt: number, hitStop: boolean): void {
+    if (this.dogs.length === 0) return;
+    const target = this.getTargetPb();
+    if (!target || target.pb.sprite !== 'bird') {
+      this.dogs = [];
+      return;
+    }
+    if (hitStop) {
+      for (const d of this.dogs) {
+        if (d.diedAt == null) d.at += dt;
+      }
+    }
+    this.dogs = this.dogs.filter((d) => !dogExpired(d, now));
+  }
+
   /** Ghost mode: sprites stay glued to the detection box, so hit-test the box
    * center with a radius matching the drawn sprite footprint (output pixels). */
   private hitTestBoxes(
@@ -1105,13 +1285,16 @@ export class DuckHunterController {
    * center; a duck that flies off-screen is retired and its id suppressed until
    * it leaves detection and re-enters; a shot duck plays its death beat then is
    * dropped. This is the sole owner of duck state — the renderer only draws it.
+   *
+   * Returns whether a hit-stop is in effect, so reconcileDogs freezes on the
+   * same decision instead of computing its own and drifting from it.
    */
-  private reconcileDucks(now: number, dt: number): void {
+  private reconcileDucks(now: number, dt: number): boolean {
     const target = this.getTargetPb();
     if (!target || target.pb.sprite !== 'bird') {
       this.ducks.clear();
       this.departed.clear();
-      return;
+      return false;
     }
     const { pb } = target;
     const v = duckViewport(this.store.getState().resolution, pb);
@@ -1149,13 +1332,20 @@ export class DuckHunterController {
       if (!detected.has(id)) this.departed.delete(id);
     }
 
-    // Hit-stop: while any shot duck is still hanging, freeze the whole flock by
-    // pushing its clock forward, so ducks resume in place after the beat.
-    let hitStop = false;
-    for (const d of this.ducks.values()) {
-      if (d.diedAt != null && now - d.diedAt < DUCK_HANG_MS) {
-        hitStop = true;
-        break;
+    // Hit-stop: while any shot duck is still hanging — or a shot dog is still
+    // yelping — freeze the whole flock by pushing its clock forward, so ducks
+    // resume in place after the beat. The dog's window is longer on purpose:
+    // that extra breath IS the pause a dog kill is supposed to land on, and it
+    // ends exactly as the dog starts to fall.
+    let hitStop = this.dogs.some(
+      (d) => d.diedAt != null && now - d.diedAt < DOG_FREEZE_MS,
+    );
+    if (!hitStop) {
+      for (const d of this.ducks.values()) {
+        if (d.diedAt != null && now - d.diedAt < DUCK_HANG_MS) {
+          hitStop = true;
+          break;
+        }
       }
     }
     for (const [id, d] of this.ducks) {
@@ -1177,6 +1367,7 @@ export class DuckHunterController {
         if (detected.has(id)) this.departed.add(id);
       }
     }
+    return hitStop;
   }
 
   private sendMiss(clientId: string): void {
@@ -1197,6 +1388,7 @@ export class DuckHunterController {
         color: p.color,
         characterId: p.characterId ?? undefined,
         score: p.score,
+        dogScore: p.dogScore,
         connected: p.connected,
         camLive: p.camConnected,
       })),
@@ -1219,6 +1411,7 @@ export class DuckHunterController {
         color: p.color,
         characterId: p.characterId ?? undefined,
         score: p.score,
+        dogScore: p.dogScore,
       }))
       .sort((a, b) => b.score - a.score);
     const top = rows[0];
@@ -1278,6 +1471,7 @@ export class DuckHunterController {
       this.deadGhosts.size === 0 &&
       this.bursts.length === 0 &&
       this.dogReveals.length === 0 &&
+      this.dogs.length === 0 &&
       this.ducks.size === 0 &&
       !this.hasBirdTarget() &&
       !matchHoldsLoop
@@ -1355,8 +1549,10 @@ export class DuckHunterController {
       }
     }
     // Advance the duck flock (bird mode) — the authoritative position both the
-    // renderer and the hit-test read from.
-    this.reconcileDucks(now, dt);
+    // renderer and the hit-test read from. The taunting dogs ride the same
+    // hit-stop decision, so they freeze and resume with the flock.
+    const hitStop = this.reconcileDucks(now, dt);
+    this.reconcileDogs(now, dt, hitStop);
     this.publish();
     this.maybeStop();
   }
@@ -1472,11 +1668,14 @@ export class DuckHunterController {
           color: p.color,
           characterId: p.characterId ?? undefined,
           score: p.score,
+          dogScore: p.dogScore,
           ...ammoState(p),
         }))
+        // Ranked on ducks only — dogs are a side tally, never a tiebreak.
         .sort((a, b) => b.score - a.score),
       bursts: this.bursts,
       dogReveals: this.dogReveals,
+      dogs: this.dogs,
       deadGhostIds: [...this.deadGhosts.keys()],
       // deadGhosts stores respawnAt (= diedAt + RESPAWN_MS); recover diedAt so
       // the renderer can time the hang → fall death animation.
@@ -1528,6 +1727,7 @@ export class DuckHunterController {
               color: p.color,
               score: p.score,
               characterId: p.characterId,
+              dogScore: p.dogScore ?? 0,
             }))
           : [],
       topScores: m.phase === 'ended' ? m.topScores : [],

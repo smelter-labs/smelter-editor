@@ -6,6 +6,7 @@ import type { ShooterFeed } from '../use-shooter-feed';
 import {
   ACCENT_LINE,
   ArcadeText,
+  DogTally,
   LedText,
   PanelTitle,
   PixelButton,
@@ -238,6 +239,7 @@ export function Results({
                     }}>
                     {p.name}
                   </span>
+                  <DogTally count={p.dogScore ?? 0} size={14} />
                   <LedText size={22}>{p.score}</LedText>
                 </PixelPanel>
               ))

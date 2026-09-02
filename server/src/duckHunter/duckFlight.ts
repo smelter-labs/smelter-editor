@@ -182,3 +182,17 @@ export function contentToPx(
   const offY = (v.height - dispH) / 2;
   return { px: offX + x * dispW, py: offY + y * dispH };
 }
+
+/** Inverse of contentToPx: output pixels back to content space [0,1]. */
+export function pxToContent(
+  px: number,
+  py: number,
+  v: DuckViewport,
+): { x: number; y: number } {
+  const s = coverScale(v);
+  const dispW = v.frameW * s;
+  const dispH = v.frameH * s;
+  const offX = (v.width - dispW) / 2;
+  const offY = (v.height - dispH) / 2;
+  return { x: (px - offX) / dispW, y: (py - offY) / dispH };
+}

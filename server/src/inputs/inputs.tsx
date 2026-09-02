@@ -30,13 +30,18 @@ import { KbtShakeWrapper } from './KbtShakeWrapper';
 import { KbtTileHud } from './KbtHud';
 import { ArcadeBigText, RETRO, RetroPanel } from './RetroPanel';
 import {
+  DOG_ICONS_MAX,
   chipRect,
+  dogIconPitch,
   dotoTextWidth,
   hunterRowMetrics,
   scoreboardRect,
 } from './retroHudLayout';
 import { HudLine } from './ShooterCharacterClip';
 import { SHOOTER_CHARACTERS } from '@smelter-editor/types';
+import { dogLaughFrame, dogPose, dogRectPx } from '../duckHunter/dogTaunt';
+import { HIT_PAD, hitFlashEnvelope } from '../duckHunter/duckFlight';
+import { HIT_TINT_FALLBACK, hitShaderParam } from './hitFlashShader';
 
 type Resolution = { width: number; height: number };
 
@@ -738,6 +743,14 @@ function ShooterHud({
     px: offX + x * dispW,
     py: offY + y * dispH,
   });
+  // Same shape the server builds for the hit-test, so dogRectPx returns the
+  // identical rect on both sides.
+  const dogViewport = {
+    width: parent.width,
+    height: parent.height,
+    frameW: fw,
+    frameH: fh,
+  };
 
   const chSize = Math.max(28, Math.round(parent.width * 0.05));
   const th = Math.max(2, Math.round(chSize * 0.06));
@@ -943,6 +956,85 @@ function ShooterHud({
                 style={{ width: dogW, height: dogH, rescaleMode: 'fit' }}>
                 <Image imageId='dog-catch' />
               </Rescaler>
+            </Shader>
+          </View>
+        );
+      })}
+
+      {/* The taunting dog: springs up after two misses in a row, laughs for a
+          couple of seconds — the only window it can be shot in — then sinks
+          back down. Position comes from the shared model (dogRectPx), the same
+          one the server hit-test reads, so a shot lands on the drawn sprite.
+          Deliberately NOT hue-tinted like the celebration dog: this one belongs
+          to nobody, and skipping it saves a shader pass every frame. Hidden
+          under a full-frame scene like the crosshairs are: a dog still mid-taunt
+          when the round ends would otherwise burn a shader pass behind the
+          results podium that covers it. */}
+      {(fullFrameScene ? [] : shooter.dogs).map((d) => {
+        const r = dogRectPx(d, now, dogViewport);
+        const pose = dogPose(d, now);
+        const imageId =
+          pose === 'laugh'
+            ? `dog-laugh-${dogLaughFrame(d, now)}`
+            : `dog-${pose}`;
+        if (d.diedAt == null) {
+          return (
+            <View key={`dog-${d.id}`} style={{ ...r }}>
+              <Rescaler
+                style={{
+                  width: r.width,
+                  height: r.height,
+                  rescaleMode: 'fit',
+                }}>
+                <Image imageId={imageId} />
+              </Rescaler>
+            </View>
+          );
+        }
+        // Shot: same hit-flash treatment as a duck, on a padded plane so the
+        // halo has room. `rim_px` derives from the SMALLER side so a tall,
+        // narrow plane spreads evenly instead of stretching.
+        const env = hitFlashEnvelope(now - d.diedAt);
+        const boxW = Math.round(r.width * HIT_PAD);
+        const boxH = Math.round(r.height * HIT_PAD);
+        const offX = Math.round((boxW - r.width) / 2);
+        const offY = Math.round((boxH - r.height) / 2);
+        return (
+          <View
+            key={`dog-${d.id}`}
+            style={{
+              top: r.top - offY,
+              left: r.left - offX,
+              width: boxW,
+              height: boxH,
+            }}>
+            <Shader
+              shaderId='duck-hit-flash'
+              resolution={{ width: boxW, height: boxH }}
+              shaderParam={hitShaderParam(
+                env,
+                d.hitColor ?? HIT_TINT_FALLBACK,
+                Math.min(boxW, boxH),
+              )}>
+              {/* Shader children must have a known size. */}
+              <View style={{ width: boxW, height: boxH }}>
+                <View
+                  style={{
+                    top: offY,
+                    left: offX,
+                    width: r.width,
+                    height: r.height,
+                  }}>
+                  <Rescaler
+                    style={{
+                      width: r.width,
+                      height: r.height,
+                      rescaleMode: 'fit',
+                    }}>
+                    <Image imageId={imageId} />
+                  </Rescaler>
+                </View>
+              </View>
             </Shader>
           </View>
         );
@@ -1508,10 +1600,17 @@ function ShooterScoreboard({
   // (they had drifted apart, which is what made the badge read as a different
   // HUD). avGap is generous on purpose: at fs*0.4 the first letters of the
   // name visually sat on the avatar's chunky frame.
-  const { av, avGap, pipSize } = hunterRowMetrics(fs);
+  const { av, avGap, pipSize, dogIconH, dogIconW, dogIconGap } =
+    hunterRowMetrics(fs);
   const rankW = Math.round(fs * 1.5);
   const gap = Math.round(fs * 0.4);
-  const scoreW = Math.round(fs * 2.4);
+  // Decided once for the whole board, never per row: the score column has to
+  // stay the same width in every row or the numbers stop lining up, and it must
+  // not resize mid-match as individual players bag dogs. A match where nobody
+  // shoots the dog therefore lays out exactly as it did before the tally
+  // existed — score vertically centred, no strip, original column width.
+  const anyDogs = scores.some((s) => (s.dogScore ?? 0) > 0);
+  const scoreW = Math.round(fs * (anyDogs ? 3.8 : 2.4));
   const width = shell.width;
   const nameLeft = padH + rankW + av + avGap;
   const nameW = width - nameLeft - scoreW - padH - gap;
@@ -1639,7 +1738,11 @@ function ShooterScoreboard({
             ) : null}
             <View
               style={{
-                top: Math.round((rowH - fs * 1.5) / 2),
+                // With a tally strip the score rides at the top of its column to
+                // make room beneath it; otherwise it stays vertically centred.
+                top: anyDogs
+                  ? Math.round(fs * 0.15)
+                  : Math.round((rowH - fs * 1.5) / 2),
                 left: width - padH - scoreW,
                 width: scoreW,
                 height: Math.round(fs * 1.6),
@@ -1657,6 +1760,47 @@ function ShooterScoreboard({
                 {`${s.score}`}
               </Text>
             </View>
+            {/* Dog tally: one sprite per dog bagged, laid out right-to-left
+                under the score. No number by design — past the point where the
+                pile stops fitting the icons shingle (see dogIconPitch), so the
+                strip's width, and therefore the score above it, never move. */}
+            {(s.dogScore ?? 0) > 0 ? (
+              <View
+                style={{
+                  top: Math.round(fs * 1.85),
+                  left: width - padH - scoreW,
+                  width: scoreW,
+                  height: dogIconH,
+                  overflow: 'hidden',
+                }}>
+                {(() => {
+                  const n = Math.min(s.dogScore ?? 0, DOG_ICONS_MAX);
+                  const pitch = dogIconPitch(n, scoreW, dogIconW, dogIconGap);
+                  // i = 0 is the rightmost, so later dogs stack to the left and
+                  // under the earlier ones — the newest sits on top of the pile.
+                  return Array.from({ length: n }).map((_, i) => (
+                    <View
+                      key={`dog-tally-${i}`}
+                      style={{
+                        top: 0,
+                        left: Math.round(scoreW - dogIconW - i * pitch),
+                        width: dogIconW,
+                        height: dogIconH,
+                        overflow: 'hidden',
+                      }}>
+                      <Rescaler
+                        style={{
+                          width: dogIconW,
+                          height: dogIconH,
+                          rescaleMode: 'fit',
+                        }}>
+                        <Image imageId='dog-tally' />
+                      </Rescaler>
+                    </View>
+                  ));
+                })()}
+              </View>
+            ) : null}
           </View>
         );
       })}

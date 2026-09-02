@@ -267,19 +267,41 @@ class SmelterManager {
       console.warn('[smelter] imgs/ducks missing — duck sprites not registered');
     }
 
-    // Duck Hunt dog holding two ducks, shown when a player bags two in a row.
-    // Same hi-res-preferred strategy as the ducks (see scripts/slice-dog.py).
+    // Duck Hunt dog poses (see scripts/slice-dog.py): `dog-catch` holding two
+    // ducks after a 2-in-a-row streak, `dog-laugh-*` the shootable taunt after
+    // two misses, and `dog-yelp`/`dog-shot` its death beat. Same hi-res-preferred
+    // strategy as the ducks, and per-file guards so a missing pose degrades to a
+    // warning instead of failing the boot.
     const dogHiDir = path.join(__dirname, '../imgs/dog-hi');
-    const dogDir = (await pathExists(dogHiDir))
-      ? dogHiDir
-      : path.join(__dirname, '../imgs/dog');
+    const dog1xDir = path.join(__dirname, '../imgs/dog');
+    const dogDir = (await pathExists(dogHiDir)) ? dogHiDir : dog1xDir;
     if (await pathExists(dogDir)) {
-      await this.registerImage('dog-catch', {
-        serverPath: path.join(dogDir, 'dog-catch.png'),
-        assetType: 'png',
-      });
+      for (const id of [
+        'dog-catch',
+        'dog-laugh-0',
+        'dog-laugh-1',
+        'dog-yelp',
+        'dog-shot',
+      ]) {
+        const file = path.join(dogDir, `${id}.png`);
+        if (!(await pathExists(file))) {
+          console.warn(`[smelter] ${id}.png missing — not registered`);
+          continue;
+        }
+        await this.registerImage(id, { serverPath: file, assetType: 'png' });
+      }
+      // The scoreboard tally icon is the one dog sprite drawn SMALLER than its
+      // source (~26px), so it reads the 1x file: downsampling the ×4 hi copy
+      // through a bilinear-only scaler would just alias it.
+      const tally = path.join(dog1xDir, 'dog-tally.png');
+      if (await pathExists(tally)) {
+        await this.registerImage('dog-tally', {
+          serverPath: tally,
+          assetType: 'png',
+        });
+      }
     } else {
-      console.warn('[smelter] imgs/dog missing — dog-catch not registered');
+      console.warn('[smelter] imgs/dog missing — dog sprites not registered');
     }
 
     // Haunting-ghosts sprites (HaunterGhostsInput): one ghost with three arc

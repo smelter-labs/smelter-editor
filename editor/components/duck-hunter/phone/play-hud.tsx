@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import type { ShooterMatchEvent } from '@smelter-editor/types';
 import {
+  DogTally,
   LedText,
   PixelPanel,
   R5,
@@ -17,10 +18,14 @@ type ScoreRow = {
   name: string;
   color: string;
   score: number;
+  dogScore?: number;
 };
 
-/** 4 Hz re-render for the match clock (anchored on server wall-clock). */
-function useClockTick(active: boolean): void {
+/**
+ * 4 Hz re-render for the match clock (anchored on server wall-clock). Exported
+ * for the gun panel, which shows the same clock with the feed switched off.
+ */
+export function useClockTick(active: boolean): void {
   const [, force] = useState(0);
   useEffect(() => {
     if (!active) return;
@@ -29,7 +34,7 @@ function useClockTick(active: boolean): void {
   }, [active]);
 }
 
-function fmtClock(ms: number): string {
+export function fmtClock(ms: number): string {
   const total = Math.max(0, Math.round(ms / 1000));
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 }
@@ -42,12 +47,15 @@ export function PlayTopBar({
   connected,
   match,
   score,
+  dogScore,
   myColor,
   scores,
 }: {
   connected: boolean;
   match: ShooterMatchEvent | null;
   score: number;
+  /** Dogs bagged, drawn as icons beside the score. */
+  dogScore: number;
   myColor: string;
   scores: ScoreRow[];
 }) {
@@ -101,8 +109,7 @@ export function PlayTopBar({
         right: 0,
         zIndex: 6,
         pointerEvents: 'none',
-        padding:
-          'calc(env(safe-area-inset-top, 0px) + 8px) 10px 0',
+        padding: 'calc(env(safe-area-inset-top, 0px) + 8px) 10px 0',
         display: 'flex',
         flexDirection: 'column',
         gap: 4,
@@ -145,6 +152,7 @@ export function PlayTopBar({
           <LedText size={20} color={myColor} glowRgb='255,255,255'>
             {score}
           </LedText>
+          <DogTally count={dogScore} />
         </span>
       </div>
       {scores.length > 1 ? (
@@ -369,14 +377,23 @@ export function AmmoRow({
   ammo,
   maxAmmo,
   reloadLeftMs,
+  right,
 }: {
   ammo: number;
   maxAmmo: number;
   reloadLeftMs: number;
+  /**
+   * Corner utility slot, floated so the shells stay centered on the row. This
+   * strip is the only always-present play chrome with room to spare: the chip
+   * grid below is deliberately kept 2×2, and GunPanel runs a fixed pixel
+   * budget that silently drops standings rows if anything is added to it.
+   */
+  right?: React.ReactNode;
 }) {
   return (
     <div
       style={{
+        position: 'relative',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -418,6 +435,22 @@ export function AmmoRow({
           ''
         )}
       </span>
+      {right ? (
+        <span
+          style={{
+            position: 'absolute',
+            right: 12,
+            // Spans the row and centers within it, so the chip can't hang below
+            // and get repainted by ControlsRow's opaque background.
+            top: 0,
+            bottom: 0,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+          }}>
+          {right}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -425,23 +458,45 @@ export function AmmoRow({
 /** Bottom control row: utilities + the big FIRE button. */
 export function ControlsRow({
   gyroMode,
+  showModeToggle,
   onToggleMode,
   onRecenter,
   onAxes,
   camOn,
   onToggleCamera,
+  streamOn,
+  onToggleStream,
   ammo,
+  blocked,
   onFire,
 }: {
   gyroMode: boolean;
+  /**
+   * Offer the aim-mode chip at all. Finger aiming is hidden while the gyro is
+   * healthy — with the feed off there is nothing on screen to tap at — and
+   * comes back the moment the sensor lets the player down.
+   */
+  showModeToggle: boolean;
   onToggleMode: () => void;
   onRecenter: () => void;
   onAxes: () => void;
   camOn: boolean;
   onToggleCamera: () => void;
+  /** The output feed is being pulled to this phone (off by default). */
+  streamOn: boolean;
+  onToggleStream: () => void;
   ammo: number;
+  /**
+   * The match phase has the trigger locked (countdown / game over). The button
+   * goes dead-gray and reads HOLD, but still calls onFire — the refusal answers
+   * with a flash, a buzz and a banner, which is the only feedback iOS gets. A
+   * real `disabled` here would just feel like a broken app.
+   */
+  blocked?: boolean;
   onFire: () => void;
 }) {
+  const live = !blocked && ammo > 0;
+  const label = blocked ? 'HOLD' : ammo > 0 ? 'FIRE' : 'RELOADING';
   return (
     <div
       style={{
@@ -451,25 +506,27 @@ export function ControlsRow({
         padding: '10px 12px calc(env(safe-area-inset-bottom, 0px) + 12px)',
         background: R5.bgDeep,
       }}>
+      {/* Two-column chip grid. The 📺 toggle takes the slot the aim-mode chip
+          vacates while the gyro is healthy, so the usual cluster stays exactly
+          2×2 and the FIRE button keeps its geometry. */}
       <div
         style={{
-          display: 'flex',
-          flexDirection: 'column',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(2, auto)',
           gap: 6,
-          justifyContent: 'center',
+          alignContent: 'center',
         }}>
-        <div style={{ display: 'flex', gap: 6 }}>
+        <ChipButton label='📺' active={streamOn} onClick={onToggleStream} />
+        {showModeToggle ? (
           <ChipButton
             label={gyroMode ? '🎯' : '👆'}
             active={gyroMode}
             onClick={onToggleMode}
           />
-          {gyroMode ? <ChipButton label='⌖' onClick={onRecenter} /> : null}
-        </div>
-        <div style={{ display: 'flex', gap: 6 }}>
-          {gyroMode ? <ChipButton label='⚙' onClick={onAxes} /> : null}
-          <ChipButton label='📷' active={camOn} onClick={onToggleCamera} />
-        </div>
+        ) : null}
+        {gyroMode ? <ChipButton label='⌖' onClick={onRecenter} /> : null}
+        {gyroMode ? <ChipButton label='⚙' onClick={onAxes} /> : null}
+        <ChipButton label='📷' active={camOn} onClick={onToggleCamera} />
       </div>
       <button
         type='button'
@@ -478,19 +535,18 @@ export function ControlsRow({
           flex: 1,
           clipPath: chamfer(12),
           border: 'none',
-          background: ammo > 0 ? R5.red : 'rgba(120,150,200,0.15)',
-          color: ammo > 0 ? '#fff' : R5.inkMuted,
+          background: live ? R5.red : 'rgba(120,150,200,0.15)',
+          color: live ? '#fff' : R5.inkMuted,
           fontFamily: pixelFont,
           fontSize: 18,
           letterSpacing: 3,
           padding: '20px 10px',
-          boxShadow:
-            ammo > 0
-              ? `inset 0 3px 0 rgba(255,255,255,0.3), 0 0 14px rgba(${R5.redRgb},0.5)`
-              : 'none',
+          boxShadow: live
+            ? `inset 0 3px 0 rgba(255,255,255,0.3), 0 0 14px rgba(${R5.redRgb},0.5)`
+            : 'none',
           transition: 'transform 0.05s',
         }}>
-        {ammo > 0 ? 'FIRE' : 'RELOADING'}
+        {label}
       </button>
     </div>
   );

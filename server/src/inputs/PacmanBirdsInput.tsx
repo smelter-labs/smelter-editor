@@ -1,11 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Image, InputStream, Rescaler, Shader } from '@swmansion/smelter';
 import type { PersonBoxes } from '../app/store';
-import type {
-  DuckEntity,
-  DuckFlightParams,
-  HitFlashEnvelope,
-} from '../duckHunter/duckFlight';
+import type { DuckEntity, DuckFlightParams } from '../duckHunter/duckFlight';
 import {
   DEFAULT_DUCK_FLY_FRAC_PER_SEC,
   DEFAULT_DUCK_PAUSE_MS,
@@ -13,14 +9,13 @@ import {
   DUCK_FALL_MS,
   DUCK_HANG_MS,
   HIT_PAD,
-  HIT_POP_SCALE,
   MAX_DUCKS,
   contentToPx,
   duckContentPos,
   hitFlashEnvelope,
   validViewport,
 } from '../duckHunter/duckFlight';
-import { hexToRgb } from '../utils/shaderUtils';
+import { HIT_TINT_FALLBACK, hitShaderParam } from './hitFlashShader';
 
 type PacmanBirdsInputProps = {
   sourceInputId: string;
@@ -40,40 +35,6 @@ const FLAP_TICKS = 7; // ~112ms per frame
 // Death sequence timings (hang/fall/total) and the hit-flash envelope come from
 // the shared duck model so the renderer and the controller retire a shot duck
 // in lock-step.
-
-// Halo reach as a fraction of the sprite side, at full expansion.
-const HIT_RIM_FRAC = 0.16;
-// Fallback tint when a duck died without a recorded shooter (shouldn't happen,
-// but a white flash still reads correctly as a hit).
-const HIT_TINT_FALLBACK = '#FFFFFF';
-
-/** Uniforms for `duck-hit-flash`. Order must match the WGSL ShaderOptions. */
-function hitShaderParam(env: HitFlashEnvelope, hitColor: string, box: number) {
-  const tint = hexToRgb(hitColor);
-  const fields: Array<[string, number]> = [
-    // The impact zoom is a UV transform inside the shader, not a resize of the
-    // child View: that keeps the shader plane a constant size for the whole
-    // death beat, so the render target is never reallocated mid-animation and
-    // the box never jitters by a rounded pixel.
-    ['scale', 1 + HIT_POP_SCALE * env.pop],
-    ['flash', env.flash],
-    ['glow', env.glow],
-    ['rim', env.rim],
-    ['rim_t', env.rimT],
-    ['rim_px', box * HIT_RIM_FRAC],
-    ['tint_r', tint.r],
-    ['tint_g', tint.g],
-    ['tint_b', tint.b],
-  ];
-  return {
-    type: 'struct' as const,
-    value: fields.map(([fieldName, value]) => ({
-      type: 'f32' as const,
-      fieldName,
-      value,
-    })),
-  };
-}
 
 function flightParams(data: PersonBoxes): DuckFlightParams {
   return {

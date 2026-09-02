@@ -18,6 +18,7 @@ import type {
   ShooterTopScoreEntry,
 } from '@smelter-editor/types';
 import type { HandsStore } from '../hands/handStore';
+import type { DogEntity } from '../duckHunter/dogTaunt';
 import type { DuckEntity } from '../duckHunter/duckFlight';
 import { createContext, useContext } from 'react';
 import { useStore } from 'zustand';
@@ -304,6 +305,8 @@ export type ShooterScoreRow = {
   /** Hunter character picked on the phone (see SHOOTER_CHARACTERS). */
   characterId?: string;
   score: number;
+  /** Dogs bagged, drawn as sprite icons under the score. Absent = 0. */
+  dogScore?: number;
   /** Smelter input id of the player's live camera (WHIP), if the camera is on. */
   camInputId?: string;
   /** The camera publish is heartbeat-live (false = registered but dark). */
@@ -358,6 +361,8 @@ export type ShooterMatchOverlay = {
     color: string;
     score: number;
     characterId?: string;
+    /** Dogs bagged — shown as sprite icons, never part of the ranking. */
+    dogScore?: number;
   }[];
   /** 'ended' only: the global TOP SCORES table for this match's mode. */
   topScores: ShooterTopScoreEntry[];
@@ -652,6 +657,8 @@ export type ShooterOverlay = {
   bursts: ShooterBurst[];
   /** Duck Hunt dog reveals in flight (2-in-a-row celebration). */
   dogReveals: DogReveal[];
+  /** Taunting dogs on screen (2-misses-in-a-row) — the shootable ones. */
+  dogs: DogEntity[];
   /** Ghost ids currently shot down (hidden/animated) on the target input. */
   deadGhostIds: number[];
   /** Shot-down ghosts with the wall-clock ms they died, for the death

@@ -10,6 +10,12 @@ export type ShooterPlayer = {
   characterId?: string;
   score: number;
   /**
+   * Dogs bagged — a side tally shown as sprite icons beside the score. Kept out
+   * of `score` on purpose: it never ranks the board, ends a points round, or
+   * reaches the persisted top-score table. Absent = 0 (older servers).
+   */
+  dogScore?: number;
+  /**
    * The player's control socket is connected. A dropped phone stays on the
    * roster (grayed out) through the disconnect grace so its score survives a
    * reconnect; absent = true (older servers).
@@ -197,6 +203,10 @@ export type ShooterHitEvent = {
   clientId: string;
   ghostId: number;
   score: number;
+  /** What was hit; absent = 'duck' (older servers). */
+  target?: "duck" | "dog";
+  /** Dogs bagged so far, sent on a dog hit. `score` is unchanged by one. */
+  dogScore?: number;
 };
 
 export type ShooterMissEvent = {

@@ -104,10 +104,17 @@ function WeaponCard({
 export function WeaponStep({
   onGyro,
   onFinger,
+  showFinger,
   warn,
 }: {
   onGyro: () => void;
   onFinger: () => void;
+  /**
+   * Offer finger aiming at all. It only makes sense with the output feed on the
+   * phone, and the feed is now opt-in — so the card stays hidden until the gyro
+   * actually fails, which is the case it exists for.
+   */
+  showFinger: boolean;
   /** Sensor problem text after a failed gyro attempt (HTTPS / permission). */
   warn: string | null;
 }) {
@@ -130,27 +137,32 @@ export function WeaponStep({
       />
       {warn ? (
         <WarnPanel>
-          {warn} — grab the FINGER BLASTER instead.
+          {warn}
+          {showFinger ? ' — grab the FINGER BLASTER instead.' : ''}
         </WarnPanel>
       ) : null}
-      <WeaponCard
-        accent='orange'
-        icon='👆'
-        title='FINGER BLASTER'
-        desc='Tap the duck on your phone screen to aim and shoot. Works everywhere.'
-        onPick={onFinger}
-      />
-      <p
-        style={{
-          fontFamily: monoFont,
-          fontSize: 10,
-          color: R5.inkMuted,
-          textAlign: 'center',
-          textTransform: 'uppercase',
-          letterSpacing: 1,
-        }}>
-        you can switch weapons any time during the hunt
-      </p>
+      {showFinger ? (
+        <>
+          <WeaponCard
+            accent='orange'
+            icon='👆'
+            title='FINGER BLASTER'
+            desc='Tap the duck on your phone screen to aim and shoot. Works everywhere.'
+            onPick={onFinger}
+          />
+          <p
+            style={{
+              fontFamily: monoFont,
+              fontSize: 10,
+              color: R5.inkMuted,
+              textAlign: 'center',
+              textTransform: 'uppercase',
+              letterSpacing: 1,
+            }}>
+            you can switch weapons any time during the hunt
+          </p>
+        </>
+      ) : null}
     </div>
   );
 }

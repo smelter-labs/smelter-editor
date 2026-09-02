@@ -9,7 +9,7 @@ import type {
 import { WS_CLOSE_ROOM_NOT_FOUND } from '@smelter-editor/types';
 import type { RoomState } from '@/lib/types';
 import { getRoomInfo } from '@/app/actions/actions';
-import { connectWhep } from '@/lib/webrtc/whep-connect';
+import { connectWhep, type WhepConnection } from '@/lib/webrtc/whep-connect';
 import { startPublish } from '@/components/control-panel/whip-input/utils/whip-publisher';
 import { useWhipHeartbeat } from '@/components/control-panel/whip-input/hooks/use-whip-heartbeat';
 import {
@@ -27,6 +27,7 @@ import {
 } from '@/lib/server-url';
 import { doto, pressStart, robotoMono } from '@/app/duck-hunter/fonts';
 import {
+  ChipButton,
   PhoneShell,
   WarnPanel,
 } from '@/components/duck-hunter/phone/phone-shell';
@@ -42,6 +43,14 @@ import {
   MatchOverlay,
   PlayTopBar,
 } from '@/components/duck-hunter/phone/play-hud';
+import {
+  FeedLinkingCard,
+  GunPanel,
+} from '@/components/duck-hunter/phone/gun-panel';
+import {
+  freshStreak,
+  registerStreakHit,
+} from '@/components/duck-hunter/phone/gun-stats';
 import {
   clampMoveSens,
   defaultAxisSettings,
@@ -83,6 +92,21 @@ const GYRO_MAX_STEP_DEG = 25;
 const TAP_MS = 400;
 const TAP_MOVE_PX = 16;
 
+// A refused trigger pull (empty magazine, countdown, game over): red flash +
+// error buzz + a short banner. The banner is the only one of the three that
+// works on iOS Safari (no navigator.vibrate there at all), so it has to carry
+// the message on its own. The haptic floor keeps a mashed FIRE button from
+// turning into one continuous buzz.
+const FIRE_ALERT_MS = 1400;
+const REJECT_HAPTIC_MIN_MS = 350;
+const ERROR_BUZZ = [30, 60, 30, 60, 30];
+
+// connectWhep resolves on a promise that never rejects and has no timeout of
+// its own: if the SDP exchange succeeds but no video track ever arrives, the
+// phone would sit on LINKING FEED… forever. (AUDIO_TRACK_WAIT_MS adds 2 s to a
+// healthy link, so a real connect lands in the 1–3 s range.)
+const WHEP_WATCHDOG_MS = 8000;
+
 // Reconnect/republish backoff: 1 s → ×2 → cap. After REPUBLISH_STUCK_AFTER
 // failed republish attempts the camera error surfaces a manual retry hint
 // instead of an infinite silent spinner.
@@ -120,6 +144,8 @@ type ScoreRow = {
   name: string;
   color: string;
   score: number;
+  /** Dogs bagged — a separate tally, shown as icons beside the score. */
+  dogScore?: number;
 };
 
 export default function ShootControllerPage() {
@@ -140,10 +166,22 @@ export default function ShootControllerPage() {
   );
   const [score, setScore] = useState(0);
   const [scores, setScores] = useState<ScoreRow[]>([]);
+  // Hit streak behind the gun panel's combo readout. Mirrored to a ref because
+  // folding a hit in is not idempotent — it must be computed outside the
+  // setState updater (React may re-run one; see practice.ts).
+  const [streak, setStreak] = useState(freshStreak);
+  const streakRef = useRef(streak);
+  streakRef.current = streak;
   // Live room status broadcast by the server (pre-join too): whether a
   // duck-enabled input is up, and the arcade match state.
   const [targetActive, setTargetActive] = useState(false);
   const [match, setMatch] = useState<ShooterMatchEvent | null>(null);
+  const phase = match?.phase ?? 'idle';
+  // Exact mirror of DuckHunterController.fire()'s own gate: a round only takes
+  // shots while 'playing'. Deliberately NOT `match !== null` — the phone holds
+  // a match event for 'idle'/'lobby' too, where the server's `this.match` is
+  // null and open-range shooting is perfectly legal.
+  const triggerBlocked = phase === 'countdown' || phase === 'ended';
   // This player's own id (learned from server events addressed to us), used to
   // pick our assigned color out of the scoreboard so the phone can show it.
   const [myClientId, setMyClientId] = useState<string | null>(null);
@@ -160,6 +198,18 @@ export default function ShootControllerPage() {
     'unknown' | 'granted' | 'denied' | 'unsupported' | 'default'
   >('unknown');
   const [stream, setStream] = useState<MediaStream | null>(null);
+  // The output feed is opt-in: every phone that pulls it opens its own
+  // RTCPeerConnection and burns bandwidth and battery on a picture the players
+  // are already watching on the big screen. Off means the WHEP connection is
+  // never established at all (not merely hidden), and the stage shows the gun
+  // panel instead. Deliberately NOT persisted — a remembered ON would quietly
+  // resume pulling video on the next refresh.
+  const [streamOn, setStreamOn] = useState(false);
+  const [whepState, setWhepState] = useState<
+    'off' | 'linking' | 'live' | 'failed'
+  >('off');
+  const streamOnRef = useRef(streamOn);
+  streamOnRef.current = streamOn;
   // Front-camera stream for the in-game avatar (shown next to the player's
   // name on the broadcast).
   const [camStream, setCamStream] = useState<MediaStream | null>(null);
@@ -189,9 +239,18 @@ export default function ShootControllerPage() {
   // Transient server-refusal notice (room full, camera failed).
   const [notice, setNotice] = useState<string | null>(null);
   const noticeTimerRef = useRef<number | null>(null);
+  // Transient "that trigger pull produced no shot" banner over the stage. The
+  // id is bumped per alert so React remounts the node and the r5-enter pop
+  // replays even when the same refusal repeats.
+  const [fireAlert, setFireAlert] = useState<{
+    id: number;
+    text: string;
+  } | null>(null);
+  const fireAlertIdRef = useRef(0);
+  const fireAlertTimerRef = useRef<number | null>(null);
+  const lastRejectHapticRef = useRef(0);
 
   const wsRef = useRef<WebSocket | null>(null);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const whepCloseRef = useRef<(() => void) | null>(null);
   const lastAimSentRef = useRef(0);
@@ -275,6 +334,10 @@ export default function ShootControllerPage() {
   const [ammo, setAmmo] = useState(3);
   const reloadEndsRef = useRef<number | null>(null);
   const [reloadLeftMs, setReloadLeftMs] = useState(0);
+  // The server's reload interval, needed to turn the countdown into a progress
+  // bar on the gun panel. It has always been on the wire (shooter_ammo), the
+  // phone just threw it away.
+  const [reloadMs, setReloadMs] = useState(3000);
 
   useEffect(() => {
     applyServerUrlFromQueryParam(searchParams.get('server'));
@@ -497,17 +560,49 @@ export default function ShootControllerPage() {
     [send],
   );
 
+  /**
+   * One place for every refused shot — empty magazine, countdown still
+   * running, round already over — so they all feel the same: red flash, error
+   * buzz, banner. Stable (no deps) so the long-lived WS handler can call it
+   * without churning `fire`'s identity.
+   */
+  const rejectFire = useCallback((text: string) => {
+    setFlash('miss');
+    window.setTimeout(() => setFlash(null), 150);
+    const id = ++fireAlertIdRef.current;
+    setFireAlert({ id, text });
+    if (fireAlertTimerRef.current != null) {
+      window.clearTimeout(fireAlertTimerRef.current);
+    }
+    fireAlertTimerRef.current = window.setTimeout(() => {
+      fireAlertTimerRef.current = null;
+      setFireAlert(null);
+    }, FIRE_ALERT_MS);
+    const now = performance.now();
+    if (now - lastRejectHapticRef.current >= REJECT_HAPTIC_MIN_MS) {
+      lastRejectHapticRef.current = now;
+      if (navigator.vibrate) navigator.vibrate(ERROR_BUZZ);
+    }
+  }, []);
+
   const fire = useCallback(() => {
+    // The server drops countdown/game-over shots silently — no shooter_ammo
+    // comes back — so an optimistic spend here would leave the shell row
+    // drained and the button stuck on RELOADING until the next round refills.
+    if (triggerBlocked) {
+      rejectFire(
+        phase === 'ended' ? 'ROUND OVER — HOLD FIRE' : 'GET READY — HOLD FIRE',
+      );
+      return;
+    }
     if (ammo <= 0) {
       // Empty mag: click, don't send.
-      setFlash('miss');
-      if (navigator.vibrate) navigator.vibrate([15, 40, 15]);
-      window.setTimeout(() => setFlash(null), 150);
+      rejectFire('OUT OF AMMO — RELOADING');
       return;
     }
     setAmmo((a) => Math.max(0, a - 1)); // optimistic; server reconciles
     send({ type: 'shoot_fire' });
-  }, [send, ammo]);
+  }, [send, ammo, phase, triggerBlocked, rejectFire]);
 
   // Test-range shot during calibration: hit-test against the practice ducks
   // (local only — nothing is sent to the server). FIRE shoots at the preview
@@ -524,11 +619,15 @@ export default function ShootControllerPage() {
       navigator.vibrate(hitId !== null ? 60 : [15, 40, 15]);
   }, []);
 
-  // Map a client point on the output <video> (object-contain) to output-space
-  // [0,1], correcting for the letterbox bars around the video content.
+  // Map a client point on the stage (object-contain) to output-space [0,1],
+  // correcting for the letterbox bars around the video content.
+  //
+  // Measured against the stage, not the <video>: the video is `w-full h-full`
+  // inside it, so the rectangle is identical — but the element only exists
+  // while the feed is on, and the gyro crosshair has to keep working without it.
   const toOutputNorm = useCallback(
     (clientX: number, clientY: number): { x: number; y: number } | null => {
-      const el = videoRef.current;
+      const el = stageRef.current;
       const res = room?.resolution;
       if (!el || !res || !('width' in res)) return null;
       const rect = el.getBoundingClientRect();
@@ -569,12 +668,10 @@ export default function ShootControllerPage() {
   // in gyro mode), accounting for the object-contain letterbox.
   const normToLocal = useCallback(
     (nx: number, ny: number): { left: number; top: number } | null => {
-      const el = videoRef.current;
       const stage = stageRef.current;
       const res = room?.resolution;
-      if (!el || !stage || !res || !('width' in res)) return null;
-      const rect = el.getBoundingClientRect();
-      const stageRect = stage.getBoundingClientRect();
+      if (!stage || !res || !('width' in res)) return null;
+      const rect = stage.getBoundingClientRect();
       const cw = rect.width;
       const ch = rect.height;
       const videoAspect = res.width / res.height;
@@ -595,38 +692,40 @@ export default function ShootControllerPage() {
         offY = (ch - renderH) / 2;
       }
       return {
-        left: rect.left - stageRect.left + offX + nx * renderW,
-        top: rect.top - stageRect.top + offY + ny * renderH,
+        left: offX + nx * renderW,
+        top: offY + ny * renderH,
       };
     },
     [room],
   );
 
-  // Touch/mouse aiming directly on the video.
+  // Touch/mouse aiming directly on the video. Requires the feed: a tap landing
+  // on the gun panel would map the panel's own coordinates into output space
+  // and fire at a duck the player never saw.
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
-      if (gyroMode) return;
+      if (gyroMode || !streamOn) return;
       pressRef.current = { x: e.clientX, y: e.clientY, t: Date.now() };
       const aim = toOutputNorm(e.clientX, e.clientY);
       if (aim) sendAim(aim.x, aim.y, true);
       setLocalAim(localFromClient(e.clientX, e.clientY));
     },
-    [gyroMode, toOutputNorm, sendAim, localFromClient],
+    [gyroMode, streamOn, toOutputNorm, sendAim, localFromClient],
   );
 
   const onPointerMove = useCallback(
     (e: React.PointerEvent) => {
-      if (gyroMode || !pressRef.current) return;
+      if (gyroMode || !streamOn || !pressRef.current) return;
       const aim = toOutputNorm(e.clientX, e.clientY);
       if (aim) sendAim(aim.x, aim.y);
       setLocalAim(localFromClient(e.clientX, e.clientY));
     },
-    [gyroMode, toOutputNorm, sendAim, localFromClient],
+    [gyroMode, streamOn, toOutputNorm, sendAim, localFromClient],
   );
 
   const onPointerUp = useCallback(
     (e: React.PointerEvent) => {
-      if (gyroMode) return;
+      if (gyroMode || !streamOn) return;
       const start = pressRef.current;
       pressRef.current = null;
       if (!start) return;
@@ -639,7 +738,7 @@ export default function ShootControllerPage() {
         fire();
       }
     },
-    [gyroMode, toOutputNorm, sendAim, fire],
+    [gyroMode, streamOn, toOutputNorm, sendAim, fire],
   );
 
   // Gyro sensor listener. Active during calibration (drives the test-range
@@ -745,8 +844,12 @@ export default function ShootControllerPage() {
       const aimX = clamp01(s.x + offX);
       const aimY = clamp01(s.y + offY);
       if (aiming) {
+        // The aim always goes out — the crosshair on the big screen is the
+        // point. The *local* crosshair only exists over the video: in panel
+        // mode a constant null bails out on Object.is, so gyro aiming costs
+        // zero re-renders there (cheaper than feed mode, not dearer).
         sendAim(aimX, aimY);
-        setLocalAim(normToLocal(aimX, aimY));
+        setLocalAim(streamOnRef.current ? normToLocal(aimX, aimY) : null);
       } else {
         setPreviewAim({ x: aimX, y: aimY });
       }
@@ -932,9 +1035,22 @@ export default function ShootControllerPage() {
       // adopt it as a fallback for servers predating shooter_joined.
       if (m.clientId) setMyClientId((prev) => prev ?? m.clientId!);
       if (m.type === 'shooter_hit') {
-        setScore((data as { score: number }).score);
+        // The dog tally is read off the scoreboard row instead (see myDogScore),
+        // so it resets with the round without needing its own state here.
+        const hit = data as { score: number; target?: 'duck' | 'dog' };
+        setScore(hit.score);
+        // Ducks chain a combo; dogs don't (the server's hitDog never touches
+        // `streak` either). Computed outside the setter — see streakRef.
+        if (hit.target !== 'dog') {
+          const now = performance.now();
+          setStreak(registerStreakHit(streakRef.current, now));
+        }
         setFlash('hit');
-        if (navigator.vibrate) navigator.vibrate(60);
+        // A dog gets its own buzz — a double tap, so bagging one feels
+        // different from a duck without needing a sound (there is no audio path).
+        if (navigator.vibrate) {
+          navigator.vibrate(hit.target === 'dog' ? [50, 60, 90] : 60);
+        }
         window.setTimeout(() => setFlash(null), 220);
       } else if (m.type === 'shooter_miss') {
         setFlash('miss');
@@ -944,26 +1060,38 @@ export default function ShootControllerPage() {
         setScores(st.players ?? []);
         setTargetActive(!!st.targetActive);
       } else if (m.type === 'shooter_match') {
-        setMatch(data as ShooterMatchEvent);
+        const ev = data as ShooterMatchEvent;
+        setMatch(ev);
+        // A fresh round starts everyone cold — the server resets its own
+        // streaks the same way when it arms one.
+        if (ev.phase === 'countdown' || ev.phase === 'lobby') {
+          setStreak(freshStreak());
+        }
       } else if (m.type === 'shooter_ammo') {
         const a = data as {
           ammo: number;
           maxAmmo: number;
+          reloadMs?: number;
           reloadRemainingMs: number;
         };
         setAmmo(a.ammo);
         // Magazine size is set by the operator; adopt it so the shell row
         // matches the server's rules.
         if (typeof a.maxAmmo === 'number') setMaxAmmo(a.maxAmmo);
+        // Same for the reload interval — the panel's progress bar needs the
+        // whole interval, not just what's left of it.
+        if (typeof a.reloadMs === 'number' && a.reloadMs > 0) {
+          setReloadMs(a.reloadMs);
+        }
         reloadEndsRef.current =
           a.reloadRemainingMs > 0
             ? performance.now() + a.reloadRemainingMs
             : null;
       } else if (m.type === 'shooter_empty') {
+        // The authoritative empty (we thought we had a round, the server
+        // disagreed) gets the same treatment as the local one.
         setAmmo(0);
-        setFlash('miss');
-        if (navigator.vibrate) navigator.vibrate([15, 40, 15]);
-        window.setTimeout(() => setFlash(null), 150);
+        rejectFire('OUT OF AMMO — RELOADING');
       } else if (m.type === 'shooter_cam_offer') {
         // The server registered our camera WHIP input; publish the front camera
         // into it. Read the stream from a ref so this stable handler always sees
@@ -1012,7 +1140,7 @@ export default function ShootControllerPage() {
           });
       }
     };
-  }, [roomId]);
+  }, [roomId, rejectFire]);
 
   const fetchRoom = useCallback(() => {
     void getRoomInfo(String(roomId))
@@ -1046,6 +1174,21 @@ export default function ShootControllerPage() {
     connectWs();
   }, [roomStatus, fetchRoom, connectWs]);
 
+  // Finger aiming needs a picture, and the picture is opt-in now — so the
+  // option stays hidden while the gyro is healthy, and comes back the moment
+  // the sensor lets the player down. The latch has to be STICKY: both the mode
+  // chip and the motion effect clear `gyroWarn`, so a bare `gyroWarn != null`
+  // would make the escape hatch disappear a second and a half after the player
+  // reached for it. `|| !gyroMode` covers "already on the finger, I need a way
+  // back". Reverting to the old behaviour = `const showFingerOption = true`.
+  const [fingerUnlocked, setFingerUnlocked] = useState(false);
+  useEffect(() => {
+    if (gyroWarn || perm === 'denied' || perm === 'unsupported') {
+      setFingerUnlocked(true);
+    }
+  }, [gyroWarn, perm]);
+  const showFingerOption = fingerUnlocked || !gyroMode;
+
   // Weapon select: GYRO CANNON. This tap is the user gesture iOS needs for the
   // motion permission prompt. Denied/unsupported keeps the player on the
   // weapon screen with a plain-words warning.
@@ -1073,6 +1216,11 @@ export default function ShootControllerPage() {
   const pickFinger = useCallback(() => {
     setGyroMode(false);
     setGyroWarn(null);
+    // Having picked it once, keep the card reachable after a back-out.
+    setFingerUnlocked(true);
+    // Aiming by touch without the picture would have the player firing at the
+    // gun panel's coordinates — so the feed comes on with the weapon.
+    setStreamOn(true);
     setStep('ready');
   }, []);
 
@@ -1080,7 +1228,6 @@ export default function ShootControllerPage() {
   // pure free play (dashboard open range: no match ever armed, ducks flying).
   // 'lobby' (host prepping a round) and 'ended' (next round soon) hold on the
   // briefing screen.
-  const phase = match?.phase ?? 'idle';
   const canEnterPlay =
     phase === 'countdown' ||
     phase === 'playing' ||
@@ -1151,6 +1298,10 @@ export default function ShootControllerPage() {
         window.clearTimeout(noticeTimerRef.current);
         noticeTimerRef.current = null;
       }
+      if (fireAlertTimerRef.current != null) {
+        window.clearTimeout(fireAlertTimerRef.current);
+        fireAlertTimerRef.current = null;
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId]);
@@ -1165,36 +1316,66 @@ export default function ShootControllerPage() {
     return () => window.clearTimeout(t);
   }, [step, roomStatus, connected]);
 
-  // Establish the WHEP output stream once we have the room's whepUrl.
+  // Establish the WHEP output stream — only while the player has the feed
+  // switched on. Off never opens a peer connection in the first place.
   useEffect(() => {
-    if (step !== 'play' || !room?.whepUrl) return;
+    if (step !== 'play' || !streamOn || !room?.whepUrl) {
+      setWhepState('off');
+      return;
+    }
     let cancelled = false;
+    // The connection THIS run owns. The cleanup has to close this one rather
+    // than whatever the shared ref currently holds: on a quick ON→OFF→ON the
+    // first run's cleanup would otherwise tear down the second run's link.
+    let mine: WhepConnection | null = null;
+    setWhepState('linking');
     const whepUrl = resolveMediaUrl(room.whepUrl);
+    const watchdog = window.setTimeout(() => {
+      if (!cancelled && !mine) setWhepState('failed');
+    }, WHEP_WATCHDOG_MS);
     void connectWhep(whepUrl)
       .then((conn) => {
+        // StrictMode runs the first cleanup before this resolves — that run
+        // closes its own connection here instead of leaking it. (connectWhep
+        // takes no AbortSignal, so a cancelled attempt still finishes its
+        // fetch before shutting down. Bounded and harmless.)
         if (cancelled) {
           conn.close();
           return;
         }
+        mine = conn;
         whepCloseRef.current = conn.close;
         setStream(conn.stream);
+        setWhepState('live');
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!cancelled) setWhepState('failed');
+      });
     return () => {
       cancelled = true;
-      whepCloseRef.current?.();
-      whepCloseRef.current = null;
+      window.clearTimeout(watchdog);
+      mine?.close();
+      // Identity guard: only clear the shared handle when it is still ours.
+      if (mine && whepCloseRef.current === mine.close) {
+        whepCloseRef.current = null;
+      }
       setStream(null);
     };
-  }, [step, room?.whepUrl]);
+  }, [step, streamOn, room?.whepUrl]);
 
-  // Attach the stream whenever it (or the video element) changes.
-  useEffect(() => {
-    const v = videoRef.current;
-    if (!v) return;
-    v.srcObject = stream;
-    if (stream) v.play().catch(() => {});
-  }, [stream, step]);
+  // Attach the stream with a callback ref rather than an effect: the <video>
+  // is conditionally mounted now, and this ref's identity changes with
+  // `stream`, so React drives the detach/attach and a fresh play() itself
+  // (muted + playsInline on the element keep iOS autoplay happy).
+  const attachOutputVideo = useCallback(
+    (el: HTMLVideoElement | null) => {
+      if (el && el.srcObject !== stream) {
+        el.srcObject = stream;
+        if (stream) void el.play().catch(() => {});
+      }
+    },
+    [stream],
+  );
 
   // Cleanup on unmount. Deliberately NO shoot_leave here: an accidental
   // refresh must keep the server-side entry alive so the session's playerKey
@@ -1211,6 +1392,13 @@ export default function ShootControllerPage() {
 
   const fontClass = `${pressStart.variable} ${doto.variable} ${robotoMono.variable}`;
 
+  // Spectator view of the room's output. Relative path, to avoid an SSR/client
+  // mismatch on the origin. `?server=` is deliberately left off: it lives in
+  // localStorage (see the query-param effect above), which the new tab shares.
+  // Opened in a new tab so the panel's socket, camera and playerKey survive.
+  const previewHref = `/room-preview/${encodeURIComponent(String(roomId))}`;
+  const previewTitle = 'Room preview (opens in a new tab)';
+
   // ---- Wizard screens -----------------------------------------------------
 
   if (step !== 'play') {
@@ -1221,7 +1409,15 @@ export default function ShootControllerPage() {
           stepIndex={meta.index}
           stepCount={STEP_COUNT}
           stepLabel={meta.label}
-          compact={step === 'calibrate'}>
+          compact={step === 'calibrate'}
+          topRight={
+            <ChipButton
+              dense
+              href={previewHref}
+              title={previewTitle}
+              label='👁 PREVIEW'
+            />
+          }>
           {step === 'connect' ? (
             <ConnectStep
               roomStatus={roomStatus}
@@ -1248,6 +1444,10 @@ export default function ShootControllerPage() {
             <WeaponStep
               onGyro={() => void pickGyro()}
               onFinger={pickFinger}
+              // Not `showFingerOption`: its `|| !gyroMode` half is about the
+              // in-game chip, and here nothing has been picked yet — it would
+              // put the card back on the very first visit.
+              showFinger={fingerUnlocked}
               warn={gyroWarn}
             />
           ) : null}
@@ -1309,8 +1509,11 @@ export default function ShootControllerPage() {
 
   // Our assigned color (from the scoreboard, matched on our clientId); falls
   // back to the default cyan until the server has told us who we are.
-  const myColor =
-    scores.find((s) => s.clientId === myClientId)?.color ?? '#00f3ff';
+  const myRow = scores.find((s) => s.clientId === myClientId);
+  const myColor = myRow?.color ?? '#00f3ff';
+  // Read off the scoreboard rather than accumulated from hit events, so it
+  // zeroes with the round the moment the server says so.
+  const myDogScore = myRow?.dogScore ?? 0;
 
   return (
     <div
@@ -1323,16 +1526,60 @@ export default function ShootControllerPage() {
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={() => (pressRef.current = null)}>
-        <video
-          ref={videoRef}
-          className='w-full h-full object-contain bg-black pointer-events-none'
-          autoPlay
-          playsInline
-          muted
-        />
+        {/* Feed on: the output stream. Feed off (the default): the gun panel,
+            so the phone is a controller instead of a second screen. */}
+        {streamOn ? (
+          <>
+            <video
+              ref={attachOutputVideo}
+              className='w-full h-full object-contain bg-black pointer-events-none'
+              autoPlay
+              playsInline
+              muted
+            />
+            {whepState !== 'live' && whepState !== 'off' ? (
+              <FeedLinkingCard state={whepState} />
+            ) : null}
+          </>
+        ) : (
+          <GunPanel
+            connected={connected}
+            match={match}
+            targetActive={targetActive}
+            triggerBlocked={triggerBlocked}
+            ammo={ammo}
+            maxAmmo={maxAmmo}
+            reloadLeftMs={reloadLeftMs}
+            reloadMs={reloadMs}
+            score={score}
+            dogScore={myDogScore}
+            myColor={myColor}
+            myClientId={myClientId}
+            scores={scores}
+            streak={streak}
+            gyroMode={gyroMode}
+            gyroWarn={gyroWarn != null}
+            camOn={!!camStream}
+            camLive={camLive}
+            camVideo={
+              camStream ? (
+                <video
+                  ref={attachCamVideo}
+                  autoPlay
+                  playsInline
+                  muted
+                  className='w-9 h-9 rounded-full object-cover border-2 -scale-x-100 pointer-events-none'
+                  style={{ borderColor: myColor }}
+                />
+              ) : undefined
+            }
+          />
+        )}
 
-        {/* Instant local crosshair (server crosshair on the video lags via WHEP). */}
-        {localAim && (
+        {/* Instant local crosshair (server crosshair on the video lags via
+            WHEP). Feed mode only — over the panel it would be a crosshair on
+            a scoreboard, and the aim it mirrors isn't visible here anyway. */}
+        {streamOn && localAim && (
           <div
             className='absolute pointer-events-none'
             style={{
@@ -1365,29 +1612,52 @@ export default function ShootControllerPage() {
           />
         )}
 
-        <PlayTopBar
-          connected={connected}
-          match={match}
-          score={score}
-          myColor={myColor}
-          scores={scores}
-        />
+        {/* Feed mode only: over the gun panel it would duplicate every readout
+            the panel already carries, and its translucent-overlay styling
+            reads as a second HUD on an opaque background. */}
+        {streamOn ? (
+          <PlayTopBar
+            connected={connected}
+            match={match}
+            score={score}
+            dogScore={myDogScore}
+            myColor={myColor}
+            scores={scores}
+          />
+        ) : null}
 
         {!connected && wsDbg && (
-          <div className='absolute top-16 left-2 right-2 z-10'>
+          // Lower in panel mode, where top-16 would sit on the LED row.
+          <div
+            className={`absolute left-2 right-2 z-10 ${streamOn ? 'top-16' : 'top-24'}`}>
             <WarnPanel>
               <span style={{ wordBreak: 'break-all' }}>{wsDbg}</span>
             </WarnPanel>
           </div>
         )}
-        {gyroMode && gyroWarn && (
-          <div className='absolute bottom-2 left-2 right-2 z-10 pointer-events-none'>
-            <WarnPanel>{gyroWarn}</WarnPanel>
+        {/* Bottom message stack: one column so a refused-shot banner and the
+            gyro warning can never land on top of each other. z-20 puts it over
+            the match overlays (zIndex 7) — a blocked trigger has to stay
+            readable on the GAME OVER card, which is the whole point. */}
+        {(fireAlert || (gyroMode && gyroWarn)) && (
+          <div
+            className='absolute bottom-2 left-2 right-2 z-20 flex flex-col gap-2 pointer-events-none'
+            role='status'
+            aria-live='polite'>
+            {fireAlert && (
+              <div key={fireAlert.id} className='r5-enter'>
+                <WarnPanel tone='bad'>{fireAlert.text}</WarnPanel>
+              </div>
+            )}
+            {gyroMode && gyroWarn && <WarnPanel>{gyroWarn}</WarnPanel>}
           </div>
         )}
 
-        {/* Self view: the camera being shared next to your name. */}
-        {camStream && (
+        {/* Self view: the camera being shared next to your name. In panel mode
+            it lives inside the panel's LED row instead — floating here it
+            would cover the standings table. Moving the <video> between the two
+            places unmounts it, which attachCamVideo already handles. */}
+        {camStream && streamOn && (
           <video
             ref={attachCamVideo}
             autoPlay
@@ -1402,11 +1672,34 @@ export default function ShootControllerPage() {
         <MatchOverlay match={match} myClientId={myClientId} />
       </div>
 
-      <AmmoRow ammo={ammo} maxAmmo={maxAmmo} reloadLeftMs={reloadLeftMs} />
+      <AmmoRow
+        ammo={ammo}
+        maxAmmo={maxAmmo}
+        reloadLeftMs={reloadLeftMs}
+        right={
+          <ChipButton
+            dense
+            href={previewHref}
+            title={previewTitle}
+            label='👁'
+          />
+        }
+      />
       <ControlsRow
         gyroMode={gyroMode}
+        showModeToggle={showFingerOption}
+        streamOn={streamOn}
+        onToggleStream={() => {
+          // OFF is always allowed; a second ON while the last one is still
+          // linking is ignored, or every impatient tap would mint another
+          // RTCPeerConnection.
+          if (streamOn) setStreamOn(false);
+          else if (whepState !== 'linking') setStreamOn(true);
+        }}
         onToggleMode={() => {
           if (gyroMode) {
+            // Aiming by touch needs the picture to touch.
+            setStreamOn(true);
             setGyroMode(false);
             return;
           }
@@ -1426,6 +1719,7 @@ export default function ShootControllerPage() {
         camOn={!!camStream}
         onToggleCamera={() => void toggleCamera()}
         ammo={ammo}
+        blocked={triggerBlocked}
         onFire={fire}
       />
     </div>
