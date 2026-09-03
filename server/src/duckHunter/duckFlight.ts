@@ -3,7 +3,9 @@
  * position over time, shared by the server hit-test (DuckHunterController) and
  * the renderer (PacmanBirdsInput) so a shot lands exactly on the drawn sprite.
  *
- * A duck freezes at its spawn point for `pauseMs`, then flies off toward the
+ * A spawn is telegraphed first: the aura marks the source bird for
+ * `auraLeadMs` before the duck itself appears (drawn + shootable). The duck
+ * then freezes at its spawn point for `pauseMs` more, and flies off toward the
  * top-right at 45° (classic Duck Hunt) at `flySpeed` (fraction of the larger
  * output edge per second). Because position is a pure function of elapsed time,
  * both sides compute the same coordinates from the same `spawnAt`/params — the
@@ -20,7 +22,7 @@ export const MAX_DUCKS = 16;
 
 /** Free-flight defaults (operator overrides via the Duck Hunter panel). */
 export const DEFAULT_DUCK_PAUSE_MS = 700; // hold in place after appearing
-export const DEFAULT_DUCK_FLY_FRAC_PER_SEC = 0.35; // ~2.9s to clear the frame
+export const DEFAULT_DUCK_FLY_FRAC_PER_SEC = 0.15; // ~6.7s to clear the frame
 
 /** Death beat: hang in the shot pose, then drop off the bottom. */
 export const DUCK_HANG_MS = 500;
@@ -88,18 +90,21 @@ export function hitFlashEnvelope(elapsed: number): HitFlashEnvelope {
  * see which detection in the video turned into which sprite. Drawn by the
  * `duck-spawn-aura` shader on the video underneath the ducks.
  *
- * The loud part is short: a shockwave ring at the moment of the spawn. What
- * lingers is a soft lock-on ring, and — for the first moment after the duck
- * detaches and flies off — a tether pointing back at the bird. Everything is
- * over by the time the duck leaves the frame.
+ * It is a telegraph: a shockwave ring plus a soft lock-on ring mark the bird
+ * for `auraLeadMs` *before* the duck exists on screen. The moment the duck
+ * appears, the mark has done its job and fades out.
  */
+/** Telegraph default: how long the aura marks the bird before the duck
+ * appears (operator override via the Duck Hunter panel — `duckAuraLeadMs`). */
+export const DEFAULT_DUCK_AURA_LEAD_MS = 1500;
 /** Birth shockwave: how long the ring takes to reach full expansion. */
 export const AURA_PULSE_MS = 620;
 /** Fade-in of the steady lock-on ring, so a spawn doesn't snap on. */
 export const AURA_IN_MS = 160;
 /** Tether lifetime, measured from the moment the duck starts flying. */
 export const AURA_LINK_MS = 900;
-/** Fade-out once the duck has been shot — the mark leaves with its duck. */
+/** Fade-out once the duck has appeared (or been shot) — the mark's job is
+ * done, so it leaves the bird. */
 export const AURA_OUT_MS = 380;
 
 /** Per-stage strengths of a bird's spawn aura, all in [0,1]. */
@@ -122,37 +127,44 @@ const AURA_SILENT: SpawnAuraEnvelope = {
 };
 
 /**
- * Aura envelope for a duck `age` ms after it spawned. `pauseMs` is the duck's
- * hold-in-place time (the tether only means something once the duck has
- * actually left the bird), and `sinceDeath` is ms since it was shot, or null
- * while it is still flying.
+ * Aura envelope for a duck `age` ms after it spawned (spawn = the start of the
+ * telegraph; the duck itself appears at `p.auraLeadMs`). `p.pauseMs` is the
+ * duck's hold-in-place time after appearing (the tether only means something
+ * once the duck has actually left the bird), and `sinceDeath` is ms since it
+ * was shot, or null while it is still flying.
  */
 export function spawnAuraEnvelope(
   age: number,
-  pauseMs: number,
+  p: Pick<DuckFlightParams, 'auraLeadMs' | 'pauseMs'>,
   sinceDeath: number | null,
 ): SpawnAuraEnvelope {
   if (!(age >= 0)) return AURA_SILENT;
-  // A shot duck takes its mark with it, faster than the death beat itself —
-  // by the time the duck hangs, the bird it came from is unmarked again.
+  // The mark fades the moment its duck appears — the telegraph is over. A shot
+  // duck takes it along even sooner (only possible with a fade still running).
+  const appearFade = 1 - clamp01((age - p.auraLeadMs) / AURA_OUT_MS);
   const dying = sinceDeath != null && sinceDeath >= 0;
-  const fade = dying ? 1 - clamp01(sinceDeath / AURA_OUT_MS) : 1;
+  const deathFade = dying ? 1 - clamp01(sinceDeath / AURA_OUT_MS) : 1;
+  const fade = Math.min(appearFade, deathFade);
   if (fade <= 0) return AURA_SILENT;
 
   // Shockwave: races outward while fading, squared so it reads as a snap.
   const pulseT = clamp01(age / AURA_PULSE_MS);
   const pulse = (1 - pulseT) * (1 - pulseT) * fade;
-  // Steady ring: eases in, then holds for as long as the duck is alive.
+  // Steady ring: eases in, then holds until the duck appears.
   const glow = clamp01(age / AURA_IN_MS) * fade;
   // Tether: nothing while the duck still sits on the bird, then a quick decay
-  // once it detaches — long enough to follow, short enough not to clutter.
-  const flown = age - Math.max(0, pauseMs);
+  // once it detaches. With the aura already fading by then, it only shows for
+  // short pauses (pauseMs < AURA_OUT_MS), where the lingering mark gets a line
+  // to the duck that just left it.
+  const flown = age - p.auraLeadMs - Math.max(0, p.pauseMs);
   const l = flown <= 0 ? 0 : 1 - clamp01(flown / AURA_LINK_MS);
   return { glow, pulse, pulseT, link: l * l * fade };
 }
 
 export type DuckFlightParams = {
-  /** Hold-in-place time after spawning, ms. */
+  /** Telegraph: how long the aura marks the bird before the duck appears, ms. */
+  auraLeadMs: number;
+  /** Hold-in-place time after appearing (i.e. after the aura lead), ms. */
   pauseMs: number;
   /** Fly speed as a fraction of the larger output edge per second. */
   flySpeed: number;
@@ -163,7 +175,8 @@ export type DuckEntity = {
   id: number;
   /** Palette index from the tracked box (duck-<color%3>-<frame> sprite). */
   color: number;
-  /** Effective spawn time, ms. Pushed forward during a hit-stop freeze. */
+  /** Effective spawn time (start of the aura telegraph — the sprite appears
+   * `auraLeadMs` later), ms. Pushed forward during a hit-stop freeze. */
   spawnAt: number;
   /** Spawn center in normalized content space [0,1]. */
   cx0: number;
@@ -214,6 +227,19 @@ export function duckSidePx(
 }
 
 /**
+ * True once the duck sprite is actually on screen — for the first `auraLeadMs`
+ * after spawnAt only the aura telegraphs it. An unappeared duck is neither
+ * drawn nor shootable.
+ */
+export function duckAppeared(
+  d: DuckEntity,
+  now: number,
+  auraLeadMs: number,
+): boolean {
+  return now - d.spawnAt >= auraLeadMs;
+}
+
+/**
  * Duck center in normalized content space [0,1] at time `now`. The flight is a
  * pure function of (now - spawnAt), so the server and renderer agree exactly.
  */
@@ -224,13 +250,16 @@ export function duckContentPos(
   v: DuckViewport,
 ): { x: number; y: number } {
   const elapsed = Math.max(0, now - d.spawnAt);
-  if (elapsed <= p.pauseMs) return { x: d.cx0, y: d.cy0 };
+  // Telegraph, then hold: the duck sits at its spawn point through the aura
+  // lead and the pause that follows its appearance.
+  const holdMs = p.auraLeadMs + p.pauseMs;
+  if (elapsed <= holdMs) return { x: d.cx0, y: d.cy0 };
   const s = coverScale(v);
   const dispW = v.frameW * s;
   const dispH = v.frameH * s;
   // Output px travelled since the pause ended (45° → equal px on both axes).
   const travel =
-    ((p.flySpeed * Math.max(v.width, v.height)) / 1000) * (elapsed - p.pauseMs);
+    ((p.flySpeed * Math.max(v.width, v.height)) / 1000) * (elapsed - holdMs);
   return {
     x: d.cx0 + travel / dispW, // fly right
     y: d.cy0 - travel / dispH, // and up

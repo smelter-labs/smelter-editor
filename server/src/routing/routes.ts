@@ -2710,8 +2710,10 @@ const DuckHunterConfigSchema = Type.Object({
   maxAmmo: Type.Optional(Type.Number()),
   reloadMs: Type.Optional(Type.Number()),
   duckScale: Type.Optional(Type.Number()),
+  duckAuraLeadMs: Type.Optional(Type.Number()),
   duckPauseMs: Type.Optional(Type.Number()),
   duckFlySpeed: Type.Optional(Type.Number()),
+  crosshairBadges: Type.Optional(Type.Boolean()),
   // Join link for the broadcast opening screen's QR — the server can't know
   // the public page base, so the host page pushes it down (same as KBT).
   joinUrl: Type.Optional(Type.String({ maxLength: 2048 })),
@@ -2728,8 +2730,10 @@ routes.post<RoomIdParams & { Body: Static<typeof DuckHunterConfigSchema> }>(
       maxAmmo: req.body.maxAmmo,
       reloadMs: req.body.reloadMs,
       duckScale: req.body.duckScale,
+      duckAuraLeadMs: req.body.duckAuraLeadMs,
       duckPauseMs: req.body.duckPauseMs,
       duckFlySpeed: req.body.duckFlySpeed,
+      crosshairBadges: req.body.crosshairBadges,
       joinUrl: req.body.joinUrl,
     });
     const room = state.getRoom(roomId);
@@ -2737,8 +2741,10 @@ routes.post<RoomIdParams & { Body: Static<typeof DuckHunterConfigSchema> }>(
       maxAmmo: req.body.maxAmmo,
       reloadMs: req.body.reloadMs,
       duckScale: req.body.duckScale,
+      duckAuraLeadMs: req.body.duckAuraLeadMs,
       duckPauseMs: req.body.duckPauseMs,
       duckFlySpeed: req.body.duckFlySpeed,
+      crosshairBadges: req.body.crosshairBadges,
       joinUrl: req.body.joinUrl,
       joinLabel: req.body.joinLabel,
     });
@@ -2779,7 +2785,7 @@ routes.post<RoomIdParams & { Body: Static<typeof DuckHunterMatchSchema> }>(
       clientId: req.body.clientId,
     });
     const room = state.getRoom(roomId);
-    const match = room.controlDuckHunterMatch({
+    const match = await room.controlDuckHunterMatch({
       action: req.body.action,
       mode: req.body.mode,
       durationMs: req.body.durationMs,
@@ -2799,15 +2805,13 @@ routes.get<RoomIdParams>(
   },
 );
 
-// Global arcade TOP SCORES table (no room — the cabinet outlives rooms).
+// Global arcade TOP SCORES tables (no room — the cabinet outlives rooms).
+// One table per round variant, keyed `time:<durationMs>` / `points:<target>`.
 // Written only by the server's idempotent match end; this is read-only.
 routes.get('/duck-hunter/top-scores', async (_req, res) => {
   res.status(200).send({
     status: 'ok',
-    scores: {
-      time: duckHunterTopScores.snapshot('time'),
-      points: duckHunterTopScores.snapshot('points'),
-    },
+    scores: duckHunterTopScores.snapshotAll(),
   });
 });
 

@@ -54,6 +54,7 @@ import {
 } from '../duckHunter/characterClips';
 import { duckHunterTopScores } from '../duckHunter/topScores';
 import {
+  DEFAULT_DUCK_AURA_LEAD_MS,
   DEFAULT_DUCK_FLY_FRAC_PER_SEC,
   DEFAULT_DUCK_PAUSE_MS,
 } from '../duckHunter/duckFlight';
@@ -436,7 +437,7 @@ export class RoomState {
         };
       },
       recordTopScore: (entry) => duckHunterTopScores.submit(entry),
-      readTopScores: (mode) => duckHunterTopScores.snapshot(mode),
+      readTopScores: (variant) => duckHunterTopScores.snapshot(variant),
       registerJoinQr: (url) =>
         this.registerJoinQrImage(url, {
           dir: 'dh-qr',
@@ -781,6 +782,7 @@ export class RoomState {
                     ghost: sprite,
                     sprite: 'bird',
                     duckScale: this.duckScale,
+                    duckAuraLeadMs: this.duckAuraLeadMs,
                     duckPauseMs: this.duckPauseMs,
                     duckFlySpeed: this.duckFlySpeed,
                     ...(marker
@@ -1788,8 +1790,71 @@ export class RoomState {
   }
 
   /** Drive the arcade match (start/stop/reset) from the /duck-hunter page. */
-  public controlDuckHunterMatch(cmd: MatchCommand): ShooterMatchEvent {
+  public async controlDuckHunterMatch(
+    cmd: MatchCommand,
+  ): Promise<ShooterMatchEvent> {
+    if (cmd.action === 'start') {
+      // Fresh stage before the countdown: an mp4 restarts from zero (a full
+      // clip's worth of runway before the loop seam), a stream re-buffers at
+      // the live edge. Never throws — a broken stage must not block the round.
+      await this.reloadDuckHunterStageInputs();
+    }
     return this.duckHunter.controlMatch(cmd);
+  }
+
+  /**
+   * Reload the arcade stage input(s) — the ones running the birds model —
+   * ahead of a match start. mp4 → restart at 0 with loop; HLS/Twitch/Kick →
+   * disconnect+connect; WHIP and everything else is left alone (re-registering
+   * WHIP kills the push stream). Failures are logged and swallowed so a dead
+   * stage can never block the countdown.
+   */
+  private async reloadDuckHunterStageInputs(): Promise<void> {
+    const RELOAD_TIMEOUT_MS = 8_000;
+    const stages = this.getInputs().filter(
+      (input) =>
+        input.status === 'connected' &&
+        input.aiModels?.[PEOPLE_COUNTER_YOLO_BIRDS_ID]?.enabled,
+    );
+    for (const input of stages) {
+      let reload: Promise<void>;
+      if (input.type === 'local-mp4' && !input.mp4AssetMissing) {
+        reload = this.mutex.runExclusive(() =>
+          this.inputManager.restartMp4Input(input.inputId, 0, true),
+        );
+      } else if (
+        input.type === 'hls' ||
+        input.type === 'twitch-channel' ||
+        input.type === 'kick-channel'
+      ) {
+        reload = this.mutex.runExclusive(() =>
+          this.inputManager.reloadStreamInput(input.inputId),
+        );
+      } else {
+        continue;
+      }
+      try {
+        await Promise.race([
+          reload,
+          new Promise<never>((_, reject) =>
+            setTimeout(
+              () =>
+                reject(
+                  new Error(
+                    `stage reload timed out after ${RELOAD_TIMEOUT_MS}ms`,
+                  ),
+                ),
+              RELOAD_TIMEOUT_MS,
+            ),
+          ),
+        ]);
+      } catch (err) {
+        console.error(
+          `[duck-hunter] stage reload failed inputId=${input.inputId} type=${input.type}`,
+          err,
+        );
+      }
+    }
   }
 
   /** Current arcade match snapshot (page-reload recovery). */
@@ -1942,12 +2007,15 @@ export class RoomState {
    * Room-wide duck-size multiplier from the Duck Hunter panel. Injected into
    * each bird `peopleBoxes` push so PacmanBirdsInput scales its sprites live.
    */
-  private duckScale = 1;
-  /** How long a duck holds before flying off (ms), and its fly speed (fraction
-   * of the larger screen edge per second). Injected into each bird push. */
+  private duckScale = 0.6;
+  /** How long the spawn aura telegraphs a bird before its duck appears (ms),
+   * how long the duck then holds before flying off (ms), and its fly speed
+   * (fraction of the larger screen edge per second). Injected into each bird
+   * push. */
   // Single source of truth for the flight defaults is duckFlight.ts — the
   // client sliders and the hit-test model assume these exact values until an
   // operator pushes a config.
+  private duckAuraLeadMs = DEFAULT_DUCK_AURA_LEAD_MS;
   private duckPauseMs = DEFAULT_DUCK_PAUSE_MS;
   private duckFlySpeed = DEFAULT_DUCK_FLY_FRAC_PER_SEC;
 
@@ -1961,16 +2029,20 @@ export class RoomState {
     maxAmmo?: number;
     reloadMs?: number;
     duckScale?: number;
+    duckAuraLeadMs?: number;
     duckPauseMs?: number;
     duckFlySpeed?: number;
+    crosshairBadges?: boolean;
     joinUrl?: string;
     joinLabel?: string;
   }): {
     maxAmmo: number;
     reloadMs: number;
     duckScale: number;
+    duckAuraLeadMs: number;
     duckPauseMs: number;
     duckFlySpeed: number;
+    crosshairBadges: boolean;
   } {
     this.duckHunter.setRoomConfig(cfg);
     if (cfg.joinUrl !== undefined || cfg.joinLabel !== undefined) {
@@ -1981,6 +2053,12 @@ export class RoomState {
     }
     if (typeof cfg.duckScale === 'number' && Number.isFinite(cfg.duckScale)) {
       this.duckScale = Math.max(0.25, Math.min(3, cfg.duckScale));
+    }
+    if (
+      typeof cfg.duckAuraLeadMs === 'number' &&
+      Number.isFinite(cfg.duckAuraLeadMs)
+    ) {
+      this.duckAuraLeadMs = Math.max(0, Math.min(10000, cfg.duckAuraLeadMs));
     }
     if (
       typeof cfg.duckPauseMs === 'number' &&
@@ -1997,6 +2075,7 @@ export class RoomState {
     return {
       ...this.duckHunter.getRoomConfig(),
       duckScale: this.duckScale,
+      duckAuraLeadMs: this.duckAuraLeadMs,
       duckPauseMs: this.duckPauseMs,
       duckFlySpeed: this.duckFlySpeed,
     };

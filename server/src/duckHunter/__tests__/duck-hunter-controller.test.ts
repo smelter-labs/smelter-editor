@@ -11,7 +11,7 @@ import {
 import type { StoreApi } from 'zustand';
 import type { PersonBoxes, RoomStore, ShooterOverlay } from '../../app/store';
 import { DuckHunterController } from '../DuckHunterController';
-import { MAX_DUCKS } from '../duckFlight';
+import { DEFAULT_DUCK_AURA_LEAD_MS, MAX_DUCKS } from '../duckFlight';
 import {
   DOG_FREEZE_MS,
   DOG_POSE_ASPECT,
@@ -87,7 +87,15 @@ function harness(opts?: { manualCam?: boolean }) {
       const rank = topScores.indexOf(full);
       return { rank: rank === -1 ? null : rank + 1 };
     },
-    readTopScores: (mode) => topScores.filter((e) => e.mode === mode),
+    // Per-variant filter, mirroring the real store's variantKey semantics.
+    readTopScores: (variant) =>
+      topScores.filter((e) =>
+        variant.mode === 'time'
+          ? e.mode === 'time' &&
+            e.durationMs === (variant.durationMs ?? undefined)
+          : e.mode === 'points' &&
+            e.targetScore === (variant.targetScore ?? undefined),
+      ),
     mountCharacterClips: (ids) => clipCalls.push(ids),
     unmountCharacterClips: () => clipCalls.push(null),
     registerJoinQr: async (url) => {
@@ -219,14 +227,16 @@ describe('join / adoption / disconnect grace', () => {
 
   it('adopts by playerKey after a disconnect: score, color and key survive', () => {
     const h = harness();
-    h.joinPlayer('c1', 'Bob');
+    h.joinPlayer('c1', 'Bob', undefined, 'improwizator');
     const first = h.joinedFor('c1')!;
     h.controller.handleDisconnect('c1');
     expect(
       h.lastState()?.players.find((p) => p.clientId === 'c1')?.connected,
     ).toBe(false);
 
-    h.joinPlayer('c2', 'Bob', first.playerKey);
+    // A real reconnect replays the SAME stored character — color (the
+    // hunter's own) must ride along with the adopted entry.
+    h.joinPlayer('c2', 'Bob', first.playerKey, 'improwizator');
     const second = h.joinedFor('c2')!;
     expect(second.playerKey).toBe(first.playerKey);
     expect(second.color).toBe(first.color);
@@ -760,18 +770,29 @@ describe('armed lobby / opening screen', () => {
     h.controller.dispose();
   });
 
-  it('shows only the staged mode in the lobby TOP SCORES', async () => {
+  it('shows only the staged round variant in the lobby TOP SCORES', async () => {
     const h = harness();
     h.sceneState.peopleBoxes['stage'] = ghostTarget();
     h.joinPlayer('c1', 'Bob');
+    // Default duration (60s) time round, with a score on the table.
     h.controller.controlMatch({ action: 'start', mode: 'time' });
     await vi.advanceTimersByTimeAsync(3100);
     h.controller.fire('c1'); // any score at all, so the table is non-empty
     h.controller.controlMatch({ action: 'stop' });
+    expect(h.topScores[0]).toMatchObject({ mode: 'time', durationMs: 60_000 });
 
     h.controller.controlMatch({ action: 'lobby', mode: 'time' });
     const timeRows = h.lastOverlay()!.lobby!.topScores;
+    expect(timeRows).toHaveLength(1);
     expect(timeRows.every((e) => e.mode === 'time')).toBe(true);
+
+    // A different duration is a different table — 60s scores stay out of 30s.
+    h.controller.controlMatch({
+      action: 'lobby',
+      mode: 'time',
+      durationMs: 30_000,
+    });
+    expect(h.lastOverlay()!.lobby!.topScores).toEqual([]);
 
     h.controller.controlMatch({ action: 'lobby', mode: 'points' });
     expect(h.lastOverlay()!.lobby!.topScores).toEqual([]);
@@ -948,6 +969,26 @@ describe('ducks', () => {
     h.controller.dispose();
   });
 
+  it('cannot be shot while the aura is still telegraphing it', async () => {
+    const h = harness();
+    h.sceneState.peopleBoxes['stage'] = {
+      boxes: [{ id: 1, x: 0.45, y: 0.45, w: 0.1, h: 0.1, color: 0 }],
+      frameW: 1920,
+      frameH: 1080,
+      ghost: true,
+      sprite: 'bird',
+    };
+    h.joinPlayer('c1', 'Bob');
+    await vi.advanceTimersByTimeAsync(50); // spawned, but not yet appeared
+    h.controller.fire('c1'); // dead-center on the future duck — still a miss
+    expect(h.lastOverlay()!.ducks[0].diedAt).toBeUndefined();
+
+    await vi.advanceTimersByTimeAsync(DEFAULT_DUCK_AURA_LEAD_MS); // telegraph over
+    h.controller.fire('c1');
+    expect(h.lastOverlay()!.ducks[0].diedAt).toBeDefined();
+    h.controller.dispose();
+  });
+
   it('hit-stop freezes the surviving flock by pushing spawnAt forward', async () => {
     const h = harness();
     // Duck 1 sits centered (hittable at default aim); duck 2 far away.
@@ -962,7 +1003,8 @@ describe('ducks', () => {
       sprite: 'bird',
     };
     h.joinPlayer('c1', 'Bob');
-    await vi.advanceTimersByTimeAsync(50); // spawn both ducks
+    // Spawn both ducks and sit out the aura telegraph, so they are shootable.
+    await vi.advanceTimersByTimeAsync(DEFAULT_DUCK_AURA_LEAD_MS + 50);
     const before = h.lastOverlay()!.ducks.find((d) => d.id === 2)!.spawnAt;
 
     h.controller.fire('c1'); // kills duck 1 → hang starts (hit-stop)
@@ -987,7 +1029,7 @@ describe('ducks', () => {
       sprite: 'bird',
     };
     h.joinPlayer('c1', 'Bob');
-    await vi.advanceTimersByTimeAsync(50);
+    await vi.advanceTimersByTimeAsync(DEFAULT_DUCK_AURA_LEAD_MS + 50); // past the telegraph
     const shooter = h
       .lastOverlay()!
       .scores.find((s) => s.clientId === 'c1')!.color;
@@ -1177,6 +1219,181 @@ describe('taunting dog', () => {
     await vi.advanceTimersByTimeAsync(100);
     expect(dogsNow(h)).toHaveLength(0);
     expect(h.lastOverlay()!.scores[0].dogScore).toBe(0);
+    h.controller.dispose();
+  });
+});
+
+describe('combo scoring', () => {
+  /** Two fully overlapping ghost boxes: a second quick shot still has a live
+      target after the first kill starts its respawn timer. */
+  function doubleGhostTarget(): PersonBoxes {
+    return {
+      boxes: [
+        { id: 1, x: 0.45, y: 0.45, w: 0.1, h: 0.1, color: 0 },
+        { id: 2, x: 0.45, y: 0.45, w: 0.1, h: 0.1, color: 0 },
+      ],
+      frameW: 1920,
+      frameH: 1080,
+      ghost: true,
+    };
+  }
+
+  function hitsFor(h: ReturnType<typeof harness>, clientId: string) {
+    return h.sent
+      .filter((s) => s.clientId === clientId && s.event.type === 'shooter_hit')
+      .map((s) => s.event) as Extract<RoomEvent, { type: 'shooter_hit' }>[];
+  }
+
+  it('scores a chained kill with the character multiplier', async () => {
+    const h = harness();
+    h.sceneState.peopleBoxes['stage'] = doubleGhostTarget();
+    // Crane Hunter: growth 1.0, windowMs 1400 — a fast follow-up doubles up.
+    h.joinPlayer('c1', 'Bob', undefined, 'crane-hunter');
+    h.controller.controlMatch({ action: 'start', mode: 'time' });
+    await vi.advanceTimersByTimeAsync(3100); // playing
+
+    h.controller.fire('c1');
+    await vi.advanceTimersByTimeAsync(100);
+    h.controller.fire('c1');
+
+    const hits = hitsFor(h, 'c1');
+    expect(hits).toHaveLength(2);
+    // First kill of a chain is always plain.
+    expect(hits[0]).toMatchObject({ score: 1, combo: 1, comboPoints: 1 });
+    // Second kill 100ms later: 1 + 1.0 * 1 * exp(-100/1400) ≈ ×1.93 → 2 pts.
+    expect(hits[1].combo).toBeCloseTo(1 + Math.exp(-100 / 1400), 5);
+    expect(hits[1].comboPoints).toBe(2);
+    expect(hits[1].score).toBe(3);
+    // The overlay advertises the live multiplier on both row kinds.
+    expect(h.lastOverlay()!.scores[0].combo).toBeCloseTo(
+      1 + Math.exp(-100 / 1400),
+      5,
+    );
+    expect(h.lastOverlay()!.crosshairs[0].combo).toBeCloseTo(
+      1 + Math.exp(-100 / 1400),
+      5,
+    );
+    // The two-hit chain still pops the celebration dog exactly as before.
+    expect(h.lastOverlay()!.dogReveals).toHaveLength(1);
+    h.controller.dispose();
+  });
+
+  it('drops the overlay combo once the character window lapses', async () => {
+    const h = harness();
+    h.sceneState.peopleBoxes['stage'] = doubleGhostTarget();
+    h.joinPlayer('c1', 'Bob', undefined, 'crane-hunter');
+    h.controller.controlMatch({ action: 'start', mode: 'time' });
+    await vi.advanceTimersByTimeAsync(3100);
+    h.controller.fire('c1');
+    await vi.advanceTimersByTimeAsync(100);
+    h.controller.fire('c1');
+    expect(h.lastOverlay()!.scores[0].combo).toBeGreaterThan(1);
+    // Crane Hunter's window is 1400ms — after it the chip must vanish even
+    // though no further event fires.
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(h.lastOverlay()!.scores[0].combo).toBeUndefined();
+    expect(h.lastOverlay()!.crosshairs[0].combo).toBeUndefined();
+    h.controller.dispose();
+  });
+
+  it('resets the combo when a fresh round starts', async () => {
+    const h = harness();
+    h.sceneState.peopleBoxes['stage'] = doubleGhostTarget();
+    h.joinPlayer('c1', 'Bob', undefined, 'crane-hunter');
+    h.controller.controlMatch({ action: 'start', mode: 'time' });
+    await vi.advanceTimersByTimeAsync(3100);
+    h.controller.fire('c1');
+    await vi.advanceTimersByTimeAsync(100);
+    h.controller.fire('c1');
+    expect(h.lastOverlay()!.scores[0].combo).toBeGreaterThan(1);
+
+    h.controller.controlMatch({ action: 'start', mode: 'time' });
+    expect(h.lastOverlay()!.scores[0].score).toBe(0);
+    expect(h.lastOverlay()!.scores[0].combo).toBeUndefined();
+    h.controller.dispose();
+  });
+
+  it('spawns a pop on every kill, and prunes them by age', async () => {
+    const h = harness();
+    h.sceneState.peopleBoxes['stage'] = doubleGhostTarget();
+    h.joinPlayer('c1', 'Bob', undefined, 'crane-hunter');
+    h.controller.controlMatch({ action: 'start', mode: 'time' });
+    await vi.advanceTimersByTimeAsync(3100);
+
+    // First kill of a chain: a plain (×1) receipt pop.
+    h.controller.fire('c1');
+    expect(h.lastOverlay()!.comboPops).toHaveLength(1);
+    expect(h.lastOverlay()!.comboPops[0]).toMatchObject({
+      combo: 1,
+      points: 1,
+    });
+
+    // Fast follow-up: ×1.93 → a second pop, at the kill site.
+    await vi.advanceTimersByTimeAsync(100);
+    h.controller.fire('c1');
+    const pops = h.lastOverlay()!.comboPops;
+    expect(pops).toHaveLength(2);
+    expect(pops[1].combo).toBeCloseTo(1 + Math.exp(-100 / 1400), 5);
+    expect(pops[1].points).toBe(2);
+    expect(pops[1].x).toBeCloseTo(0.5, 5);
+    expect(pops[1].y).toBeCloseTo(0.5, 5);
+    expect(pops[1].color).toBe(h.lastOverlay()!.crosshairs[0].color);
+
+    // Past their lifetime the tick prunes them.
+    await vi.advanceTimersByTimeAsync(1600);
+    expect(h.lastOverlay()!.comboPops).toHaveLength(0);
+    h.controller.dispose();
+  });
+
+  it('clears combo pops when a fresh round starts', async () => {
+    const h = harness();
+    h.sceneState.peopleBoxes['stage'] = doubleGhostTarget();
+    h.joinPlayer('c1', 'Bob', undefined, 'crane-hunter');
+    h.controller.controlMatch({ action: 'start', mode: 'time' });
+    await vi.advanceTimersByTimeAsync(3100);
+    h.controller.fire('c1');
+    await vi.advanceTimersByTimeAsync(100);
+    h.controller.fire('c1');
+    expect(h.lastOverlay()!.comboPops).toHaveLength(2);
+
+    h.controller.controlMatch({ action: 'start', mode: 'time' });
+    expect(h.lastOverlay()!.comboPops).toHaveLength(0);
+    h.controller.dispose();
+  });
+});
+
+describe('crosshair badge toggle', () => {
+  it('round-trips through the room config and the overlay', async () => {
+    const h = harness();
+    h.sceneState.peopleBoxes['stage'] = ghostTarget();
+    h.joinPlayer('c1', 'Bob');
+
+    // Default: on, and an empty update leaves it untouched.
+    expect(h.controller.getRoomConfig().crosshairBadges).toBe(true);
+    h.controller.setRoomConfig({});
+    expect(h.controller.getRoomConfig().crosshairBadges).toBe(true);
+
+    h.controller.setRoomConfig({ crosshairBadges: false });
+    expect(h.controller.getRoomConfig().crosshairBadges).toBe(false);
+    h.controller.controlMatch({ action: 'start', mode: 'time' });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(h.lastOverlay()!.crosshairBadges).toBe(false);
+
+    h.controller.setRoomConfig({ crosshairBadges: true });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(h.lastOverlay()!.crosshairBadges).toBe(true);
+    h.controller.dispose();
+  });
+});
+
+describe('character colors', () => {
+  it('players wear their hunter color, and it follows a re-pick', () => {
+    const h = harness();
+    h.joinPlayer('c1', 'Bob', undefined, 'crane-hunter');
+    expect(h.joinedFor('c1')!.color).toBe('#ff9210');
+    h.controller.setCharacter('c1', 'pink-spotter');
+    const row = h.lastState()!.players.find((p) => p.clientId === 'c1')!;
+    expect(row.color).toBe('#FF4081');
     h.controller.dispose();
   });
 });

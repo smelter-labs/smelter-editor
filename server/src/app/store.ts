@@ -246,10 +246,13 @@ export type PersonBoxes = {
    */
   duckScale?: number;
   /**
-   * Operator-tunable free-flight timing (Duck Hunter panel). `duckPauseMs` is
-   * how long a duck holds its spawn spot before flying off; `duckFlySpeed` is
-   * how fast it flies off, as a fraction of the larger screen edge per second.
+   * Operator-tunable free-flight timing (Duck Hunter panel). `duckAuraLeadMs`
+   * is how long the spawn aura telegraphs a bird before its duck appears;
+   * `duckPauseMs` is how long a duck then holds its spawn spot before flying
+   * off; `duckFlySpeed` is how fast it flies off, as a fraction of the larger
+   * screen edge per second.
    */
+  duckAuraLeadMs?: number;
   duckPauseMs?: number;
   duckFlySpeed?: number;
   /**
@@ -285,6 +288,8 @@ export type ShooterCrosshair = {
   name: string;
   /** Hunter character picked on the phone (see SHOOTER_CHARACTERS). */
   characterId?: string;
+  /** Live combo multiplier (>1), present only while the chain window is open. */
+  combo?: number;
   /** Smelter input id of the player's live camera (WHIP), if the camera is on. */
   camInputId?: string;
   /** The camera publish is heartbeat-live (false = registered but dark). */
@@ -305,8 +310,12 @@ export type ShooterScoreRow = {
   /** Hunter character picked on the phone (see SHOOTER_CHARACTERS). */
   characterId?: string;
   score: number;
+  /** Wall-clock ms of the last scoring kill; the board flashes fresh scores. */
+  scoredAt?: number;
   /** Dogs bagged, drawn as sprite icons under the score. Absent = 0. */
   dogScore?: number;
+  /** Live combo multiplier (>1), present only while the chain window is open. */
+  combo?: number;
   /** Smelter input id of the player's live camera (WHIP), if the camera is on. */
   camInputId?: string;
   /** The camera publish is heartbeat-live (false = registered but dark). */
@@ -326,6 +335,21 @@ export type ShooterBurst = {
   kind: 'hit' | 'miss';
 };
 
+/** Floating "×N" combo announcement at a kill site (content coords). Spawned
+ * only when the rounded multiplier reaches 2; drifts up and fades on the HUD. */
+export type ComboPop = {
+  id: number;
+  x: number;
+  y: number;
+  /** Raw multiplier the kill scored at (renderer rounds for display). */
+  combo: number;
+  /** Points the kill was worth after the multiplier. */
+  points: number;
+  /** Scoring player's hex color. */
+  color: string;
+  at: number;
+};
+
 /** The Duck Hunt dog popping up (holding two ducks) after a 2-in-a-row streak.
  * `x` is the pop-up column in normalized [0,1] content space; `color` is the
  * scoring player's hex color (the dog is hue-tinted to it); `at` is the ms the
@@ -342,6 +366,8 @@ export type DogReveal = {
 export type ShooterMatchOverlay = {
   phase: 'countdown' | 'playing' | 'ended';
   mode: 'time' | 'points';
+  /** Time mode round length; null in points mode (labels the tops table). */
+  durationMs: number | null;
   /** Points mode target; null in time mode. */
   targetScore: number | null;
   /** Wall-clock ms when 'playing' begins (countdown end). */
@@ -640,7 +666,7 @@ export type ShooterLobbyOverlay = {
     /** Points mode target; null in time mode. */
     targetScore: number | null;
   } | null;
-  /** Global TOP SCORES for the staged mode (attract-mode hall of fame). */
+  /** Global TOP SCORES for the staged round variant (attract hall of fame). */
   topScores: ShooterTopScoreEntry[];
 };
 
@@ -655,6 +681,11 @@ export type ShooterOverlay = {
   crosshairs: ShooterCrosshair[];
   scores: ShooterScoreRow[];
   bursts: ShooterBurst[];
+  /** Floating combo announcements in flight (see ComboPop). */
+  comboPops: ComboPop[];
+  /** Render the name badge above each crosshair (missing = true). When the
+   * host turns badges off, the reticle draws thicker to stay legible alone. */
+  crosshairBadges?: boolean;
   /** Duck Hunt dog reveals in flight (2-in-a-row celebration). */
   dogReveals: DogReveal[];
   /** Taunting dogs on screen (2-misses-in-a-row) — the shootable ones. */

@@ -10,29 +10,33 @@ import type {
   ShooterStateEvent,
   ShooterTopScoreEntry,
 } from '@smelter-editor/types';
-import { MAX_SHOOTER_PLAYERS } from '@smelter-editor/types';
+import { MAX_SHOOTER_PLAYERS, SHOOTER_CHARACTERS } from '@smelter-editor/types';
 import type { StoreApi } from 'zustand';
 import type {
   DogReveal,
   PersonBoxes,
   RoomStore,
+  ComboPop,
   ShooterBurst,
   ShooterMatchOverlay,
 } from '../app/store';
 import { clamp, clamp01 } from '../core/mathUtils';
 import type { DuckEntity, DuckFlightParams, DuckViewport } from './duckFlight';
 import {
+  DEFAULT_DUCK_AURA_LEAD_MS,
   DEFAULT_DUCK_FLY_FRAC_PER_SEC,
   DEFAULT_DUCK_PAUSE_MS,
   DUCK_DEATH_MS,
   DUCK_HANG_MS,
   MAX_DUCKS,
   contentToPx,
+  duckAppeared,
   duckContentPos,
   duckSidePx,
   pxToContent,
   validViewport,
 } from './duckFlight';
+import { comboConfigFor, comboMultiplier, comboPoints } from './combo';
 import type { DogEntity } from './dogTaunt';
 import {
   DOG_FREEZE_MS,
@@ -67,8 +71,16 @@ export type DuckHunterDeps = {
   recordTopScore: (
     entry: Omit<ShooterTopScoreEntry, 'initials' | 'at'> & { at: number },
   ) => { rank: number | null };
-  /** Current global TOP SCORES table for one mode (sorted, capped). */
-  readTopScores: (mode: ShooterMatchMode) => ShooterTopScoreEntry[];
+  /**
+   * Current global TOP SCORES table for one round variant (sorted, capped).
+   * Tables are per variant — mode plus its knob (duration/target) — so scores
+   * from differently-sized rounds never compete with each other.
+   */
+  readTopScores: (variant: {
+    mode: ShooterMatchMode;
+    durationMs?: number | null;
+    targetScore?: number | null;
+  }) => ShooterTopScoreEntry[];
   /**
    * Declare the character clips the broadcast needs on air right now (hunter
    * lineup / podium). Idempotent and driven from the publish loop, so the
@@ -128,6 +140,8 @@ type Player = {
   lastHitAt: number;
   /** Current run of consecutive hits (gaps < STREAK_WINDOW_MS keep it going). */
   streak: number;
+  /** Multiplier the latest kill scored at (1 = no combo); overlay display. */
+  comboMult: number;
   /** Wall-clock ms of this player's last miss, for the miss-streak window. */
   lastMissAt: number;
   /** Current run of consecutive misses; two in a row summon the laughing dog. */
@@ -151,6 +165,9 @@ type Player = {
 
 /** Per-player ammo config sent from the phone (calibration screen). */
 export type AmmoConfig = { maxAmmo?: number; reloadMs?: number };
+
+/** Room-wide rules pushed from the settings panels (ammo + HUD chrome). */
+export type RoomConfig = AmmoConfig & { crosshairBadges?: boolean };
 
 /** Command from the arcade page's match endpoint. */
 export type MatchCommand = {
@@ -183,10 +200,10 @@ type MatchState = {
 };
 
 /**
- * Distinct, bright crosshair colors (kept away from the ghost palette). Longer
- * than the roster cap on purpose: `colorSeq` advances on every join, so players
- * cycling through a slot keep getting visibly different crosshairs instead of
- * inheriting the last occupant's color. The cap itself is MAX_SHOOTER_PLAYERS.
+ * Fallback crosshair colors. A player's real color is their hunter's own
+ * (characterColor) — picks are exclusive, so those can never collide. This
+ * palette only covers entries that somehow lack a character (adopted legacy
+ * sessions); `colorSeq` advances per use so even those stay distinct.
  */
 const PLAYER_COLORS = [
   '#FFEB3B', // yellow
@@ -199,10 +216,11 @@ const PLAYER_COLORS = [
 
 const RESPAWN_MS = 3000; // how long a shot ghost stays down before returning
 const BURST_MS = 600; // shot-effect lifetime
+const COMBO_POP_MS = 1400; // floating kill/combo announcement lifetime
 // Streak: two hits within this window trigger the Duck Hunt dog pop-up, and two
 // misses within it summon the laughing dog the player can shoot back at.
 const STREAK_WINDOW_MS = 2000;
-const DOG_REVEAL_MS = 6000; // how long the dog stays on screen per pop-up
+const DOG_REVEAL_MS = 2000; // how long the dog stays on screen per pop-up
 // Floor between taunts, so a cold streak doesn't turn into a parade of dogs.
 const DOG_TAUNT_COOLDOWN_MS = 12_000;
 const PUBLISH_MS = 33; // ~30Hz overlay refresh while the game is active
@@ -214,7 +232,7 @@ const CROSSHAIR_SMOOTH = 0.5; // eases the broadcast crosshair toward the aim
 
 // Ammo defaults + bounds (players tune within these on the calibration screen).
 const DEFAULT_MAX_AMMO = 6;
-const DEFAULT_RELOAD_MS = 3000;
+const DEFAULT_RELOAD_MS = 1500;
 const MAX_AMMO_CAP = 12;
 const MIN_RELOAD_MS = 1000;
 const MAX_RELOAD_MS = 30000;
@@ -276,6 +294,8 @@ export class DuckHunterController {
   private readonly departed = new Set<number>();
   private bursts: ShooterBurst[] = [];
   private nextBurstId = 1;
+  /** Floating combo announcements; ids share nextBurstId (never keyed together). */
+  private comboPops: ComboPop[] = [];
   private dogReveals: DogReveal[] = [];
   /**
    * The taunting dogs — the shootable ones. Separate from `dogReveals` (the
@@ -294,6 +314,8 @@ export class DuckHunterController {
   // applied to every player (current + future joiners).
   private roomMaxAmmo = DEFAULT_MAX_AMMO;
   private roomReloadMs = DEFAULT_RELOAD_MS;
+  /** Name badges above crosshairs; off = the reticle draws thicker instead. */
+  private crosshairBadges = true;
   /** Arcade round state; null = free-play (classic dashboard behavior). */
   private match: MatchState | null = null;
   /**
@@ -369,6 +391,7 @@ export class DuckHunterController {
         !this.characterTaken(characterId, clientId)
       ) {
         existing.characterId = characterId;
+        this.applyCharacterColor(existing);
       }
       existing.connected = true;
       existing.disconnectedAt = null;
@@ -402,6 +425,7 @@ export class DuckHunterController {
         !this.characterTaken(characterId, clientId)
       ) {
         orphan.characterId = characterId;
+        this.applyCharacterColor(orphan);
       }
       player = orphan;
     } else {
@@ -432,7 +456,9 @@ export class DuckHunterController {
         clientId,
         playerKey: playerKey ?? randomUUID(),
         name,
-        color: PLAYER_COLORS[this.colorSeq++ % PLAYER_COLORS.length],
+        color:
+          this.characterColor(characterId) ??
+          PLAYER_COLORS[this.colorSeq++ % PLAYER_COLORS.length],
         characterId: characterId ?? null,
         connected: true,
         disconnectedAt: null,
@@ -448,6 +474,7 @@ export class DuckHunterController {
         reloadStartedAt: null,
         lastHitAt: 0,
         streak: 0,
+        comboMult: 1,
         lastMissAt: 0,
         missStreak: 0,
         camInputId: null,
@@ -532,8 +559,26 @@ export class DuckHunterController {
       return;
     }
     p.characterId = characterId;
+    this.applyCharacterColor(p);
     this.publish();
     this.broadcastState();
+  }
+
+  /** The hunter's own color, or null for an unknown/absent character. */
+  private characterColor(
+    characterId: ShooterCharacterId | null | undefined,
+  ): string | null {
+    return SHOOTER_CHARACTERS.find((c) => c.id === characterId)?.color ?? null;
+  }
+
+  /**
+   * Crosshair/scoreboard color follows the hunter: picks are exclusive, so
+   * character colors can never collide. Entries without a character keep the
+   * palette color they were minted with.
+   */
+  private applyCharacterColor(p: Player): void {
+    const color = this.characterColor(p.characterId);
+    if (color) p.color = color;
   }
 
   /** A rejected request, addressed to the client that made it. */
@@ -572,10 +617,13 @@ export class DuckHunterController {
    * Duck Hunter panel. Stored as the default for future joiners and applied
    * immediately to every connected player.
    */
-  setRoomConfig(ammo: AmmoConfig): void {
+  setRoomConfig(cfg: RoomConfig): void {
+    if (typeof cfg.crosshairBadges === 'boolean') {
+      this.crosshairBadges = cfg.crosshairBadges;
+    }
     const { maxAmmo, reloadMs } = normalizeAmmoConfig({
-      maxAmmo: ammo.maxAmmo ?? this.roomMaxAmmo,
-      reloadMs: ammo.reloadMs ?? this.roomReloadMs,
+      maxAmmo: cfg.maxAmmo ?? this.roomMaxAmmo,
+      reloadMs: cfg.reloadMs ?? this.roomReloadMs,
     });
     this.roomMaxAmmo = maxAmmo;
     this.roomReloadMs = reloadMs;
@@ -589,9 +637,17 @@ export class DuckHunterController {
     }
   }
 
-  /** Current room-wide ammo rules (for the panel to read back). */
-  getRoomConfig(): { maxAmmo: number; reloadMs: number } {
-    return { maxAmmo: this.roomMaxAmmo, reloadMs: this.roomReloadMs };
+  /** Current room-wide rules (for the panel to read back). */
+  getRoomConfig(): {
+    maxAmmo: number;
+    reloadMs: number;
+    crosshairBadges: boolean;
+  } {
+    return {
+      maxAmmo: this.roomMaxAmmo,
+      reloadMs: this.roomReloadMs,
+      crosshairBadges: this.crosshairBadges,
+    };
   }
 
   /**
@@ -668,6 +724,7 @@ export class DuckHunterController {
           p.score = 0;
           p.dogScore = 0;
           p.streak = 0;
+          p.comboMult = 1;
           p.lastHitAt = 0;
           p.missStreak = 0;
           p.lastMissAt = 0;
@@ -676,6 +733,7 @@ export class DuckHunterController {
           this.sendAmmo(p.clientId);
         }
         this.bursts = [];
+        this.comboPops = [];
         this.dogReveals = [];
         this.dogs = [];
         this.lastDogTauntAt = 0;
@@ -710,8 +768,10 @@ export class DuckHunterController {
         ) {
           this.pendingSetup = this.normalizeSetup(cmd);
         }
+        // With nothing staged yet, show the table the default round would
+        // play for — normalizeSetup on a bare command yields exactly that.
         this.lobbyTopScores = this.deps.readTopScores(
-          this.pendingSetup?.mode ?? 'time',
+          this.pendingSetup ?? this.normalizeSetup(cmd),
         );
         // The opening screen has to be on air the instant the host opens the
         // lobby. Before the sidecar produces a target there is nothing else to
@@ -779,6 +839,7 @@ export class DuckHunterController {
       roomId: this.roomId,
       phase: m.phase,
       mode: m.mode,
+      durationMs: m.durationMs ?? undefined,
       targetScore: m.targetScore ?? undefined,
       startsAtMs: m.startsAt,
       endsAtMs: m.endsAt ?? undefined,
@@ -1083,10 +1144,17 @@ export class DuckHunterController {
       duck.diedAt = now;
       duck.hitColor = p.color;
     }
-    p.score += 1;
     // Streak: hits within STREAK_WINDOW_MS chain; the moment it reaches two,
     // the Duck Hunt dog pops up (holding two ducks) tinted to this player.
-    p.streak = now - p.lastHitAt < STREAK_WINDOW_MS ? p.streak + 1 : 1;
+    const hitGapMs = now - p.lastHitAt;
+    p.streak = hitGapMs < STREAK_WINDOW_MS ? p.streak + 1 : 1;
+    // Combo: chained kills score at a per-character multiplier shaped by the
+    // streak length and the gap between kills (see combo.ts).
+    const comboCfg = comboConfigFor(p.characterId ?? undefined);
+    const mult = comboMultiplier(p.streak, hitGapMs, comboCfg);
+    const pts = comboPoints(mult);
+    p.score += pts;
+    p.comboMult = mult;
     p.lastHitAt = now;
     p.missStreak = 0; // a hit breaks the cold streak the dog laughs at
     if (p.streak === 2) {
@@ -1104,6 +1172,18 @@ export class DuckHunterController {
       at: now,
       kind: 'hit',
     });
+    // Every kill announces itself with a pop at the kill site that the HUD
+    // floats upward: a quiet "+pts" receipt for a plain kill, a "×N COMBO"
+    // shout when the rounded multiplier chains (the renderer keys off it).
+    this.comboPops.push({
+      id: this.nextBurstId++,
+      x: best.cx,
+      y: best.cy,
+      combo: mult,
+      points: pts,
+      color: p.color,
+      at: now,
+    });
     this.ensureRunning();
     this.deps.sendTo(clientId, {
       type: 'shooter_hit',
@@ -1111,6 +1191,8 @@ export class DuckHunterController {
       clientId,
       ghostId: best.id,
       score: p.score,
+      combo: mult,
+      comboPoints: pts,
     });
     // Points mode: first to the target ends the round on the winning shot.
     if (
@@ -1181,6 +1263,7 @@ export class DuckHunterController {
     this.ducks.clear();
     this.departed.clear();
     this.bursts = [];
+    this.comboPops = [];
     this.dogReveals = [];
     this.dogs = [];
     this.store.getState().setShooter(null);
@@ -1234,6 +1317,8 @@ export class DuckHunterController {
     let bestDist = Infinity;
     for (const d of this.ducks.values()) {
       if (d.diedAt != null) continue;
+      // Still telegraphing (aura only, no sprite yet) — nothing to shoot.
+      if (!duckAppeared(d, now, params.auraLeadMs)) continue;
       const pos = duckContentPos(d, now, params, v);
       const dx = (shotX - pos.x) * dispW;
       const dy = (shotY - pos.y) * dispH;
@@ -1402,7 +1487,8 @@ export class DuckHunterController {
    * Reconcile the live duck flock with the latest detections and advance each
    * duck's free-flight. Runs every tick (even with no players) so ducks keep
    * flying on the broadcast. New detection ids spawn a duck frozen at the box
-   * center; a duck that flies off-screen is retired and its id suppressed until
+   * center (invisible for the first `auraLeadMs` while the aura telegraphs
+   * it); a duck that flies off-screen is retired and its id suppressed until
    * it leaves detection and re-enters; a shot duck plays its death beat then is
    * dropped. This is the sole owner of duck state — the renderer only draws it.
    *
@@ -1427,8 +1513,22 @@ export class DuckHunterController {
     if (geomOk) {
       for (const b of pb.boxes.slice(0, MAX_DUCKS)) {
         detected.add(b.id);
+        const telegraphing = this.ducks.get(b.id);
+        if (telegraphing) {
+          // While the aura is still telegraphing, keep the hatch point glued
+          // to the live detection — the bird can move a lot in that window,
+          // and the duck must appear where the aura is, not where it started.
+          if (
+            telegraphing.diedAt == null &&
+            !duckAppeared(telegraphing, now, params.auraLeadMs)
+          ) {
+            telegraphing.cx0 = b.x + b.w / 2;
+            telegraphing.cy0 = b.y + b.h / 2;
+            telegraphing.sideFrac = duckSidePx(b.w, b.h, mul, v) / v.width;
+          }
+          continue;
+        }
         if (
-          this.ducks.has(b.id) ||
           this.departed.has(b.id) ||
           this.deadGhosts.has(b.id) ||
           // Cap the LIVE flock, not just this frame's detections — tracker id
@@ -1553,10 +1653,12 @@ export class DuckHunterController {
         characterId: m.winner.characterId,
         score: m.winner.score,
         mode: m.mode,
+        durationMs: m.durationMs ?? undefined,
+        targetScore: m.targetScore ?? undefined,
         at: now,
       }).rank;
     }
-    m.topScores = this.deps.readTopScores(m.mode);
+    m.topScores = this.deps.readTopScores(m);
     m.lastBroadcastAt = now;
     this.deps.broadcast(this.getMatchSnapshot());
   }
@@ -1590,6 +1692,7 @@ export class DuckHunterController {
       this.players.size === 0 &&
       this.deadGhosts.size === 0 &&
       this.bursts.length === 0 &&
+      this.comboPops.length === 0 &&
       this.dogReveals.length === 0 &&
       this.dogs.length === 0 &&
       this.ducks.size === 0 &&
@@ -1653,6 +1756,7 @@ export class DuckHunterController {
       if (respawnAt <= now) this.deadGhosts.delete(id);
     }
     this.bursts = this.bursts.filter((b) => now - b.at <= BURST_MS);
+    this.comboPops = this.comboPops.filter((c) => now - c.at <= COMBO_POP_MS);
     this.dogReveals = this.dogReveals.filter(
       (d) => now - d.at <= DOG_REVEAL_MS,
     );
@@ -1762,6 +1866,15 @@ export class DuckHunterController {
       reloadEndsAt:
         p.reloadStartedAt == null ? null : p.reloadStartedAt + p.reloadMs,
     });
+    // A combo only shows while it can still be chained — once the character's
+    // window lapses the HUD must not keep advertising a dead multiplier.
+    const overlayNow = this.now();
+    const activeCombo = (p: Player) =>
+      p.comboMult > 1 &&
+      overlayNow - p.lastHitAt <
+        comboConfigFor(p.characterId ?? undefined).windowMs
+        ? p.comboMult
+        : undefined;
     this.store.getState().setShooter({
       // Empty when a host scene is up without a target: the only consumer
       // compares it against real input ids, so no tile mounts the in-tile HUD
@@ -1779,6 +1892,7 @@ export class DuckHunterController {
           color: p.color,
           name: p.name,
           characterId: p.characterId ?? undefined,
+          combo: activeCombo(p),
           ...ammoState(p),
         })),
       scores: [...this.players.values()]
@@ -1788,12 +1902,16 @@ export class DuckHunterController {
           color: p.color,
           characterId: p.characterId ?? undefined,
           score: p.score,
+          scoredAt: p.lastHitAt > 0 ? p.lastHitAt : undefined,
           dogScore: p.dogScore,
+          combo: activeCombo(p),
           ...ammoState(p),
         }))
         // Ranked on ducks only — dogs are a side tally, never a tiebreak.
         .sort((a, b) => b.score - a.score),
       bursts: this.bursts,
+      comboPops: this.comboPops,
+      crosshairBadges: this.crosshairBadges,
       dogReveals: this.dogReveals,
       dogs: this.dogs,
       deadGhostIds: [...this.deadGhosts.keys()],
@@ -1828,6 +1946,7 @@ export class DuckHunterController {
     return {
       phase: m.phase,
       mode: m.mode,
+      durationMs: m.durationMs,
       targetScore: m.targetScore,
       startsAt: m.startsAt,
       endsAt: m.endsAt,
@@ -1860,6 +1979,7 @@ export class DuckHunterController {
 /** Free-flight timing for a target, with the shared defaults. */
 function flightParams(pb: PersonBoxes): DuckFlightParams {
   return {
+    auraLeadMs: pb.duckAuraLeadMs ?? DEFAULT_DUCK_AURA_LEAD_MS,
     pauseMs: pb.duckPauseMs ?? DEFAULT_DUCK_PAUSE_MS,
     flySpeed: pb.duckFlySpeed ?? DEFAULT_DUCK_FLY_FRAC_PER_SEC,
   };

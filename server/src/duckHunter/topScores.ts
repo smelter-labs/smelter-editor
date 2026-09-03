@@ -9,9 +9,29 @@ import { DATA_DIR } from '../dataDir';
 
 const MAX_ENTRIES = 10;
 
+/**
+ * One TOP SCORES table per round variant, not per mode: scores from rounds of
+ * different lengths (or point targets) aren't comparable, so each variant
+ * competes only against itself.
+ */
+export type ShooterScoreVariant = {
+  mode: ShooterMatchMode;
+  /** Time mode round length; ignored in points mode. */
+  durationMs?: number | null;
+  /** Points mode target; ignored in time mode. */
+  targetScore?: number | null;
+};
+
+/** Stable table key for a round variant, e.g. `time:60000` / `points:25`. */
+export function variantKey(v: ShooterScoreVariant): string {
+  return v.mode === 'time'
+    ? `time:${v.durationMs ?? 0}`
+    : `points:${v.targetScore ?? 0}`;
+}
+
 type TopScoresFile = {
-  v: 1;
-  entries: Record<ShooterMatchMode, ShooterTopScoreEntry[]>;
+  v: 2;
+  tables: Record<string, ShooterTopScoreEntry[]>;
 };
 
 /** 3-char arcade initials from a free-form player name. */
@@ -20,18 +40,15 @@ export function defaultInitials(name: string): string {
   return (cleaned || 'AAA').slice(0, 3).padEnd(3, 'A');
 }
 
-function emptyEntries(): Record<ShooterMatchMode, ShooterTopScoreEntry[]> {
-  return { time: [], points: [] };
-}
-
 /**
- * Global (cross-room) arcade TOP SCORES table, one JSON file under data/.
- * The only writer is the server's idempotent match end, so a round can never
- * record twice. Reads are served from the in-memory copy; persistence is
- * best-effort — a failed write costs durability, never the live table.
+ * Global (cross-room) arcade TOP SCORES tables, one JSON file under data/,
+ * keyed by round variant (see variantKey). The only writer is the server's
+ * idempotent match end, so a round can never record twice. Reads are served
+ * from the in-memory copy; persistence is best-effort — a failed write costs
+ * durability, never the live tables.
  */
 export class TopScoresStore {
-  private entries = emptyEntries();
+  private tables: Record<string, ShooterTopScoreEntry[]> = {};
   private loaded = false;
   /** Serializes file writes so a slow early write can't clobber a later one. */
   private writeChain: Promise<unknown> = Promise.resolve();
@@ -42,7 +59,12 @@ export class TopScoresStore {
     return path.join(this.dir, 'top-scores.json');
   }
 
-  /** Lazy, tolerant load: a missing or corrupt file is an empty table. */
+  /**
+   * Lazy, tolerant load: a missing or corrupt file is an empty table. A v1
+   * file (single table per mode) is also empty — its rows never recorded the
+   * round length/target they were earned in, so there is no honest variant to
+   * assign them to.
+   */
   private ensureLoaded(): void {
     if (this.loaded) return;
     this.loaded = true;
@@ -50,15 +72,15 @@ export class TopScoresStore {
       const parsed = JSON.parse(
         readFileSync(this.filePath, 'utf-8'),
       ) as TopScoresFile;
-      if (parsed?.v !== 1 || typeof parsed.entries !== 'object') return;
-      for (const mode of ['time', 'points'] as const) {
-        const rows = parsed.entries?.[mode];
+      if (parsed?.v !== 2 || typeof parsed.tables !== 'object') return;
+      for (const [key, rows] of Object.entries(parsed.tables ?? {})) {
         if (!Array.isArray(rows)) continue;
-        this.entries[mode] = rows
+        const kept = rows
           .filter(
             (r) => typeof r?.score === 'number' && typeof r?.name === 'string',
           )
           .slice(0, MAX_ENTRIES);
+        if (kept.length > 0) this.tables[key] = kept;
       }
     } catch {
       /* first run or unreadable file — start empty */
@@ -66,8 +88,9 @@ export class TopScoresStore {
   }
 
   /**
-   * Insert a finished round's winning score. Returns the 1-based rank when it
-   * made the table, or null when it fell off the bottom.
+   * Insert a finished round's winning score into its variant's table. Returns
+   * the 1-based rank when it made the table, or null when it fell off the
+   * bottom.
    */
   submit(
     entry: Omit<ShooterTopScoreEntry, 'initials' | 'at'> & {
@@ -81,19 +104,28 @@ export class TopScoresStore {
       initials: entry.initials ?? defaultInitials(entry.name),
       at: entry.at ?? Date.now(),
     };
-    const rows = [...this.entries[full.mode], full];
+    const key = variantKey(full);
+    const rows = [...(this.tables[key] ?? []), full];
     rows.sort((a, b) => b.score - a.score || a.at - b.at);
     const kept = rows.slice(0, MAX_ENTRIES);
-    this.entries[full.mode] = kept;
+    this.tables[key] = kept;
     this.persist();
     const rank = kept.indexOf(full);
     return { rank: rank === -1 ? null : rank + 1 };
   }
 
-  /** Current table for one mode (sorted, capped). */
-  snapshot(mode: ShooterMatchMode): ShooterTopScoreEntry[] {
+  /** Current table for one round variant (sorted, capped). */
+  snapshot(variant: ShooterScoreVariant): ShooterTopScoreEntry[] {
     this.ensureLoaded();
-    return [...this.entries[mode]];
+    return [...(this.tables[variantKey(variant)] ?? [])];
+  }
+
+  /** Every variant's table, keyed by variantKey (the read-only REST view). */
+  snapshotAll(): Record<string, ShooterTopScoreEntry[]> {
+    this.ensureLoaded();
+    return Object.fromEntries(
+      Object.entries(this.tables).map(([k, rows]) => [k, [...rows]]),
+    );
   }
 
   /** Resolves when every queued write has hit the disk (tests/shutdown). */
@@ -103,7 +135,7 @@ export class TopScoresStore {
 
   private persist(): void {
     const payload = JSON.stringify(
-      { v: 1, entries: this.entries } satisfies TopScoresFile,
+      { v: 2, tables: this.tables } satisfies TopScoresFile,
       null,
       2,
     );

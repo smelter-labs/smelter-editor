@@ -3,6 +3,7 @@ import { View, Image, InputStream, Rescaler, Shader } from '@swmansion/smelter';
 import type { PersonBoxes } from '../app/store';
 import type { DuckEntity, DuckFlightParams } from '../duckHunter/duckFlight';
 import {
+  DEFAULT_DUCK_AURA_LEAD_MS,
   DEFAULT_DUCK_FLY_FRAC_PER_SEC,
   DEFAULT_DUCK_PAUSE_MS,
   DUCK_DEATH_MS,
@@ -11,6 +12,7 @@ import {
   HIT_PAD,
   MAX_DUCKS,
   contentToPx,
+  duckAppeared,
   duckContentPos,
   hitFlashEnvelope,
   spawnAuraEnvelope,
@@ -59,6 +61,7 @@ type AuraBox = {
 
 function flightParams(data: PersonBoxes): DuckFlightParams {
   return {
+    auraLeadMs: data.duckAuraLeadMs ?? DEFAULT_DUCK_AURA_LEAD_MS,
     pauseMs: data.duckPauseMs ?? DEFAULT_DUCK_PAUSE_MS,
     flySpeed: data.duckFlySpeed ?? DEFAULT_DUCK_FLY_FRAC_PER_SEC,
   };
@@ -83,14 +86,13 @@ function ease(from: number, to: number, k: number): number {
  * locally.
  *
  * The video underneath runs through the `duck-spawn-aura` shader, which marks
- * the REAL bird each duck hatched from — otherwise a sprite just appears out of
+ * the REAL bird each duck hatches from — otherwise a sprite just appears out of
  * nowhere and nothing says which detection it came from. A duck carries its
  * tracker box id, so the pairing is free here: `ducks[i].id` is the id of the
- * box in `data.boxes` it was spawned on. Each pair gets a shockwave at the
- * spawn, a soft lock-on ring in the duck's own palette color for as long as it
- * lives, and a dashed tether that points back at the bird for the first moment
- * after the duck detaches. Boxes are eased here, not upstream, because only the
- * ring cares about jitter.
+ * box in `data.boxes` it was spawned on. The aura is a telegraph: a shockwave
+ * plus a lock-on ring in the duck's palette color mark the bird for
+ * `auraLeadMs`, then the duck sprite appears on it and the mark fades out.
+ * Boxes are eased here, not upstream, because only the ring cares about jitter.
  */
 export function PacmanBirdsInput({
   sourceInputId,
@@ -147,7 +149,11 @@ export function PacmanBirdsInput({
   const list = (ducks ?? []).slice(0, MAX_DUCKS);
   const geomOk = validViewport(v);
 
-  const live = list.filter((d) => d.diedAt == null);
+  // A duck is drawn only once it has appeared — for the first `auraLeadMs`
+  // after spawnAt only the aura telegraphs it (and the hit-test skips it too).
+  const live = list.filter(
+    (d) => d.diedAt == null && duckAppeared(d, now, params.auraLeadMs),
+  );
   const dead = list.filter((d) => d.diedAt != null);
 
   // Aura slots: one per duck whose source bird is still known, freshest first
@@ -163,7 +169,7 @@ export function PacmanBirdsInput({
       if (!b) continue;
       const env = spawnAuraEnvelope(
         now - d.spawnAt,
-        params.pauseMs,
+        params,
         d.diedAt != null ? now - d.diedAt : null,
       );
       // Detection dropout: hold the last position and fade out rather than

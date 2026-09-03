@@ -12,6 +12,8 @@ import {
   pixelFont,
 } from '../retro-kit';
 import { ChipButton } from './phone-shell';
+import { useIsLandscape } from './use-viewport';
+import { reloadProgress } from './gun-stats';
 
 type ScoreRow = {
   clientId: string;
@@ -232,6 +234,24 @@ export function MatchOverlay({
           background: 'rgba(4,8,15,0.55)',
           pointerEvents: 'none',
         }}>
+        {/* Autocenter briefing: the phone recenters its aim on GO, so whatever
+            the player physically points at during these 3s becomes screen
+            center. Say it loud — this IS the calibration. */}
+        <span
+          style={{
+            fontFamily: pixelFont,
+            fontSize: 16,
+            letterSpacing: 2,
+            textAlign: 'center',
+            lineHeight: 1.6,
+            color: R5.yellow,
+            textShadow: `0 0 12px rgba(${R5.yellowRgb},0.6)`,
+          }}>
+          AIM AT SCREEN
+          <br />
+          CENTER
+        </span>
+        <span style={{ fontSize: 30, color: R5.yellow, lineHeight: 1 }}>⌖</span>
         <LedText size={120} color={R5.yellow} glowRgb={R5.yellowRgb}>
           {countdownN}
         </LedText>
@@ -455,7 +475,7 @@ export function AmmoRow({
   );
 }
 
-/** Bottom control row: utilities + the big FIRE button. */
+/** Bottom controls: utility chips + the CENTER/FIRE trigger zone. */
 export function ControlsRow({
   gyroMode,
   showModeToggle,
@@ -467,6 +487,8 @@ export function ControlsRow({
   streamOn,
   onToggleStream,
   ammo,
+  reloadLeftMs,
+  reloadMs,
   blocked,
   onFire,
 }: {
@@ -486,6 +508,9 @@ export function ControlsRow({
   streamOn: boolean;
   onToggleStream: () => void;
   ammo: number;
+  /** Reload countdown + interval, drawn as a fill on the dead FIRE button. */
+  reloadLeftMs: number;
+  reloadMs: number;
   /**
    * The match phase has the trigger locked (countdown / game over). The button
    * goes dead-gray and reads HOLD, but still calls onFire — the refusal answers
@@ -497,64 +522,161 @@ export function ControlsRow({
 }) {
   const live = !blocked && ammo > 0;
   const label = blocked ? 'HOLD' : ammo > 0 ? 'FIRE' : 'RELOADING';
+  const reloading = !blocked && ammo <= 0 && reloadLeftMs > 0;
+  const fillPct = reloadProgress(reloadLeftMs, reloadMs) * 100;
+  // The player aims at the big screen, not the phone — FIRE (and CENTER, the
+  // gyro panic button) must be hittable blind, so in portrait the trigger zone
+  // takes roughly a third of the screen and the utility chips move to their
+  // own slim strip above it. Landscape phones only have ~370px of height, so
+  // there the chips stay beside a shorter trigger instead.
+  const landscape = useIsLandscape();
+
+  const chips = (
+    <>
+      <ChipButton
+        label='📺'
+        title='Feed'
+        active={streamOn}
+        onClick={onToggleStream}
+      />
+      {showModeToggle ? (
+        <ChipButton
+          label={gyroMode ? '🎯' : '👆'}
+          title='Aim mode'
+          active={gyroMode}
+          onClick={onToggleMode}
+        />
+      ) : null}
+      {gyroMode ? (
+        <ChipButton label='⚙' title='Axis setup' onClick={onAxes} />
+      ) : null}
+      <ChipButton
+        label='📷'
+        title='Camera'
+        active={camOn}
+        onClick={onToggleCamera}
+      />
+    </>
+  );
+
+  // Recenter, promoted out of the chip cluster: a drifting gyro makes this the
+  // panic button, so it stands full-height next to FIRE instead of hiding
+  // among the utility chips.
+  const centerBtn = gyroMode ? (
+    <button
+      type='button'
+      className='r5-btn r5-fire'
+      onClick={onRecenter}
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        clipPath: chamfer(10),
+        border: 'none',
+        background: 'rgba(79,195,247,0.18)',
+        boxShadow: `inset 0 0 0 1px ${R5.cyan}`,
+        color: R5.cyan,
+        fontFamily: pixelFont,
+        fontSize: landscape ? 10 : 11,
+        letterSpacing: 1,
+        textAlign: 'center',
+        padding: '10px 12px',
+        minWidth: landscape ? 84 : 96,
+        transition: 'transform 0.05s',
+      }}>
+      <span style={{ fontSize: landscape ? 36 : 44, lineHeight: 1 }}>⌖</span>
+      CENTER
+    </button>
+  ) : null;
+
+  // `r5-btn` for its `touch-action: manipulation`, exactly as the calibration
+  // trigger has it: without it iOS keeps the tap in play as a possible
+  // double-tap-zoom and can cancel the pointer on rapid fire. The class also
+  // sets `text-align: left`, hence the explicit centering below (the rest of
+  // its rules are overridden by this inline style).
+  const fireBtn = (
+    <button
+      type='button'
+      className='r5-btn r5-fire'
+      onPointerDown={onFire}
+      style={{
+        flex: 1,
+        minHeight: landscape ? 84 : 'clamp(150px, 30vh, 300px)',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        clipPath: chamfer(12),
+        border: 'none',
+        // While reloading the dead button doubles as the progress bar: the
+        // yellow fill rises with the countdown that page.tsx ticks at 10 Hz.
+        background: live
+          ? R5.red
+          : reloading
+            ? `linear-gradient(to top, rgba(${R5.yellowRgb},0.28) ${fillPct}%, rgba(120,150,200,0.15) ${fillPct}%)`
+            : 'rgba(120,150,200,0.15)',
+        color: live ? '#fff' : R5.inkMuted,
+        fontFamily: pixelFont,
+        // The long labels (RELOADING / HOLD) would overflow a narrow phone's
+        // trigger at the FIRE size.
+        fontSize: label === 'FIRE' ? (landscape ? 24 : 30) : 15,
+        letterSpacing: label === 'FIRE' ? (landscape ? 4 : 5) : 2,
+        textAlign: 'center',
+        padding: '20px 10px',
+        boxShadow: live
+          ? `inset 0 3px 0 rgba(255,255,255,0.3), 0 0 14px rgba(${R5.redRgb},0.5)`
+          : 'none',
+        transition: 'transform 0.05s',
+      }}>
+      {label}
+      {reloading ? (
+        <LedText size={15} color={R5.orange} glowRgb={R5.orangeRgb}>
+          {(reloadLeftMs / 1000).toFixed(1)}s
+        </LedText>
+      ) : null}
+    </button>
+  );
+
   return (
     <div
       style={{
         display: 'flex',
+        flexDirection: landscape ? 'row' : 'column',
         alignItems: 'stretch',
-        gap: 8,
+        gap: landscape ? 8 : 10,
         padding: '10px 12px calc(env(safe-area-inset-bottom, 0px) + 12px)',
         background: R5.bgDeep,
       }}>
-      {/* Two-column chip grid. The 📺 toggle takes the slot the aim-mode chip
-          vacates while the gyro is healthy, so the usual cluster stays exactly
-          2×2 and the FIRE button keeps its geometry. */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(2, auto)',
-          gap: 6,
-          alignContent: 'center',
-        }}>
-        <ChipButton label='📺' active={streamOn} onClick={onToggleStream} />
-        {showModeToggle ? (
-          <ChipButton
-            label={gyroMode ? '🎯' : '👆'}
-            active={gyroMode}
-            onClick={onToggleMode}
-          />
-        ) : null}
-        {gyroMode ? <ChipButton label='⌖' onClick={onRecenter} /> : null}
-        {gyroMode ? <ChipButton label='⚙' onClick={onAxes} /> : null}
-        <ChipButton label='📷' active={camOn} onClick={onToggleCamera} />
-      </div>
-      {/* `r5-btn` for its `touch-action: manipulation`, exactly as the
-          calibration trigger has it: without it iOS keeps the tap in play as a
-          possible double-tap-zoom and can cancel the pointer on rapid fire.
-          The class also sets `text-align: left`, hence the explicit centering
-          below (the rest of its rules are overridden by this inline style). */}
-      <button
-        type='button'
-        className='r5-btn'
-        onPointerDown={onFire}
-        style={{
-          flex: 1,
-          clipPath: chamfer(12),
-          border: 'none',
-          background: live ? R5.red : 'rgba(120,150,200,0.15)',
-          color: live ? '#fff' : R5.inkMuted,
-          fontFamily: pixelFont,
-          fontSize: 18,
-          letterSpacing: 3,
-          textAlign: 'center',
-          padding: '20px 10px',
-          boxShadow: live
-            ? `inset 0 3px 0 rgba(255,255,255,0.3), 0 0 14px rgba(${R5.redRgb},0.5)`
-            : 'none',
-          transition: 'transform 0.05s',
-        }}>
-        {label}
-      </button>
+      {landscape ? (
+        // Two-column chip grid beside the trigger. The 📺 toggle takes the
+        // slot the aim-mode chip vacates while the gyro is healthy, so the
+        // usual cluster stays exactly 2×2.
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(2, auto)',
+            gap: 6,
+            alignContent: 'center',
+          }}>
+          {chips}
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{chips}</div>
+      )}
+      {landscape ? (
+        <>
+          {centerBtn}
+          {fireBtn}
+        </>
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'stretch', gap: 10 }}>
+          {centerBtn}
+          {fireBtn}
+        </div>
+      )}
     </div>
   );
 }

@@ -39,7 +39,6 @@ import { ConnectStep } from '@/components/duck-hunter/phone/connect-step';
 import { NameStep } from '@/components/duck-hunter/phone/name-step';
 import { CharacterStep } from '@/components/duck-hunter/phone/character-step';
 import { characterById } from '@/components/duck-hunter/characters';
-import { WeaponStep } from '@/components/duck-hunter/phone/weapon-step';
 import { CalibrateStep } from '@/components/duck-hunter/phone/calibrate-step';
 import { ReadyStep } from '@/components/duck-hunter/phone/ready-step';
 import {
@@ -123,17 +122,11 @@ const RECONNECT_MAX_MS = 8000;
 const REPUBLISH_MAX_MS = 8000;
 const REPUBLISH_STUCK_AFTER = 4;
 
-// The guided wizard: boot sequence → call sign → hunter → weapon → (gyro)
-// calibration → briefing → the hunt. Steps before 'play' render inside
+// The guided wizard: boot sequence → call sign → hunter (the confirming tap
+// doubles as the motion-permission gesture; gyro is the default weapon) →
+// (gyro) calibration → briefing → the hunt. Steps before 'play' render inside
 // PhoneShell.
-type Step =
-  | 'connect'
-  | 'name'
-  | 'character'
-  | 'weapon'
-  | 'calibrate'
-  | 'ready'
-  | 'play';
+type Step = 'connect' | 'name' | 'character' | 'calibrate' | 'ready' | 'play';
 
 const STEP_META: Record<
   Exclude<Step, 'play'>,
@@ -142,11 +135,10 @@ const STEP_META: Record<
   connect: { index: 0, label: 'CONNECTING' },
   name: { index: 1, label: 'CALL SIGN' },
   character: { index: 2, label: 'HUNTER SELECT' },
-  weapon: { index: 3, label: 'WEAPON SELECT' },
-  calibrate: { index: 4, label: 'CALIBRATION' },
-  ready: { index: 5, label: 'BRIEFING' },
+  calibrate: { index: 3, label: 'CALIBRATION' },
+  ready: { index: 4, label: 'BRIEFING' },
 };
-const STEP_COUNT = 6;
+const STEP_COUNT = 5;
 
 type ScoreRow = {
   clientId: string;
@@ -219,7 +211,7 @@ export default function ShootControllerPage() {
     left: number;
     top: number;
   } | null>(null);
-  const [gyroMode, setGyroMode] = useState(false);
+  const [gyroMode, setGyroMode] = useState(true);
   const [gyroWarn, setGyroWarn] = useState<string | null>(null);
   const gyroLiveRef = useRef(false);
   const [wsDbg, setWsDbg] = useState<string>('');
@@ -289,8 +281,6 @@ export default function ShootControllerPage() {
   // has chosen to play, so a late WS open still sends shoot_join.
   const nameRef = useRef('');
   const wantsJoinRef = useRef(false);
-  // Motion permission is requested once, from the weapon-select gesture.
-  const permRequestedRef = useRef(false);
   // Timestamp (ms) of the last devicemotion sample, to integrate rotationRate.
   const lastMotionTsRef = useRef<number | null>(null);
   // Low-passed gravity vector (device frame) to know which way is "up", so the
@@ -669,6 +659,10 @@ export default function ShootControllerPage() {
     // dropped shot drains the magazine with nothing coming back to refill it.
     if (send({ type: 'shoot_fire' })) {
       setAmmo((a) => Math.max(0, a - 1)); // optimistic; server reconciles
+      // Trigger click: the hit/miss buzz only lands after the server
+      // round-trip, so without this the gun feels dead between pull and
+      // result. (No-op on iOS, like every vibrate here.)
+      if (navigator.vibrate) navigator.vibrate(15);
     }
   }, [send, ammo, phase, triggerBlocked, rejectFire]);
 
@@ -1183,13 +1177,19 @@ export default function ShootControllerPage() {
       if (m.type === 'shooter_hit') {
         // The dog tally is read off the scoreboard row instead (see myDogScore),
         // so it resets with the round without needing its own state here.
-        const hit = data as { score: number; target?: 'duck' | 'dog' };
+        const hit = data as {
+          score: number;
+          target?: 'duck' | 'dog';
+          combo?: number;
+        };
         setScore(hit.score);
         // Ducks chain a combo; dogs don't (the server's hitDog never touches
-        // `streak` either). Computed outside the setter — see streakRef.
+        // `streak` either). Computed outside the setter — see streakRef. The
+        // multiplier itself is server-scored (per-character equation) and just
+        // echoed here.
         if (hit.target !== 'dog') {
           const now = performance.now();
-          setStreak(registerStreakHit(streakRef.current, now));
+          setStreak(registerStreakHit(streakRef.current, now, hit.combo));
         }
         setFlash('hit');
         // A dog gets its own buzz — a double tap, so bagging one feels
@@ -1329,12 +1329,12 @@ export default function ShootControllerPage() {
   }, [roomStatus, fetchRoom, connectWs]);
 
   // Finger aiming needs a picture, and the picture is opt-in now — so the
-  // option stays hidden while the gyro is healthy, and comes back the moment
-  // the sensor lets the player down. The latch has to be STICKY: both the mode
-  // chip and the motion effect clear `gyroWarn`, so a bare `gyroWarn != null`
-  // would make the escape hatch disappear a second and a half after the player
-  // reached for it. `|| !gyroMode` covers "already on the finger, I need a way
-  // back". Reverting to the old behaviour = `const showFingerOption = true`.
+  // in-game mode chip stays hidden while the gyro is healthy, and comes back
+  // the moment the sensor lets the player down. The latch has to be STICKY:
+  // both the mode chip and the motion effect clear `gyroWarn`, so a bare
+  // `gyroWarn != null` would make the escape hatch disappear a second and a
+  // half after the player reached for it. `|| !gyroMode` covers "already on
+  // the finger, I need a way back".
   const [fingerUnlocked, setFingerUnlocked] = useState(false);
   useEffect(() => {
     if (gyroWarn || perm === 'denied' || perm === 'unsupported') {
@@ -1342,41 +1342,6 @@ export default function ShootControllerPage() {
     }
   }, [gyroWarn, perm]);
   const showFingerOption = fingerUnlocked || !gyroMode;
-
-  // Weapon select: GYRO CANNON. This tap is the user gesture iOS needs for the
-  // motion permission prompt. Denied/unsupported keeps the player on the
-  // weapon screen with a plain-words warning.
-  const pickGyro = useCallback(async () => {
-    permRequestedRef.current = true;
-    const res = await requestMotionPermission();
-    setPerm(res);
-    if (res === 'denied' || res === 'unsupported') {
-      setGyroWarn(
-        res === 'unsupported'
-          ? 'This device has no motion sensors.'
-          : !window.isSecureContext
-            ? 'The gyroscope requires HTTPS.'
-            : 'Motion sensor access denied — enable it in your browser settings.',
-      );
-      return;
-    }
-    setGyroWarn(null);
-    setGyroMode(true);
-    setPractice(freshPractice());
-    recenter();
-    setStep('calibrate');
-  }, [recenter]);
-
-  const pickFinger = useCallback(() => {
-    setGyroMode(false);
-    setGyroWarn(null);
-    // Having picked it once, keep the card reachable after a back-out.
-    setFingerUnlocked(true);
-    // Aiming by touch without the picture would have the player firing at the
-    // gun panel's coordinates — so the feed comes on with the weapon.
-    setStreamOn(true);
-    setStep('ready');
-  }, []);
 
   // Hunters held by somebody else. `scores` is the live roster from
   // `shooter_state`, which arrives on `shoot_spectate` — i.e. before this phone
@@ -1445,8 +1410,12 @@ export default function ShootControllerPage() {
 
   // Pick (or re-pick) the hunter character: persist it for the next refresh,
   // tell the server if we're already on the roster, and advance the wizard.
+  // The confirming tap is also the user gesture iOS needs for the motion
+  // permission prompt — gyro is the default weapon now, and denied/unsupported
+  // quietly falls back to touch aiming (the in-game mode chip offers the way
+  // back to gyro).
   const pickCharacter = useCallback(
-    (id: string) => {
+    async (id: string) => {
       // The card is already disabled when taken; this is the guard against the
       // roster changing between render and tap. The server is still the
       // authority — it answers a lost race with 'character_taken'.
@@ -1461,9 +1430,30 @@ export default function ShootControllerPage() {
       });
       if (wantsJoinRef.current)
         send({ type: 'shoot_character', characterId: id });
-      setStep('weapon');
+      const res = await requestMotionPermission();
+      setPerm(res);
+      setGyroWarn(null);
+      if (res === 'denied' || res === 'unsupported') {
+        setGyroMode(false);
+        // Aiming by touch without the picture would have the player firing at
+        // the gun panel's coordinates — so the feed comes on with the weapon.
+        setStreamOn(true);
+        showNotice(
+          res === 'unsupported'
+            ? 'No motion sensors — touch aiming enabled.'
+            : !window.isSecureContext
+              ? 'The gyroscope needs HTTPS — touch aiming enabled.'
+              : 'Motion access denied — touch aiming enabled. Use the GYRO chip in-game to retry.',
+        );
+        setStep('ready');
+        return;
+      }
+      setGyroMode(true);
+      setPractice(freshPractice());
+      recenter();
+      setStep('calibrate');
     },
-    [roomId, send, takenCharacterIds, showNotice],
+    [roomId, send, takenCharacterIds, showNotice, recenter],
   );
 
   // Mirror of the arcade's phase-follow: once the player has committed, enter
@@ -1475,6 +1465,19 @@ export default function ShootControllerPage() {
       setStep('play');
     }
   }, [step, joined, canEnterPlay]);
+
+  // Round-start autocenter: the countdown overlay tells the player to aim at
+  // the screen center, and on GO (countdown → playing) the integrator resets,
+  // so wherever the phone physically points at that moment IS center. The
+  // countdown→ prev check keeps a mid-round reconnect (which replays a
+  // 'playing' snapshot) from yanking the crosshair out from under the player.
+  const prevPhaseRef = useRef<string>('idle');
+  useEffect(() => {
+    if (phase === 'playing' && prevPhaseRef.current === 'countdown') {
+      recenter();
+    }
+    prevPhaseRef.current = phase;
+  }, [phase, recenter]);
 
   // Connect + fetch room info on mount; the boot step visualizes both.
   useEffect(() => {
@@ -1643,18 +1646,7 @@ export default function ShootControllerPage() {
             <CharacterStep
               selectedId={characterId}
               takenIds={takenCharacterIds}
-              onPick={pickCharacter}
-            />
-          ) : null}
-          {step === 'weapon' ? (
-            <WeaponStep
-              onGyro={() => void pickGyro()}
-              onFinger={pickFinger}
-              // Not `showFingerOption`: its `|| !gyroMode` half is about the
-              // in-game chip, and here nothing has been picked yet — it would
-              // put the card back on the very first visit.
-              showFinger={fingerUnlocked}
-              warn={gyroWarn}
+              onPick={(id) => void pickCharacter(id)}
             />
           ) : null}
           {step === 'calibrate' ? (
@@ -1703,7 +1695,7 @@ export default function ShootControllerPage() {
                   setJoined(false);
                   wantsJoinRef.current = false;
                   send({ type: 'shoot_leave' });
-                  setStep('weapon');
+                  setStep('character');
                 }}
               />
             </>
@@ -1918,7 +1910,12 @@ export default function ShootControllerPage() {
             setGyroMode(true);
           });
         }}
-        onRecenter={recenter}
+        onRecenter={() => {
+          recenter();
+          // Confirm the recenter by feel — the player's eyes are on the big
+          // screen, and the crosshair jump alone is easy to miss mid-chaos.
+          if (navigator.vibrate) navigator.vibrate(20);
+        }}
         onAxes={() => {
           setCalibFromPlay(true);
           setPractice(freshPractice());
@@ -1927,6 +1924,8 @@ export default function ShootControllerPage() {
         camOn={!!camStream}
         onToggleCamera={() => void toggleCamera()}
         ammo={ammo}
+        reloadLeftMs={reloadLeftMs}
+        reloadMs={reloadMs}
         blocked={triggerBlocked}
         onFire={fire}
       />

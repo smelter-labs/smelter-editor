@@ -50,7 +50,7 @@ function Row({
 }
 
 /**
- * Step 5 — mission briefing: your loadout plus the live room status (the
+ * Step 4 — mission briefing: your loadout plus the live room status (the
  * server broadcasts shooter_state / shooter_match to every socket, so the
  * phone knows the marsh is warm before joining). JOIN THE HUNT commits.
  */
@@ -221,7 +221,7 @@ export function ReadyStep({
           textAlign: 'center',
           padding: 6,
         }}>
-        ◀ CHANGE WEAPON
+        ◀ CHANGE HUNTER
       </button>
       {!targetActive ? (
         <div style={{ display: 'flex', justifyContent: 'center' }}>

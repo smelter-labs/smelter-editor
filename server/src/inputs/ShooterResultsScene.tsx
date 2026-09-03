@@ -20,6 +20,22 @@ import {
 const FONT = 'Doto';
 
 /**
+ * TOP SCORES tables are per round variant, so the column header names the
+ * variant this table competes in (`· 1:00` / `· FIRST TO 25`).
+ */
+function topScoresTitle(match: NonNullable<ShooterOverlay['match']>): string {
+  if (match.mode === 'time' && match.durationMs != null) {
+    const total = Math.max(0, Math.round(match.durationMs / 1000));
+    const clock = `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+    return `TOP SCORES · ${clock}`;
+  }
+  if (match.mode === 'points' && match.targetScore != null) {
+    return `TOP SCORES · FIRST TO ${match.targetScore}`;
+  }
+  return 'TOP SCORES';
+}
+
+/**
  * Dog tally: one sprite per dog bagged, laid out right-to-left so the pile stays
  * flush with the strip's right edge and shingles instead of overflowing. Shares
  * dogIconPitch with the broadcast scoreboard so both read the same way.
@@ -504,7 +520,7 @@ export function ShooterResultsScene({
         scanline={0.4}
         scanPx={Math.max(3, Math.round(4 * k))}>
         <ColumnTitle
-          text='TOP SCORES'
+          text={topScoresTitle(match)}
           color={RETRO.orangeBright}
           left={0}
           top={pad}

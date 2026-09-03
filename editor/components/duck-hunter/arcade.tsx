@@ -38,10 +38,12 @@ export const DEFAULT_STAGE: StageRef = {
 
 const DEFAULT_SLIDERS: DuckHunterSliderConfig = {
   maxAmmo: 6,
-  reloadSec: 3,
-  duckScale: 1,
+  reloadSec: 1.5,
+  duckScale: 0.6,
+  auraLeadSec: 1.5,
   fleeSec: 0.7,
-  flySpeed: 0.35,
+  flySpeed: 0.15,
+  crosshairBadges: true,
 };
 
 /** Same localStorage shape as the dashboard DuckHunterPanel, so tuning done
@@ -52,11 +54,28 @@ function loadSliders(): DuckHunterSliderConfig {
     if (!raw) return DEFAULT_SLIDERS;
     const p = JSON.parse(raw) as Partial<DuckHunterSliderConfig>;
     return {
-      maxAmmo: typeof p.maxAmmo === 'number' ? p.maxAmmo : 6,
-      reloadSec: typeof p.reloadSec === 'number' ? p.reloadSec : 3,
-      duckScale: typeof p.duckScale === 'number' ? p.duckScale : 1,
-      fleeSec: typeof p.fleeSec === 'number' ? p.fleeSec : 0.7,
-      flySpeed: typeof p.flySpeed === 'number' ? p.flySpeed : 0.35,
+      maxAmmo:
+        typeof p.maxAmmo === 'number' ? p.maxAmmo : DEFAULT_SLIDERS.maxAmmo,
+      reloadSec:
+        typeof p.reloadSec === 'number'
+          ? p.reloadSec
+          : DEFAULT_SLIDERS.reloadSec,
+      duckScale:
+        typeof p.duckScale === 'number'
+          ? p.duckScale
+          : DEFAULT_SLIDERS.duckScale,
+      auraLeadSec:
+        typeof p.auraLeadSec === 'number'
+          ? p.auraLeadSec
+          : DEFAULT_SLIDERS.auraLeadSec,
+      fleeSec:
+        typeof p.fleeSec === 'number' ? p.fleeSec : DEFAULT_SLIDERS.fleeSec,
+      flySpeed:
+        typeof p.flySpeed === 'number' ? p.flySpeed : DEFAULT_SLIDERS.flySpeed,
+      crosshairBadges:
+        typeof p.crosshairBadges === 'boolean'
+          ? p.crosshairBadges
+          : DEFAULT_SLIDERS.crosshairBadges,
     };
   } catch {
     return DEFAULT_SLIDERS;

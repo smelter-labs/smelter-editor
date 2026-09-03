@@ -3,9 +3,9 @@ import path from 'path';
 import { describe, expect, it } from 'vitest';
 import {
   AURA_IN_MS,
-  AURA_LINK_MS,
   AURA_OUT_MS,
   AURA_PULSE_MS,
+  DEFAULT_DUCK_AURA_LEAD_MS,
   spawnAuraEnvelope,
 } from '../duckFlight';
 import type { AuraSlot } from '../../inputs/spawnAuraShader';
@@ -28,7 +28,13 @@ function wgslStructFields(): string[] {
 }
 
 const PAUSE = 700;
+const LEAD = DEFAULT_DUCK_AURA_LEAD_MS;
 const STAGES = ['glow', 'pulse', 'link'] as const;
+
+/** Envelope at the default aura lead, the way callers pass flight params. */
+function env(age: number, sinceDeath: number | null, pauseMs = PAUSE) {
+  return spawnAuraEnvelope(age, { auraLeadMs: LEAD, pauseMs }, sinceDeath);
+}
 
 function slot(over: Partial<AuraSlot> = {}): AuraSlot {
   return {
@@ -47,7 +53,7 @@ function slot(over: Partial<AuraSlot> = {}): AuraSlot {
 
 describe('spawnAuraEnvelope', () => {
   it('opens with the shockwave hugging the ring, before the halo fades in', () => {
-    const e = spawnAuraEnvelope(0, PAUSE, null);
+    const e = env(0, null);
     expect(e.pulse).toBe(1);
     expect(e.pulseT).toBe(0); // the shockwave starts at the ring
     expect(e.glow).toBe(0); // …and the steady ring eases in behind it
@@ -56,7 +62,7 @@ describe('spawnAuraEnvelope', () => {
 
   it('is silent before the spawn', () => {
     for (const t of [-1, -1000, NaN]) {
-      expect(spawnAuraEnvelope(t, PAUSE, null)).toEqual({
+      expect(env(t, null)).toEqual({
         glow: 0,
         pulse: 0,
         pulseT: 0,
@@ -67,7 +73,7 @@ describe('spawnAuraEnvelope', () => {
 
   it('keeps every stage in [0,1]', () => {
     for (let t = 0; t < 6000; t += 10) {
-      const e = spawnAuraEnvelope(t, PAUSE, null);
+      const e = env(t, null);
       for (const key of [...STAGES, 'pulseT'] as const) {
         expect(e[key]).toBeGreaterThanOrEqual(0);
         expect(e[key]).toBeLessThanOrEqual(1);
@@ -79,50 +85,66 @@ describe('spawnAuraEnvelope', () => {
     let prevT = -Infinity;
     let prevPulse = Infinity;
     for (let t = 0; t <= AURA_PULSE_MS; t += 10) {
-      const e = spawnAuraEnvelope(t, PAUSE, null);
+      const e = env(t, null);
       expect(e.pulseT).toBeGreaterThanOrEqual(prevT);
       expect(e.pulse).toBeLessThanOrEqual(prevPulse + 1e-9);
       prevT = e.pulseT;
       prevPulse = e.pulse;
     }
-    expect(spawnAuraEnvelope(AURA_PULSE_MS, PAUSE, null).pulse).toBe(0);
-    expect(spawnAuraEnvelope(AURA_PULSE_MS + 500, PAUSE, null).pulse).toBe(0);
+    expect(env(AURA_PULSE_MS, null).pulse).toBe(0);
+    expect(env(AURA_PULSE_MS + 500, null).pulse).toBe(0);
   });
 
-  it('holds the steady ring for the whole flight once it has eased in', () => {
-    expect(spawnAuraEnvelope(AURA_IN_MS / 2, PAUSE, null).glow).toBeCloseTo(
-      0.5,
-    );
-    for (const t of [AURA_IN_MS, 1000, 3000, 10_000]) {
-      expect(spawnAuraEnvelope(t, PAUSE, null).glow).toBe(1);
+  it('holds the steady ring for the whole telegraph once it has eased in', () => {
+    expect(env(AURA_IN_MS / 2, null).glow).toBeCloseTo(0.5);
+    for (const t of [AURA_IN_MS, 1000, LEAD]) {
+      expect(env(t, null).glow).toBe(1);
     }
   });
 
-  it('shows the tether only once the duck has left the bird', () => {
-    for (let t = 0; t <= PAUSE; t += 50) {
-      expect(spawnAuraEnvelope(t, PAUSE, null).link).toBe(0);
+  it('fades out the moment the duck appears', () => {
+    expect(env(LEAD + AURA_OUT_MS / 2, null).glow).toBeCloseTo(0.5);
+    // Gone entirely once the fade has run — the duck flies on unmarked.
+    for (const t of [LEAD + AURA_OUT_MS, 5000, 10_000]) {
+      expect(env(t, null)).toEqual({
+        glow: 0,
+        pulse: 0,
+        pulseT: 0,
+        link: 0,
+      });
     }
-    // No fade-in needed: at the instant of detach the duck is still on the
-    // bird, so the line has zero length and only becomes visible as it flies.
-    expect(spawnAuraEnvelope(PAUSE + 1, PAUSE, null).link).toBeGreaterThan(0);
+  });
+
+  it('shows the tether only if the duck detaches while the mark lingers', () => {
+    // Default pause: the fade finishes before the duck even starts flying, so
+    // the tether never appears.
+    for (let t = 0; t <= LEAD + PAUSE + 1000; t += 50) {
+      expect(env(t, null).link).toBe(0);
+    }
+    // Zero pause: the duck flies off with the mark still fading — the line to
+    // it shows, and dies with the fade.
+    for (let t = 0; t <= LEAD; t += 50) {
+      expect(env(t, null, 0).link).toBe(0);
+    }
+    expect(env(LEAD + 1, null, 0).link).toBeGreaterThan(0);
     let prev = Infinity;
-    for (let t = PAUSE + 1; t <= PAUSE + AURA_LINK_MS; t += 10) {
-      const link = spawnAuraEnvelope(t, PAUSE, null).link;
+    for (let t = LEAD + 1; t <= LEAD + AURA_OUT_MS; t += 10) {
+      const link = env(t, null, 0).link;
       expect(link).toBeLessThanOrEqual(prev + 1e-9);
       prev = link;
     }
-    expect(spawnAuraEnvelope(PAUSE + AURA_LINK_MS, PAUSE, null).link).toBe(0);
+    expect(env(LEAD + AURA_OUT_MS, null, 0).link).toBe(0);
   });
 
   it('takes the mark off the bird when the duck is shot', () => {
-    const alive = spawnAuraEnvelope(1000, PAUSE, null);
+    const alive = env(1000, null);
     expect(alive.glow).toBe(1);
-    const half = spawnAuraEnvelope(1000, PAUSE, AURA_OUT_MS / 2);
+    const half = env(1000, AURA_OUT_MS / 2);
     expect(half.glow).toBeCloseTo(0.5);
     // Gone well before the shot duck stops hanging, so the bird is unmarked
     // by the time the duck starts to fall.
     for (const t of [AURA_OUT_MS, AURA_OUT_MS + 200]) {
-      expect(spawnAuraEnvelope(1000, PAUSE, t)).toEqual({
+      expect(env(1000, t)).toEqual({
         glow: 0,
         pulse: 0,
         pulseT: 0,

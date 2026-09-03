@@ -21,8 +21,7 @@ const BIRD_MODEL_ID = 'people-counter-yolo-birds';
 
 /** A hunting-grounds pick: a server-library mp4 or a (saved) HLS stream. */
 export type StageRef =
-  | { kind: 'mp4'; file: string }
-  | { kind: 'hls'; url: string; name: string };
+  { kind: 'mp4'; file: string } | { kind: 'hls'; url: string; name: string };
 
 /** Stable identity for pinning/highlight/dirty checks across stage kinds. */
 export function stageKey(s: StageRef): string {
@@ -46,8 +45,12 @@ export type DuckHunterSliderConfig = {
   maxAmmo: number;
   reloadSec: number;
   duckScale: number;
+  /** Spawn telegraph: how long the aura marks a bird before its duck appears. */
+  auraLeadSec: number;
   fleeSec: number;
   flySpeed: number;
+  /** Name badges above crosshairs on the broadcast (off = thicker reticle). */
+  crosshairBadges: boolean;
 };
 
 // Refresh recovery: the live room's identity, stashed per-tab so an
@@ -200,8 +203,10 @@ export function useDuckHunterRoom(): DuckHunterRoom {
           maxAmmo: cfg.maxAmmo,
           reloadMs: Math.round(cfg.reloadSec * 1000),
           duckScale: cfg.duckScale,
+          duckAuraLeadMs: Math.round(cfg.auraLeadSec * 1000),
           duckPauseMs: Math.round(cfg.fleeSec * 1000),
           duckFlySpeed: cfg.flySpeed,
+          crosshairBadges: cfg.crosshairBadges,
         });
       } catch (err) {
         // A deleted/GC'd room 404s here — surface it instead of an unhandled

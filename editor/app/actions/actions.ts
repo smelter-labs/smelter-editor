@@ -560,8 +560,11 @@ export async function setDuckHunterConfig(
     maxAmmo?: number;
     reloadMs?: number;
     duckScale?: number;
+    duckAuraLeadMs?: number;
     duckPauseMs?: number;
     duckFlySpeed?: number;
+    /** Name badges above crosshairs (off = thicker reticle). */
+    crosshairBadges?: boolean;
     /** Join link for the broadcast opening screen's QR (write-only). */
     joinUrl?: string;
     joinLabel?: string;
@@ -588,10 +591,7 @@ export async function getDuckHunterMatch(
 }
 
 export async function getDuckHunterTopScores(): Promise<
-  Record<
-    import('@smelter-editor/types').ShooterMatchMode,
-    import('@smelter-editor/types').ShooterTopScoreEntry[]
-  >
+  Record<string, import('@smelter-editor/types').ShooterTopScoreEntry[]>
 > {
   return (await getClient()).getDuckHunterTopScores();
 }
