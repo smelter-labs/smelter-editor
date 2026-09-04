@@ -221,10 +221,11 @@ export function CharacterStep({
   return (
     <div
       style={{
-        flex: 1,
+        // Auto margins center when there's room, collapse to 0 on overflow —
+        // unlike justifyContent:center, which clips the top in a scroll parent.
+        margin: 'auto 0',
         display: 'flex',
         flexDirection: 'column',
-        justifyContent: 'center',
         gap: 14,
       }}>
       {CHARACTERS.map((c) => {
