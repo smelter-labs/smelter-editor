@@ -1339,37 +1339,6 @@ export class InputManager {
     }
   }
 
-  /**
-   * Re-register a pull-based stream input (HLS/Twitch/Kick) so playback
-   * resumes from the live edge with a fresh decoder. Never call this for
-   * WHIP — re-registering kills the live push stream.
-   */
-  async reloadStreamInput(inputId: string): Promise<void> {
-    const input = this.getInput(inputId);
-    if (
-      input.type !== 'hls' &&
-      input.type !== 'twitch-channel' &&
-      input.type !== 'kick-channel'
-    ) {
-      throw new Error(`Input ${inputId} is not a reloadable stream input`);
-    }
-    if (input.status !== 'connected') {
-      throw new Error(`Input ${inputId} is not connected`);
-    }
-
-    // Same frozen-frame handoff as an mp4 restart, so the screen holds the
-    // last frame instead of flashing black while the stream re-buffers.
-    input.restartFading = true;
-    this.onStateChange();
-    try {
-      await this.disconnectInput(inputId);
-      await this.connectInput(inputId);
-    } finally {
-      input.restartFading = false;
-      this.onStateChange();
-    }
-  }
-
   // ── Cleanup ───────────────────────────────────────────────
 
   async destroyAll(): Promise<void> {

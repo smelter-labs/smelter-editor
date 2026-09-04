@@ -32,8 +32,9 @@ const TIME_PRESETS_MS = [30_000, 60_000, 90_000, 120_000] as const;
 const POINT_PRESETS = [10, 25, 50] as const;
 
 // Slider bounds — mirror the server clamps (DuckHunterController/RoomState),
-// same as the dashboard DuckHunterPanel.
-const SLIDER_DEFS: Array<{
+// same as the dashboard DuckHunterPanel. Exported so the lobby can render the
+// same knobs (labels + formats) as a read-only settings summary.
+export const SLIDER_DEFS: Array<{
   // Numeric knobs only — crosshairBadges is a toggle row below the sliders.
   key: Exclude<keyof DuckHunterSliderConfig, 'crosshairBadges'>;
   label: string;
