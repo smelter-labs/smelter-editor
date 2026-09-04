@@ -2793,7 +2793,7 @@ routes.post<RoomIdParams & { Body: Static<typeof DuckHunterMatchSchema> }>(
       clientId: req.body.clientId,
     });
     const room = state.getRoom(roomId);
-    const match = await room.controlDuckHunterMatch({
+    const match = room.controlDuckHunterMatch({
       action: req.body.action,
       mode: req.body.mode,
       durationMs: req.body.durationMs,
