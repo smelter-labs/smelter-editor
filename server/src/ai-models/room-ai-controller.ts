@@ -131,6 +131,16 @@ export class RoomAIController {
     }
   }
 
+  /**
+   * The input is gone for good (not a reconnectable disconnect): unsubscribe
+   * the workers AND drop the model tracking, so nothing keeps a detector
+   * hunting for a side-channel socket that will never come back.
+   */
+  async onInputRemoved(inputId: string): Promise<void> {
+    await this.onInputDisconnected(inputId);
+    this.inputModels.delete(inputId);
+  }
+
   async onInputDisconnected(inputId: string): Promise<void> {
     const models = this.inputModels.get(inputId);
     if (!models) return;

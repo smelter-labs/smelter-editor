@@ -763,6 +763,11 @@ export class InputManager {
       await sleep(500);
     }
 
+    // The input is gone for good — stop the AI workers and drop their model
+    // tracking BEFORE the side-channel socket is destroyed, or a detector
+    // keeps hunting forever for a socket that will never come back.
+    await this.aiController.onInputRemoved(inputId);
+
     if (input.status === 'connected') {
       await this.motionController.stopMotionDetection(inputId);
       try {
