@@ -1244,6 +1244,11 @@ export class InputManager {
     this.onStateChange();
 
     try {
+      // Mirror disconnectInput: stop the AI workers' detector tasks BEFORE the
+      // side-channel socket is destroyed, so they don't reconnect-race a stale
+      // socket and permanently give up.
+      await this.aiController.onInputDisconnected(inputId);
+
       logTimelineEvent(this.idPrefix, `[mp4-restart] unregister "${name}"`);
       await SmelterInstance.unregisterInput(inputId);
       logTimelineEvent(
@@ -1304,9 +1309,13 @@ export class InputManager {
 
       input.registeredAtPipelineMs = SmelterInstance.getPipelineTimeMs();
       input.playFromMs = normalizedPlayFromMs;
+      // Delay must be set before onInputConnected — subscribeInputToModel
+      // reads it into the worker params.
       input.registeredSideChannelDelayMs = sideChannel?.delayMs ?? 0;
+      // Mirror connectInput: fresh subscribe, then signal readiness so the
+      // workers attach to the recreated socket.
+      await this.aiController.onInputConnected(input);
       if (sideChannel) {
-        // Re-signal readiness so workers re-subscribe to the recreated socket.
         this.aiController.onSideChannelReady(inputId);
       }
     } catch (err) {

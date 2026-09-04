@@ -1218,9 +1218,18 @@ async def send_result(
 
 SUBSCRIBE_MAX_RETRIES = 5
 SUBSCRIBE_RETRY_DELAY_S = 1.0
+# After the fast retry budget is exhausted without a single frame, keep
+# retrying at this slow cadence instead of dying permanently — mp4 inputs get
+# no keepalive re-signal (unlike WHIP acks), so a restart race would otherwise
+# kill detection until the model is toggled.
+SUBSCRIBE_GIVEUP_RETRY_S = 5.0
 # Pause before re-subscribing after a live stream drops mid-way (Smelter can
 # close the side channel under load). Short so boxes barely blink.
 RECONNECT_DELAY_S = 0.2
+# subscribe_video_channel polls for the socket file with no deadline; if the
+# file was unlinked after a re-bind (engine restart race) that poll would hang
+# forever, silently. Abort the attempt instead so the retry ladder takes over.
+FIRST_FRAME_TIMEOUT_S = 15.0
 
 
 async def run_detector(input_id: str) -> None:
@@ -1320,15 +1329,25 @@ async def run_detector(input_id: str) -> None:
                         err,
                     )
         if not streamed:
-            # Never delivered a frame across all attempts — give up for good.
-            break
+            log.warning(
+                "no frames for %s after %d attempts — slow-retrying in %.0fs",
+                input_id,
+                SUBSCRIBE_MAX_RETRIES,
+                SUBSCRIBE_GIVEUP_RETRY_S,
+            )
+            await asyncio.sleep(SUBSCRIBE_GIVEUP_RETRY_S)
+            continue
         # A live stream dropped; reconnect if the input is still around.
         if input_id in active_inputs:
             log.info(
                 "side channel for %s dropped mid-stream — reconnecting", input_id
             )
             await asyncio.sleep(RECONNECT_DELAY_S)
-    running_tasks.pop(input_id, None)
+    # Only the task that owns the registry entry may clear it — a cancelled
+    # old task must not evict its replacement (that would let start_detector
+    # spawn a duplicate detector later).
+    if running_tasks.get(input_id) is asyncio.current_task():
+        running_tasks.pop(input_id, None)
     log.info("Stopped people counting for %s", input_id)
 
 
@@ -1417,9 +1436,32 @@ async def _run_detector_loop(input_id: str) -> int:
 
     reader_task = asyncio.ensure_future(reader())
     consumer_task = asyncio.ensure_future(consumer())
+
+    watchdog_fired = False
+
+    async def watchdog() -> None:
+        nonlocal watchdog_fired
+        await asyncio.sleep(FIRST_FRAME_TIMEOUT_S)
+        if frame_count == 0 and not stopped.is_set():
+            watchdog_fired = True
+            log.warning(
+                "no first frame for %s within %.0fs — aborting attempt",
+                input_id,
+                FIRST_FRAME_TIMEOUT_S,
+            )
+            stopped.set()
+            frame_ready.set()
+            reader_task.cancel()
+
+    watchdog_task = asyncio.ensure_future(watchdog())
     try:
         await asyncio.gather(reader_task, consumer_task)
     except asyncio.CancelledError:
+        if watchdog_fired:
+            # Not an external cancel — the watchdog aborted a subscribe stuck
+            # waiting on a socket that will never appear. Report 0 frames so
+            # run_detector's retry ladder handles it.
+            return frame_count
         raise
     except Exception as err:  # noqa: BLE001
         log.exception(
@@ -1433,10 +1475,12 @@ async def _run_detector_loop(input_id: str) -> int:
         # Stop whichever coroutine is still alive so neither leaks past the loop.
         stopped.set()
         frame_ready.set()
-        for task in (reader_task, consumer_task):
+        for task in (reader_task, consumer_task, watchdog_task):
             if not task.done():
                 task.cancel()
-        await asyncio.gather(reader_task, consumer_task, return_exceptions=True)
+        await asyncio.gather(
+            reader_task, consumer_task, watchdog_task, return_exceptions=True
+        )
         log.info("Detector loop ended for %s after %d frames", input_id, frame_count)
 
     return frame_count
