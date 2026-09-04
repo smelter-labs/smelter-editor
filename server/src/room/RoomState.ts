@@ -1885,6 +1885,11 @@ export class RoomState {
     return this.kbTournament.controlMatch(cmd);
   }
 
+  /** True once any KBT host action ran in this room (see controller note). */
+  public isKbtEngaged(): boolean {
+    return this.kbTournament.isEngaged();
+  }
+
   public getKbtState(): { state: KbtStateEvent; match: KbtMatchEvent } {
     return {
       state: this.kbTournament.stateSnapshot(),

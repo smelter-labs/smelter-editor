@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import type {
   ShooterMatchConfig,
   ShooterMatchMode,
@@ -83,8 +84,18 @@ function loadSliders(): DuckHunterSliderConfig {
 }
 
 /** The /duck-hunter screen machine. */
-export function DuckHunterArcade() {
-  const [screen, setScreen] = useState<Screen>('title');
+export function DuckHunterArcade({
+  initialRoomId,
+}: {
+  /** Room from the URL (/duck-hunter/[roomId]) — rehydrate instead of title. */
+  initialRoomId?: string;
+} = {}) {
+  const router = useRouter();
+  // null while a URL-provided room is being checked — no title-screen flash
+  // before the restore effect below lands on the right screen.
+  const [screen, setScreen] = useState<Screen | null>(
+    initialRoomId ? null : 'title',
+  );
   const [setup, setSetup] = useState<MatchSetup>({
     mode: 'time',
     durationMs: 60_000,
@@ -96,7 +107,7 @@ export function DuckHunterArcade() {
 
   const [roomGone, setRoomGone] = useState(false);
 
-  const room = useDuckHunterRoom();
+  const room = useDuckHunterRoom(initialRoomId);
   // The room vanished under us (deleted/GC'd): the feed stops retrying, so
   // show the operator what happened instead of a silently frozen lobby.
   const onRoomGone = useCallback(() => setRoomGone(true), []);
@@ -137,8 +148,18 @@ export function DuckHunterArcade() {
     if (phase === 'lobby') setScreen('lobby');
     else if (phase === 'countdown' || phase === 'playing') setScreen('game');
     else if (phase === 'ended') setScreen('results');
-    // 'idle' stays on the title — nothing to rejoin.
+    // 'idle' = nothing to rejoin (e.g. a dashboard-panel reset) — fall back
+    // to the title so a URL-mounted arcade doesn't stay on the blank screen.
+    else setScreen('title');
   }, [room.restored, phase]);
+
+  // The URL points at a room that no longer exists — back to the plain
+  // arcade (title screen) instead of a dead rehydrate.
+  useEffect(() => {
+    if (initialRoomId && room.roomStatus === 'gone') {
+      router.replace('/duck-hunter');
+    }
+  }, [initialRoomId, room.roomStatus, router]);
 
   // Track whether the room's stage input matches the chosen stage (by
   // stageKey), so coming back from the results screen with a different pick

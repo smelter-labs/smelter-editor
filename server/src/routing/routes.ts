@@ -1458,6 +1458,14 @@ routes.get('/rooms', async (_req, res) => {
         outputShaders: snapshot.outputShaders,
         isRecording: room.hasActiveRecording(),
         audioAnalysisEnabled: room.isAudioAnalysisEnabled(),
+        // Rooms have no stored type — the game is emergent from controller
+        // state: an armed duck-hunter match, or any KBT host action so far.
+        activeGame:
+          room.getDuckHunterMatch().phase !== 'idle'
+            ? ('duck-hunter' as const)
+            : room.isKbtEngaged()
+              ? ('kettlebell-tournament' as const)
+              : null,
         viewportTop: snapshot.viewportTop,
         viewportLeft: snapshot.viewportLeft,
         viewportWidth: snapshot.viewportWidth,

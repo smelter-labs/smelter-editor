@@ -98,6 +98,12 @@ export type DuckHunterRoom = {
   error: string | null;
   /** A page refresh re-attached to a still-running room (see the stash). */
   restored: boolean;
+  /**
+   * 'idle' = no room yet (title/config), 'checking' = validating a
+   * URL-provided roomId, 'ok' = room confirmed live, 'gone' = the
+   * URL-provided room no longer exists.
+   */
+  roomStatus: 'idle' | 'checking' | 'ok' | 'gone';
   /** Create the arcade room: stage input (mp4/HLS) + duck sprites + config. */
   createRoom(
     stage: StageRef,
@@ -134,24 +140,63 @@ export type DuckHunterRoom = {
  * re-attaches to it on the next mount, and the server's idle sweep only
  * collects rooms with no live sockets at all.
  */
-export function useDuckHunterRoom(): DuckHunterRoom {
+export function useDuckHunterRoom(initialRoomId?: string): DuckHunterRoom {
   const [roomId, setRoomId] = useState<string | null>(null);
   const [whepUrl, setWhepUrl] = useState<string | null>(null);
   const [stageInputId, setStageInputId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [restored, setRestored] = useState(false);
+  const [roomStatus, setRoomStatus] = useState<
+    'idle' | 'checking' | 'ok' | 'gone'
+  >(initialRoomId ? 'checking' : 'idle');
   // Serialize createRoom against double-mount (React strict mode) and
   // impatient clicks.
   const creatingRef = useRef(false);
   const restoreTriedRef = useRef(false);
 
-  // On mount, re-attach to a stashed room if it still exists (page refresh).
-  // A dead/deleted room just clears the stash and the arcade boots normally.
+  // On mount, re-attach to a still-running room. A roomId from the URL
+  // (/duck-hunter/[roomId]) wins over the per-tab stash — a stale stash from
+  // an earlier session must not hijack the room the link points at. Without
+  // one, fall back to the stash (page refresh on plain /duck-hunter); a
+  // dead/deleted room just clears the stash and the arcade boots normally.
   useEffect(() => {
     if (restoreTriedRef.current) return;
     restoreTriedRef.current = true;
     const stash = readStash();
+    if (initialRoomId) {
+      void getRoomInfo(initialRoomId)
+        .then((info) => {
+          if (info === 'not-found') {
+            if (stash?.roomId === initialRoomId) writeStash(null);
+            setRoomStatus('gone');
+            return;
+          }
+          const stashedInput =
+            stash?.roomId === initialRoomId ? stash.stageInputId : null;
+          const stageStillThere = info.inputs.some(
+            (i) => i.inputId === stashedInput,
+          );
+          const inputId = stageStillThere
+            ? stashedInput
+            : (info.inputs[0]?.inputId ?? null);
+          const whep = info.whepUrl ?? null;
+          setStageInputId(inputId);
+          setWhepUrl(whep);
+          setRoomId(initialRoomId);
+          setRestored(true);
+          setRoomStatus('ok');
+          writeStash({
+            roomId: initialRoomId,
+            whepUrl: whep,
+            stageInputId: inputId,
+          });
+        })
+        .catch(() => {
+          // Server unreachable — a refresh retries; don't declare it gone.
+        });
+      return;
+    }
     if (!stash) return;
     void getRoomInfo(stash.roomId)
       .then((info) => {
@@ -170,10 +215,12 @@ export function useDuckHunterRoom(): DuckHunterRoom {
         setWhepUrl(info.whepUrl ?? stash.whepUrl);
         setRoomId(stash.roomId);
         setRestored(true);
+        setRoomStatus('ok');
       })
       .catch(() => {
         // Server unreachable — leave the stash for the next attempt.
       });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const enableDucks = useCallback(async (room: string, inputId: string) => {
@@ -269,11 +316,20 @@ export function useDuckHunterRoom(): DuckHunterRoom {
         setStageInputId(inputId);
         setWhepUrl(created.whepUrl);
         setRoomId(created.roomId);
+        setRoomStatus('ok');
         writeStash({
           roomId: created.roomId,
           whepUrl: created.whepUrl,
           stageInputId: inputId,
         });
+        // Put the room in the URL so the landing page (or a refresh in a
+        // fresh tab) can rejoin — replaceState (not router.replace) so the
+        // arcade doesn't remount mid-session.
+        window.history.replaceState(
+          null,
+          '',
+          `/duck-hunter/${encodeURIComponent(created.roomId)}`,
+        );
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Room setup failed');
       } finally {
@@ -349,7 +405,9 @@ export function useDuckHunterRoom(): DuckHunterRoom {
     setStageInputId(null);
     setError(null);
     setRestored(false);
+    setRoomStatus('idle');
     writeStash(null);
+    window.history.replaceState(null, '', '/duck-hunter');
     if (target) {
       try {
         await deleteRoom(target);
@@ -366,6 +424,7 @@ export function useDuckHunterRoom(): DuckHunterRoom {
     creating,
     error,
     restored,
+    roomStatus,
     createRoom,
     changeStage,
     pushConfig,
