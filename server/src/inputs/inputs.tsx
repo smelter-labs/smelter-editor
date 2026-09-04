@@ -695,7 +695,7 @@ function PeopleBoxes({
 const DOG_ASPECT = 40 / 56; // dog-catch.png is 56×40
 const DOG_RISE_MS = 220; // spring up from below the bottom edge
 const DOG_DROP_MS = 320; // drop back down at the end
-const DOG_MS = 6000; // total on-screen time, matches DOG_REVEAL_MS
+const DOG_MS = 2000; // total on-screen time, matches DOG_REVEAL_MS
 // Peak darkening of the rest of the frame while the dog is up. This is now the
 // ONLY thing that dims the scene — an individual hit lights the duck up instead
 // (duck-hit-flash in PacmanBirdsInput) — so it can afford to be decisive.
@@ -754,6 +754,10 @@ function ShooterHud({
 
   const chSize = Math.max(28, Math.round(parent.width * 0.05));
   const th = Math.max(2, Math.round(chSize * 0.06));
+  // Host toggle: no name badges above crosshairs. The badge is what carries a
+  // reticle's identity at a glance, so without it the reticle draws thicker.
+  const badges = shooter.crosshairBadges !== false;
+  const reloadFs = Math.max(14, Math.round(chSize * 0.26));
   const now = Date.now();
   // A full-frame scene at the output root (hunter lineup in the lobby and the
   // countdown, results podium once the round ends) owns the frame — skip the
@@ -1050,10 +1054,12 @@ function ShooterHud({
         ? null
         : shooter.crosshairs.map((c) => {
             const { px, py } = toPx(c.x, c.y);
-            const u = Math.max(3, th); // chunky "pixel" unit
+            // Chunky "pixel" unit; every bar and `mid` derive from it, so
+            // scaling it alone thickens the whole reticle in place.
+            const u = Math.max(3, Math.round(th * (badges ? 1 : 1.9)));
             const d = Math.round(chSize * 0.58); // scope square side
             const lineLen = Math.round(chSize * 0.34);
-            const dot = Math.round(u * 1.4);
+            const dot = Math.round(u * (badges ? 1.4 : 1.6));
             const mid = Math.round(chSize / 2 - u / 2);
             const sq = Math.round((chSize - d) / 2); // square top-left corner
             return (
@@ -1147,17 +1153,87 @@ function ShooterHud({
                     backgroundColor: c.color,
                   }}
                 />
-                <PlayerBadge
-                  player={c}
-                  px={px}
-                  py={py}
-                  chSize={chSize}
-                  parent={parent}
-                  now={now}
-                />
+                {badges ? (
+                  <PlayerBadge
+                    player={c}
+                    px={px}
+                    py={py}
+                    chSize={chSize}
+                    parent={parent}
+                    now={now}
+                  />
+                ) : null}
+                {/* With the badge (and its ammo pips) hidden, an empty mag is
+                    otherwise invisible on the broadcast — blink RELOAD under
+                    the reticle so a silent gun reads as reloading, not lag. */}
+                {!badges && c.ammo === 0 && Math.floor(now / 300) % 2 === 0 ? (
+                  <HudLine
+                    text='RELOAD'
+                    color='#FF3B3B'
+                    top={chSize + Math.round(chSize * 0.08)}
+                    left={Math.round((chSize - dotoTextWidth(reloadFs, 6)) / 2)}
+                    width={dotoTextWidth(reloadFs, 6)}
+                    fontSize={reloadFs}
+                    weight='black'
+                    shadow
+                  />
+                ) : null}
               </View>
             );
           })}
+
+      {/* Kill pops: a "+1" / "×N COMBO" announcement at the kill site that
+          drifts up and fades. Hidden under full-frame scenes like the
+          crosshairs — a pop lives up to 1.4s and could straddle the flip into
+          countdown/podium. */}
+      {fullFrameScene
+        ? null
+        : shooter.comboPops.map((c) => {
+            const { px, py } = toPx(c.x, c.y);
+            return (
+              <ComboPopFloat
+                key={`pop-${c.id}`}
+                pop={c}
+                px={px}
+                py={py}
+                chSize={chSize}
+                now={now}
+              />
+            );
+          })}
+
+      {/* Big-combo screen flash: a ×3+ kill tints the whole tile with the
+          scoring player's color for a couple of frames. Low alpha on purpose —
+          it's a felt thump, not a wash; the strongest concurrent pop wins. */}
+      {(() => {
+        if (fullFrameScene) return null;
+        let strength = 0;
+        let color = '#FFFFFF';
+        for (const c of shooter.comboPops) {
+          const cn = Math.round(c.combo);
+          if (cn < 3) continue;
+          const e = now - c.at;
+          if (e >= COMBO_FLASH_MS) continue;
+          const s =
+            (1 - e / COMBO_FLASH_MS) * Math.min(1, 0.6 + 0.2 * (cn - 3));
+          if (s > strength) {
+            strength = s;
+            color = c.color;
+          }
+        }
+        if (strength <= 0) return null;
+        return (
+          <View
+            style={{
+              top: 0,
+              left: 0,
+              width: parent.width,
+              height: parent.height,
+              backgroundColor: comboPopAlpha(color, strength * 0.18),
+            }}
+          />
+        );
+      })()}
 
       {/* Scoreboard, top-right (hidden under any full-frame shooter scene). */}
       {shooter.scores.length > 0 && !fullFrameScene ? (
@@ -1487,16 +1563,28 @@ function PlayerBadge({
   const character = player.characterId
     ? CHARACTER_BY_ID.get(player.characterId)
     : undefined;
+  // Live combo: the badge leads with a loud ×N line while the chain window is
+  // open. Rounded to match the points the server actually awards; a rounded ×1
+  // is no combo at all, so it renders nothing.
+  const comboN = player.combo != null ? Math.round(player.combo) : 1;
+  const comboLabel = comboN >= 2 ? `×${comboN} COMBO` : null;
+  const comboFs = Math.round(fs * 1.15);
+  const comboH = comboLabel ? Math.round(comboFs * 1.25) + m.pipRowGap : 0;
   const padH = Math.round(fs * 0.45);
   const padV = Math.round(fs * 0.3);
   const ammoH = ammoBlockHeight(m.pipSize);
   const textColH =
-    m.nameH + m.pipRowGap + ammoH + (character ? m.pipRowGap + m.subH : 0);
+    comboH +
+    m.nameH +
+    m.pipRowGap +
+    ammoH +
+    (character ? m.pipRowGap + m.subH : 0);
   const contentH = Math.max(hasAvatar ? m.av : 0, textColH);
   // Smelter Views don't auto-size to content, so estimate the label widths.
   const innerW = Math.max(
     dotoTextWidth(fs, player.name.length),
     character ? dotoTextWidth(m.subFs, character.name.length) : 0,
+    comboLabel ? dotoTextWidth(comboFs, comboLabel.length) : 0,
     ammoPipsWidth(m.pipSize, player.maxAmmo),
   );
   const badgeW = padH * 2 + (hasAvatar ? m.av + m.avGap : 0) + innerW;
@@ -1512,7 +1600,8 @@ function PlayerBadge({
 
   const textLeft = padH + (hasAvatar ? m.av + m.avGap : 0);
   const textTop = Math.round((badgeH - textColH) / 2);
-  const ammoTop = textTop + m.nameH + m.pipRowGap;
+  const nameTop = textTop + comboH;
+  const ammoTop = nameTop + m.nameH + m.pipRowGap;
   return (
     <RetroPanel
       x={absLeft - Math.round(px - chSize / 2)}
@@ -1532,12 +1621,25 @@ function PlayerBadge({
           left={padH}
         />
       ) : null}
+      {comboLabel ? (
+        <HudLine
+          text={comboLabel}
+          color={player.color}
+          top={textTop}
+          left={textLeft}
+          width={innerW}
+          fontSize={comboFs}
+          weight='black'
+          align='left'
+          shadow
+        />
+      ) : null}
       {/* Unlike the scoreboard this floats over live video, so the name takes
           the hard pixel shadow to stay readable against a bright frame. */}
       <HudLine
         text={player.name}
         color={player.color}
-        top={textTop}
+        top={nameTop}
         left={textLeft}
         width={innerW}
         fontSize={fs}
@@ -1564,6 +1666,144 @@ function PlayerBadge({
         />
       ) : null}
     </RetroPanel>
+  );
+}
+
+// Combo pop lifetimes — the server prunes at COMBO_POP_MS in
+// DuckHunterController (1400ms), so no render window may exceed it. A plain
+// "+1" is a quiet receipt and finishes early; a combo shout gets the full run.
+const COMBO_POP_COMBO_MS = 1400;
+const COMBO_POP_PLAIN_MS = 800;
+// Full-tile color flash on a big (×3+) combo: how long it decays.
+const COMBO_FLASH_MS = 200;
+
+// Hard pixel shadow under floating text (ShooterCharacterClip's SHADOW).
+const COMBO_POP_SHADOW = '#04080f';
+
+/** 6-digit hex + alpha 0..1 → RGBA hex (all HUD colors are #RRGGBB). */
+function comboPopAlpha(hex: string, alpha: number): string {
+  const a = Math.round(Math.max(0, Math.min(1, alpha)) * 255);
+  return hex.slice(0, 7) + a.toString(16).padStart(2, '0').toUpperCase();
+}
+
+/**
+ * Floating kill announcement. Every kill spawns one: a plain kill drifts a
+ * quiet little "+1" up from the corpse; a combo kill shouts — a big "×N" with
+ * a "COMBO +pts" line under it, landing oversized and snapping down (impact
+ * beat), flashing white for its first quarter, then rising and fading. Font
+ * size grows with the multiplier (×2 nudges, ×5 fills the reticle's sky).
+ * Hand-rolls its Text layers instead of HudLine's `shadow`: that draws a
+ * fixed-color shadow which would stay solid while the top layer fades,
+ * leaving a dark ghost.
+ */
+function ComboPopFloat({
+  pop,
+  px,
+  py,
+  chSize,
+  now,
+}: {
+  pop: ShooterOverlay['comboPops'][number];
+  px: number;
+  py: number;
+  chSize: number;
+  now: number;
+}) {
+  const n = Math.round(pop.combo);
+  const isCombo = n >= 2;
+  const dur = isCombo ? COMBO_POP_COMBO_MS : COMBO_POP_PLAIN_MS;
+  const elapsed = now - pop.at;
+  if (elapsed >= dur) return null;
+  const t = Math.min(1, Math.max(0, elapsed / dur));
+  const rise = (1 - (1 - t) * (1 - t)) * chSize * (isCombo ? 1.2 : 0.7);
+  // Hold fully opaque for the first beat, then fade out (KbtRepFloat's curve).
+  const alpha = t < 0.3 ? 1 : 1 - (t - 0.3) / 0.7;
+  // Impact beat: a combo lands oversized and snaps down to rest inside the
+  // first ~12% of its life, then keeps swelling gently while it rises.
+  const beat = isCombo
+    ? t < 0.12
+      ? 1.45 - 0.45 * (t / 0.12)
+      : 1 + 0.08 * ((t - 0.12) / 0.88)
+    : 1;
+  const base = isCombo ? chSize * (0.7 + 0.2 * Math.min(n, 5)) : chSize * 0.42;
+  const fs = Math.round(base * beat);
+  // White flash over the tinted text for the first quarter of a combo pop's
+  // life — the "something happened" beat that reads even at a glance.
+  const flashA = isCombo ? Math.max(0, 1 - t / 0.25) : 0;
+  const main = isCombo ? `×${n}` : `+${pop.points}`;
+  const sub = isCombo ? `COMBO +${pop.points}` : null;
+  const subFs = Math.round(fs * 0.42);
+  const w = Math.max(
+    dotoTextWidth(fs, main.length),
+    sub ? dotoTextWidth(subFs, sub.length) : 0,
+  );
+  const mainH = Math.round(fs * 1.45);
+  const subH = sub ? Math.round(subFs * 1.45) : 0;
+  const line = (text: string, fsz: number, topOff: number, h: number) => {
+    const off = Math.max(1, Math.round(fsz * 0.08));
+    const label = (color: string) => (
+      <Text
+        style={{
+          fontSize: fsz,
+          color,
+          width: w,
+          align: 'center',
+          fontFamily: HUD_FONT,
+          fontWeight: 'black',
+        }}>
+        {text}
+      </Text>
+    );
+    return (
+      <View
+        style={{
+          top: topOff,
+          left: 0,
+          width: w,
+          height: h,
+          overflow: 'visible',
+        }}>
+        <View
+          style={{
+            top: off,
+            left: off,
+            width: w,
+            height: h,
+            overflow: 'hidden',
+          }}>
+          {label(comboPopAlpha(COMBO_POP_SHADOW, alpha))}
+        </View>
+        <View
+          style={{ top: 0, left: 0, width: w, height: h, overflow: 'hidden' }}>
+          {label(comboPopAlpha(pop.color, alpha))}
+        </View>
+        {flashA > 0 ? (
+          <View
+            style={{
+              top: 0,
+              left: 0,
+              width: w,
+              height: h,
+              overflow: 'hidden',
+            }}>
+            {label(comboPopAlpha('#FFFFFF', alpha * flashA))}
+          </View>
+        ) : null}
+      </View>
+    );
+  };
+  return (
+    <View
+      style={{
+        top: Math.round(py - chSize * 0.9 - (mainH + subH) - rise),
+        left: Math.round(px - w / 2),
+        width: w,
+        height: mainH + subH,
+        overflow: 'visible',
+      }}>
+      {line(main, fs, 0, mainH)}
+      {sub ? line(sub, subFs, mainH, subH) : null}
+    </View>
   );
 }
 
@@ -1636,6 +1876,11 @@ function ShooterScoreboard({
           s.reloadEndsAt == null
             ? null
             : Math.max(0, s.reloadEndsAt - now) / 1000;
+        // Live combo chip at the right end of the name column, rounded to the
+        // points the server awards (a rounded ×1 is no combo and shows nothing).
+        const comboN = s.combo != null ? Math.round(s.combo) : 1;
+        const showCombo = comboN >= 2;
+        const comboW = Math.round(fs * 1.9);
         return (
           <View
             key={`row-${s.clientId}`}
@@ -1675,7 +1920,9 @@ function ShooterScoreboard({
               style={{
                 top: 0,
                 left: nameLeft,
-                width: Math.max(fs, nameW),
+                // The name clip gives way to the combo chip so the two never
+                // overprint; the columns themselves stay put.
+                width: Math.max(fs, nameW - (showCombo ? comboW + gap : 0)),
                 height: Math.round(fs * 1.3),
                 overflow: 'hidden',
               }}>
@@ -1689,6 +1936,28 @@ function ShooterScoreboard({
                 {s.name}
               </Text>
             </View>
+            {showCombo ? (
+              <View
+                style={{
+                  top: 0,
+                  left: nameLeft + nameW - comboW,
+                  width: comboW,
+                  height: Math.round(fs * 1.3),
+                  overflow: 'hidden',
+                }}>
+                <Text
+                  style={{
+                    fontSize: Math.round(fs * 0.95),
+                    color: s.color,
+                    align: 'right',
+                    width: comboW,
+                    fontFamily: HUD_FONT,
+                    fontWeight: 'black',
+                  }}>
+                  {`×${comboN}`}
+                </Text>
+              </View>
+            ) : null}
             <AmmoPips
               top={Math.round(fs * 1.45)}
               left={nameLeft}
@@ -1751,7 +2020,12 @@ function ShooterScoreboard({
               <Text
                 style={{
                   fontSize: Math.round(fs * 1.3),
-                  color: '#FFFFFF',
+                  // Fresh kill: the number flashes gold for a beat so a score
+                  // change is visible without watching the digits.
+                  color:
+                    s.scoredAt != null && now - s.scoredAt < 450
+                      ? '#FFEE00'
+                      : '#FFFFFF',
                   align: 'right',
                   width: scoreW,
                   fontFamily: HUD_FONT,

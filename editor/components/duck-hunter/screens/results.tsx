@@ -59,7 +59,12 @@ export function Results({
           tip='enter play again · esc exit to title'
           right={
             <div style={{ display: 'flex', gap: 12 }}>
-              <PixelButton accent='red' glyph='B' label='EXIT' onClick={onExit} />
+              <PixelButton
+                accent='red'
+                glyph='B'
+                label='EXIT'
+                onClick={onExit}
+              />
               <PixelButton
                 accent='green'
                 glyph='A'
@@ -80,7 +85,9 @@ export function Results({
         }}>
         <ArcadeText size={40}>GAME OVER</ArcadeText>
         <StarLine>
-          {winner ? `${winner.name} TAKES THE MARSH` : 'NOBODY BAGGED THE CROWN — DRAW'}
+          {winner
+            ? `${winner.name} TAKES THE MARSH`
+            : 'NOBODY BAGGED THE CROWN — DRAW'}
         </StarLine>
       </div>
 
@@ -255,7 +262,14 @@ export function Results({
             flexDirection: 'column',
             gap: 12,
           }}>
-          <PanelTitle color={R5.orangeBright}>TOP SCORES</PanelTitle>
+          {/* The table is per round variant — the title names which one. */}
+          <PanelTitle color={R5.orangeBright}>
+            {match?.mode === 'time' && match.durationMs != null
+              ? `TOP SCORES · ${match.durationMs / 1000}S`
+              : match?.mode === 'points' && match.targetScore != null
+                ? `TOP SCORES · FIRST TO ${match.targetScore}`
+                : 'TOP SCORES'}
+          </PanelTitle>
           <PixelPanel
             cut={10}
             innerStyle={{

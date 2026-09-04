@@ -512,22 +512,6 @@ export function CalibrateStep({
                   {hits}/{targets.length}
                 </LedText>
               </div>
-              {!landscape ? (
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: 30,
-                    right: 6,
-                    zIndex: 4,
-                  }}>
-                  <ChipButton
-                    dense
-                    label='⌖ CENTER'
-                    onClick={onRecenter}
-                    style={{ background: OVERLAY_BG }}
-                  />
-                </div>
-              ) : null}
               {targets.map((t) => (
                 <span
                   key={t.id}
@@ -640,26 +624,28 @@ export function CalibrateStep({
             gap: 6,
           }}>
           <StarLine size={8}>CALIBRATION</StarLine>
-          <ChipButton
+          <ActionButton
+            accent='cyan'
             dense
             label='⌖ CENTER'
             onClick={onRecenter}
-            style={{ width: '100%', textAlign: 'center' }}
           />
-          <ChipButton
-            dense
-            label='⇄ L/R FLIPPED'
-            active={horizCfg.invert}
-            onClick={() => onHoriz({ ...horizCfg, invert: !horizCfg.invert })}
-            style={{ width: '100%', textAlign: 'center' }}
-          />
-          <ChipButton
-            dense
-            label='⇅ U/D FLIPPED'
-            active={vertCfg.invert}
-            onClick={() => onVert({ ...vertCfg, invert: !vertCfg.invert })}
-            style={{ width: '100%', textAlign: 'center' }}
-          />
+          <div style={{ display: 'flex', alignItems: 'stretch', gap: 6 }}>
+            <ChipButton
+              dense
+              label='⇄ L/R'
+              active={horizCfg.invert}
+              onClick={() => onHoriz({ ...horizCfg, invert: !horizCfg.invert })}
+              style={{ flex: 1, textAlign: 'center' }}
+            />
+            <ChipButton
+              dense
+              label='⇅ U/D'
+              active={vertCfg.invert}
+              onClick={() => onVert({ ...vertCfg, invert: !vertCfg.invert })}
+              style={{ flex: 1, textAlign: 'center' }}
+            />
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <ChipButton
               dense
@@ -686,15 +672,24 @@ export function CalibrateStep({
           {continueButton}
         </div>
       ) : (
-        /* Portrait footer: advanced + continue in one row. */
-        <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
-          <ChipButton
+        /* Portrait footer: big recenter on its own row (shrinks the range a
+         * bit — deliberate, it's the most-used fix), then advanced + continue. */
+        <>
+          <ActionButton
+            accent='cyan'
             dense
-            label='⚙ ADVANCED'
-            onClick={() => setAdvanced(true)}
+            label='⌖ CENTER'
+            onClick={onRecenter}
           />
-          {continueButton}
-        </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
+            <ChipButton
+              dense
+              label='⚙ ADVANCED'
+              onClick={() => setAdvanced(true)}
+            />
+            {continueButton}
+          </div>
+        </>
       )}
 
       {advanced ? (

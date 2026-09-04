@@ -133,11 +133,9 @@ function OpeningScreen({
   const L = openingLayout(resolution, players.length || 1, label);
   const k = L.k;
   const topScores = (lobby?.topScores ?? []).slice(0, L.tops.rows);
-  const modeCaption = lobby?.setup
-    ? lobby.setup.mode === 'time'
-      ? 'TIME ATTACK'
-      : 'SCORE RUSH'
-    : 'ALL TIME';
+  // Tables are per round variant, so the caption names the exact variant
+  // (mode + length/target) this table belongs to.
+  const modeCaption = lobby?.setup ? roundLabel(lobby.setup) : 'ALL TIME';
 
   return (
     <View
@@ -489,6 +487,17 @@ function CountdownLineup({
         left={0}
         width={resolution.width}
         fontSize={Math.round(30 * k)}
+      />
+      {/* Mirrors the phone's countdown instruction: phones recenter on GO, so
+          wherever the hunter is physically aiming right now becomes center. */}
+      <HudLine
+        text='AIM AT SCREEN CENTER'
+        color={RETRO.yellow}
+        top={layout.subTop + Math.round(48 * k)}
+        left={0}
+        width={resolution.width}
+        fontSize={Math.round(34 * k)}
+        weight='black'
       />
 
       {players.map((p, i) => {

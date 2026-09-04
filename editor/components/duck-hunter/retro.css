@@ -131,6 +131,13 @@
   opacity: 0.45;
 }
 
+/* Trigger-grade press feedback (FIRE / CENTER): the player aims at the big
+   screen, so the depress has to register in peripheral vision. */
+.r5-fire:active {
+  transform: scale(0.96);
+  filter: brightness(1.15);
+}
+
 /* Retro range input for the config sliders. */
 .r5-range {
   -webkit-appearance: none;

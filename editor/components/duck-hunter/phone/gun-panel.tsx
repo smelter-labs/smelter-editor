@@ -50,8 +50,6 @@ const GAP = 6;
 const PAD = 8;
 /** Below this the combo strip is dropped — see the layout comment in render. */
 const COMBO_MIN_H = 240;
-/** Decay cells in the combo bar. */
-const COMBO_CELLS = 10;
 
 /**
  * 10 Hz re-render while a combo is decaying, then stops on its own. Each new
@@ -635,7 +633,11 @@ function ScoreBlock({
   );
 }
 
-/** Combo multiplier with the decay bar that empties over the streak window. */
+/**
+ * Combo readout, deliberately quiet: a small ×N while the chain is hot and a
+ * dash otherwise. The loud treatment (decay bar, BEST) moved to the broadcast
+ * HUD — on the phone it pulled eyes off the screen the player aims at.
+ */
 function ComboStrip({
   streak,
   compact,
@@ -643,12 +645,12 @@ function ComboStrip({
   streak: StreakState;
   compact: boolean;
 }) {
-  const { count, leftMs } = streakAt(
+  const { leftMs, combo } = streakAt(
     streak,
     typeof performance !== 'undefined' ? performance.now() : 0,
   );
-  const hot = count >= 2;
-  const cells = Math.ceil((leftMs / STREAK_WINDOW_MS) * COMBO_CELLS);
+  const comboN = Math.round(combo);
+  const hot = leftMs > 0 && comboN >= 2;
   return (
     <div
       style={{
@@ -669,45 +671,15 @@ function ComboStrip({
         COMBO
       </span>
       {hot ? (
-        <>
-          <LedText size={20} color={R5.orange} glowRgb={R5.orangeRgb}>
-            ×{count}
-          </LedText>
-          <span style={{ display: 'flex', gap: 2, flex: 1, minWidth: 0 }}>
-            {Array.from({ length: COMBO_CELLS }, (_, i) => (
-              <span
-                key={i}
-                className={i === cells - 1 ? 'r5-blink-fast' : undefined}
-                style={{
-                  flex: 1,
-                  height: 8,
-                  background: i < cells ? R5.orange : 'rgba(120,150,200,0.14)',
-                  boxShadow:
-                    i < cells
-                      ? `0 0 4px rgba(${R5.orangeRgb},0.5)`
-                      : 'inset 0 0 0 1px rgba(120,150,200,0.16)',
-                }}
-              />
-            ))}
-          </span>
-        </>
+        <span style={{ fontFamily: monoFont, fontSize: 12, color: R5.orange }}>
+          ×{comboN}
+        </span>
       ) : (
         <span
           style={{ fontFamily: monoFont, fontSize: 12, color: R5.inkMuted }}>
           —
         </span>
       )}
-      {!compact && streak.best >= 2 ? (
-        <span
-          style={{
-            fontFamily: monoFont,
-            fontSize: 9,
-            color: R5.inkMuted,
-            whiteSpace: 'nowrap',
-          }}>
-          BEST ×{streak.best}
-        </span>
-      ) : null}
     </div>
   );
 }

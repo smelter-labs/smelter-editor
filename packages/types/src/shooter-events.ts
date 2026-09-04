@@ -32,6 +32,22 @@ export type ShooterPlayer = {
 export type ShooterAmmoConfig = { maxAmmo?: number; reloadMs?: number };
 
 /**
+ * Per-character combo tuning. A kill inside `windowMs` of the previous one
+ * continues the streak; the server scores it as
+ * `min(max, 1 + growth * (streak - 1) * exp(-dtMs / windowMs))` points
+ * (rounded, never below 1), so both the kill count and the gap between kills
+ * shape the multiplier. Characters trade window length against ceiling.
+ */
+export type ShooterComboConfig = {
+  /** Ms after a kill during which the next one still chains the combo. */
+  windowMs: number;
+  /** Multiplier gained per chained kill (before time decay and cap). */
+  growth: number;
+  /** Multiplier ceiling. */
+  max: number;
+};
+
+/**
  * The playable hunter characters. Each phone picks one for its player, and the
  * pick is EXCLUSIVE — a character taken by one hunter is off the board for the
  * rest of that game (the server rejects a duplicate with 'character_taken').
@@ -44,18 +60,24 @@ export const SHOOTER_CHARACTERS = [
     name: "IMPROWIZATOR",
     title: "DIY Ranger",
     color: "#4fc3f7",
+    // Balanced: steady window, mid cap.
+    combo: { windowMs: 2000, growth: 0.5, max: 3 },
   },
   {
     id: "crane-hunter",
     name: "CRANE HUNTER",
     title: "Kimono Blaster",
     color: "#ff9210",
+    // High risk: short window, big ceiling.
+    combo: { windowMs: 1400, growth: 1.0, max: 5 },
   },
   {
     id: "pink-spotter",
     name: "PINK SPOTTER",
     title: "Visor Scout",
     color: "#FF4081",
+    // Forgiving: long window, low ceiling.
+    combo: { windowMs: 3000, growth: 0.35, max: 2.5 },
   },
 ] as const;
 
@@ -147,6 +169,11 @@ export type ShooterMatchPhase =
 /**
  * One row of the global arcade TOP SCORES table. Recorded server-side by the
  * idempotent match end (never by clients), persisted across rooms/restarts.
+ *
+ * Tables are kept per round variant, not per mode: a 30s TIME ATTACK score is
+ * not comparable to a 120s one (4x the wall clock), and a SCORE RUSH winner's
+ * score is roughly its target, so mixed targets would rank by setup, not
+ * skill. `durationMs`/`targetScore` record the variant the row was earned in.
  */
 export type ShooterTopScoreEntry = {
   /** 3-char arcade initials (derived from the player name by default). */
@@ -155,6 +182,10 @@ export type ShooterTopScoreEntry = {
   characterId?: string;
   score: number;
   mode: ShooterMatchMode;
+  /** Time mode: the round length this score was earned in. */
+  durationMs?: number;
+  /** Points mode: the target this race was run to. */
+  targetScore?: number;
   at: number;
 };
 
@@ -233,6 +264,10 @@ export type ShooterHitEvent = {
   target?: "duck" | "dog";
   /** Dogs bagged so far, sent on a dog hit. `score` is unchanged by one. */
   dogScore?: number;
+  /** Combo multiplier this kill scored at; absent = no combo (older servers). */
+  combo?: number;
+  /** Points this kill was worth after the combo multiplier. */
+  comboPoints?: number;
 };
 
 export type ShooterMissEvent = {
@@ -283,6 +318,8 @@ export type ShooterMatchEvent = {
   roomId: string;
   phase: ShooterMatchPhase;
   mode?: ShooterMatchMode;
+  /** Time mode round length (labels the per-variant TOP SCORES table). */
+  durationMs?: number;
   targetScore?: number;
   /** Epoch ms when 'playing' begins (countdown end). */
   startsAtMs?: number;
@@ -294,7 +331,7 @@ export type ShooterMatchEvent = {
   winner?: ShooterPlayer | null;
   /** 'ended' only: scoreboard frozen at the final whistle. */
   finalScores?: ShooterPlayer[];
-  /** 'ended' only: the global TOP SCORES table for this match's mode. */
+  /** 'ended' only: the global TOP SCORES table for this match's variant. */
   topScores?: ShooterTopScoreEntry[];
   /** 'ended' only: 1-based rank the winner took in it; null = off the table. */
   topScoreRank?: number | null;

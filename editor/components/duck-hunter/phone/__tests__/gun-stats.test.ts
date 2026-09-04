@@ -36,21 +36,39 @@ describe('registerStreakHit', () => {
     s = registerStreakHit(s, 9000); // cold — new chain
     expect(s).toMatchObject({ count: 1, best: 3 });
   });
+
+  it('stores the server multiplier, falling back to the chain length', () => {
+    const withServer = registerStreakHit(freshStreak(), 0, 2.4);
+    expect(withServer.combo).toBe(2.4);
+    // Older server sends no combo: the local chain length stands in.
+    const first = registerStreakHit(freshStreak(), 0);
+    expect(first.combo).toBe(1);
+    expect(registerStreakHit(first, 500).combo).toBe(2);
+  });
 });
 
 describe('streakAt', () => {
   it('is empty before the first hit', () => {
-    expect(streakAt(freshStreak(), 1234)).toEqual({ count: 0, leftMs: 0 });
+    expect(streakAt(freshStreak(), 1234)).toEqual({
+      count: 0,
+      leftMs: 0,
+      combo: 1,
+    });
   });
 
   it('decays on the clock alone — no miss event breaks it', () => {
-    const s = registerStreakHit(registerStreakHit(freshStreak(), 0), 400);
-    expect(streakAt(s, 400)).toEqual({ count: 2, leftMs: STREAK_WINDOW_MS });
-    expect(streakAt(s, 1400)).toEqual({ count: 2, leftMs: 1000 });
+    const s = registerStreakHit(registerStreakHit(freshStreak(), 0), 400, 2.4);
+    expect(streakAt(s, 400)).toEqual({
+      count: 2,
+      leftMs: STREAK_WINDOW_MS,
+      combo: 2.4,
+    });
+    expect(streakAt(s, 1400)).toEqual({ count: 2, leftMs: 1000, combo: 2.4 });
     // Window elapsed: cold, whatever the stored count says.
     expect(streakAt(s, 400 + STREAK_WINDOW_MS)).toEqual({
       count: 0,
       leftMs: 0,
+      combo: 1,
     });
   });
 });

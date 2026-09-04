@@ -34,7 +34,8 @@ const POINT_PRESETS = [10, 25, 50] as const;
 // Slider bounds — mirror the server clamps (DuckHunterController/RoomState),
 // same as the dashboard DuckHunterPanel.
 const SLIDER_DEFS: Array<{
-  key: keyof DuckHunterSliderConfig;
+  // Numeric knobs only — crosshairBadges is a toggle row below the sliders.
+  key: Exclude<keyof DuckHunterSliderConfig, 'crosshairBadges'>;
   label: string;
   min: number;
   max: number;
@@ -43,7 +44,7 @@ const SLIDER_DEFS: Array<{
 }> = [
   {
     key: 'maxAmmo',
-    label: 'ROUNDS',
+    label: 'AMMO',
     min: 1,
     max: 12,
     step: 1,
@@ -64,6 +65,14 @@ const SLIDER_DEFS: Array<{
     max: 3,
     step: 0.05,
     format: (v) => `${v.toFixed(2)}X`,
+  },
+  {
+    key: 'auraLeadSec',
+    label: 'SPAWN AURA',
+    min: 0,
+    max: 10,
+    step: 0.1,
+    format: (v) => `${v.toFixed(1)}S`,
   },
   {
     key: 'fleeSec',
@@ -702,6 +711,46 @@ export function ModeSelect({
                 />
               </label>
             ))}
+            {/* Name badges above crosshairs on the broadcast; off swaps in a
+                thicker reticle so aim stays legible. */}
+            <div>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'baseline',
+                  marginBottom: 4,
+                }}>
+                <span
+                  style={{
+                    fontFamily: pixelFont,
+                    fontSize: 8,
+                    letterSpacing: 1,
+                    color: R5.ink,
+                  }}>
+                  NAME TAGS
+                </span>
+                <LedText size={16}>
+                  {sliders.crosshairBadges ? 'ON' : 'OFF'}
+                </LedText>
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+                {presetChip('ON', sliders.crosshairBadges, () =>
+                  onSliders({ ...sliders, crosshairBadges: true }),
+                )}
+                {presetChip('OFF', !sliders.crosshairBadges, () =>
+                  onSliders({ ...sliders, crosshairBadges: false }),
+                )}
+              </div>
+              <span
+                style={{
+                  fontFamily: monoFont,
+                  fontSize: 10,
+                  color: R5.inkMuted,
+                }}>
+                OFF = thicker crosshair on stream.
+              </span>
+            </div>
           </PixelPanel>
         </div>
       </div>

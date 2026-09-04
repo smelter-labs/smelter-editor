@@ -36,19 +36,24 @@ export const AXIS_OPTIONS: { id: AxisSource; label: string }[] = [
 /** Subtle by default — the weapon feels alive without fighting the player. */
 export const DEFAULT_MOVE_SENS = 0.6;
 
+// Default sensitivity was dropped to ~70% of the original 2.5/2.6 tuning —
+// players consistently overshot ducks at the old defaults.
 export const DEFAULT_PORTRAIT: AxisPair = {
-  horiz: { source: 'pitch', invert: true, sens: 2.5 },
-  vert: { source: 'rateZ', invert: true, sens: 2.6 },
+  horiz: { source: 'pitch', invert: true, sens: 1.8 },
+  vert: { source: 'rateZ', invert: true, sens: 1.8 },
   moveSens: DEFAULT_MOVE_SENS,
 };
 export const DEFAULT_LANDSCAPE: AxisPair = {
-  horiz: { source: 'rateZ', invert: true, sens: 2.5 },
-  vert: { source: 'rateX', invert: false, sens: 2.6 },
+  horiz: { source: 'rateZ', invert: true, sens: 1.8 },
+  vert: { source: 'rateX', invert: false, sens: 1.8 },
   moveSens: DEFAULT_MOVE_SENS,
 };
 
-export const AXIS_CFG_KEY = 'shootAxisCfg-v2';
-export const LEGACY_AXIS_CFG_KEY = 'shootAxisCfg';
+// v3 bump: resets everyone onto the softer default sensitivity above (only the
+// saved call-sign name is salvaged from the v2 blob, same one-shot migration
+// the v2 bump used against the pre-orientation blob).
+export const AXIS_CFG_KEY = 'shootAxisCfg-v3';
+export const LEGACY_AXIS_CFG_KEY = 'shootAxisCfg-v2';
 
 export const MIN_SENS = 0.3;
 export const MAX_SENS = 4;

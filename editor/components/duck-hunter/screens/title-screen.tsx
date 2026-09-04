@@ -35,16 +35,17 @@ export function TitleScreen({ onStart }: { onStart: () => void }) {
     return () => window.clearInterval(t);
   }, []);
 
-  // Global (server-side) table; best across both modes. Failure shows nothing.
+  // Global (server-side) tables (one per round variant); the marquee shows
+  // the best across all of them. Failure shows nothing.
   const [topScore, setTopScore] = useState<ShooterTopScoreEntry | null>(null);
   useEffect(() => {
     let cancelled = false;
     getDuckHunterTopScores()
       .then((scores) => {
         if (cancelled) return;
-        const best = [...scores.time, ...scores.points].sort(
-          (a, b) => b.score - a.score || a.at - b.at,
-        )[0];
+        const best = Object.values(scores)
+          .flat()
+          .sort((a, b) => b.score - a.score || a.at - b.at)[0];
         setTopScore(best ?? null);
       })
       .catch(() => {});

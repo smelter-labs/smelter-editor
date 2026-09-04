@@ -17,10 +17,17 @@ export type StreakState = {
   best: number;
   /** performance.now() of the last chaining hit, or null before any. */
   lastHitAt: number | null;
+  /**
+   * Server-authoritative combo multiplier of the last hit (shooter_hit.combo),
+   * 1 when the server sent none (older server) or the chain is fresh. The
+   * server is the one place the per-character combo equation runs; the phone
+   * only echoes the value.
+   */
+  combo: number;
 };
 
 export function freshStreak(): StreakState {
-  return { count: 0, best: 0, lastHitAt: null };
+  return { count: 0, best: 0, lastHitAt: null, combo: 1 };
 }
 
 /**
@@ -28,14 +35,26 @@ export function freshStreak(): StreakState {
  * like the server's `now - p.lastHitAt < STREAK_WINDOW_MS`, so a hit landing at
  * the window boundary starts a fresh chain rather than extending the old one.
  *
+ * `combo` is the multiplier the server scored this hit at; absent (older
+ * server) it falls back to the local chain length, matching the old display.
+ *
  * NOT idempotent — running it twice on the same hit counts it twice — so the
  * caller must compute the next state outside a `setState` updater (React may
  * re-run an updater; see the same warning in practice.ts).
  */
-export function registerStreakHit(s: StreakState, now: number): StreakState {
+export function registerStreakHit(
+  s: StreakState,
+  now: number,
+  combo?: number,
+): StreakState {
   const chained = s.lastHitAt != null && now - s.lastHitAt < STREAK_WINDOW_MS;
   const count = chained ? s.count + 1 : 1;
-  return { count, best: Math.max(s.best, count), lastHitAt: now };
+  return {
+    count,
+    best: Math.max(s.best, count),
+    lastHitAt: now,
+    combo: combo ?? count,
+  };
 }
 
 /**
@@ -47,11 +66,11 @@ export function registerStreakHit(s: StreakState, now: number): StreakState {
 export function streakAt(
   s: StreakState,
   now: number,
-): { count: number; leftMs: number } {
-  if (s.lastHitAt == null) return { count: 0, leftMs: 0 };
+): { count: number; leftMs: number; combo: number } {
+  if (s.lastHitAt == null) return { count: 0, leftMs: 0, combo: 1 };
   const left = STREAK_WINDOW_MS - (now - s.lastHitAt);
-  if (left <= 0) return { count: 0, leftMs: 0 };
-  return { count: s.count, leftMs: left };
+  if (left <= 0) return { count: 0, leftMs: 0, combo: 1 };
+  return { count: s.count, leftMs: left, combo: s.combo };
 }
 
 export type RankRow = {

@@ -164,6 +164,7 @@ export {
 export type {
   ShooterPlayer,
   ShooterAmmoConfig,
+  ShooterComboConfig,
   ShooterJoinMessage,
   ShooterCharacterMessage,
   ShooterCharacterId,

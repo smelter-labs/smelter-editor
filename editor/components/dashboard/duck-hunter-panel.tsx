@@ -15,6 +15,7 @@ import {
   getStoredClientServerUrl,
 } from '@/lib/server-url';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Slider } from '@/components/ui/slider';
 import {
   Select,
@@ -37,24 +38,28 @@ const BIRD_MODEL_ID = 'people-counter-yolo-birds';
 
 // Ammo config bounds — mirror the server clamps (DuckHunterController).
 const DEFAULT_MAX_AMMO = 6;
-const DEFAULT_RELOAD_SEC = 3;
+const DEFAULT_RELOAD_SEC = 1.5;
 const MIN_MAX_AMMO = 1;
 const MAX_MAX_AMMO = 12;
 const MIN_RELOAD_SEC = 1;
 const MAX_RELOAD_SEC = 30;
 
 // Duck-size multiplier bounds — mirror the server clamp (RoomState.setDuckHunterConfig).
-const DEFAULT_DUCK_SCALE = 1;
+const DEFAULT_DUCK_SCALE = 0.6;
 const MIN_DUCK_SCALE = 0.25;
 const MAX_DUCK_SCALE = 3;
 
 // Free-flight timing bounds — mirror the server clamps (RoomState.setDuckHunterConfig).
-// Pause = how long a duck holds before flying off; speed = fly speed as a
+// Aura lead = how long the spawn aura marks a bird before its duck appears;
+// pause = how long a duck holds before flying off; speed = fly speed as a
 // fraction of the larger screen edge per second (lower = ducks linger longer).
+const DEFAULT_AURA_LEAD_SEC = 1.5;
+const MIN_AURA_LEAD_SEC = 0;
+const MAX_AURA_LEAD_SEC = 10;
 const DEFAULT_FLEE_SEC = 0.7;
 const MIN_FLEE_SEC = 0;
 const MAX_FLEE_SEC = 10;
-const DEFAULT_FLY_SPEED = 0.35;
+const DEFAULT_FLY_SPEED = 0.15;
 const MIN_FLY_SPEED = 0.1;
 const MAX_FLY_SPEED = 2;
 
@@ -86,9 +91,13 @@ export function DuckHunterPanel({ roomId }: Props) {
   // Duck-size multiplier (1 = default; 0.5 = ducks half as big), pushed to the
   // server which forwards it to the sprite renderer.
   const [duckScale, setDuckScale] = useState(DEFAULT_DUCK_SCALE);
-  // Free-flight timing: after how many seconds a duck flies off, and how fast.
+  // Free-flight timing: how long the spawn aura telegraphs a duck, after how
+  // many seconds the duck flies off, and how fast.
+  const [auraLeadSec, setAuraLeadSec] = useState(DEFAULT_AURA_LEAD_SEC);
   const [fleeSec, setFleeSec] = useState(DEFAULT_FLEE_SEC);
   const [flySpeed, setFlySpeed] = useState(DEFAULT_FLY_SPEED);
+  // Name badges above crosshairs on the broadcast (off = thicker reticle).
+  const [crosshairBadges, setCrosshairBadges] = useState(true);
   const firstAmmoSaveRef = useRef(true);
 
   // Inputs + the bird model, for the "start game" flow.
@@ -116,14 +125,19 @@ export function DuckHunterPanel({ roomId }: Props) {
           maxAmmo?: number;
           reloadSec?: number;
           duckScale?: number;
+          auraLeadSec?: number;
           fleeSec?: number;
           flySpeed?: number;
+          crosshairBadges?: boolean;
         };
         if (typeof p.maxAmmo === 'number') setMaxAmmo(p.maxAmmo);
         if (typeof p.reloadSec === 'number') setReloadSec(p.reloadSec);
         if (typeof p.duckScale === 'number') setDuckScale(p.duckScale);
+        if (typeof p.auraLeadSec === 'number') setAuraLeadSec(p.auraLeadSec);
         if (typeof p.fleeSec === 'number') setFleeSec(p.fleeSec);
         if (typeof p.flySpeed === 'number') setFlySpeed(p.flySpeed);
+        if (typeof p.crosshairBadges === 'boolean')
+          setCrosshairBadges(p.crosshairBadges);
       }
     } catch {
       /* ignore malformed storage */
@@ -137,7 +151,15 @@ export function DuckHunterPanel({ roomId }: Props) {
     try {
       window.localStorage.setItem(
         AMMO_CFG_KEY,
-        JSON.stringify({ maxAmmo, reloadSec, duckScale, fleeSec, flySpeed }),
+        JSON.stringify({
+          maxAmmo,
+          reloadSec,
+          duckScale,
+          auraLeadSec,
+          fleeSec,
+          flySpeed,
+          crosshairBadges,
+        }),
       );
     } catch {
       /* ignore */
@@ -149,14 +171,25 @@ export function DuckHunterPanel({ roomId }: Props) {
         maxAmmo,
         reloadMs: Math.round(reloadSec * 1000),
         duckScale,
+        duckAuraLeadMs: Math.round(auraLeadSec * 1000),
         duckPauseMs: Math.round(fleeSec * 1000),
         duckFlySpeed: flySpeed,
+        crosshairBadges,
       }).catch(() => {
         /* transient — next change retries */
       });
     }, delay);
     return () => window.clearTimeout(t);
-  }, [roomId, maxAmmo, reloadSec, duckScale, fleeSec, flySpeed]);
+  }, [
+    roomId,
+    maxAmmo,
+    reloadSec,
+    duckScale,
+    auraLeadSec,
+    fleeSec,
+    flySpeed,
+    crosshairBadges,
+  ]);
 
   // Load the bird model once (used to know which input types are supported).
   useEffect(() => {
@@ -353,7 +386,7 @@ export function DuckHunterPanel({ roomId }: Props) {
           <div className='rounded-lg border border-neutral-700 bg-neutral-900/60 p-3 space-y-3'>
             <div className='text-sm font-medium'>Ammo 🔫</div>
             <AmmoSlider
-              label='rounds (max)'
+              label='ammo (max)'
               value={maxAmmo}
               display={String(maxAmmo)}
               min={MIN_MAX_AMMO}
@@ -392,6 +425,15 @@ export function DuckHunterPanel({ roomId }: Props) {
               Duck sprite size multiplier. 1× = default, 0.5× = half the size.
             </div>
             <AmmoSlider
+              label='spawn aura'
+              value={auraLeadSec}
+              display={`${auraLeadSec.toFixed(1)}s`}
+              min={MIN_AURA_LEAD_SEC}
+              max={MAX_AURA_LEAD_SEC}
+              step={0.1}
+              onChange={setAuraLeadSec}
+            />
+            <AmmoSlider
               label='fly off after'
               value={fleeSec}
               display={`${fleeSec.toFixed(1)}s`}
@@ -410,8 +452,28 @@ export function DuckHunterPanel({ roomId }: Props) {
               onChange={setFlySpeed}
             />
             <div className='text-[10px] text-neutral-500'>
-              A duck holds still for the “fly off after” time, then flies away
-              at the set speed. Lower speed = ducks stay on screen longer.
+              The aura marks a bird for the “spawn aura” time before its duck
+              appears. The duck then holds still for the “fly off after” time
+              and flies away at the set speed. Lower speed = ducks stay on
+              screen longer.
+            </div>
+          </div>
+
+          {/* Broadcast HUD chrome. */}
+          <div className='rounded-lg border border-neutral-700 bg-neutral-900/60 p-3 space-y-2'>
+            <div className='text-sm font-medium'>HUD 🎯</div>
+            <label className='flex items-center gap-2 cursor-pointer'>
+              <Checkbox
+                checked={crosshairBadges}
+                onCheckedChange={(v) => setCrosshairBadges(v === true)}
+              />
+              <span className='text-xs text-neutral-200'>
+                Name tags above crosshairs
+              </span>
+            </label>
+            <div className='text-[10px] text-neutral-500'>
+              Off = no bubble over the crosshair; the crosshair draws thicker
+              instead.
             </div>
           </div>
 
