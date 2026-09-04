@@ -11,13 +11,7 @@ import {
 } from '@/lib/server-url';
 import type { MatchSetup } from '../arcade';
 import { characterById } from '../characters';
-import { SLIDER_DEFS } from './mode-select';
-import {
-  stageLabel,
-  type DuckHunterRoom,
-  type DuckHunterSliderConfig,
-  type StageRef,
-} from '../use-duck-hunter-room';
+import type { DuckHunterRoom } from '../use-duck-hunter-room';
 import type { ShooterFeed } from '../use-shooter-feed';
 import {
   LedText,
@@ -88,16 +82,12 @@ function defaultPublicBase(): string {
  */
 export function Lobby({
   setup,
-  sliders,
-  stage,
   room,
   feed,
   onStart,
   onBack,
 }: {
   setup: MatchSetup;
-  sliders: DuckHunterSliderConfig;
-  stage: StageRef;
   room: DuckHunterRoom;
   feed: ShooterFeed;
   onStart: () => void;
@@ -437,101 +427,7 @@ export function Lobby({
             </LedText>
           </div>
         </div>
-
-        {/* The staged round + tuning, read-only. The host briefs the room off
-            this screen, so everything picked on GAME SETUP has to be visible
-            here — BACK is the way to change it. */}
-        <div
-          style={{
-            width: 250,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 12,
-          }}>
-          <PanelTitle>SETTINGS</PanelTitle>
-          <PixelPanel
-            cut={10}
-            innerStyle={{
-              padding: '14px 16px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 10,
-              overflowY: 'auto',
-            }}>
-            <SettingRow
-              label='MODE'
-              value={setup.mode === 'time' ? 'TIME ATTACK' : 'SCORE RUSH'}
-            />
-            <SettingRow
-              label={setup.mode === 'time' ? 'TIME' : 'TARGET'}
-              value={
-                setup.mode === 'time'
-                  ? `${setup.durationMs / 1000}S`
-                  : `${setup.targetScore} PTS`
-              }
-            />
-            <SettingRow label='STAGE' value={stageLabel(stage)} wrap />
-            {SLIDER_DEFS.map((def) => (
-              <SettingRow
-                key={def.key}
-                label={def.label}
-                value={def.format(sliders[def.key])}
-              />
-            ))}
-            <SettingRow
-              label='NAME TAGS'
-              value={sliders.crosshairBadges ? 'ON' : 'OFF'}
-            />
-          </PixelPanel>
-          <span
-            style={{ fontFamily: monoFont, fontSize: 10, color: R5.inkMuted }}>
-            Press BACK to change the setup.
-          </span>
-        </div>
       </div>
     </RetroFrame>
-  );
-}
-
-/** One read-only settings line: pixel label left, LED value right. */
-function SettingRow({
-  label,
-  value,
-  wrap,
-}: {
-  label: string;
-  value: string;
-  wrap?: boolean;
-}) {
-  return (
-    <div
-      style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'baseline',
-        gap: 10,
-      }}>
-      <span
-        style={{
-          fontFamily: pixelFont,
-          fontSize: 8,
-          letterSpacing: 1,
-          color: R5.ink,
-          flexShrink: 0,
-        }}>
-        {label}
-      </span>
-      <span
-        style={{
-          minWidth: 0,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: wrap ? 'normal' : 'nowrap',
-          textAlign: 'right',
-          overflowWrap: wrap ? 'anywhere' : undefined,
-        }}>
-        <LedText size={14}>{value}</LedText>
-      </span>
-    </div>
   );
 }

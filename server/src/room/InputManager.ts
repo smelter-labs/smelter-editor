@@ -763,11 +763,6 @@ export class InputManager {
       await sleep(500);
     }
 
-    // The input is gone for good — stop the AI workers and drop their model
-    // tracking BEFORE the side-channel socket is destroyed, or a detector
-    // keeps hunting forever for a socket that will never come back.
-    await this.aiController.onInputRemoved(inputId);
-
     if (input.status === 'connected') {
       await this.motionController.stopMotionDetection(inputId);
       try {
@@ -1249,11 +1244,6 @@ export class InputManager {
     this.onStateChange();
 
     try {
-      // Mirror disconnectInput: stop the AI workers' detector tasks BEFORE the
-      // side-channel socket is destroyed, so they don't reconnect-race a stale
-      // socket and permanently give up.
-      await this.aiController.onInputDisconnected(inputId);
-
       logTimelineEvent(this.idPrefix, `[mp4-restart] unregister "${name}"`);
       await SmelterInstance.unregisterInput(inputId);
       logTimelineEvent(
@@ -1314,13 +1304,9 @@ export class InputManager {
 
       input.registeredAtPipelineMs = SmelterInstance.getPipelineTimeMs();
       input.playFromMs = normalizedPlayFromMs;
-      // Delay must be set before onInputConnected — subscribeInputToModel
-      // reads it into the worker params.
       input.registeredSideChannelDelayMs = sideChannel?.delayMs ?? 0;
-      // Mirror connectInput: fresh subscribe, then signal readiness so the
-      // workers attach to the recreated socket.
-      await this.aiController.onInputConnected(input);
       if (sideChannel) {
+        // Re-signal readiness so workers re-subscribe to the recreated socket.
         this.aiController.onSideChannelReady(inputId);
       }
     } catch (err) {
@@ -1336,6 +1322,37 @@ export class InputManager {
         this.idPrefix,
         `[mp4-restart] END "${name}" ${Date.now() - t0}ms`,
       );
+    }
+  }
+
+  /**
+   * Re-register a pull-based stream input (HLS/Twitch/Kick) so playback
+   * resumes from the live edge with a fresh decoder. Never call this for
+   * WHIP — re-registering kills the live push stream.
+   */
+  async reloadStreamInput(inputId: string): Promise<void> {
+    const input = this.getInput(inputId);
+    if (
+      input.type !== 'hls' &&
+      input.type !== 'twitch-channel' &&
+      input.type !== 'kick-channel'
+    ) {
+      throw new Error(`Input ${inputId} is not a reloadable stream input`);
+    }
+    if (input.status !== 'connected') {
+      throw new Error(`Input ${inputId} is not connected`);
+    }
+
+    // Same frozen-frame handoff as an mp4 restart, so the screen holds the
+    // last frame instead of flashing black while the stream re-buffers.
+    input.restartFading = true;
+    this.onStateChange();
+    try {
+      await this.disconnectInput(inputId);
+      await this.connectInput(inputId);
+    } finally {
+      input.restartFading = false;
+      this.onStateChange();
     }
   }
 

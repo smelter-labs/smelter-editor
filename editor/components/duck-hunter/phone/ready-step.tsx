@@ -103,12 +103,10 @@ export function ReadyStep({
   return (
     <div
       style={{
-        // Auto margins center the step when there's room but collapse to 0 on
-        // overflow — `flex:1` + justifyContent:center would clip the top
-        // unreachably in a scroll container (short landscape viewports).
-        margin: 'auto 0',
+        flex: 1,
         display: 'flex',
         flexDirection: 'column',
+        justifyContent: 'center',
         gap: 16,
       }}>
       <PixelPanel

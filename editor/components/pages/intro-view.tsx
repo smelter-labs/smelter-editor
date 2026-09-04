@@ -43,8 +43,6 @@ import {
   X,
   Settings,
   Crosshair,
-  Dumbbell,
-  Gamepad2,
 } from 'lucide-react';
 import RecordingsList from '@/components/recordings-list';
 import { toast } from 'sonner';
@@ -175,8 +173,6 @@ export default function IntroView() {
     roomName?: { pl: string; en: string };
     createdAt?: number;
     isPublic?: boolean;
-    /** Which arcade game runs in this room (derived server-side). */
-    activeGame?: 'duck-hunter' | 'kettlebell-tournament' | null;
   };
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loadingRooms, setLoadingRooms] = useState(true);
@@ -852,25 +848,6 @@ export default function IntroView() {
                 open={showSettings}
                 onOpenChange={setShowSettings}
               />
-              <label className='text-xs text-neutral-400 text-left'>
-                Games
-              </label>
-              <Button
-                size='lg'
-                variant='outline'
-                className='w-full cursor-pointer'
-                onClick={() => router.push('/duck-hunter')}>
-                <Crosshair className='w-4 h-4 mr-2' />
-                Duck Hunter
-              </Button>
-              <Button
-                size='lg'
-                variant='outline'
-                className='w-full cursor-pointer'
-                onClick={() => router.push('/kettlebell-tournament')}>
-                <Dumbbell className='w-4 h-4 mr-2' />
-                Kettlebell Tournament
-              </Button>
             </div>
           </div>
 
@@ -889,16 +866,6 @@ export default function IntroView() {
                             ? `${room.roomName.pl} / ${room.roomName.en}`
                             : room.roomId}
                         </span>
-                        {room.activeGame === 'duck-hunter' && (
-                          <span className='text-[10px] uppercase px-1.5 py-0.5 bg-[#ffde59]/15 text-[#ffde59]'>
-                            Duck Hunter
-                          </span>
-                        )}
-                        {room.activeGame === 'kettlebell-tournament' && (
-                          <span className='text-[10px] uppercase px-1.5 py-0.5 bg-orange-500/15 text-orange-400'>
-                            KBT
-                          </span>
-                        )}
                         {room.createdAt && (
                           <span className='text-xs text-neutral-500'>
                             {new Date(room.createdAt).toLocaleTimeString()} ·{' '}
@@ -907,20 +874,6 @@ export default function IntroView() {
                         )}
                       </div>
                       <div className='flex w-full gap-1 sm:w-auto sm:ml-4 shrink-0'>
-                        {room.activeGame && (
-                          <Button
-                            size='sm'
-                            variant='secondary'
-                            className='cursor-pointer flex-1 sm:flex-none bg-green-500/15 text-green-400 hover:bg-green-500/25'
-                            title='Open game screen'
-                            onClick={() =>
-                              router.push(
-                                `/${room.activeGame === 'duck-hunter' ? 'duck-hunter' : 'kettlebell-tournament'}/${encodeURIComponent(room.roomId)}`,
-                              )
-                            }>
-                            <Gamepad2 className='w-4 h-4' />
-                          </Button>
-                        )}
                         <Button
                           size='sm'
                           variant='default'

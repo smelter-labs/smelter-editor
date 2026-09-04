@@ -153,17 +153,6 @@ export abstract class BaseSidecar extends EventEmitter {
   }
 
   private replayReadyInputs(): void {
-    // Replay the full subscribe state, not just readiness: a model can be
-    // enabled while python is still spawning — that addInput's 'subscribe'
-    // was sent into the void (wsSent=false) and the worker would ignore a
-    // 'side_channel_ready' for an input it never saw.
-    for (const inputId of this.trackedInputs) {
-      this.sendToPython({
-        cmd: 'subscribe',
-        inputId,
-        params: this.trackedParams.get(inputId),
-      });
-    }
     for (const inputId of this.readyInputIds) {
       this.sendToPython({ cmd: 'side_channel_ready', inputId });
     }

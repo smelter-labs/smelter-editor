@@ -1349,15 +1349,6 @@ export class RoomState {
     return this.mutex.runExclusive(async () => {
       await this.inputManager.removeInput(inputId);
 
-      // A removed input can never clear its own overlay (no further results
-      // arrive), and a stale ghost entry shadows the live stage — Duck Hunter
-      // targets the FIRST ghost entry, so a swapped-out stage would leave the
-      // game aiming at frozen boxes forever. Drop boxes and trackers now.
-      this.peopleTrackers.delete(inputId);
-      this.birdTrackers.delete(`yolo:${inputId}`);
-      this.birdTrackers.delete(`marker:${inputId}`);
-      this.output.store.getState().setPeopleBoxes(inputId, null);
-
       if (this.pruneInputFromLayers(inputId)) {
         this.updateStoreWithState();
       }
@@ -1799,8 +1790,71 @@ export class RoomState {
   }
 
   /** Drive the arcade match (start/stop/reset) from the /duck-hunter page. */
-  public controlDuckHunterMatch(cmd: MatchCommand): ShooterMatchEvent {
+  public async controlDuckHunterMatch(
+    cmd: MatchCommand,
+  ): Promise<ShooterMatchEvent> {
+    if (cmd.action === 'start') {
+      // Fresh stage before the countdown: an mp4 restarts from zero (a full
+      // clip's worth of runway before the loop seam), a stream re-buffers at
+      // the live edge. Never throws — a broken stage must not block the round.
+      await this.reloadDuckHunterStageInputs();
+    }
     return this.duckHunter.controlMatch(cmd);
+  }
+
+  /**
+   * Reload the arcade stage input(s) — the ones running the birds model —
+   * ahead of a match start. mp4 → restart at 0 with loop; HLS/Twitch/Kick →
+   * disconnect+connect; WHIP and everything else is left alone (re-registering
+   * WHIP kills the push stream). Failures are logged and swallowed so a dead
+   * stage can never block the countdown.
+   */
+  private async reloadDuckHunterStageInputs(): Promise<void> {
+    const RELOAD_TIMEOUT_MS = 8_000;
+    const stages = this.getInputs().filter(
+      (input) =>
+        input.status === 'connected' &&
+        input.aiModels?.[PEOPLE_COUNTER_YOLO_BIRDS_ID]?.enabled,
+    );
+    for (const input of stages) {
+      let reload: Promise<void>;
+      if (input.type === 'local-mp4' && !input.mp4AssetMissing) {
+        reload = this.mutex.runExclusive(() =>
+          this.inputManager.restartMp4Input(input.inputId, 0, true),
+        );
+      } else if (
+        input.type === 'hls' ||
+        input.type === 'twitch-channel' ||
+        input.type === 'kick-channel'
+      ) {
+        reload = this.mutex.runExclusive(() =>
+          this.inputManager.reloadStreamInput(input.inputId),
+        );
+      } else {
+        continue;
+      }
+      try {
+        await Promise.race([
+          reload,
+          new Promise<never>((_, reject) =>
+            setTimeout(
+              () =>
+                reject(
+                  new Error(
+                    `stage reload timed out after ${RELOAD_TIMEOUT_MS}ms`,
+                  ),
+                ),
+              RELOAD_TIMEOUT_MS,
+            ),
+          ),
+        ]);
+      } catch (err) {
+        console.error(
+          `[duck-hunter] stage reload failed inputId=${input.inputId} type=${input.type}`,
+          err,
+        );
+      }
+    }
   }
 
   /** Current arcade match snapshot (page-reload recovery). */
@@ -1829,11 +1883,6 @@ export class RoomState {
     error?: KbtMatchError;
   } {
     return this.kbTournament.controlMatch(cmd);
-  }
-
-  /** True once any KBT host action ran in this room (see controller note). */
-  public isKbtEngaged(): boolean {
-    return this.kbTournament.isEngaged();
   }
 
   public getKbtState(): { state: KbtStateEvent; match: KbtMatchEvent } {
