@@ -481,35 +481,8 @@ export class RoomState {
       // registered here get the video side channel the coach model needs, and
       // the standard `${roomId}::whip::${uuid}` id stays inside the 103-char
       // unix-socket path budget.
-      registerPlayerCam: async (name, dims, opts) => {
-        const inputId = await this.addNewInput({
-          type: 'whip',
-          username: `[camera] ${name}`,
-          // Cams that will never run the coach (commentator) skip the
-          // side channel and its 3 s buffering delay.
-          noSideChannel: opts?.ai === false,
-          // Real track dimensions from the phone: the registration path
-          // honors exact dims (updateInput's bare-orientation heuristic
-          // would clobber them, so orientation always travels WITH dims).
-          ...(dims
-            ? {
-                nativeWidth: dims.width,
-                nativeHeight: dims.height,
-                orientation:
-                  dims.height > dims.width
-                    ? ('vertical' as const)
-                    : ('horizontal' as const),
-              }
-            : {}),
-        });
-        if (!inputId) throw new Error('WHIP input registration failed');
-        const bearerToken = await this.connectInput(inputId);
-        return {
-          inputId,
-          whipUrl: `${config.whipBaseUrl}/${inputId}`,
-          bearerToken,
-        };
-      },
+      registerPlayerCam: (name, dims, opts) =>
+        this.registerGameWhipCam(name, dims, opts),
       removeInput: (inputId) => this.removeInput(inputId),
       setKettlebellCoach: (inputId, enabled, params) =>
         this.setAIModelEnabled(
@@ -2912,6 +2885,47 @@ export class RoomState {
       this.frozenImages.delete(inputId);
       this.deferredUnregisterImage(imageId, jpegPath);
     }
+  }
+
+  /**
+   * Register a game's phone camera as a WHIP input through InputManager (NOT
+   * DuckHunter's raw registerInput): inputs registered here get the heartbeat
+   * monitor, the stale sweep, `onInputsRemoved`, and — unless `ai: false` —
+   * the video side channel a model needs, at the cost of the input's 3 s
+   * buffering delay. Shared by the kettlebell tournament and basketball game.
+   */
+  private async registerGameWhipCam(
+    name: string,
+    dims?: { width: number; height: number },
+    opts?: { ai?: boolean },
+  ): Promise<{ inputId: string; whipUrl: string; bearerToken: string }> {
+    const inputId = await this.addNewInput({
+      type: 'whip',
+      username: `[camera] ${name}`,
+      // Cams that will never run a model skip the side channel and its 3 s
+      // buffering delay.
+      noSideChannel: opts?.ai === false,
+      // Real track dimensions from the phone: the registration path honors
+      // exact dims (updateInput's bare-orientation heuristic would clobber
+      // them, so orientation always travels WITH dims).
+      ...(dims
+        ? {
+            nativeWidth: dims.width,
+            nativeHeight: dims.height,
+            orientation:
+              dims.height > dims.width
+                ? ('vertical' as const)
+                : ('horizontal' as const),
+          }
+        : {}),
+    });
+    if (!inputId) throw new Error('WHIP input registration failed');
+    const bearerToken = await this.connectInput(inputId);
+    return {
+      inputId,
+      whipUrl: `${config.whipBaseUrl}/${inputId}`,
+      bearerToken,
+    };
   }
 
   /**
