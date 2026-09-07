@@ -1,0 +1,814 @@
+#!/usr/bin/env python3
+"""Basketball-scorer sidecar: subscribes to a video side channel via
+smelter-sdk, finds the ball (YOLO COCO "sports ball", with a rim-centred crop
+pass and an orange-blob HSV fallback) and the people (COCO "person"), runs
+analysis.ShotDetector over the calibrated rim ellipse and, on a make, walks a
+ring buffer of recent frames back to the release to classify the shooter's
+jersey colour against the two team colours.
+
+Output keeps the standard `{count, boxes, frameW, frameH, procMs}` shape
+(count = makes, boxes = ball + persons so drawBoxes debug works untouched) and
+adds `ball`, `zone`, `state`, `attempts`, `makes`, `session` and discrete
+`shot_made` / `shot_attempt` events.
+
+Structure follows the kettlebell coach worker: a reader task drains the side
+channel and keeps only the newest frame (the socket must never back up), the
+analysis loop paces itself to `analysisFps`, all heavy backends load lazily so
+a missing torch/ultralytics only disables YOLO (HSV keeps working)."""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import json
+import logging
+import math
+import os
+import re
+import sys
+import threading
+import time
+import uuid
+from collections import deque
+from dataclasses import dataclass, field
+
+import numpy as np
+import websockets
+
+try:
+    import cv2
+except Exception:  # noqa: BLE001
+    cv2 = None
+else:
+    cv2.setNumThreads(1)
+from smelter import list_channels
+from smelter.aio import subscribe_video_channel
+
+from analysis import (
+    ShotDetector,
+    analysis_interval_s,
+    classify_team,
+    hex_to_rgb,
+    median_color,
+    rim_from_params,
+    torso_region,
+)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="[basketball-scorer-worker] %(message)s",
+    stream=sys.stderr,
+)
+log = logging.getLogger("basketball-scorer-worker")
+
+NODE_WS_URL = os.environ.get("NODE_WS_URL", "ws://127.0.0.1:8092")
+ANALYSIS_FPS = float(os.environ.get("BASKETBALL_ANALYSIS_FPS", "20"))
+MIN_ANALYSIS_INTERVAL_S = 1.0 / ANALYSIS_FPS if ANALYSIS_FPS > 0 else 0.05
+IMGSZ = int(os.environ.get("BASKETBALL_IMGSZ", "640"))
+BALL_CONF = float(os.environ.get("BASKETBALL_BALL_CONF", "0.2"))
+PERSON_CONF = 0.3
+WEIGHTS_ENV = os.environ.get("BASKETBALL_YOLO_WEIGHTS", "").strip()
+PERSON_CLASS = 0
+BALL_CLASS = 32  # COCO "sports ball"
+# Sanity: a ball box larger than this fraction of the frame is not a ball.
+BALL_MAX_FRAC = 0.25
+
+# HSV orange band in OpenCV units (hue 0..179).
+HSV_HUE_LO = int(os.environ.get("BASKETBALL_HSV_HUE_LO", "5"))
+HSV_HUE_HI = int(os.environ.get("BASKETBALL_HSV_HUE_HI", "25"))
+HSV_SAT_MIN = int(os.environ.get("BASKETBALL_HSV_SAT_MIN", "120"))
+HSV_VAL_MIN = int(os.environ.get("BASKETBALL_HSV_VAL_MIN", "70"))
+
+# ── Frame ring buffer (release lookup + stills) ──────────────────────────────
+FRAME_DIR = os.environ.get("BASKETBALL_FRAME_DIR", "")
+FRAME_MAX_W = 400
+FRAME_BUF_LEN = 100  # ≈5 s at 20 analysis fps
+FRAME_JPEG_QUALITY = 80
+FRAME_MATCH_TOL_S = 0.6
+FRAME_MAX_WRITES = 2000
+
+
+def _flag(params: dict, key: str) -> bool:
+    return str(params.get(key, "0")).strip().lower() in ("1", "true", "on")
+
+
+@dataclass
+class InputState:
+    side_channel_ready: bool = False
+    first_seen_at: float = field(default_factory=time.monotonic)
+    params: dict = field(default_factory=dict)
+    detector: ShotDetector = field(default_factory=ShotDetector)
+    session: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
+    analyzed_frames: int = 0
+    pending_events: list = field(default_factory=list)
+    # (pts, downscaled RGB) — always fed; the release finder samples jersey
+    # colour from it and stills are cut from it when captureShotFrames is on.
+    frame_buf: deque = field(default_factory=lambda: deque(maxlen=FRAME_BUF_LEN))
+    frames_written: int = 0
+    prev_ball_center: tuple[float, float] | None = None
+    yolo_misses: int = 0
+
+
+active_inputs: dict[str, InputState] = {}
+running_tasks: dict[str, asyncio.Task] = {}
+ws_connection: websockets.WebSocketClientProtocol | None = None
+_shutting_down = False
+
+
+def request_shutdown() -> None:
+    global _shutting_down
+    if _shutting_down:
+        return
+    _shutting_down = True
+    for iid in list(active_inputs.keys()):
+        stop_detector(iid)
+    log.info("Shutting down")
+
+
+# ── YOLO backend ─────────────────────────────────────────────────────────────
+
+_backend_lock = threading.Lock()
+_backend_failed = False
+_models: dict[str, object] = {}
+_device: str | None = None
+_torch_threads_capped = False
+
+
+def _select_device() -> str:
+    global _device
+    if _device is not None:
+        return _device
+    dev = "cpu"
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            dev = "cuda:0"
+        elif getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available():
+            dev = "mps"
+    except Exception:  # noqa: BLE001
+        pass
+    _device = dev
+    log.info("Inference device: %s", dev)
+    return dev
+
+
+def _cap_torch_threads() -> None:
+    global _torch_threads_capped
+    if _torch_threads_capped:
+        return
+    _torch_threads_capped = True
+    try:
+        import torch
+
+        torch.set_num_threads(int(os.environ.get("TORCH_NUM_THREADS", "4")))
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _resolve_weights(params: dict) -> str:
+    w = str(params.get("yoloWeights", "auto")).strip()
+    if w in ("yolo11n.pt", "yolo11s.pt", "yolo11m.pt"):
+        return w
+    if WEIGHTS_ENV:
+        return WEIGHTS_ENV
+    return "yolo11s.pt" if _select_device().startswith("cuda") else "yolo11n.pt"
+
+
+def _get_model(weights: str):
+    global _backend_failed
+    if _backend_failed:
+        return None
+    cached = _models.get(weights)
+    if cached is not None:
+        return cached
+    with _backend_lock:
+        cached = _models.get(weights)
+        if cached is not None or _backend_failed:
+            return cached
+        try:
+            from ultralytics import YOLO
+
+            _cap_torch_threads()
+            log.info("Loading detection model: %s", weights)
+            model = YOLO(weights)
+            _models[weights] = model
+            return model
+        except Exception as err:  # noqa: BLE001
+            log.warning(
+                "YOLO backend failed to load (%s) — falling back to HSV ball "
+                "tracking only. Install ultralytics>=8.3 to enable it.",
+                err,
+            )
+            _backend_failed = True
+            return None
+
+
+def _predict(model, img, imgsz: int, conf: float, classes: list[int]):
+    """One YOLO pass; a failing MPS backend drops to CPU once."""
+    global _device
+    try:
+        return model.predict(
+            img, imgsz=imgsz, conf=conf, classes=classes, verbose=False, device=_select_device()
+        )
+    except Exception as err:  # noqa: BLE001
+        if _device and _device != "cpu":
+            log.warning("Inference on %s failed (%s) — switching to CPU", _device, err)
+            _device = "cpu"
+            return model.predict(img, imgsz=imgsz, conf=conf, classes=classes, verbose=False, device="cpu")
+        raise
+
+
+def _boxes_from(result, ox: int, oy: int, frame_w: int, frame_h: int):
+    """Split one result into normalized person / ball boxes (offset back into
+    the full frame when the pass ran on a crop)."""
+    persons: list[dict] = []
+    balls: list[dict] = []
+    b = getattr(result, "boxes", None)
+    if b is None or b.xyxy is None:
+        return persons, balls
+    for i in range(len(b.xyxy)):
+        x1, y1, x2, y2 = (float(v) for v in b.xyxy[i])
+        cls = int(b.cls[i]) if b.cls is not None else -1
+        conf = float(b.conf[i]) if b.conf is not None else 0.0
+        box = {
+            "x": round((x1 + ox) / frame_w, 4),
+            "y": round((y1 + oy) / frame_h, 4),
+            "w": round((x2 - x1) / frame_w, 4),
+            "h": round((y2 - y1) / frame_h, 4),
+            "conf": round(conf, 3),
+        }
+        if cls == PERSON_CLASS:
+            persons.append(box)
+        elif cls == BALL_CLASS:
+            balls.append(box)
+    return persons, balls
+
+
+def detect_yolo(rgb, params: dict, rim) -> dict | None:
+    """Full-frame pass (person + ball), plus a rim-centred crop pass when the
+    ball is missing. Returns None when the backend is unavailable."""
+    model = _get_model(_resolve_weights(params))
+    if model is None:
+        return None
+    h, w = rgb.shape[:2]
+    imgsz = int(float(params.get("imgsz", IMGSZ)))
+    ball_conf = float(params.get("ballConf", BALL_CONF))
+    results = _predict(model, rgb, imgsz, min(ball_conf, PERSON_CONF), [PERSON_CLASS, BALL_CLASS])
+    persons: list[dict] = []
+    balls: list[dict] = []
+    if results:
+        persons, balls = _boxes_from(results[0], 0, 0, w, h)
+    persons = [p for p in persons if p["conf"] >= PERSON_CONF]
+    balls = [b for b in balls if b["conf"] >= ball_conf]
+    crop_used = False
+    if not balls and rim is not None and _flag(params, "rimCrop") if "rimCrop" in params else (not balls and rim is not None):
+        side = int(max(6 * rim.rx * w, 6 * rim.ry * h, 320))
+        side = min(side, w, h)
+        cx = int(rim.cx * w)
+        cy = int(rim.cy * h)
+        x0 = max(0, min(w - side, cx - side // 2))
+        y0 = max(0, min(h - side, cy - side // 2))
+        crop = np.ascontiguousarray(rgb[y0 : y0 + side, x0 : x0 + side])
+        crop_imgsz = min(640, max(320, (side // 32) * 32))
+        cres = _predict(model, crop, crop_imgsz, ball_conf * 0.8, [BALL_CLASS])
+        if cres:
+            _, cballs = _boxes_from(cres[0], x0, y0, w, h)
+            balls = [b for b in cballs if b["conf"] >= ball_conf * 0.8]
+            crop_used = bool(balls)
+    return {"persons": persons, "balls": balls, "crop": crop_used}
+
+
+def pick_ball(balls: list[dict], prev_center, frame_aspect: float) -> dict | None:
+    """One ball: the candidate nearest the previous position when close
+    enough (track continuity), else the most confident. Oversized boxes
+    (a whole player, an orange hoodie) are dropped."""
+    cands = [b for b in balls if b["w"] <= BALL_MAX_FRAC and b["h"] <= BALL_MAX_FRAC]
+    if not cands:
+        return None
+    if prev_center is not None:
+        px, py = prev_center
+
+        def dist(b):
+            return math.hypot((b["x"] + b["w"] / 2 - px) * frame_aspect, b["y"] + b["h"] / 2 - py)
+
+        near = min(cands, key=dist)
+        if dist(near) <= 0.25:
+            return near
+    return max(cands, key=lambda b: b["conf"])
+
+
+# ── HSV fallback ─────────────────────────────────────────────────────────────
+
+
+def _hsv(rgb):
+    return cv2.cvtColor(rgb, cv2.COLOR_RGB2HSV)
+
+
+def detect_hsv_ball(rgb, params: dict, rim) -> dict | None:
+    """Orange blob with a roughly round footprint, sized like a ball relative
+    to the rim when one is calibrated."""
+    if cv2 is None:
+        return None
+    h, w = rgb.shape[:2]
+    hsv = _hsv(rgb)
+    mask = cv2.inRange(hsv, (HSV_HUE_LO, HSV_SAT_MIN, HSV_VAL_MIN), (HSV_HUE_HI, 255, 255))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+    n, _, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    if rim is not None:
+        exp_d = 0.55 * 2 * rim.rx * w
+        exp_area = math.pi * (exp_d / 2) ** 2
+        min_area, max_area = 0.2 * exp_area, 3.0 * exp_area
+    else:
+        min_area, max_area = 30.0, 0.02 * w * h
+    best = None
+    best_score = 0.0
+    for i in range(1, n):
+        x, y, bw, bh, area = stats[i]
+        if area < min_area or area > max_area or bw == 0 or bh == 0:
+            continue
+        ar = bw / bh
+        if ar < 0.5 or ar > 2.0:
+            continue
+        fill = area / float(bw * bh)
+        if fill < 0.45:
+            continue
+        score = fill * min(1.0, area / max(1.0, min_area * 2))
+        if score > best_score:
+            best_score = score
+            # Plain floats: numpy scalars are not JSON-serializable.
+            best = {
+                "x": round(float(x) / w, 4),
+                "y": round(float(y) / h, 4),
+                "w": round(float(bw) / w, 4),
+                "h": round(float(bh) / h, 4),
+                "conf": round(0.4 + 0.5 * float(fill), 3),
+            }
+    return best
+
+
+def detect_hsv_persons(rgb, params: dict) -> list[dict]:
+    """Large blobs in each team colour — jerseys for the release finder when
+    YOLO is unavailable (and for synthetic test clips)."""
+    if cv2 is None:
+        return []
+    h, w = rgb.shape[:2]
+    hsv = _hsv(rgb)
+    out: list[dict] = []
+    for key in ("teamColorA", "teamColorB"):
+        rgb_c = hex_to_rgb(params.get(key, ""))
+        if rgb_c is None:
+            continue
+        hh, ss, vv = cv2.cvtColor(np.uint8([[list(rgb_c)]]), cv2.COLOR_RGB2HSV)[0][0]
+        if ss < 60:
+            # White/black bibs: key on value instead of hue.
+            lo = (0, 0, 200) if vv > 128 else (0, 0, 0)
+            hi = (179, 60, 255) if vv > 128 else (179, 255, 50)
+            mask = cv2.inRange(hsv, lo, hi)
+        else:
+            lo_h, hi_h = int(hh) - 10, int(hh) + 10
+            if lo_h < 0:
+                mask = cv2.inRange(hsv, (0, 80, 50), (hi_h, 255, 255)) | cv2.inRange(
+                    hsv, (180 + lo_h, 80, 50), (179, 255, 255)
+                )
+            elif hi_h > 179:
+                mask = cv2.inRange(hsv, (lo_h, 80, 50), (179, 255, 255)) | cv2.inRange(
+                    hsv, (0, 80, 50), (hi_h - 180, 255, 255)
+                )
+            else:
+                mask = cv2.inRange(hsv, (lo_h, 80, 50), (hi_h, 255, 255))
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((7, 7), np.uint8))
+        n, _, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+        for i in range(1, n):
+            x, y, bw, bh, area = stats[i]
+            if area < 0.003 * w * h:
+                continue
+            out.append(
+                {
+                    "x": round(float(x) / w, 4),
+                    "y": round(float(y) / h, 4),
+                    "w": round(float(bw) / w, 4),
+                    "h": round(float(bh) / h, 4),
+                    "conf": 0.5,
+                }
+            )
+    return out
+
+
+def detect(rgb, params: dict, rim, prev_center) -> dict:
+    """Ball + persons for one frame (runs in a thread)."""
+    h, w = rgb.shape[:2]
+    aspect = w / h if h else 16 / 9
+    mode = str(params.get("ballDetector", "auto")).strip().lower()
+    persons: list[dict] = []
+    ball = None
+    src = None
+    yolo_ok = False
+    if mode != "hsv":
+        r = detect_yolo(rgb, params, rim)
+        if r is not None:
+            yolo_ok = True
+            persons = r["persons"]
+            ball = pick_ball(r["balls"], prev_center, aspect)
+            if ball is not None:
+                src = "crop" if r["crop"] else "yolo"
+    if ball is None and mode != "yolo":
+        ball = detect_hsv_ball(rgb, params, rim)
+        if ball is not None:
+            src = "hsv"
+    if mode == "hsv" or (not yolo_ok and mode == "auto"):
+        persons = detect_hsv_persons(rgb, params)
+    return {"ball": ball, "persons": persons, "src": src}
+
+
+# ── Frames: ring buffer, jersey colour, stills ───────────────────────────────
+
+
+def _buffer_frame(state: InputState, t: float, rgb) -> None:
+    if cv2 is None:
+        return
+    h, w = rgb.shape[:2]
+    if w > FRAME_MAX_W:
+        small = cv2.resize(
+            rgb, (FRAME_MAX_W, max(1, round(h * FRAME_MAX_W / w))), interpolation=cv2.INTER_AREA
+        )
+    else:
+        small = rgb.copy()
+    state.frame_buf.append((t, small))
+
+
+def _nearest_frame(state: InputState, t: float):
+    if not state.frame_buf:
+        return None
+    pts, rgb = min(state.frame_buf, key=lambda p: abs(p[0] - t))
+    if abs(pts - t) > FRAME_MATCH_TOL_S:
+        return None
+    return pts, rgb
+
+
+def _sample_jersey(state: InputState, release: dict) -> tuple[int, int, int] | None:
+    found = _nearest_frame(state, float(release["t"]))
+    if found is None:
+        return None
+    _, small = found
+    h, w = small.shape[:2]
+    x0, y0, x1, y1 = torso_region(release["person"])
+    px0, px1 = max(0, int(x0 * w)), min(w, int(math.ceil(x1 * w)))
+    py0, py1 = max(0, int(y0 * h)), min(h, int(math.ceil(y1 * h)))
+    if px1 <= px0 or py1 <= py0:
+        return None
+    patch = small[py0:py1, px0:px1].reshape(-1, 3)
+    stride = max(1, patch.shape[0] // 1500)
+    pixels = [tuple(int(c) for c in p) for p in patch[::stride]]
+    return median_color(pixels)
+
+
+def _attribute(state: InputState, event: dict, params: dict) -> None:
+    """Replace the raw `release` dict with the shooter's team guess."""
+    release = event.pop("release", None)
+    team = None
+    conf = 0.0
+    sample_hex = None
+    if release:
+        sample = _sample_jersey(state, release)
+        if sample is not None:
+            team, conf = classify_team(
+                sample, {"A": params.get("teamColorA", ""), "B": params.get("teamColorB", "")}
+            )
+            sample_hex = "#%02x%02x%02x" % sample
+        event["shooterBox"] = release.get("person")
+        event["releaseT"] = round(float(release["t"]), 3)
+    event["team"] = team
+    event["teamConfidence"] = round(conf, 3)
+    event["colorSample"] = sample_hex
+
+
+def _encode_frame(path: str, rgb) -> bool:
+    bgr = np.ascontiguousarray(rgb[:, :, ::-1])
+    ok, buf = cv2.imencode(".jpg", bgr, [int(cv2.IMWRITE_JPEG_QUALITY), FRAME_JPEG_QUALITY])
+    if not ok:
+        return False
+    os.makedirs(FRAME_DIR, exist_ok=True)
+    with open(path, "wb") as f:
+        f.write(buf.tobytes())
+    return True
+
+
+async def _attach_stills(input_id: str, state: InputState, events: list) -> None:
+    """Save the make frame + the release frame for each shot_made."""
+    for event in events:
+        if event.get("type") != "shot_made":
+            continue
+        if state.frames_written >= FRAME_MAX_WRITES:
+            continue
+        safe_input = re.sub(r"[^A-Za-z0-9_-]", "_", input_id)
+        base = f"{safe_input}-{state.session}-s{int(event.get('index', 0)):04d}"
+        for key, t_key, suffix in (
+            ("frameFile", "rimT", "make"),
+            ("releaseFrameFile", "releaseT", "release"),
+        ):
+            t = event.get(t_key)
+            if not isinstance(t, (int, float)):
+                continue
+            found = _nearest_frame(state, float(t))
+            if found is None:
+                continue
+            name = f"{base}-{suffix}.jpg"
+            try:
+                ok = await asyncio.to_thread(_encode_frame, os.path.join(FRAME_DIR, name), found[1])
+            except Exception as err:  # noqa: BLE001
+                log.warning("Still write failed for %s: %s", input_id, err)
+                continue
+            if ok:
+                state.frames_written += 1
+                event[key] = name
+
+
+# ── Node link ────────────────────────────────────────────────────────────────
+
+
+async def send_result(input_id: str, data: dict) -> None:
+    if ws_connection is None:
+        return
+    await ws_connection.send(json.dumps({"type": "result", "inputId": input_id, "data": data}))
+
+
+SUBSCRIBE_MAX_RETRIES = 5
+SUBSCRIBE_RETRY_DELAY_S = 1.0
+
+
+async def run_detector(input_id: str) -> None:
+    log.info("Starting basketball analysis for %s", input_id)
+    if input_id not in active_inputs:
+        return
+    wait_start = time.monotonic()
+    while input_id in active_inputs and not active_inputs[input_id].side_channel_ready:
+        await asyncio.sleep(0.05)
+        if time.monotonic() - wait_start > 30.0:
+            log.warning("Timed out waiting for side_channel_ready: %s", input_id)
+            return
+    if input_id not in active_inputs:
+        return
+    log.info("side_channel_ready for %s (waited %.2fs), subscribing", input_id, time.monotonic() - wait_start)
+
+    for attempt in range(1, SUBSCRIBE_MAX_RETRIES + 1):
+        if input_id not in active_inputs:
+            return
+        try:
+            channels = await asyncio.to_thread(list_channels)
+            matching = [c for c in channels if c.kind.value == "video" and c.input_id == input_id]
+            log.info(
+                "attempt %d/%d for %s: %d channels, %d matching",
+                attempt, SUBSCRIBE_MAX_RETRIES, input_id, len(channels), len(matching),
+            )
+            frame_count = await _run_detector_loop(input_id)
+            if frame_count > 0:
+                return
+            if attempt < SUBSCRIBE_MAX_RETRIES:
+                delay = SUBSCRIBE_RETRY_DELAY_S * attempt
+                log.warning("0 frames for %s (attempt %d) — retrying in %.1fs", input_id, attempt, delay)
+                await asyncio.sleep(delay)
+            else:
+                log.error("0 frames for %s after %d attempts — giving up", input_id, SUBSCRIBE_MAX_RETRIES)
+        except asyncio.CancelledError:
+            return
+        except Exception as err:  # noqa: BLE001
+            if attempt < SUBSCRIBE_MAX_RETRIES:
+                delay = SUBSCRIBE_RETRY_DELAY_S * attempt
+                log.warning("Detector for %s failed (attempt %d): %s — retrying in %.1fs", input_id, attempt, err, delay)
+                await asyncio.sleep(delay)
+            else:
+                log.error("Detector for %s failed after %d attempts: %s", input_id, SUBSCRIBE_MAX_RETRIES, err)
+    running_tasks.pop(input_id, None)
+    log.info("Stopped basketball analysis for %s (exhausted retries)", input_id)
+
+
+async def _run_detector_loop(input_id: str) -> int:
+    frame_count = 0
+    latest: list = []
+    frame_ready = asyncio.Event()
+    reader_done = asyncio.Event()
+
+    async def read_frames() -> None:
+        nonlocal frame_count
+        try:
+            async for frame in subscribe_video_channel(input_id):
+                if input_id not in active_inputs:
+                    break
+                frame_count += 1
+                if frame_count == 1:
+                    log.info("First frame received for %s", input_id)
+                latest[:] = [(time.monotonic(), frame)]
+                frame_ready.set()
+        finally:
+            reader_done.set()
+            frame_ready.set()
+
+    reader = asyncio.create_task(read_frames())
+    last_analysis_at = 0.0
+    try:
+        while input_id in active_inputs and not (reader_done.is_set() and not latest):
+            await frame_ready.wait()
+            frame_ready.clear()
+            if not latest:
+                continue
+            pending = active_inputs.get(input_id)
+            if pending is None:
+                break
+            pause_s = analysis_interval_s(pending.params, MIN_ANALYSIS_INTERVAL_S) - (
+                time.monotonic() - last_analysis_at
+            )
+            if pause_s > 0:
+                await asyncio.sleep(pause_s)
+            if not latest:
+                continue
+            received_at, frame = latest.pop()
+            last_analysis_at = time.monotonic()
+
+            state = active_inputs.get(input_id)
+            if state is None:
+                break
+            rgba = frame.rgba
+            frame_h, frame_w = rgba.shape[:2]
+            params = state.params
+            state.analyzed_frames += 1
+            rgb = np.ascontiguousarray(rgba[:, :, :3])
+            t = frame.pts_seconds
+            _buffer_frame(state, t, rgb)
+
+            rim = rim_from_params(params)
+            det = await asyncio.to_thread(detect, rgb, params, rim, state.prev_ball_center)
+            ball = det["ball"]
+            persons = det["persons"]
+            if ball is not None:
+                state.prev_ball_center = (ball["x"] + ball["w"] / 2, ball["y"] + ball["h"] / 2)
+                state.yolo_misses = 0
+            else:
+                state.yolo_misses += 1
+                if state.yolo_misses > 20:
+                    state.prev_ball_center = None
+
+            detector = state.detector
+            detector.set_params(params)
+            detector.set_aspect(frame_w / frame_h if frame_h else 16 / 9)
+            events = detector.observe(t, ball, persons)
+            for ev in events:
+                _attribute(state, ev, params)
+            if events and cv2 is not None and FRAME_DIR and _flag(params, "captureShotFrames"):
+                await _attach_stills(input_id, state, events)
+            state.pending_events.extend(events)
+
+            if ws_connection is None:
+                continue
+            proc_ms = (time.monotonic() - received_at) * 1000.0
+            out_events = state.pending_events
+            state.pending_events = []
+            boxes = []
+            if ball is not None:
+                boxes.append({**ball, "src": "ball"})
+            boxes.extend({**p, "src": "person"} for p in persons[:8])
+            await send_result(
+                input_id,
+                {
+                    "count": detector.made_count,
+                    "boxes": boxes,
+                    "frameW": frame_w,
+                    "frameH": frame_h,
+                    "procMs": round(proc_ms, 1),
+                    "ball": {**ball, "src": det["src"]} if ball is not None else None,
+                    "zone": detector.zone,
+                    "state": detector.state,
+                    "attempts": detector.attempt_count,
+                    "makes": detector.made_count,
+                    "rimSet": rim is not None,
+                    "session": state.session,
+                    "events": out_events,
+                },
+            )
+    except asyncio.CancelledError:
+        raise
+    except Exception as err:  # noqa: BLE001
+        log.exception("Detector loop error for %s (got %d frames): %s", input_id, frame_count, err)
+        raise
+    finally:
+        reader.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await reader
+        log.info("Detector loop ended for %s after %d frames", input_id, frame_count)
+    return frame_count
+
+
+def start_detector(input_id: str) -> None:
+    if input_id in running_tasks and not running_tasks[input_id].done():
+        return
+    running_tasks[input_id] = asyncio.create_task(run_detector(input_id))
+
+
+def stop_detector(input_id: str) -> None:
+    task = running_tasks.pop(input_id, None)
+    if task and not task.done():
+        task.cancel()
+    active_inputs.pop(input_id, None)
+
+
+def pause_detector(input_id: str) -> None:
+    """side_channel_stopped: keep the subscription, restart the analysis with
+    a fresh detector + session (the restarted stream's PTS may begin at 0)."""
+    task = running_tasks.pop(input_id, None)
+    if task and not task.done():
+        task.cancel()
+    state = active_inputs.get(input_id)
+    if state is None:
+        return
+    state.side_channel_ready = False
+    state.detector = ShotDetector(state.params or None)
+    state.analyzed_frames = 0
+    state.pending_events = []
+    state.frame_buf.clear()
+    state.frames_written = 0
+    state.prev_ball_center = None
+    state.session = uuid.uuid4().hex[:12]
+
+
+async def handle_command(msg: dict) -> None:
+    cmd = msg.get("cmd")
+    input_id = msg.get("inputId")
+    if not isinstance(input_id, str):
+        return
+    if cmd == "subscribe":
+        if input_id not in active_inputs:
+            active_inputs[input_id] = InputState()
+        params = msg.get("params")
+        if isinstance(params, dict):
+            active_inputs[input_id].params = params
+            active_inputs[input_id].detector.set_params(params)
+        start_detector(input_id)
+    elif cmd == "configure":
+        params = msg.get("params")
+        if input_id in active_inputs and isinstance(params, dict):
+            active_inputs[input_id].params = params
+            active_inputs[input_id].detector.set_params(params)
+            log.info("configure %s params=%s", input_id, params)
+    elif cmd == "unsubscribe":
+        stop_detector(input_id)
+    elif cmd == "side_channel_ready":
+        if input_id in active_inputs:
+            active_inputs[input_id].side_channel_ready = True
+            task = running_tasks.get(input_id)
+            if task is None or task.done():
+                start_detector(input_id)
+    elif cmd == "side_channel_stopped":
+        pause_detector(input_id)
+    elif cmd == "shutdown":
+        request_shutdown()
+
+
+async def listen_commands(ws: websockets.WebSocketClientProtocol) -> None:
+    try:
+        async for raw in ws:
+            if _shutting_down:
+                break
+            try:
+                msg = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            await handle_command(msg)
+    except asyncio.CancelledError:
+        request_shutdown()
+
+
+async def main() -> None:
+    global ws_connection
+    log.info("Connecting to Node at %s (weights=%s)", NODE_WS_URL, WEIGHTS_ENV or "auto")
+    while not _shutting_down:
+        try:
+            async with websockets.connect(NODE_WS_URL) as ws:
+                ws_connection = ws
+                await ws.send(json.dumps({"type": "ready", "model": "basketball-scorer"}))
+                log.info("Connected to Node")
+                await listen_commands(ws)
+                if _shutting_down:
+                    break
+        except asyncio.CancelledError:
+            request_shutdown()
+            break
+        except websockets.ConnectionClosed:
+            if _shutting_down:
+                break
+            log.warning("Node connection closed, reconnecting in 2s...")
+        except Exception as err:  # noqa: BLE001
+            if _shutting_down:
+                break
+            log.warning("Connection error: %s, reconnecting in 2s...", err)
+        finally:
+            ws_connection = None
+        if _shutting_down:
+            break
+        await asyncio.sleep(2)
+
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass
