@@ -103,6 +103,12 @@ const GAME_WS_HANDLERS: ReadonlyArray<{
     handle: (room, clientId, msg) => room.handleKbtMessage(clientId, msg),
     disconnect: (room, clientId) => room.handleKbtDisconnect(clientId),
   },
+  {
+    // Basketball Game messages from camera phones, the moderator panel + the arcade page.
+    prefix: 'bb_',
+    handle: (room, clientId, msg) => room.handleBbMessage(clientId, msg),
+    disconnect: (room, clientId) => room.handleBbDisconnect(clientId),
+  },
 ];
 
 function summarizeSyncPayload(payload: unknown): unknown {
@@ -3152,6 +3158,267 @@ routes.post<RoomIdParams & { Body: Static<typeof KbtMp4CamSchema> }>(
     try {
       const { inputId } = await room.attachKbtMp4Cam(
         req.body.clientId,
+        req.body.fileName,
+      );
+      res.status(200).send({ status: 'ok', inputId });
+    } catch (err) {
+      res.status(400).send({
+        status: 'error',
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  },
+);
+
+// ── Basketball Game ─────────────────────────────────────────────
+
+const BbTeamConfigSchema = Type.Object({
+  name: Type.Optional(Type.String({ maxLength: 32 })),
+  color: Type.Optional(Type.String({ maxLength: 16 })),
+});
+
+const BbRimSchema = Type.Object({
+  cx: Type.Number(),
+  cy: Type.Number(),
+  rx: Type.Number(),
+  ry: Type.Number(),
+});
+
+const BbConfigSchema = Type.Object({
+  teams: Type.Optional(
+    Type.Object({
+      A: Type.Optional(BbTeamConfigSchema),
+      B: Type.Optional(BbTeamConfigSchema),
+    }),
+  ),
+  teamSize: Type.Optional(Type.Number()),
+  targetPoints: Type.Optional(Type.Number()),
+  durationMs: Type.Optional(Type.Number()),
+  otWinPoints: Type.Optional(Type.Number()),
+  arcPoints: Type.Optional(Type.Number()),
+  autoAssignMinConf: Type.Optional(Type.Number()),
+  shotFrames: Type.Optional(Type.Boolean()),
+  scoreLingerMs: Type.Optional(Type.Number()),
+  rim: Type.Optional(Type.Union([BbRimSchema, Type.Null()])),
+  detector: Type.Optional(
+    Type.Object({
+      ballDetector: Type.Optional(
+        Type.Union([
+          Type.Literal('auto'),
+          Type.Literal('yolo'),
+          Type.Literal('hsv'),
+        ]),
+      ),
+      yoloWeights: Type.Optional(
+        Type.Union([
+          Type.Literal('auto'),
+          Type.Literal('yolo11n.pt'),
+          Type.Literal('yolo11s.pt'),
+          Type.Literal('yolo11m.pt'),
+        ]),
+      ),
+      imgsz: Type.Optional(Type.Number()),
+      ballConf: Type.Optional(Type.Number()),
+      analysisFps: Type.Optional(Type.Number()),
+    }),
+  ),
+  perf: Type.Optional(
+    Type.Object({
+      animTickHz: Type.Optional(
+        Type.Union([Type.Literal(60), Type.Literal(30), Type.Literal(15)]),
+      ),
+      hudPublishHz: Type.Optional(
+        Type.Union([Type.Literal(10), Type.Literal(5), Type.Literal(2)]),
+      ),
+      recordingPreset: Type.Optional(
+        Type.Union([
+          Type.Literal('ultrafast'),
+          Type.Literal('superfast'),
+          Type.Literal('veryfast'),
+          Type.Literal('fast'),
+          Type.Literal('medium'),
+        ]),
+      ),
+      recordingScale: Type.Optional(
+        Type.Union([Type.Literal(1), Type.Literal(0.75), Type.Literal(0.5)]),
+      ),
+    }),
+  ),
+  /** Phone join URLs per role — the server renders them as the lobby QRs. */
+  joinUrls: Type.Optional(
+    Type.Object({
+      hoop: Type.Optional(Type.String({ maxLength: 2048 })),
+      court: Type.Optional(Type.String({ maxLength: 2048 })),
+      commentator: Type.Optional(Type.String({ maxLength: 2048 })),
+    }),
+  ),
+  joinLabel: Type.Optional(Type.String({ maxLength: 64 })),
+});
+
+routes.post<RoomIdParams & { Body: Static<typeof BbConfigSchema> }>(
+  '/room/:roomId/basketball-game/config',
+  { schema: { params: RoomIdParamsSchema, body: BbConfigSchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    console.log('[request] Set Basketball Game config', {
+      roomId,
+      targetPoints: req.body.targetPoints,
+      durationMs: req.body.durationMs,
+      rim: req.body.rim,
+    });
+    const room = state.getRoom(roomId);
+    const config = room.setBbConfig(req.body);
+    res.status(200).send({ status: 'ok', config });
+  },
+);
+
+const BbMatchSchema = Type.Object({
+  action: Type.Union([
+    Type.Literal('lobby'),
+    Type.Literal('start'),
+    Type.Literal('pause'),
+    Type.Literal('resume'),
+    Type.Literal('end'),
+    Type.Literal('start_overtime'),
+    Type.Literal('reset'),
+    Type.Literal('kick_cam'),
+    Type.Literal('kick_commentator'),
+  ]),
+  /** Target camera for kick_cam. */
+  role: Type.Optional(
+    Type.Union([Type.Literal('hoop'), Type.Literal('court')]),
+  ),
+});
+
+routes.post<RoomIdParams & { Body: Static<typeof BbMatchSchema> }>(
+  '/room/:roomId/basketball-game/match',
+  { schema: { params: RoomIdParamsSchema, body: BbMatchSchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    console.log('[request] Basketball Game match', {
+      roomId,
+      action: req.body.action,
+      role: req.body.role,
+    });
+    const room = state.getRoom(roomId);
+    const { error, ...result } = room.controlBbMatch({
+      action: req.body.action,
+      role: req.body.role,
+    });
+    res
+      .status(200)
+      .send({ status: error ? 'rejected' : 'ok', ...result, error });
+  },
+);
+
+routes.get<RoomIdParams>(
+  '/room/:roomId/basketball-game/state',
+  { schema: { params: RoomIdParamsSchema } },
+  async (req, res) => {
+    const room = state.getRoom(req.params.roomId);
+    res.status(200).send({ status: 'ok', ...room.getBbState() });
+  },
+);
+
+// Ledger edits from the arcade host (the panel uses the WS twin).
+const BbShotEditSchema = Type.Object({
+  op: Type.Union([
+    Type.Literal('resolve'),
+    Type.Literal('add'),
+    Type.Literal('undo'),
+  ]),
+  shotId: Type.Optional(Type.String()),
+  team: Type.Optional(
+    Type.Union([Type.Literal('A'), Type.Literal('B'), Type.Null()]),
+  ),
+  points: Type.Optional(Type.Union([Type.Literal(1), Type.Literal(2)])),
+  voided: Type.Optional(Type.Boolean()),
+});
+
+routes.post<RoomIdParams & { Body: Static<typeof BbShotEditSchema> }>(
+  '/room/:roomId/basketball-game/shot',
+  { schema: { params: RoomIdParamsSchema, body: BbShotEditSchema } },
+  async (req, res) => {
+    const room = state.getRoom(req.params.roomId);
+    const shot = room.editBbShot(req.body);
+    res
+      .status(200)
+      .send({ status: shot ? 'ok' : 'rejected', shot, ...room.getBbState() });
+  },
+);
+
+// Serve make/release stills written by the basketball-scorer worker.
+routes.get<{ Params: { fileName: string } }>(
+  '/bb-shot-frames/:fileName',
+  { schema: { params: Type.Object({ fileName: Type.String() }) } },
+  async (req, res) => {
+    const decoded = decodeURIComponent(req.params.fileName);
+    if (
+      decoded.includes('..') ||
+      decoded.includes('/') ||
+      decoded.includes('\\') ||
+      !decoded.endsWith('.jpg')
+    ) {
+      return res.status(400).send({ error: 'Invalid file name' });
+    }
+    const filePath = path.join(DATA_DIR, 'bb-shot-frames', decoded);
+    if (!(await pathExists(filePath))) {
+      return res.status(404).send({ error: 'Frame not found' });
+    }
+    try {
+      const data = await readFile(filePath);
+      res.header('Content-Type', 'image/jpeg');
+      res.header('Cache-Control', 'public, max-age=31536000, immutable');
+      res.send(data);
+    } catch (err) {
+      console.error('Failed to read basketball shot frame', { filePath, err });
+      res.status(500).send({ error: 'Failed to read frame' });
+    }
+  },
+);
+
+// Dev-only make injector (BB_SIM=1): drive the ledger/HUD without the model.
+const BbSimulateShotSchema = Type.Object({
+  team: Type.Union([Type.Literal('A'), Type.Literal('B'), Type.Null()]),
+  confidence: Type.Optional(Type.Number()),
+  points: Type.Optional(Type.Union([Type.Literal(1), Type.Literal(2)])),
+});
+
+routes.post<RoomIdParams & { Body: Static<typeof BbSimulateShotSchema> }>(
+  '/room/:roomId/basketball-game/simulate-shot',
+  { schema: { params: RoomIdParamsSchema, body: BbSimulateShotSchema } },
+  async (req, res) => {
+    if (process.env.BB_SIM !== '1') {
+      return res.status(404).send({ status: 'error', message: 'Not found' });
+    }
+    const room = state.getRoom(req.params.roomId);
+    const shot = room.simulateBbShot(
+      req.body.team,
+      req.body.confidence ?? 0.9,
+      req.body.points ?? 1,
+    );
+    res.status(200).send({ status: shot ? 'ok' : 'ignored', shot });
+  },
+);
+
+// Dev-only mp4 camera (BB_SIM=1): attach a local-mp4 from data/mp4s as the
+// hoop or court camera — real decoded frames reach the scorer, no phone needed.
+const BbMp4CamSchema = Type.Object({
+  role: Type.Union([Type.Literal('hoop'), Type.Literal('court')]),
+  fileName: Type.String(),
+});
+
+routes.post<RoomIdParams & { Body: Static<typeof BbMp4CamSchema> }>(
+  '/room/:roomId/basketball-game/mp4-cam',
+  { schema: { params: RoomIdParamsSchema, body: BbMp4CamSchema } },
+  async (req, res) => {
+    if (process.env.BB_SIM !== '1') {
+      return res.status(404).send({ status: 'error', message: 'Not found' });
+    }
+    const room = state.getRoom(req.params.roomId);
+    try {
+      const { inputId } = await room.attachBbMp4Cam(
+        req.body.role,
         req.body.fileName,
       );
       res.status(200).send({ status: 'ok', inputId });

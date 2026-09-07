@@ -14,6 +14,8 @@ import { ensureCarAdsSidecarStarted } from './car-ads/car-ads-sidecar';
 import { isCarAdsModel } from './car-ads/manifest';
 import { ensureKettlebellCoachSidecarStarted } from './kettlebell-coach/kettlebell-coach-sidecar';
 import { isKettlebellCoachModel } from './kettlebell-coach/manifest';
+import { ensureBasketballScorerSidecarStarted } from './basketball-scorer/basketball-scorer-sidecar';
+import { isBasketballScorerModel } from './basketball-scorer/manifest';
 
 export type ResultListener = (event: ModelResultEvent) => void;
 
@@ -248,6 +250,9 @@ export class RoomAIController {
     }
     if (isKettlebellCoachModel(modelId)) {
       return ensureKettlebellCoachSidecarStarted();
+    }
+    if (isBasketballScorerModel(modelId)) {
+      return ensureBasketballScorerSidecarStarted();
     }
 
     let sidecar = globalSidecars.get(modelId);

@@ -70,6 +70,21 @@ import {
   type KbtMatchCommand,
   type KbtMatchError,
 } from '../kettlebell/KettlebellTournamentController';
+import {
+  BasketballGameController,
+  type BbMatchCommand,
+  type BbMatchError,
+  type BbWorkerResult,
+} from '../basketball/BasketballGameController';
+import { BASKETBALL_SCORER_ID } from '../ai-models/basketball-scorer/manifest';
+import type {
+  BbCamRole,
+  BbConfig,
+  BbMatchEvent,
+  BbShotEvent,
+  BbStateEvent,
+  BbTeamId,
+} from '@smelter-editor/types';
 import type {
   KbtConfig,
   KbtExerciseKey,
@@ -287,6 +302,7 @@ export class RoomState {
   private readonly kettlebellController: KettlebellCoachController;
   /** Kettlebell Tournament (phone cameras + coach reps → heats + scores). */
   private readonly kbTournament: KettlebellTournamentController;
+  private readonly basketball: BasketballGameController;
 
   /**
    * Per-input wall-clock of the last SCHEDULED kettlebell overlay apply. The
@@ -585,6 +601,88 @@ export class RoomState {
       // NOT deferredUnregisterImage: that helper deletes the backing file,
       // and rep frames are still HTTP-served (the room's GC sweep owns them).
       unregisterRepShotImage: (imageId) => {
+        void SmelterInstance.unregisterImage(imageId).catch(() => {});
+      },
+    });
+
+    // Basketball Game: same deps shape as the kettlebell tournament. Every
+    // basketball cam keeps the side channel (`ai: true`) so hoop, court and
+    // commentator share one 3 s delay — the predictive cut to the hoop cam
+    // and the held score bug both rely on it.
+    this.basketball = new BasketballGameController(idPrefix, {
+      broadcast: (event) => roomEventBus.broadcast(idPrefix, event),
+      sendTo: (clientId, event) =>
+        roomEventBus.sendTo(idPrefix, clientId, event),
+      hasActiveRecording: () => this.recordingController.hasActiveRecording(),
+      registerGameCam: (name, dims, opts) =>
+        this.registerGameWhipCam(name, dims, opts),
+      removeInput: (inputId) => this.removeInput(inputId),
+      setBasketballScorer: (inputId, enabled, params) =>
+        this.setAIModelEnabled(
+          inputId,
+          BASKETBALL_SCORER_ID,
+          enabled,
+          undefined,
+          false,
+          params,
+        ),
+      setAnimTickMs: (ms) => this.output.store.getState().setAnimTickMs(ms),
+      layoutTiles: (tiles) =>
+        this.updateLayers([
+          {
+            id: 'bb-stage',
+            inputs: tiles.map((t) => ({
+              inputId: t.inputId,
+              x: t.x,
+              y: t.y,
+              width: t.width,
+              height: t.height,
+              transitionDurationMs: t.transitionDurationMs,
+              transitionEasing: t.transitionEasing,
+            })),
+          },
+        ]),
+      runInputTransition: (inputId, transition) =>
+        this.inputManager.updateInput(inputId, {
+          activeTransition: transition,
+        }),
+      isInputConnected: (inputId) =>
+        this.inputManager
+          .getInputs()
+          .some((i) => i.inputId === inputId && i.status === 'connected'),
+      isInputLive: (inputId) => this.inputManager.isWhipInputLive(inputId),
+      getResolution: () => this.output.store.getState().resolution,
+      publishHud: (state) => this.output.store.getState().setBbGame(state),
+      registerJoinQr: (url) =>
+        this.registerJoinQrImage(url, {
+          dir: 'bb-qr',
+          imagePrefix: 'bb-qr',
+          // Drawn on the lobby panel's chalk-coloured QR wells.
+          dark: '#0b0b0cff',
+          light: '#f4efe6ff',
+          margin: 0,
+        }),
+      // Shot stills follow the KBT rep-shot rule: the id embeds a filename
+      // hash (names are unique per make), null when the file is gone.
+      registerShotFrameImage: async (url) => {
+        const m = /^\/bb-shot-frames\/([A-Za-z0-9._-]+)$/.exec(url);
+        if (!m) return null;
+        const file = path.join(DATA_DIR, 'bb-shot-frames', m[1]);
+        if (!(await pathExists(file))) return null;
+        const hash = createHash('sha1').update(m[1]).digest('hex').slice(0, 10);
+        const safeRoom = idPrefix.replace(/[^a-zA-Z0-9_-]/g, '_');
+        const imageId = `bb-shot-${safeRoom}-${hash}`;
+        try {
+          await SmelterInstance.registerImage(imageId, {
+            serverPath: file,
+            assetType: 'jpeg',
+          });
+        } catch {
+          return null;
+        }
+        return imageId;
+      },
+      unregisterShotFrameImage: (imageId) => {
         void SmelterInstance.unregisterImage(imageId).catch(() => {});
       },
     });
@@ -1073,6 +1171,18 @@ export class RoomState {
       KETTLEBELL_COACH_ID,
       onKettlebell,
     );
+
+    // Basketball scorer: events go to the game controller immediately (it
+    // owns the predictive cut + the held HUD); no per-input overlay in v1.
+    void this.aiController.wireSidecarListeners(
+      BASKETBALL_SCORER_ID,
+      (event) => {
+        this.basketball.onWorkerResult(
+          event.inputId,
+          event.data as BbWorkerResult,
+        );
+      },
+    );
   }
 
   public async init(): Promise<void> {
@@ -1171,6 +1281,7 @@ export class RoomState {
     );
     // On failure the throw above skips this — state didn't change.
     this.kbTournament.notifyRecordingChanged();
+    this.basketball.notifyRecordingChanged();
     return result;
   }
 
@@ -1179,6 +1290,7 @@ export class RoomState {
       this.recordingController.stopRecording(),
     );
     this.kbTournament.notifyRecordingChanged();
+    this.basketball.notifyRecordingChanged();
     return result;
   }
 
@@ -1689,6 +1801,7 @@ export class RoomState {
     if (removed.length > 0) {
       this.kbTournament.onInputsRemoved(removed);
       this.duckHunter.onInputsRemoved(removed);
+      this.basketball.onInputsRemoved(removed);
     }
   }
 
@@ -1974,6 +2087,113 @@ export class RoomState {
     verdict: 'correct' | 'incorrect',
   ): boolean {
     return this.kbTournament.simulateRep(clientId, exercise, verdict);
+  }
+
+  // ── Basketball Game (thin delegates, like the kettlebell tournament) ──
+
+  public handleBbMessage(clientId: string, raw: unknown): void {
+    this.basketball.handleMessage(clientId, raw);
+  }
+
+  public handleBbDisconnect(clientId: string): void {
+    this.basketball.handleDisconnect(clientId);
+  }
+
+  public controlBbMatch(cmd: BbMatchCommand): {
+    state: BbStateEvent;
+    match: BbMatchEvent;
+    error?: BbMatchError;
+  } {
+    return this.basketball.controlMatch(cmd);
+  }
+
+  public getBbState(): { state: BbStateEvent; match: BbMatchEvent } {
+    return {
+      state: this.basketball.stateSnapshot(),
+      match: this.basketball.getMatchSnapshot(),
+    };
+  }
+
+  public setBbConfig(
+    cfg: Parameters<BasketballGameController['setConfig']>[0],
+  ): BbConfig {
+    const config = this.basketball.setConfig(cfg);
+    this.recordingOptions = {
+      preset: config.perf.recordingPreset,
+      resolutionScale: config.perf.recordingScale,
+    };
+    return config;
+  }
+
+  /** REST mirror of the moderator's ledger edits (arcade host page + e2e). */
+  public editBbShot(cmd: {
+    op: 'resolve' | 'add' | 'undo';
+    shotId?: string;
+    team?: BbTeamId | null;
+    points?: 1 | 2;
+    voided?: boolean;
+  }): BbShotEvent | null {
+    switch (cmd.op) {
+      case 'resolve':
+        return cmd.shotId
+          ? this.basketball.resolveShot({
+              shotId: cmd.shotId,
+              team: cmd.team,
+              points: cmd.points,
+              voided: cmd.voided,
+            })
+          : null;
+      case 'add':
+        return cmd.team
+          ? this.basketball.addManualShot(cmd.team, cmd.points ?? 1)
+          : null;
+      case 'undo':
+        return this.basketball.undoShot(cmd.shotId);
+    }
+  }
+
+  /**
+   * Dev-only (BB_SIM=1): register a looping local-mp4 (from data/mp4s) as a
+   * camera role. The mp4 input gets the same video side channel a WHIP cam
+   * would, so the scorer sees real decoded frames — no phone needed.
+   */
+  public async attachBbMp4Cam(
+    role: BbCamRole,
+    fileName: string,
+  ): Promise<{ inputId: string }> {
+    const inputId = await this.addNewInput({
+      type: 'local-mp4',
+      source: { fileName },
+    });
+    if (!inputId) throw new Error('Failed to register local-mp4 input');
+    await this.connectInput(inputId);
+    const input = this.inputManager
+      .getInputs()
+      .find((i) => i.inputId === inputId);
+    if (
+      !input ||
+      input.type !== 'local-mp4' ||
+      input.mp4AssetMissing ||
+      input.status !== 'connected'
+    ) {
+      await this.removeInput(inputId).catch(() => {});
+      throw new Error(`MP4 not found under data/mp4s: ${fileName}`);
+    }
+    const dims =
+      input.mp4VideoWidth && input.mp4VideoHeight
+        ? { width: input.mp4VideoWidth, height: input.mp4VideoHeight }
+        : undefined;
+    this.basketball.attachExternalCam(role, inputId, dims);
+    return { inputId };
+  }
+
+  /** Dev-only (BB_SIM=1): fabricate an AI make for UI work sans model. */
+  public simulateBbShot(
+    team: BbTeamId | null,
+    confidence: number,
+    points: 1 | 2,
+  ): BbShotEvent | null {
+    return this.basketball.simulateShot(team, confidence, points);
   }
 
   /**
@@ -3020,6 +3240,7 @@ export class RoomState {
       this.pausedAttachedInputVolumes.clear();
       this.duckHunter.dispose();
       this.kbTournament.dispose();
+      this.basketball.dispose();
 
       if (this.pendingStoreFlushTimer) {
         clearTimeout(this.pendingStoreFlushTimer);
@@ -3054,6 +3275,19 @@ export class RoomState {
       // as safeRoom), so a room-prefix match catches them all.
       try {
         const frameDir = path.join(DATA_DIR, 'kbt-rep-frames');
+        const safeRoom = this.idPrefix.replace(/[^a-zA-Z0-9_-]/g, '_');
+        for (const f of await readdir(frameDir)) {
+          if (f.startsWith(safeRoom)) {
+            await remove(path.join(frameDir, f)).catch(() => {});
+          }
+        }
+      } catch {
+        // dir may not exist — nothing to sweep
+      }
+
+      // Same sweep for the basketball scorer's make/release stills.
+      try {
+        const frameDir = path.join(DATA_DIR, 'bb-shot-frames');
         const safeRoom = this.idPrefix.replace(/[^a-zA-Z0-9_-]/g, '_');
         for (const f of await readdir(frameDir)) {
           if (f.startsWith(safeRoom)) {
