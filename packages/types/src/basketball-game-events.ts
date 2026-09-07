@@ -74,6 +74,34 @@ export type BbConfig = {
   perf: BbPerfConfig;
 };
 
+/** Partial config as accepted by POST /room/:id/basketball-game/config. */
+export type BbConfigPatch = {
+  teams?: Partial<Record<BbTeamId, Partial<BbTeamConfig>>>;
+  teamSize?: number;
+  targetPoints?: number;
+  durationMs?: number;
+  otWinPoints?: number;
+  arcPoints?: number;
+  autoAssignMinConf?: number;
+  shotFrames?: boolean;
+  scoreLingerMs?: number;
+  rim?: BbRim | null;
+  detector?: Partial<BbDetectorConfig>;
+  perf?: Partial<BbPerfConfig>;
+  /** Phone join URLs per role — the server renders them as the lobby QRs. */
+  joinUrls?: Partial<Record<"hoop" | "court" | "commentator", string>>;
+  joinLabel?: string;
+};
+
+/** Ledger edit as accepted by POST /room/:id/basketball-game/shot. */
+export type BbShotEdit = {
+  op: "resolve" | "add" | "undo";
+  shotId?: string;
+  team?: BbTeamId | null;
+  points?: 1 | 2;
+  voided?: boolean;
+};
+
 /** Eight bib colours that stay apart on camera (streetball teams pick two). */
 export const BB_TEAM_COLOR_PRESETS: { id: string; label: string; color: string }[] =
   [

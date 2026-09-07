@@ -333,6 +333,12 @@ export class BasketballGameController {
   private timer: ReturnType<typeof setInterval> | null = null;
   private lastCamPoll = 0;
   private disposed = false;
+  /**
+   * Somebody actually uses this game in the room (config pushed, a camera
+   * or moderator joined, a match run). Room-wide pokes (recording toggles)
+   * must not publish our chrome into a room running another game.
+   */
+  private engaged = false;
 
   constructor(
     private readonly roomId: string,
@@ -439,7 +445,8 @@ export class BasketballGameController {
           !this.resolveShot({
             shotId: msg.shotId,
             team: msg.team === undefined ? undefined : this.parseTeam(msg.team),
-            points: msg.points === 1 || msg.points === 2 ? msg.points : undefined,
+            points:
+              msg.points === 1 || msg.points === 2 ? msg.points : undefined,
             voided: typeof msg.voided === 'boolean' ? msg.voided : undefined,
           })
         ) {
@@ -465,7 +472,9 @@ export class BasketballGameController {
       case 'bb_shot_undo':
         if (!this.requireCommentator(clientId, 'undo shots')) break;
         if (
-          !this.undoShot(typeof msg.shotId === 'string' ? msg.shotId : undefined)
+          !this.undoShot(
+            typeof msg.shotId === 'string' ? msg.shotId : undefined,
+          )
         ) {
           this.sendError(clientId, 'unknown_shot', 'Nothing to undo.');
         }
@@ -543,6 +552,7 @@ export class BasketballGameController {
       return;
     }
     const role = rawRole;
+    this.engaged = true;
     const name =
       rawName.slice(0, 20).trim() ||
       (role === 'hoop' ? 'Hoop cam' : 'Court cam');
@@ -710,6 +720,7 @@ export class BasketballGameController {
     inputId: string,
     dims?: { width: number; height: number },
   ): boolean {
+    this.engaged = true;
     let cam = this.cams.get(role);
     if (!cam) {
       cam = {
@@ -831,7 +842,11 @@ export class BasketballGameController {
       );
       return;
     }
-    if (!isTeamId(rawTeam) || typeof rawColor !== 'string' || !HEX_COLOR.test(rawColor)) {
+    if (
+      !isTeamId(rawTeam) ||
+      typeof rawColor !== 'string' ||
+      !HEX_COLOR.test(rawColor)
+    ) {
       this.sendError(clientId, 'invalid_color', 'Team colour must be #rrggbb.');
       return;
     }
@@ -844,6 +859,7 @@ export class BasketballGameController {
   // ── Commentator / moderator ───────────────────────────────────────────────
 
   joinCommentator(clientId: string, rawName: string, key?: string): void {
+    this.engaged = true;
     const name = rawName.slice(0, 20).trim() || 'Moderator';
     const c = this.commentator;
     if (
@@ -888,7 +904,11 @@ export class BasketballGameController {
   ): Promise<void> {
     const c = this.commentator;
     if (!c || c.clientId !== clientId) {
-      this.sendError(clientId, 'not_commentator', 'Join as the moderator first.');
+      this.sendError(
+        clientId,
+        'not_commentator',
+        'Join as the moderator first.',
+      );
       return;
     }
     this.retireCommentatorCam(c);
@@ -904,7 +924,10 @@ export class BasketballGameController {
         ai: true,
       });
     } catch (err) {
-      console.error(`[bb] commentator cam register failed for ${clientId}`, err);
+      console.error(
+        `[bb] commentator cam register failed for ${clientId}`,
+        err,
+      );
       return;
     }
     if (this.disposed || this.commentator !== c || c.inputId != null) {
@@ -1037,7 +1060,8 @@ export class BasketballGameController {
   commentatorControlMatch(clientId: string, cmd: BbMatchCommand): void {
     if (!this.requireCommentator(clientId, 'control the match')) return;
     const { error } = this.controlMatch(cmd);
-    if (error) this.sendError(clientId, error.code, error.message, error.context);
+    if (error)
+      this.sendError(clientId, error.code, error.message, error.context);
   }
 
   // ── Disconnects / reaped inputs ───────────────────────────────────────────
@@ -1086,8 +1110,12 @@ export class BasketballGameController {
     this.broadcastState();
   }
 
-  /** RoomState pokes this after record start/stop. */
+  /** RoomState pokes this after record start/stop (every room, every game). */
   notifyRecordingChanged(): void {
+    if (!this.engaged) {
+      this.deps.broadcast(this.stateSnapshot());
+      return;
+    }
     this.broadcastState();
   }
 
@@ -1095,7 +1123,9 @@ export class BasketballGameController {
 
   setConfig(
     partial: {
-      teams?: Partial<Record<BbTeamId, Partial<{ name: string; color: string }>>>;
+      teams?: Partial<
+        Record<BbTeamId, Partial<{ name: string; color: string }>>
+      >;
       teamSize?: number;
       targetPoints?: number;
       durationMs?: number;
@@ -1111,6 +1141,7 @@ export class BasketballGameController {
       joinLabel?: string;
     } = {},
   ): BbConfig {
+    this.engaged = true;
     const c = this.config;
     let aiParamsChanged = false;
     if (partial.teams) {
@@ -1127,20 +1158,33 @@ export class BasketballGameController {
         }
       }
     }
-    if (partial.teamSize === 1 || partial.teamSize === 2 || partial.teamSize === 3) {
+    if (
+      partial.teamSize === 1 ||
+      partial.teamSize === 2 ||
+      partial.teamSize === 3
+    ) {
       c.teamSize = partial.teamSize;
     }
-    if (typeof partial.targetPoints === 'number' && Number.isFinite(partial.targetPoints)) {
+    if (
+      typeof partial.targetPoints === 'number' &&
+      Number.isFinite(partial.targetPoints)
+    ) {
       c.targetPoints = clamp(Math.round(partial.targetPoints), 1, 99);
     }
-    if (typeof partial.durationMs === 'number' && Number.isFinite(partial.durationMs)) {
+    if (
+      typeof partial.durationMs === 'number' &&
+      Number.isFinite(partial.durationMs)
+    ) {
       c.durationMs = clamp(
         Math.round(partial.durationMs),
         DURATION_MIN_MS,
         DURATION_MAX_MS,
       );
     }
-    if (typeof partial.otWinPoints === 'number' && Number.isFinite(partial.otWinPoints)) {
+    if (
+      typeof partial.otWinPoints === 'number' &&
+      Number.isFinite(partial.otWinPoints)
+    ) {
       c.otWinPoints = clamp(Math.round(partial.otWinPoints), 1, 20);
     }
     if (partial.arcPoints === 1 || partial.arcPoints === 2) {
@@ -1156,7 +1200,10 @@ export class BasketballGameController {
       if (partial.shotFrames !== c.shotFrames) aiParamsChanged = true;
       c.shotFrames = partial.shotFrames;
     }
-    if (typeof partial.scoreLingerMs === 'number' && Number.isFinite(partial.scoreLingerMs)) {
+    if (
+      typeof partial.scoreLingerMs === 'number' &&
+      Number.isFinite(partial.scoreLingerMs)
+    ) {
       c.scoreLingerMs = clamp(Math.round(partial.scoreLingerMs), 0, 10_000);
     }
     if (partial.rim !== undefined) {
@@ -1168,7 +1215,11 @@ export class BasketballGameController {
     }
     if (partial.detector) {
       const d = partial.detector;
-      if (d.ballDetector === 'auto' || d.ballDetector === 'yolo' || d.ballDetector === 'hsv') {
+      if (
+        d.ballDetector === 'auto' ||
+        d.ballDetector === 'yolo' ||
+        d.ballDetector === 'hsv'
+      ) {
         c.detector.ballDetector = d.ballDetector;
       }
       if (
@@ -1199,7 +1250,11 @@ export class BasketballGameController {
       if (p.animTickHz === 60 || p.animTickHz === 30 || p.animTickHz === 15) {
         c.perf.animTickHz = p.animTickHz;
       }
-      if (p.hudPublishHz === 10 || p.hudPublishHz === 5 || p.hudPublishHz === 2) {
+      if (
+        p.hudPublishHz === 10 ||
+        p.hudPublishHz === 5 ||
+        p.hudPublishHz === 2
+      ) {
         c.perf.hudPublishHz = p.hudPublishHz;
       }
       if (
@@ -1211,7 +1266,11 @@ export class BasketballGameController {
       ) {
         c.perf.recordingPreset = p.recordingPreset;
       }
-      if (p.recordingScale === 1 || p.recordingScale === 0.75 || p.recordingScale === 0.5) {
+      if (
+        p.recordingScale === 1 ||
+        p.recordingScale === 0.75 ||
+        p.recordingScale === 0.5
+      ) {
         c.perf.recordingScale = p.recordingScale;
       }
       this.hudMinIntervalMs = Math.round(1000 / c.perf.hudPublishHz);
@@ -1223,7 +1282,8 @@ export class BasketballGameController {
     if (partial.joinUrls) {
       for (const key of ['hoop', 'court', 'commentator'] as const) {
         const url = partial.joinUrls[key];
-        if (typeof url !== 'string' || !url || url === this.joinUrls[key]) continue;
+        if (typeof url !== 'string' || !url || url === this.joinUrls[key])
+          continue;
         this.joinUrls[key] = url;
         this.qrImageIds[key] = null;
         void this.deps
@@ -1250,10 +1310,12 @@ export class BasketballGameController {
     match: BbMatchEvent;
     error?: BbMatchError;
   } {
+    this.engaged = true;
     const error = this.applyMatchAction(cmd);
     if (!error) {
       // Any flow action returns the broadcast to AUTO.
-      if (this.viewOverride.mode !== 'auto') this.viewOverride = { mode: 'auto' };
+      if (this.viewOverride.mode !== 'auto')
+        this.viewOverride = { mode: 'auto' };
       this.syncScene();
       this.deps.broadcast(this.getMatchSnapshot());
       this.broadcastState();
@@ -1304,7 +1366,11 @@ export class BasketballGameController {
         this.segmentStartedAt = now;
         return null;
       case 'end':
-        if (this.phase !== 'live' && this.phase !== 'paused' && this.phase !== 'overtime') {
+        if (
+          this.phase !== 'live' &&
+          this.phase !== 'paused' &&
+          this.phase !== 'overtime'
+        ) {
           return { code: 'bad_action', message: 'No running match to end.' };
         }
         this.endMatch(this.leaderByScore(), false, now);
@@ -1377,7 +1443,9 @@ export class BasketballGameController {
 
   private regElapsed(now: number): number {
     const running =
-      this.period === 'reg' && this.phase === 'live' && this.segmentStartedAt != null
+      this.period === 'reg' &&
+      this.phase === 'live' &&
+      this.segmentStartedAt != null
         ? now - this.segmentStartedAt
         : 0;
     return Math.min(
@@ -1388,7 +1456,9 @@ export class BasketballGameController {
 
   private otElapsed(now: number): number {
     const running =
-      this.period === 'ot' && this.phase === 'overtime' && this.segmentStartedAt != null
+      this.period === 'ot' &&
+      this.phase === 'overtime' &&
+      this.segmentStartedAt != null
         ? now - this.segmentStartedAt
         : 0;
     return this.otElapsedBeforeSegmentMs + Math.max(0, running);
@@ -1415,9 +1485,18 @@ export class BasketballGameController {
     this.publishHud();
   }
 
-  private endMatch(winner: BbTeamId | null, byShot: boolean, now: number): void {
+  private endMatch(
+    winner: BbTeamId | null,
+    byShot: boolean,
+    now: number,
+  ): void {
     this.freezeClock(now);
-    this.phaseBeforeEnd = this.phase === 'paused' ? this.pausedFrom : this.phase === 'overtime' ? 'overtime' : 'live';
+    this.phaseBeforeEnd =
+      this.phase === 'paused'
+        ? this.pausedFrom
+        : this.phase === 'overtime'
+          ? 'overtime'
+          : 'live';
     this.regExpiredAt = null;
     this.phase = 'ended';
     this.endedAt = now;
@@ -1483,12 +1562,18 @@ export class BasketballGameController {
       }
       return a ? 'A' : b ? 'B' : null;
     };
-    if (this.phase === 'live' || (this.phase === 'paused' && this.pausedFrom === 'live')) {
+    if (
+      this.phase === 'live' ||
+      (this.phase === 'paused' && this.pausedFrom === 'live')
+    ) {
       const w = byTarget();
       if (w) this.endMatch(w, true, now);
       return;
     }
-    if (this.phase === 'overtime' || (this.phase === 'paused' && this.pausedFrom === 'overtime')) {
+    if (
+      this.phase === 'overtime' ||
+      (this.phase === 'paused' && this.pausedFrom === 'overtime')
+    ) {
       const w = byOt() ?? byTarget();
       if (w) this.endMatch(w, true, now);
       return;
@@ -1506,7 +1591,11 @@ export class BasketballGameController {
   // ── Ledger ────────────────────────────────────────────────────────────────
 
   private matchAcceptsShots(): boolean {
-    return this.phase === 'live' || this.phase === 'paused' || this.phase === 'overtime';
+    return (
+      this.phase === 'live' ||
+      this.phase === 'paused' ||
+      this.phase === 'overtime'
+    );
   }
 
   private scores(): Record<BbTeamId, number> {
@@ -1526,11 +1615,12 @@ export class BasketballGameController {
       t.makes += 1;
       t.attempts += 1;
       if (shot.points === 2) t.twos += 1;
-      const top = this.tally.A.score === this.tally.B.score
-        ? null
-        : this.tally.A.score > this.tally.B.score
-          ? 'A'
-          : 'B';
+      const top =
+        this.tally.A.score === this.tally.B.score
+          ? null
+          : this.tally.A.score > this.tally.B.score
+            ? 'A'
+            : 'B';
       if (top && top !== leader) {
         if (leader != null) leadChanges += 1;
         leader = top;
@@ -1597,7 +1687,12 @@ export class BasketballGameController {
         : input.aiConfidence >= this.config.autoAssignMinConf
           ? input.aiTeam
           : null;
-    const shot = this.buildShot(input, now, team, team ? 'confirmed' : 'pending');
+    const shot = this.buildShot(
+      input,
+      now,
+      team,
+      team ? 'confirmed' : 'pending',
+    );
     this.shots.push(shot);
     this.afterLedgerChange(now);
     this.lastShot = { shot, at: now };
@@ -1628,7 +1723,8 @@ export class BasketballGameController {
   ): BbShotEvent {
     return {
       id: randomUUID(),
-      index: status === 'voided' && !this.matchAcceptsShots() ? 0 : ++this.shotSeq,
+      index:
+        status === 'voided' && !this.matchAcceptsShots() ? 0 : ++this.shotSeq,
       atMs: now,
       ...(input.sourceT != null ? { sourceT: input.sourceT } : {}),
       team,
@@ -1641,7 +1737,9 @@ export class BasketballGameController {
       period: this.period,
       clockMs: this.periodElapsed(now),
       ...(input.frameUrl ? { frameUrl: input.frameUrl } : {}),
-      ...(input.releaseFrameUrl ? { releaseFrameUrl: input.releaseFrameUrl } : {}),
+      ...(input.releaseFrameUrl
+        ? { releaseFrameUrl: input.releaseFrameUrl }
+        : {}),
     };
   }
 
@@ -1767,7 +1865,10 @@ export class BasketballGameController {
     const hoop = this.cams.get('hoop');
     if (!hoop || hoop.inputId !== inputId) return;
     const now = this.now();
-    if (typeof data.session === 'string' && data.session !== this.workerSession) {
+    if (
+      typeof data.session === 'string' &&
+      data.session !== this.workerSession
+    ) {
       // Worker restart / camera reconnect: event indices start over.
       this.workerSession = data.session;
       this.lastMadeIndex = -1;
@@ -1785,7 +1886,10 @@ export class BasketballGameController {
     this.ballZone = zone;
     if (hoop.clientId) {
       const sig = `${tracked}:${zone}:${data.ball?.src ?? ''}`;
-      if (sig !== this.lastBallSig && now - this.lastBallEventAt >= BALL_EVENT_MIN_MS) {
+      if (
+        sig !== this.lastBallSig &&
+        now - this.lastBallEventAt >= BALL_EVENT_MIN_MS
+      ) {
         this.lastBallSig = sig;
         this.lastBallEventAt = now;
         this.deps.sendTo(hoop.clientId, {
@@ -1800,13 +1904,16 @@ export class BasketballGameController {
     for (const ev of data.events ?? []) {
       if (!ev || typeof ev !== 'object') continue;
       if (ev.type === 'shot_made') {
-        if (typeof ev.index !== 'number' || ev.index <= this.lastMadeIndex) continue;
+        if (typeof ev.index !== 'number' || ev.index <= this.lastMadeIndex)
+          continue;
         this.lastMadeIndex = ev.index;
         this.ingestShot({
           source: 'ai',
           aiTeam: isTeamId(ev.team) ? ev.team : null,
-          aiConfidence: typeof ev.teamConfidence === 'number' ? ev.teamConfidence : 0,
-          colorSample: typeof ev.colorSample === 'string' ? ev.colorSample : null,
+          aiConfidence:
+            typeof ev.teamConfidence === 'number' ? ev.teamConfidence : 0,
+          colorSample:
+            typeof ev.colorSample === 'string' ? ev.colorSample : null,
           ...(typeof ev.t === 'number' ? { sourceT: ev.t } : {}),
           ...(typeof ev.frameFile === 'string'
             ? { frameUrl: `/bb-shot-frames/${ev.frameFile}` }
@@ -1816,7 +1923,8 @@ export class BasketballGameController {
             : {}),
         });
       } else if (ev.type === 'shot_attempt') {
-        if (typeof ev.index !== 'number' || ev.index <= this.lastAttemptIndex) continue;
+        if (typeof ev.index !== 'number' || ev.index <= this.lastAttemptIndex)
+          continue;
         this.lastAttemptIndex = ev.index;
         // Made attempts are represented by the ledger; only misses count here.
         if (ev.result === 'made' || !this.matchAcceptsShots()) continue;
@@ -1834,8 +1942,13 @@ export class BasketballGameController {
 
   // ── Stage / layout ────────────────────────────────────────────────────────
 
-  private camAspect(cam: { camWidth: number | null; camHeight: number | null }): number {
-    return cam.camWidth && cam.camHeight ? cam.camWidth / cam.camHeight : 16 / 9;
+  private camAspect(cam: {
+    camWidth: number | null;
+    camHeight: number | null;
+  }): number {
+    return cam.camWidth && cam.camHeight
+      ? cam.camWidth / cam.camHeight
+      : 16 / 9;
   }
 
   /** Contain-fit a centered row of tiles at their own aspect (KBT's tileRow). */
@@ -1853,7 +1966,13 @@ export class BasketballGameController {
       const left = Math.round(x);
       const right = Math.round(x + w);
       x += w;
-      return { inputId: c.inputId, x: left, y, width: right - left, height: rowH };
+      return {
+        inputId: c.inputId,
+        x: left,
+        y,
+        width: right - left,
+        height: rowH,
+      };
     });
   }
 
@@ -1972,7 +2091,6 @@ export class BasketballGameController {
         }
         // No commentator input after all — fall through to the live layout.
       }
-      // eslint-disable-next-line no-fallthrough
       default: {
         // lobby / live / ended (and split without a caster)
         const main = court ?? hoop;
@@ -2030,7 +2148,9 @@ export class BasketballGameController {
     }
     const { tiles: all, stage } = this.buildStage(this.stagedScene);
     this.lastStage = stage;
-    const staged = new Set(all.filter((t) => t.width > 1).map((t) => t.inputId));
+    const staged = new Set(
+      all.filter((t) => t.width > 1).map((t) => t.inputId),
+    );
     this.lastDesiredTiles = all;
     const fade = { type: 'fade' as const, durationMs: KBT_VIEW_TRANSITION_MS };
     const now = this.now();
@@ -2062,7 +2182,10 @@ export class BasketballGameController {
           until: now + KBT_VIEW_TRANSITION_MS,
         });
         this.deps.runInputTransition(t.inputId, { ...fade, direction: 'out' });
-        nextParkAt = Math.min(nextParkAt, now + KBT_VIEW_TRANSITION_MS - PARK_LEAD_MS);
+        nextParkAt = Math.min(
+          nextParkAt,
+          now + KBT_VIEW_TRANSITION_MS - PARK_LEAD_MS,
+        );
         return { ...t, ...rect, transitionDurationMs: 0 };
       }
       return { ...t, transitionDurationMs: 0 };
@@ -2357,8 +2480,12 @@ export class BasketballGameController {
       lastShot: shot
         ? {
             team: shot.shot.team,
-            teamName: shot.shot.team ? this.config.teams[shot.shot.team].name : null,
-            color: shot.shot.team ? this.config.teams[shot.shot.team].color : '#f4efe6',
+            teamName: shot.shot.team
+              ? this.config.teams[shot.shot.team].name
+              : null,
+            color: shot.shot.team
+              ? this.config.teams[shot.shot.team].color
+              : '#f4efe6',
             points: shot.shot.points,
             pending: shot.shot.status === 'pending',
             showBanner:
@@ -2367,21 +2494,32 @@ export class BasketballGameController {
               (shot.shot.releaseFrameUrl
                 ? this.frameImageIds.get(shot.shot.releaseFrameUrl)
                 : undefined) ??
-              (shot.shot.frameUrl ? this.frameImageIds.get(shot.shot.frameUrl) : undefined) ??
+              (shot.shot.frameUrl
+                ? this.frameImageIds.get(shot.shot.frameUrl)
+                : undefined) ??
               null,
           }
         : null,
       pendingCount: this.shots.filter((s) => s.status === 'pending').length,
       cams: {
-        hoop: { inputId: hoop?.inputId ?? null, live: hoop?.camConnected ?? false },
-        court: { inputId: court?.inputId ?? null, live: court?.camConnected ?? false },
+        hoop: {
+          inputId: hoop?.inputId ?? null,
+          live: hoop?.camConnected ?? false,
+        },
+        court: {
+          inputId: court?.inputId ?? null,
+          live: court?.camConnected ?? false,
+        },
       },
       lobby:
         this.phase === 'lobby'
           ? {
               qr: {
                 hoop: { imageId: this.qrImageIds.hoop, label: this.joinLabel },
-                court: { imageId: this.qrImageIds.court, label: this.joinLabel },
+                court: {
+                  imageId: this.qrImageIds.court,
+                  label: this.joinLabel,
+                },
                 commentator: {
                   imageId: this.qrImageIds.commentator,
                   label: this.joinLabel,
@@ -2436,7 +2574,12 @@ export class BasketballGameController {
 
   private endedTeam(team: BbTeamId) {
     const t = this.tally[team];
-    return { score: t.score, makes: t.makes, attempts: t.attempts, twos: t.twos };
+    return {
+      score: t.score,
+      makes: t.makes,
+      attempts: t.attempts,
+      twos: t.twos,
+    };
   }
 
   private applyHudHeld(state: BbHudState): void {

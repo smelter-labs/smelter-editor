@@ -336,7 +336,6 @@ function analysisFpsFor(playerCount: number): number {
   return 10;
 }
 
-
 /** HUD consumers read the heat clock at ≥500 ms granularity (blink phase,
  * whole seconds), so coarser snapshots stay pixel-identical — and identical
  * back-to-back snapshots dedupe in the store instead of re-rendering the
@@ -1357,7 +1356,10 @@ export class KettlebellTournamentController {
         void this.deps
           .setKettlebellCoach(p.inputId, true, this.coachParams(fps))
           .catch((err) =>
-            console.error(`[kbt] coach param push failed for ${p.inputId}`, err),
+            console.error(
+              `[kbt] coach param push failed for ${p.inputId}`,
+              err,
+            ),
           );
       }
     }
@@ -1365,9 +1367,7 @@ export class KettlebellTournamentController {
 
   /** Heat-size analysis rate, unless the perf config pins one. */
   private effectiveAnalysisFps(playerCount: number): number {
-    return (
-      this.config.perf.analysisFpsOverride ?? analysisFpsFor(playerCount)
-    );
+    return this.config.perf.analysisFpsOverride ?? analysisFpsFor(playerCount);
   }
 
   setRepFloatText(clientId: string, raw: unknown): void {
@@ -1505,6 +1505,20 @@ export class KettlebellTournamentController {
 
   /** RoomState pokes this after record start/stop so both control surfaces see it live. */
   notifyRecordingChanged(): void {
+    // Every room's recording toggles reach every game controller. A room that
+    // never used the tournament (plain rooms, other arcade games) must not
+    // get the lobby chrome published onto its output by a mere REC press.
+    const engaged =
+      this.players.size > 0 ||
+      this.commentator != null ||
+      this.phase !== 'roster' ||
+      this.joinUrl != null;
+    if (!engaged) {
+      // Control surfaces may still be listening — tell them, just don't
+      // touch the output.
+      this.deps.broadcast(this.stateSnapshot());
+      return;
+    }
     this.broadcastState();
   }
 
@@ -2612,7 +2626,10 @@ export class KettlebellTournamentController {
       // the linger expires so the scene flips to the standings board.
       const sceneFlip = this.stagedScene !== this.computeScene();
       if (withinLinger || sceneFlip) {
-        if (sceneFlip || now - this.lastPeriodicHudAt >= this.hudMinIntervalMs) {
+        if (
+          sceneFlip ||
+          now - this.lastPeriodicHudAt >= this.hudMinIntervalMs
+        ) {
           this.lastPeriodicHudAt = now;
           this.publishHud();
         }

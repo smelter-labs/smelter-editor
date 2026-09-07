@@ -18,7 +18,9 @@ const opt = (name, def) => {
   return i >= 0 && args[i + 1] != null ? args[i + 1] : def;
 };
 const detector = opt('detector', 'hsv');
-const [cx, cy, rx, ry] = opt('rim', '0.5,0.35,0.06,0.02').split(',').map(Number);
+const [cx, cy, rx, ry] = opt('rim', '0.5,0.35,0.06,0.02')
+  .split(',')
+  .map(Number);
 const [colorA, colorB] = opt('teams', '#2ee06a,#1f7bff').split(',');
 const seconds = Number(opt('seconds', '25'));
 const expectMakes = opt('expect-makes', null);
@@ -71,9 +73,18 @@ ws.send(JSON.stringify({ type: 'bb_spectate' }));
 
 try {
   await api('POST', `/room/${roomId}/basketball-game/config`, {
-    teams: { A: { name: 'GREEN', color: colorA }, B: { name: 'BLUE', color: colorB } },
+    teams: {
+      A: { name: 'GREEN', color: colorA },
+      B: { name: 'BLUE', color: colorB },
+    },
     rim: { cx, cy, rx, ry },
-    detector: { ballDetector: detector, imgsz, ballConf, yoloWeights: weights, analysisFps: 20 },
+    detector: {
+      ballDetector: detector,
+      imgsz,
+      ballConf,
+      yoloWeights: weights,
+      analysisFps: 20,
+    },
     shotFrames: true,
     autoAssignMinConf: 0.6,
     durationMs: 600_000,
@@ -82,8 +93,12 @@ try {
     role: 'hoop',
     fileName,
   });
-  console.log(`hoop cam input ${cam.inputId} (${fileName}, detector=${detector})`);
-  await api('POST', `/room/${roomId}/basketball-game/match`, { action: 'start' });
+  console.log(
+    `hoop cam input ${cam.inputId} (${fileName}, detector=${detector})`,
+  );
+  await api('POST', `/room/${roomId}/basketball-game/match`, {
+    action: 'start',
+  });
 
   const t0 = Date.now();
   let lastLog = 0;
@@ -102,14 +117,24 @@ try {
   }
   const st = await api('GET', `/room/${roomId}/basketball-game/state`);
   const makes = st.state.recent.filter((s) => s.status !== 'voided').length;
-  const attempts = st.state.teams.A.attempts + st.state.teams.B.attempts + st.state.unattributedMisses;
+  const attempts =
+    st.state.teams.A.attempts +
+    st.state.teams.B.attempts +
+    st.state.unattributedMisses;
   console.log('\nRESULT', {
     makes,
     scores: { A: st.state.teams.A.score, B: st.state.teams.B.score },
     pending: st.state.pending.length,
     attempts,
     ballTrackedPolls: `${balls.tracked}/${balls.samples}`,
-    shots: st.state.recent.map((s) => ({ i: s.index, team: s.team, ai: s.aiTeam, conf: s.aiConfidence, status: s.status, t: s.sourceT })),
+    shots: st.state.recent.map((s) => ({
+      i: s.index,
+      team: s.team,
+      ai: s.aiTeam,
+      conf: s.aiConfidence,
+      status: s.status,
+      t: s.sourceT,
+    })),
   });
   if (expectMakes != null && Number(expectMakes) !== makes) {
     console.log(`EXPECTED ${expectMakes} makes, got ${makes}`);

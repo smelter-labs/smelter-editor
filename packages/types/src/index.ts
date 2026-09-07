@@ -265,6 +265,8 @@ export type {
   BbDetectorConfig,
   BbPerfConfig,
   BbConfig,
+  BbConfigPatch,
+  BbShotEdit,
   BbShotStatus,
   BbShotEvent,
   BbAttempt,

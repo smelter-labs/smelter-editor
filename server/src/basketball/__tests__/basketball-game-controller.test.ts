@@ -115,7 +115,9 @@ function harness(opts?: { withLiveness?: boolean }) {
     offerFor(clientId: string) {
       const found = [...sent]
         .reverse()
-        .find((s) => s.clientId === clientId && s.event.type === 'bb_cam_offer');
+        .find(
+          (s) => s.clientId === clientId && s.event.type === 'bb_cam_offer',
+        );
       return found?.event.type === 'bb_cam_offer' ? found.event : null;
     },
     lastHud(): BbHudState | null {
@@ -128,11 +130,22 @@ type H = ReturnType<typeof harness>;
 
 /** Hoop + court phones joined and publishing, moderator joined. */
 async function rigged(h: H) {
-  h.controller.handleMessage('hoop', { type: 'bb_cam_join', role: 'hoop', name: 'HOOP' });
-  h.controller.handleMessage('court', { type: 'bb_cam_join', role: 'court', name: 'COURT' });
+  h.controller.handleMessage('hoop', {
+    type: 'bb_cam_join',
+    role: 'hoop',
+    name: 'HOOP',
+  });
+  h.controller.handleMessage('court', {
+    type: 'bb_cam_join',
+    role: 'court',
+    name: 'COURT',
+  });
   await h.controller.startCamera('hoop', { width: 1280, height: 720 });
   await h.controller.startCamera('court', { width: 1920, height: 1080 });
-  h.controller.handleMessage('mod', { type: 'bb_commentator_join', name: 'MOD' });
+  h.controller.handleMessage('mod', {
+    type: 'bb_commentator_join',
+    name: 'MOD',
+  });
   h.controller.handleMessage('hoop', {
     type: 'bb_rim_calibrate',
     rim: { cx: 0.5, cy: 0.3, rx: 0.06, ry: 0.02 },
@@ -143,7 +156,10 @@ async function rigged(h: H) {
   };
 }
 
-async function started(h: H, cfg?: Parameters<BasketballGameController['setConfig']>[0]) {
+async function started(
+  h: H,
+  cfg?: Parameters<BasketballGameController['setConfig']>[0],
+) {
   const ids = await rigged(h);
   h.controller.setConfig({ targetPoints: 21, durationMs: 60_000, ...cfg });
   const r = h.controller.controlMatch({ action: 'start' });
@@ -163,7 +179,11 @@ afterEach(() => {
 describe('BasketballGameController — cameras', () => {
   it('claims a role, offers a WHIP slot and arms the scorer on the hoop cam only', async () => {
     const h = harness();
-    h.controller.handleMessage('p1', { type: 'bb_cam_join', role: 'hoop', name: 'RIM' });
+    h.controller.handleMessage('p1', {
+      type: 'bb_cam_join',
+      role: 'hoop',
+      name: 'RIM',
+    });
     const joined = h.joinedFor('p1');
     expect(joined?.role).toBe('hoop');
     expect(joined?.camKey).toBeTruthy();
@@ -172,8 +192,14 @@ describe('BasketballGameController — cameras', () => {
     expect(offer?.role).toBe('hoop');
     expect(offer?.whipUrl).toContain(offer!.inputId);
     expect(h.aiCalls).toHaveLength(1);
-    expect(h.aiCalls[0]).toMatchObject({ inputId: offer!.inputId, enabled: true });
-    expect(h.aiCalls[0].params).toMatchObject({ rimSet: 0, teamColorA: '#ff6a1f' });
+    expect(h.aiCalls[0]).toMatchObject({
+      inputId: offer!.inputId,
+      enabled: true,
+    });
+    expect(h.aiCalls[0].params).toMatchObject({
+      rimSet: 0,
+      teamColorA: '#ff6a1f',
+    });
 
     h.controller.handleMessage('p2', { type: 'bb_cam_join', role: 'court' });
     await h.controller.startCamera('p2');
@@ -188,7 +214,11 @@ describe('BasketballGameController — cameras', () => {
     const key = h.joinedFor('p1')!.camKey;
     h.controller.handleMessage('p2', { type: 'bb_cam_join', role: 'hoop' });
     expect(h.errorsFor('p2').map((e) => e.code)).toEqual(['role_taken']);
-    h.controller.handleMessage('p3', { type: 'bb_cam_join', role: 'hoop', camKey: key });
+    h.controller.handleMessage('p3', {
+      type: 'bb_cam_join',
+      role: 'hoop',
+      camKey: key,
+    });
     const joined = h.joinedFor('p3');
     expect(joined?.camKey).toBe(key);
     expect(joined?.camInputActive).toBe(true);
@@ -206,9 +236,16 @@ describe('BasketballGameController — cameras', () => {
     h.controller.handleDisconnect('p1');
     expect(h.lastState().cams.court.connected).toBe(false);
     expect(h.connected.has(inputId)).toBe(true);
-    h.controller.handleMessage('p2', { type: 'bb_cam_join', role: 'court', name: 'NEW' });
+    h.controller.handleMessage('p2', {
+      type: 'bb_cam_join',
+      role: 'court',
+      name: 'NEW',
+    });
     expect(h.errorsFor('p2')).toHaveLength(0);
-    expect(h.lastState().cams.court).toMatchObject({ connected: true, name: 'NEW' });
+    expect(h.lastState().cams.court).toMatchObject({
+      connected: true,
+      name: 'NEW',
+    });
     h.controller.dispose();
   });
 
@@ -220,11 +257,23 @@ describe('BasketballGameController — cameras', () => {
       type: 'bb_rim_calibrate',
       rim: { cx: 0.51, cy: 0.33, rx: 0.07, ry: 0.025 },
     });
-    expect(h.lastState().config.rim).toEqual({ cx: 0.51, cy: 0.33, rx: 0.07, ry: 0.025 });
+    expect(h.lastState().config.rim).toEqual({
+      cx: 0.51,
+      cy: 0.33,
+      rx: 0.07,
+      ry: 0.025,
+    });
     expect(h.lastState().cams.hoop.calibrated).toBe(true);
     const last = h.aiCalls[h.aiCalls.length - 1];
-    expect(last.params).toMatchObject({ rimSet: 1, rimCx: 0.51, analysisFps: 20 });
-    h.controller.handleMessage('p1', { type: 'bb_rim_calibrate', rim: { cx: 2, cy: 0, rx: 0.1, ry: 0.1 } });
+    expect(last.params).toMatchObject({
+      rimSet: 1,
+      rimCx: 0.51,
+      analysisFps: 20,
+    });
+    h.controller.handleMessage('p1', {
+      type: 'bb_rim_calibrate',
+      rim: { cx: 2, cy: 0, rx: 0.1, ry: 0.1 },
+    });
     expect(h.errorsFor('p1').map((e) => e.code)).toEqual(['invalid_rim']);
     h.controller.dispose();
   });
@@ -265,7 +314,11 @@ describe('BasketballGameController — ledger + match', () => {
     const st = h.lastState();
     expect(st.teams.B).toMatchObject({ score: 2, makes: 1, twos: 1 });
     expect(st.pending).toHaveLength(0);
-    expect(h.ofType('bb_shot').map((e) => e.kind)).toEqual(['made', 'made', 'assigned']);
+    expect(h.ofType('bb_shot').map((e) => e.kind)).toEqual([
+      'made',
+      'made',
+      'assigned',
+    ]);
     h.controller.dispose();
   });
 
@@ -277,7 +330,11 @@ describe('BasketballGameController — ledger + match', () => {
     expect(h.lastState().teams.A.score).toBe(2);
     h.controller.handleMessage('mod', { type: 'bb_shot_undo' });
     expect(h.lastState().teams.A.score).toBe(1);
-    h.controller.handleMessage('mod', { type: 'bb_shot_add', team: 'B', points: 2 });
+    h.controller.handleMessage('mod', {
+      type: 'bb_shot_add',
+      team: 'B',
+      points: 2,
+    });
     expect(h.lastState().teams.B).toMatchObject({ score: 2, twos: 1 });
     expect(h.ofType('bb_lead_change').map((e) => e.team)).toEqual(['B']);
     // Only the moderator may edit.
@@ -351,8 +408,12 @@ describe('BasketballGameController — ledger + match', () => {
   it('rejects out-of-order flow actions and resets cleanly', async () => {
     const h = harness();
     await started(h);
-    expect(h.controller.controlMatch({ action: 'start' }).error?.code).toBe('bad_action');
-    expect(h.controller.controlMatch({ action: 'lobby' }).error?.code).toBe('bad_action');
+    expect(h.controller.controlMatch({ action: 'start' }).error?.code).toBe(
+      'bad_action',
+    );
+    expect(h.controller.controlMatch({ action: 'lobby' }).error?.code).toBe(
+      'bad_action',
+    );
     h.controller.simulateShot('A', 0.9);
     h.controller.controlMatch({ action: 'reset' });
     const st = h.lastState();
@@ -388,17 +449,40 @@ describe('BasketballGameController — worker feed', () => {
       ball: { x: 0.5, y: 0.2, w: 0.02, h: 0.03, src: 'yolo' },
       zone: 'above',
       events: [
-        { type: 'shot_made', index: 3, t: 12.5, team: 'A', teamConfidence: 0.9, frameFile: 'm.jpg', releaseFrameFile: 'r.jpg' },
+        {
+          type: 'shot_made',
+          index: 3,
+          t: 12.5,
+          team: 'A',
+          teamConfidence: 0.9,
+          frameFile: 'm.jpg',
+          releaseFrameFile: 'r.jpg',
+        },
         { type: 'shot_attempt', index: 3, result: 'made', team: 'A' },
       ],
     });
-    expect(h.lastState().teams.A).toMatchObject({ score: 1, makes: 1, attempts: 1 });
+    expect(h.lastState().teams.A).toMatchObject({
+      score: 1,
+      makes: 1,
+      attempts: 1,
+    });
     const made = h.ofType('bb_shot')[0];
-    expect(made.shot).toMatchObject({ sourceT: 12.5, frameUrl: '/bb-shot-frames/m.jpg', releaseFrameUrl: '/bb-shot-frames/r.jpg' });
+    expect(made.shot).toMatchObject({
+      sourceT: 12.5,
+      frameUrl: '/bb-shot-frames/m.jpg',
+      releaseFrameUrl: '/bb-shot-frames/r.jpg',
+    });
     await vi.advanceTimersByTimeAsync(0);
-    expect(h.frameRegisters).toEqual(['/bb-shot-frames/m.jpg', '/bb-shot-frames/r.jpg']);
+    expect(h.frameRegisters).toEqual([
+      '/bb-shot-frames/m.jpg',
+      '/bb-shot-frames/r.jpg',
+    ]);
     const ball = sentBall(h);
-    expect(ball).toMatchObject({ tracked: true, zone: 'above', source: 'yolo' });
+    expect(ball).toMatchObject({
+      tracked: true,
+      zone: 'above',
+      source: 'yolo',
+    });
     // Replayed index → ignored; miss attempt counts for FG%.
     h.controller.onWorkerResult(hoopIn, {
       session: 's1',
@@ -430,7 +514,10 @@ describe('BasketballGameController — stage + HUD', () => {
   it('lays out court full + hoop PiP live, parks the commentator when PiP is off', async () => {
     const h = harness();
     const { hoopIn, courtIn } = await started(h);
-    await h.controller.startCommentatorCamera('mod', { width: 1280, height: 720 });
+    await h.controller.startCommentatorCamera('mod', {
+      width: 1280,
+      height: 720,
+    });
     await vi.advanceTimersByTimeAsync(0);
     const castIn = h.offerFor('mod')!.inputId;
     const last = h.layouts[h.layouts.length - 1];
@@ -438,13 +525,20 @@ describe('BasketballGameController — stage + HUD', () => {
     expect(byId[courtIn]).toMatchObject({ x: 0, y: 0, width: 1920 });
     expect(byId[hoopIn].width).toBe(480);
     expect(byId[castIn].width).toBe(220); // lower-third caster PiP
-    h.controller.handleMessage('mod', { type: 'bb_commentator_caster_pip', enabled: false });
+    h.controller.handleMessage('mod', {
+      type: 'bb_commentator_caster_pip',
+      enabled: false,
+    });
     await vi.advanceTimersByTimeAsync(0);
     // A leaving tile holds its rect through the fade-out, then parks.
-    const holding = h.layouts[h.layouts.length - 1].find((t) => t.inputId === castIn);
+    const holding = h.layouts[h.layouts.length - 1].find(
+      (t) => t.inputId === castIn,
+    );
     expect(holding?.width).toBe(220);
     await vi.advanceTimersByTimeAsync(400);
-    const parked = h.layouts[h.layouts.length - 1].find((t) => t.inputId === castIn);
+    const parked = h.layouts[h.layouts.length - 1].find(
+      (t) => t.inputId === castIn,
+    );
     expect(parked?.width).toBe(1);
     h.controller.dispose();
   });
@@ -458,18 +552,26 @@ describe('BasketballGameController — stage + HUD', () => {
     await vi.advanceTimersByTimeAsync(0);
     // Layout + stage flip now…
     const cut = h.layouts[h.layouts.length - 1];
-    expect(cut.find((t) => t.inputId === hoopIn)).toMatchObject({ width: 1920 });
+    expect(cut.find((t) => t.inputId === hoopIn)).toMatchObject({
+      width: 1920,
+    });
     expect(cut.find((t) => t.inputId === courtIn)?.width).toBe(480);
     expect(h.lastHud()?.stage).toMatchObject({ scene: 'score', main: 'hoop' });
     // …but the score bug still shows the pre-make score for HUD_HOLD_MS.
     expect(h.lastHud()?.teams.A.score).toBe(0);
     await vi.advanceTimersByTimeAsync(HOLD + 100);
     expect(h.lastHud()?.teams.A.score).toBe(1);
-    expect(h.lastHud()?.lastShot).toMatchObject({ team: 'A', points: 1, showBanner: true });
+    expect(h.lastHud()?.lastShot).toMatchObject({
+      team: 'A',
+      points: 1,
+      showBanner: true,
+    });
     // After the linger the stage returns to the live layout.
     await vi.advanceTimersByTimeAsync(2_600);
     expect(h.lastHud()?.stage.scene).toBe('live');
-    expect(h.layouts[h.layouts.length - 1].find((t) => t.inputId === courtIn)?.width).toBe(1920);
+    expect(
+      h.layouts[h.layouts.length - 1].find((t) => t.inputId === courtIn)?.width,
+    ).toBe(1920);
     expect(h.lastState().scene).toBe('live');
     h.controller.dispose();
   });
@@ -477,17 +579,34 @@ describe('BasketballGameController — stage + HUD', () => {
   it('view overrides cut the stage and clear on the next flow action', async () => {
     const h = harness();
     const { hoopIn } = await started(h);
-    h.controller.handleMessage('hoop', { type: 'bb_commentator_view', override: { mode: 'scene', scene: 'hoop' } });
+    h.controller.handleMessage('hoop', {
+      type: 'bb_commentator_view',
+      override: { mode: 'scene', scene: 'hoop' },
+    });
     expect(h.errorsFor('hoop').map((e) => e.code)).toContain('not_commentator');
-    h.controller.handleMessage('mod', { type: 'bb_commentator_view', override: { mode: 'scene', scene: 'caster' } });
+    h.controller.handleMessage('mod', {
+      type: 'bb_commentator_view',
+      override: { mode: 'scene', scene: 'caster' },
+    });
     expect(h.errorsFor('mod').map((e) => e.code)).toContain('invalid_view'); // no caster input
-    h.controller.handleMessage('mod', { type: 'bb_commentator_view', override: { mode: 'scene', scene: 'hoop' } });
+    h.controller.handleMessage('mod', {
+      type: 'bb_commentator_view',
+      override: { mode: 'scene', scene: 'hoop' },
+    });
     await vi.advanceTimersByTimeAsync(0);
-    expect(h.lastState()).toMatchObject({ scene: 'hoop', viewOverride: { mode: 'scene', scene: 'hoop' } });
-    expect(h.layouts[h.layouts.length - 1].find((t) => t.inputId === hoopIn)?.width).toBe(1920);
+    expect(h.lastState()).toMatchObject({
+      scene: 'hoop',
+      viewOverride: { mode: 'scene', scene: 'hoop' },
+    });
+    expect(
+      h.layouts[h.layouts.length - 1].find((t) => t.inputId === hoopIn)?.width,
+    ).toBe(1920);
     h.controller.controlMatch({ action: 'pause' });
     await vi.advanceTimersByTimeAsync(0);
-    expect(h.lastState()).toMatchObject({ scene: 'live', viewOverride: { mode: 'auto' } });
+    expect(h.lastState()).toMatchObject({
+      scene: 'live',
+      viewOverride: { mode: 'auto' },
+    });
     h.controller.dispose();
   });
 
@@ -509,7 +628,11 @@ describe('BasketballGameController — stage + HUD', () => {
     const h = harness();
     await rigged(h);
     h.controller.setConfig({
-      joinUrls: { hoop: 'http://x/h', court: 'http://x/c', commentator: 'http://x/m' },
+      joinUrls: {
+        hoop: 'http://x/h',
+        court: 'http://x/c',
+        commentator: 'http://x/m',
+      },
       joinLabel: 'x',
     });
     await vi.advanceTimersByTimeAsync(HOLD + 100);
@@ -531,7 +654,11 @@ describe('BasketballGameController — stage + HUD', () => {
     });
     expect(cfg.durationMs).toBe(30_000);
     expect(cfg.targetPoints).toBe(99);
-    expect(cfg.detector).toMatchObject({ imgsz: 992, analysisFps: 30, ballConf: 0.9 });
+    expect(cfg.detector).toMatchObject({
+      imgsz: 992,
+      analysisFps: 30,
+      ballConf: 0.9,
+    });
     expect(cfg.teams.A).toEqual({ color: '#ffffff', name: 'WHITES' });
     const last = h.aiCalls[h.aiCalls.length - 1];
     expect(last.params).toMatchObject({ imgsz: 992, teamColorA: '#ffffff' });

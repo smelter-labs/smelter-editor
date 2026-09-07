@@ -4,7 +4,13 @@ import { bbPipRect, createRoomStore } from '../app/store';
 
 function hud(score: number): BbHudState {
   return {
-    stage: { scene: 'live', main: 'court', pip: null, caster: null, split: false },
+    stage: {
+      scene: 'live',
+      main: 'court',
+      pip: null,
+      caster: null,
+      split: false,
+    },
     teams: {
       A: { name: 'A', color: '#ff6a1f', score },
       B: { name: 'B', color: '#1f7bff', score: 0 },

@@ -28,7 +28,9 @@ export function buildJoinUrl(base: string, path: string): string {
   if (!b) return '';
   const api = getStoredClientServerUrl() ?? getPublicDefaultServerUrl();
   const sep = path.includes('?') ? '&' : '?';
-  return api ? `${b}${path}${sep}server=${encodeURIComponent(api)}` : `${b}${path}`;
+  return api
+    ? `${b}${path}${sep}server=${encodeURIComponent(api)}`
+    : `${b}${path}`;
 }
 
 /** Host part of the base, for the "scan → host" caption on the broadcast. */

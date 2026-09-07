@@ -13,9 +13,11 @@ import {
   useTranscriptionSideChannelInputIds,
   useKbTournament,
   useShooterOverlay,
+  useBbGame,
 } from './store';
 import { Input } from '../inputs/inputs';
 import { KbtMatchHud } from '../inputs/KbtHud';
+import { BbMatchHud } from '../inputs/BbHud';
 import { ShooterLobbyScene } from '../inputs/ShooterLobbyScene';
 import { ShooterResultsScene } from '../inputs/ShooterResultsScene';
 import { wrapWithShaders } from '../utils/shaderUtils';
@@ -396,6 +398,9 @@ function OutputScene() {
       {/* Kettlebell Tournament chrome sits above every layer (per-tile HUD
           renders inside each Input; this is the heat clock/banner/standings). */}
       <KbtHudSlot resolution={resolution} />
+      {/* Basketball game chrome (score bug, PiP frames, SCORE banner, lobby
+          and final cards) — same slot pattern, one game on air at a time. */}
+      <BbHudSlot resolution={resolution} />
       {/* Duck-hunter GAME OVER scene — full-frame retro results over the
           ended match (the in-tile HUD hides itself for that phase). */}
       <ShooterHudSlot resolution={resolution} />
@@ -432,6 +437,20 @@ function KbtHudSlot({
   // (JOIN THE TOURNAMENT panel, branding) would obscure the game.
   if (shooter) return null;
   return <KbtMatchHud hud={kbTournament} resolution={resolution} />;
+}
+
+/** Basketball game HUD slot — yields to a live shooter overlay or a staged
+ * kettlebell tournament (games never share the output). */
+function BbHudSlot({
+  resolution,
+}: {
+  resolution: { width: number; height: number };
+}) {
+  const bbGame = useBbGame();
+  const shooter = useShooterOverlay();
+  const kbTournament = useKbTournament();
+  if (!bbGame || shooter || kbTournament) return null;
+  return <BbMatchHud hud={bbGame} resolution={resolution} />;
 }
 
 /** Same subscription isolation for the duck-hunter full-frame scenes (~30 Hz).

@@ -643,6 +643,45 @@ export async function getKbtState(roomId: string): Promise<{
   return (await getClient()).getKbtState(roomId);
 }
 
+export async function setBbConfig(
+  roomId: string,
+  config: import('@smelter-editor/types').BbConfigPatch,
+): Promise<import('@smelter-editor/types').BbConfig> {
+  return (await getClient()).setBbConfig(roomId, config);
+}
+
+export async function controlBbMatch(
+  roomId: string,
+  cmd: {
+    action: import('@smelter-editor/types').BbMatchAction;
+    role?: import('@smelter-editor/types').BbCamRole;
+  },
+): Promise<{
+  state: import('@smelter-editor/types').BbStateEvent;
+  match: import('@smelter-editor/types').BbMatchEvent;
+  error?: { code: string; message: string };
+}> {
+  return (await getClient()).controlBbMatch(roomId, cmd);
+}
+
+export async function getBbState(roomId: string): Promise<{
+  state: import('@smelter-editor/types').BbStateEvent;
+  match: import('@smelter-editor/types').BbMatchEvent;
+}> {
+  return (await getClient()).getBbState(roomId);
+}
+
+export async function editBbShot(
+  roomId: string,
+  cmd: import('@smelter-editor/types').BbShotEdit,
+): Promise<{
+  shot: import('@smelter-editor/types').BbShotEvent | null;
+  state: import('@smelter-editor/types').BbStateEvent;
+  match: import('@smelter-editor/types').BbMatchEvent;
+}> {
+  return (await getClient()).editBbShot(roomId, cmd);
+}
+
 export async function setHaunterConfig(
   roomId: string,
   config: {

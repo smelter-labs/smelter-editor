@@ -33,6 +33,14 @@ import type {
   KbtMatchEvent,
   KbtPerfConfig,
   KbtStateEvent,
+  BbCamRole,
+  BbConfig,
+  BbConfigPatch,
+  BbMatchAction,
+  BbMatchEvent,
+  BbShotEdit,
+  BbShotEvent,
+  BbStateEvent,
 } from '@smelter-editor/types';
 import { createStorageClient, type StorageClient } from './storage-client';
 
@@ -245,6 +253,29 @@ interface SmelterApiClient {
   getKbtState(
     roomId: string,
   ): Promise<{ state: KbtStateEvent; match: KbtMatchEvent }>;
+
+  setBbConfig(roomId: string, config: BbConfigPatch): Promise<BbConfig>;
+  controlBbMatch(
+    roomId: string,
+    cmd: { action: BbMatchAction; role?: BbCamRole },
+  ): Promise<{
+    state: BbStateEvent;
+    match: BbMatchEvent;
+    /** Present when the server refused the action (status 'rejected'). */
+    error?: { code: string; message: string };
+  }>;
+  getBbState(
+    roomId: string,
+  ): Promise<{ state: BbStateEvent; match: BbMatchEvent }>;
+  /** Ledger edit (resolve / add / undo) from the host page. */
+  editBbShot(
+    roomId: string,
+    cmd: BbShotEdit,
+  ): Promise<{
+    shot: BbShotEvent | null;
+    state: BbStateEvent;
+    match: BbMatchEvent;
+  }>;
 
   setHaunterConfig(
     roomId: string,
@@ -717,6 +748,52 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       return {
         state: data.state as KbtStateEvent,
         match: data.match as KbtMatchEvent,
+      };
+    },
+
+    async setBbConfig(roomId, config) {
+      const data = await req(
+        'post',
+        `/room/${enc(roomId)}/basketball-game/config`,
+        config,
+      );
+      return data.config as BbConfig;
+    },
+
+    async controlBbMatch(roomId, cmd) {
+      const data = await req(
+        'post',
+        `/room/${enc(roomId)}/basketball-game/match`,
+        cmd,
+      );
+      return {
+        state: data.state as BbStateEvent,
+        match: data.match as BbMatchEvent,
+        error: data.error as { code: string; message: string } | undefined,
+      };
+    },
+
+    async getBbState(roomId) {
+      const data = await req(
+        'get',
+        `/room/${enc(roomId)}/basketball-game/state`,
+      );
+      return {
+        state: data.state as BbStateEvent,
+        match: data.match as BbMatchEvent,
+      };
+    },
+
+    async editBbShot(roomId, cmd) {
+      const data = await req(
+        'post',
+        `/room/${enc(roomId)}/basketball-game/shot`,
+        cmd,
+      );
+      return {
+        shot: (data.shot ?? null) as BbShotEvent | null,
+        state: data.state as BbStateEvent,
+        match: data.match as BbMatchEvent,
       };
     },
 

@@ -35,8 +35,8 @@ const out = process.argv[2]
 
 const hex = (s) => [1, 3, 5].map((i) => parseInt(s.slice(i, i + 2), 16));
 const PLAYER = {
-  A: { x0: 0.10, x1: 0.18, y0: 0.45, y1: 0.85, rgb: hex(TEAM.A) },
-  B: { x0: 0.82, x1: 0.90, y0: 0.45, y1: 0.85, rgb: hex(TEAM.B) },
+  A: { x0: 0.1, x1: 0.18, y0: 0.45, y1: 0.85, rgb: hex(TEAM.A) },
+  B: { x0: 0.82, x1: 0.9, y0: 0.45, y1: 0.85, rgb: hex(TEAM.B) },
 };
 const hands = (p) => ({ x: (p.x0 + p.x1) / 2, y: p.y0 + 0.03 });
 
@@ -111,8 +111,20 @@ function ellipseRing(cx, cy, rx, ry, thicknessPx, rgb) {
 function drawScene(ball) {
   fill([42, 42, 46]); // asphalt
   // backboard
-  rect(RIM.cx - 0.14, RIM.cy - 0.32, RIM.cx + 0.14, RIM.cy - 0.02, [216, 212, 204]);
-  rect(RIM.cx - 0.05, RIM.cy - 0.12, RIM.cx + 0.05, RIM.cy - 0.03, [150, 40, 40]);
+  rect(
+    RIM.cx - 0.14,
+    RIM.cy - 0.32,
+    RIM.cx + 0.14,
+    RIM.cy - 0.02,
+    [216, 212, 204],
+  );
+  rect(
+    RIM.cx - 0.05,
+    RIM.cy - 0.12,
+    RIM.cx + 0.05,
+    RIM.cy - 0.03,
+    [150, 40, 40],
+  );
   // net: a few grey strands tapering under the rim
   const netTop = RIM.cy + RIM.ry;
   for (let k = -3; k <= 3; k++) {
@@ -149,7 +161,10 @@ function arc(p0, p1, apexY) {
     const y0 = p0.y;
     const y1 = p1.y;
     // choose vertex position so the peak equals apexY
-    const k = Math.sqrt(Math.max(0, y0 - apexY)) / (Math.sqrt(Math.max(0, y0 - apexY)) + Math.sqrt(Math.max(0, y1 - apexY)) || 1);
+    const k =
+      Math.sqrt(Math.max(0, y0 - apexY)) /
+      (Math.sqrt(Math.max(0, y0 - apexY)) +
+        Math.sqrt(Math.max(0, y1 - apexY)) || 1);
     const a = (y0 - apexY) / (k * k || 1e-6);
     return { x, y: apexY + a * (u - k) * (u - k) };
   };
@@ -169,11 +184,20 @@ function swish(from) {
   const entry = { x: RIM.cx, y: RIM.cy - 3.5 * RXY };
   t = push(t, 0.7, arc(h, entry, RIM.cy - 4.5 * RXY));
   // fast descent into the rim (≈1.3 heights/s)
-  t = push(t, (RIM.cy - entry.y) / 1.3, (u) => ({ x: RIM.cx, y: lerp(entry.y, RIM.cy, u) }));
+  t = push(t, (RIM.cy - entry.y) / 1.3, (u) => ({
+    x: RIM.cx,
+    y: lerp(entry.y, RIM.cy, u),
+  }));
   // caught by the net: slow, slightly swaying
-  t = push(t, 0.4, (u) => ({ x: RIM.cx + Math.sin(u * Math.PI) * 0.004, y: lerp(RIM.cy, netBottom + 0.01, u) }));
+  t = push(t, 0.4, (u) => ({
+    x: RIM.cx + Math.sin(u * Math.PI) * 0.004,
+    y: lerp(RIM.cy, netBottom + 0.01, u),
+  }));
   // drops out of the net to the floor
-  t = push(t, 0.45, (u) => ({ x: RIM.cx + 0.02 * u, y: lerp(netBottom + 0.01, floor, u * u) }));
+  t = push(t, 0.45, (u) => ({
+    x: RIM.cx + 0.02 * u,
+    y: lerp(netBottom + 0.01, floor, u * u),
+  }));
 }
 function rimOut(from) {
   expectedAttempts++;
@@ -181,9 +205,15 @@ function rimOut(from) {
   const edge = { x: RIM.cx - RIM.rx * 0.95, y: RIM.cy - RIM.ry };
   t = push(t, 0.8, arc(h, edge, RIM.cy - 3.5 * RXY));
   // bounce up and away
-  const away = { x: RIM.cx - 0.22, y: RIM.cy - 0.10 };
-  t = push(t, 0.35, (u) => ({ x: lerp(edge.x, away.x, u), y: edge.y - 0.09 * Math.sin(u * Math.PI) + (away.y - edge.y) * u }));
-  t = push(t, 0.5, (u) => ({ x: away.x - 0.05 * u, y: lerp(away.y, floor, u * u) }));
+  const away = { x: RIM.cx - 0.22, y: RIM.cy - 0.1 };
+  t = push(t, 0.35, (u) => ({
+    x: lerp(edge.x, away.x, u),
+    y: edge.y - 0.09 * Math.sin(u * Math.PI) + (away.y - edge.y) * u,
+  }));
+  t = push(t, 0.5, (u) => ({
+    x: away.x - 0.05 * u,
+    y: lerp(away.y, floor, u * u),
+  }));
 }
 function passBy(from) {
   expectedAttempts++;
@@ -240,9 +270,27 @@ function ballAt(time) {
 const ff = spawn(
   'ffmpeg',
   [
-    '-y', '-loglevel', 'error',
-    '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', `${W}x${H}`, '-r', String(FPS), '-i', '-',
-    '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
+    '-y',
+    '-loglevel',
+    'error',
+    '-f',
+    'rawvideo',
+    '-pix_fmt',
+    'rgb24',
+    '-s',
+    `${W}x${H}`,
+    '-r',
+    String(FPS),
+    '-i',
+    '-',
+    '-c:v',
+    'libx264',
+    '-preset',
+    'veryfast',
+    '-pix_fmt',
+    'yuv420p',
+    '-movflags',
+    '+faststart',
     out,
   ],
   { stdio: ['pipe', 'inherit', 'inherit'] },
@@ -250,13 +298,19 @@ const ff = spawn(
 const frames = Math.ceil(total * FPS);
 for (let i = 0; i < frames; i++) {
   drawScene(ballAt(i / FPS));
-  if (!ff.stdin.write(Buffer.from(frame.buffer, frame.byteOffset, frame.byteLength))) {
+  if (
+    !ff.stdin.write(
+      Buffer.from(frame.buffer, frame.byteOffset, frame.byteLength),
+    )
+  ) {
     await new Promise((r) => ff.stdin.once('drain', r));
   }
 }
 ff.stdin.end();
 await new Promise((resolve, reject) => {
-  ff.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`ffmpeg exited ${code}`))));
+  ff.on('close', (code) =>
+    code === 0 ? resolve() : reject(new Error(`ffmpeg exited ${code}`)),
+  );
 });
 console.log(
   JSON.stringify(

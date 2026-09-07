@@ -28,7 +28,17 @@ export function sampleVideoColorAt(
   const cx = Math.round(Math.max(0, Math.min(1, nx)) * (w - 1));
   const cy = Math.round(Math.max(0, Math.min(1, ny)) * (h - 1));
   try {
-    ctx.drawImage(video, cx - radius, cy - radius, side, side, 0, 0, side, side);
+    ctx.drawImage(
+      video,
+      cx - radius,
+      cy - radius,
+      side,
+      side,
+      0,
+      0,
+      side,
+      side,
+    );
     const data = ctx.getImageData(0, 0, side, side).data;
     const samples: Rgb[] = [];
     for (let i = 0; i < data.length; i += 4) {

@@ -56,7 +56,8 @@ const BASKETBALL_SCORER_PARAMS: ModelParamSpec[] = [
   {
     key: 'ballConf',
     label: 'Ball confidence',
-    description: 'Raise if random round things get boxed; lower if the ball is missed in flight.',
+    description:
+      'Raise if random round things get boxed; lower if the ball is missed in flight.',
     min: 0.05,
     max: 0.9,
     step: 0.05,
@@ -84,27 +85,67 @@ const BASKETBALL_SCORER_PARAMS: ModelParamSpec[] = [
     ],
     default: '1',
   },
-  { key: 'rimCx', label: 'Rim centre X', min: 0, max: 1, step: 0.001, default: 0.5 },
-  { key: 'rimCy', label: 'Rim centre Y', min: 0, max: 1, step: 0.001, default: 0.35 },
-  { key: 'rimRx', label: 'Rim radius X', min: 0.005, max: 0.5, step: 0.001, default: 0.06 },
-  { key: 'rimRy', label: 'Rim radius Y', min: 0.003, max: 0.5, step: 0.001, default: 0.02 },
+  {
+    key: 'rimCx',
+    label: 'Rim centre X',
+    min: 0,
+    max: 1,
+    step: 0.001,
+    default: 0.5,
+  },
+  {
+    key: 'rimCy',
+    label: 'Rim centre Y',
+    min: 0,
+    max: 1,
+    step: 0.001,
+    default: 0.35,
+  },
+  {
+    key: 'rimRx',
+    label: 'Rim radius X',
+    min: 0.005,
+    max: 0.5,
+    step: 0.001,
+    default: 0.06,
+  },
+  {
+    key: 'rimRy',
+    label: 'Rim radius Y',
+    min: 0.003,
+    max: 0.5,
+    step: 0.001,
+    default: 0.02,
+  },
   {
     type: 'select',
     key: 'rimSet',
     label: 'Rim calibrated',
-    description: 'Set by the hoop phone; without a rim the detector only tracks the ball.',
+    description:
+      'Set by the hoop phone; without a rim the detector only tracks the ball.',
     options: [
       { value: '0', label: 'No' },
       { value: '1', label: 'Yes' },
     ],
     default: '0',
   },
-  { type: 'color', key: 'teamColorA', label: 'Team A colour', default: '#ff6a1f' },
-  { type: 'color', key: 'teamColorB', label: 'Team B colour', default: '#1f7bff' },
+  {
+    type: 'color',
+    key: 'teamColorA',
+    label: 'Team A colour',
+    default: '#ff6a1f',
+  },
+  {
+    type: 'color',
+    key: 'teamColorB',
+    label: 'Team B colour',
+    default: '#1f7bff',
+  },
   {
     key: 'netZoneMs',
     label: 'Net window',
-    description: 'Max ms between the ball entering the rim ellipse and showing up in the net zone.',
+    description:
+      'Max ms between the ball entering the rim ellipse and showing up in the net zone.',
     min: 300,
     max: 1500,
     step: 50,
@@ -113,7 +154,8 @@ const BASKETBALL_SCORER_PARAMS: ModelParamSpec[] = [
   {
     key: 'cooldownMs',
     label: 'Make cooldown',
-    description: 'Ignore rim activity this long after a make (the ball dropping out of the net).',
+    description:
+      'Ignore rim activity this long after a make (the ball dropping out of the net).',
     min: 500,
     max: 4000,
     step: 100,
@@ -123,7 +165,8 @@ const BASKETBALL_SCORER_PARAMS: ModelParamSpec[] = [
     type: 'select',
     key: 'captureShotFrames',
     label: 'Shot stills',
-    description: 'Save a still of the make and of the release (served under /bb-shot-frames).',
+    description:
+      'Save a still of the make and of the release (served under /bb-shot-frames).',
     options: [
       { value: '0', label: 'Off' },
       { value: '1', label: 'On' },
