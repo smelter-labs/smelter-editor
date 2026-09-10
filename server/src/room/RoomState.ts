@@ -1,6 +1,13 @@
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
-import { ensureDir, pathExists, readdir, remove, writeFile } from 'fs-extra';
+import {
+  ensureDir,
+  pathExists,
+  readdir,
+  readFile,
+  remove,
+  writeFile,
+} from 'fs-extra';
 import QRCode from 'qrcode';
 import { Mutex } from 'async-mutex';
 import { SmelterInstance, type SmelterOutput } from '../smelter';
@@ -82,6 +89,7 @@ import type {
   BbConfig,
   BbMatchEvent,
   BbShotEvent,
+  BbReplayState,
   BbStateEvent,
   BbTeamId,
 } from '@smelter-editor/types';
@@ -109,6 +117,11 @@ import { AudioController } from '../audio/AudioController';
 import type { AudioStoreState } from '../audio/audioStore';
 import type { StoreApi } from 'zustand';
 import { DATA_DIR } from '../dataDir';
+import {
+  parseBbGroundTruth,
+  selectReplayShots,
+  type ReplaySelectOptions,
+} from '../basketball/groundTruth';
 import type {
   PendingWhipInputData,
   RoomInputState,
@@ -652,6 +665,29 @@ export class RoomState {
           .some((i) => i.inputId === inputId && i.status === 'connected'),
       isInputLive: (inputId) => this.inputManager.isWhipInputLive(inputId),
       getResolution: () => this.output.store.getState().resolution,
+      // Playhead of a file cam: pipeline-relative registration time mapped
+      // back to wall clock (media time = playFromMs + elapsed since then).
+      getFileClock: (inputId) => {
+        const input = this.inputManager
+          .getInputs()
+          .find((i) => i.inputId === inputId);
+        const start = SmelterInstance.getStartTime();
+        if (
+          !input ||
+          input.type !== 'local-mp4' ||
+          input.status !== 'connected' ||
+          start == null ||
+          input.registeredAtPipelineMs == null
+        ) {
+          return null;
+        }
+        return {
+          anchorWallMs: start + input.registeredAtPipelineMs,
+          playFromMs: input.playFromMs ?? 0,
+          durationMs: input.mp4DurationMs ?? null,
+          delayMs: input.registeredSideChannelDelayMs ?? 0,
+        };
+      },
       publishHud: (state) => this.output.store.getState().setBbGame(state),
       registerJoinQr: (url) =>
         this.registerJoinQrImage(url, {
@@ -2224,6 +2260,47 @@ export class RoomState {
     points: 1 | 2,
   ): BbShotEvent | null {
     return this.basketball.simulateShot(team, confidence, points);
+  }
+
+  /**
+   * Replay a ground-truth events file (data/mp4s/<fileName>, the shape
+   * scripts/apidis-events.mjs writes) on the file cams: throws fire at their
+   * clip media time instead of coming from the model.
+   */
+  public async loadBbReplay(
+    fileName: string,
+    opts: Omit<ReplaySelectOptions, 'arcPoints'> & { loop: boolean },
+  ): Promise<BbReplayState> {
+    const file = path.join(DATA_DIR, 'mp4s', fileName);
+    if (!(await pathExists(file))) {
+      throw new Error(`events file not found under data/mp4s: ${fileName}`);
+    }
+    let json: unknown;
+    try {
+      json = JSON.parse(await readFile(file, 'utf8'));
+    } catch (err) {
+      throw new Error(
+        `events.json: not valid JSON (${err instanceof Error ? err.message : String(err)})`,
+      );
+    }
+    const gt = parseBbGroundTruth(json);
+    const arcPoints = this.basketball.stateSnapshot().config.arcPoints;
+    const shots = selectReplayShots(gt, { ...opts, arcPoints });
+    if (shots.length === 0) {
+      throw new Error(
+        `events.json has no throws for basket "${opts.basket}" (${gt.throws.length} throws total)`,
+      );
+    }
+    return this.basketball.loadReplay({
+      fileName,
+      shots,
+      basket: opts.basket,
+      loop: opts.loop,
+    });
+  }
+
+  public unloadBbReplay(): void {
+    this.basketball.unloadReplay();
   }
 
   /**

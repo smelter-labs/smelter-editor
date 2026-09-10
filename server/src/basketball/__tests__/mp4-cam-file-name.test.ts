@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { sanitizeBbMp4FileName } from '../mp4CamFileName';
+import {
+  sanitizeBbEventsFileName,
+  sanitizeBbMp4FileName,
+} from '../mp4CamFileName';
 
 describe('sanitizeBbMp4FileName', () => {
   it.each([
@@ -28,7 +31,27 @@ describe('sanitizeBbMp4FileName', () => {
     ['.mp4'],
     ['bad\0name.mp4'],
     ['what?.mp4'],
+    ['apidis/q2/events.json'],
   ])('rejects %j', (raw) => {
     expect(sanitizeBbMp4FileName(raw)).toBeNull();
+  });
+});
+
+describe('sanitizeBbEventsFileName', () => {
+  it.each([
+    ['apidis/q2/events.json', 'apidis/q2/events.json'],
+    ['bb-synth.events.JSON', 'bb-synth.events.JSON'],
+  ])('accepts %s → %s', (raw, expected) => {
+    expect(sanitizeBbEventsFileName(raw)).toBe(expected);
+  });
+
+  it.each([
+    ['events.mp4'],
+    ['../events.json'],
+    ['/abs/events.json'],
+    ['.json'],
+    ['a/b/c/d/events.json'],
+  ])('rejects %j', (raw) => {
+    expect(sanitizeBbEventsFileName(raw)).toBeNull();
   });
 });

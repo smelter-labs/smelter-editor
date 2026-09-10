@@ -158,6 +158,12 @@ export type BbShotEvent = {
   atMs: number;
   /** Worker frame time (seconds, pipeline clock) of the make, when from AI. */
   sourceT?: number;
+  /**
+   * Clip media time (ms) of the hoop file camera when the shot was ingested
+   * (only when the hoop cam is a file). Replay/benchmark key — comparable to
+   * ground-truth `tMs` of the same clip.
+   */
+  mediaMs?: number;
   team: BbTeamId | null;
   points: 1 | 2;
   /** The AI's own guess + confidence (kept after moderator edits). */
@@ -165,7 +171,10 @@ export type BbShotEvent = {
   aiConfidence: number;
   /** Sampled jersey colour behind the guess (`#rrggbb`). */
   colorSample?: string | null;
-  source: "ai" | "manual";
+  /** 'replay' = fired from a ground-truth events file (no model). */
+  source: "ai" | "manual" | "replay";
+  /** source === 'replay': the annotated value (1 free throw, 2, 3). */
+  gtPoints?: 1 | 2 | 3;
   status: BbShotStatus;
   period: BbPeriod;
   /** Match clock at ingest (ms elapsed in regulation; OT counts up). */
@@ -194,6 +203,21 @@ export type BbTeamStats = {
   twos: number;
 };
 
+/**
+ * Playhead of a file camera's clip, derived from the engine registration:
+ * media time now = playFromMs + (now − anchor), modulo durationMs when looping.
+ */
+export type BbClipClock = {
+  /** Media time (ms) the clip was last (re)started from. */
+  playFromMs: number;
+  /** Media time (ms) at snapshot time. */
+  mediaMs: number;
+  /** Clip length (ms), when probed. */
+  durationMs: number | null;
+  /** Side-channel delay (ms): frames air this long after the AI sees them. */
+  delayMs: number;
+};
+
 /** Public camera slot info in `bb_state`. */
 export type BbCam = {
   role: BbCamRole;
@@ -209,6 +233,8 @@ export type BbCam = {
   source: 'whip' | 'file';
   /** source === 'file' only: path relative to data/mp4s. */
   fileName?: string;
+  /** source === 'file' and connected: where the looping clip's playhead is. */
+  clip?: BbClipClock;
   camWidth?: number;
   camHeight?: number;
   /** hoop only: a rim ellipse is calibrated. */
@@ -384,6 +410,44 @@ export type BbStateEvent = {
   leadChanges: number;
   winner: BbTeamId | null;
   isRecording?: boolean;
+  /** Ground-truth replay loaded on the file cams (null when off). */
+  replay: BbReplayState | null;
+};
+
+export type BbReplayBasket = "left" | "right" | "both";
+
+/**
+ * Replay from a ground-truth events file: makes/misses fire at their clip
+ * media time (anchored to the file cams' playhead) instead of the model.
+ */
+export type BbReplayState = {
+  /** Path relative to data/mp4s. */
+  fileName: string;
+  active: boolean;
+  basket: BbReplayBasket;
+  loop: boolean;
+  /** Throws selected from the file (made + missed). */
+  total: number;
+  fired: number;
+  /** Throws skipped (before START, or the playhead jumped past them). */
+  skipped: number;
+  /** Clip media time (ms) of the next throw, null when exhausted. */
+  nextEventTMs: number | null;
+  /** Wall ms until the next throw fires, null when parked (no file cam). */
+  nextFireInMs: number | null;
+  /** Which file cam drives the clock. */
+  clockRole: BbCamRole | null;
+};
+
+export type BbReplayRequest = {
+  action?: "load" | "off";
+  fileName?: string;
+  basket?: BbReplayBasket;
+  loop?: boolean;
+  /** Annotated → ledger points override (keys "1" | "2" | "3"). */
+  pointsMap?: Partial<Record<"1" | "2" | "3", 1 | 2>>;
+  /** Annotated team letter → ledger team. */
+  teamMap?: Partial<Record<BbTeamId, BbTeamId>>;
 };
 
 /**

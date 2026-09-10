@@ -52,7 +52,10 @@ import { duckHunterTopScores } from '../duckHunter/topScores';
 import { DATA_DIR } from '../dataDir';
 import { ModelRegistry, registerAIModels } from '../ai-models';
 import { uploadRoutes, sanitizeFolderPath } from '../core/routes/uploadRoutes';
-import { sanitizeBbMp4FileName } from '../basketball/mp4CamFileName';
+import {
+  sanitizeBbEventsFileName,
+  sanitizeBbMp4FileName,
+} from '../basketball/mp4CamFileName';
 
 registerAIModels();
 import {
@@ -3468,6 +3471,106 @@ routes.post<RoomIdParams & { Body: Static<typeof BbMp4CamSyncSchema> }>(
     }
   },
 );
+
+// Replay from ground truth: throws from an events.json (data/mp4s) fire at
+// their clip media time on the file cams, instead of coming from the model.
+const BbReplaySchema = Type.Object({
+  action: Type.Optional(
+    Type.Union([Type.Literal('load'), Type.Literal('off')]),
+  ),
+  fileName: Type.Optional(Type.String({ maxLength: 512 })),
+  basket: Type.Optional(
+    Type.Union([
+      Type.Literal('left'),
+      Type.Literal('right'),
+      Type.Literal('both'),
+    ]),
+  ),
+  loop: Type.Optional(Type.Boolean()),
+  pointsMap: Type.Optional(
+    Type.Object({
+      '1': Type.Optional(Type.Union([Type.Literal(1), Type.Literal(2)])),
+      '2': Type.Optional(Type.Union([Type.Literal(1), Type.Literal(2)])),
+      '3': Type.Optional(Type.Union([Type.Literal(1), Type.Literal(2)])),
+    }),
+  ),
+  teamMap: Type.Optional(
+    Type.Object({
+      A: Type.Optional(Type.Union([Type.Literal('A'), Type.Literal('B')])),
+      B: Type.Optional(Type.Union([Type.Literal('A'), Type.Literal('B')])),
+    }),
+  ),
+});
+
+routes.post<RoomIdParams & { Body: Static<typeof BbReplaySchema> }>(
+  '/room/:roomId/basketball-game/replay',
+  { schema: { params: RoomIdParamsSchema, body: BbReplaySchema } },
+  async (req, res) => {
+    const room = state.getRoom(req.params.roomId);
+    if (req.body.action === 'off') {
+      room.unloadBbReplay();
+      return res.status(200).send({ status: 'ok', replay: null });
+    }
+    const fileName = sanitizeBbEventsFileName(req.body.fileName ?? '');
+    if (!fileName) {
+      return res.status(400).send({
+        status: 'error',
+        message: 'fileName must be an events .json path relative to data/mp4s',
+      });
+    }
+    try {
+      const replay = await room.loadBbReplay(fileName, {
+        basket: req.body.basket ?? 'both',
+        loop: req.body.loop ?? true,
+        ...(req.body.pointsMap ? { pointsMap: req.body.pointsMap } : {}),
+        ...(req.body.teamMap ? { teamMap: req.body.teamMap } : {}),
+      });
+      res.status(200).send({ status: 'ok', replay });
+    } catch (err) {
+      res.status(400).send({
+        status: 'error',
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  },
+);
+
+routes.delete<RoomIdParams>(
+  '/room/:roomId/basketball-game/replay',
+  { schema: { params: RoomIdParamsSchema } },
+  async (req, res) => {
+    state.getRoom(req.params.roomId).unloadBbReplay();
+    res.status(200).send({ status: 'ok', replay: null });
+  },
+);
+
+// Ground-truth files next to the clips: every `*.json` whose name is
+// `events.json` or ends in `.events.json`, up to the upload folder depth.
+routes.get('/suggestions/bb-events', async (_req, res) => {
+  const root = path.join(DATA_DIR, 'mp4s');
+  const files: string[] = [];
+  const walk = async (rel: string, depth: number): Promise<void> => {
+    const dir = path.join(root, rel);
+    let entries: import('node:fs').Dirent[];
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (e.name.startsWith('.')) continue;
+      const relPath = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) {
+        if (depth < 3) await walk(relPath, depth + 1);
+      } else if (/(^|\.)events\.json$/i.test(e.name)) {
+        files.push(relPath);
+      }
+    }
+  };
+  await walk('', 0);
+  files.sort();
+  res.status(200).send({ files });
+});
 
 // ── Haunting ghosts ────────────────────────────────────────────
 

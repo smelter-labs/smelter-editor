@@ -2,6 +2,9 @@ import { randomUUID } from 'node:crypto';
 import type {
   BbAttempt,
   BbCam,
+  BbClipClock,
+  BbReplayBasket,
+  BbReplayState,
   BbCamRole,
   BbConfig,
   BbErrorCode,
@@ -31,6 +34,7 @@ import {
   kbtParkRect,
 } from '../app/store';
 import { clamp } from '../core/mathUtils';
+import type { ReplayShot } from './groundTruth';
 
 /** Command from the arcade page's match endpoint (and the panel over WS). */
 export type BbMatchCommand = {
@@ -139,7 +143,20 @@ export type BbControllerDeps = {
    * resolves null when the file is gone. */
   registerShotFrameImage: (url: string) => Promise<string | null>;
   unregisterShotFrameImage: (imageId: string) => void;
+  /**
+   * Playhead anchor of a local-mp4 input: at wall time `anchorWallMs` the clip
+   * was (re)registered playing from `playFromMs`. Null when the input is not
+   * a connected file clip.
+   */
+  getFileClock?: (inputId: string) => BbFileClock | null;
   now?: () => number;
+};
+
+export type BbFileClock = {
+  anchorWallMs: number;
+  playFromMs: number;
+  durationMs: number | null;
+  delayMs: number;
 };
 
 type CamState = {
@@ -183,15 +200,34 @@ type TeamTally = {
   twos: number;
 };
 
+type ReplayRun = {
+  fileName: string;
+  basket: BbReplayBasket;
+  loop: boolean;
+  shots: ReplayShot[];
+  /** Next shot to fire. */
+  cursor: number;
+  /** How many times the clip has looped since the clock anchor. */
+  loopIndex: number;
+  fired: number;
+  skipped: number;
+  /** Identity of the file clock the schedule was computed against. */
+  clockSig: string | null;
+  nextFireAt: number | null;
+};
+
 type ShotInput = {
-  source: 'ai' | 'manual';
+  source: 'ai' | 'manual' | 'replay';
   aiTeam: BbTeamId | null;
   aiConfidence: number;
   /** Manual entries pin the team; AI entries resolve it by confidence. */
   team?: BbTeamId | null;
   points?: 1 | 2;
+  gtPoints?: 1 | 2 | 3;
   colorSample?: string | null;
   sourceT?: number;
+  /** Clip media time (ms); stamped from the hoop file clock when absent. */
+  mediaMs?: number;
   frameUrl?: string;
   releaseFrameUrl?: string;
 };
@@ -219,6 +255,15 @@ const BALL_EVENT_MIN_MS = 250;
 const BALL_STATE_BROADCAST_MIN_MS = 1000;
 const DURATION_MIN_MS = 30_000;
 const DURATION_MAX_MS = 1_800_000;
+/**
+ * Replay from ground truth: the worker confirms a make a beat after the ball
+ * reaches the rim (net dwell), so annotated rim times fire with this lag.
+ */
+const REPLAY_DETECT_LAG_MS = 300;
+/** A replay throw whose fire time is further in the past than this is skipped
+ * (the playhead jumped past it — re-sync, loop, late load). */
+const REPLAY_LATE_MAX_MS = 2000;
+const REPLAY_BROADCAST_MS = 1000;
 const ANALYSIS_FPS_MIN = 8;
 const ANALYSIS_FPS_MAX = 30;
 
@@ -333,6 +378,11 @@ export class BasketballGameController {
   private lastBallEventAt = 0;
   private lastBallSig = '';
   private lastBallStateBroadcastAt = 0;
+
+  // ── ground-truth replay ──
+  private replay: ReplayRun | null = null;
+  private replayTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastReplayBroadcastAt = 0;
 
   private timer: ReturnType<typeof setInterval> | null = null;
   private lastCamPoll = 0;
@@ -779,6 +829,249 @@ export class BasketballGameController {
       }
     }
     return out;
+  }
+
+  /**
+   * Clock of the file clip driving the game: the hoop cam when it is a file,
+   * else the court cam (APIDIS-style multi-cam clips share media time).
+   */
+  fileClock(): { role: BbCamRole; inputId: string; clock: BbFileClock } | null {
+    const get = this.deps.getFileClock;
+    if (!get) return null;
+    for (const role of ['hoop', 'court'] as const) {
+      const cam = this.cams.get(role);
+      if (!cam || cam.source !== 'file' || cam.inputId == null) continue;
+      const clock = get(cam.inputId);
+      if (clock) return { role, inputId: cam.inputId, clock };
+    }
+    return null;
+  }
+
+  /** Media time (ms) of `clock` at wall time `now` (wraps when looping). */
+  private static mediaAt(clock: BbFileClock, now: number): number {
+    const t = clock.playFromMs + (now - clock.anchorWallMs);
+    return clock.durationMs && clock.durationMs > 0 && t >= 0
+      ? t % clock.durationMs
+      : t;
+  }
+
+  private clipSnapshot(cam: CamState, now: number): BbClipClock | undefined {
+    if (cam.source !== 'file' || cam.inputId == null) return undefined;
+    const clock = this.deps.getFileClock?.(cam.inputId);
+    if (!clock) return undefined;
+    return {
+      playFromMs: clock.playFromMs,
+      mediaMs: Math.round(BasketballGameController.mediaAt(clock, now)),
+      durationMs: clock.durationMs,
+      delayMs: clock.delayMs,
+    };
+  }
+
+  // ── Ground-truth replay ───────────────────────────────────────────────────
+
+  /**
+   * Fire the throws of a ground-truth file at their clip media time, anchored
+   * to the file cams' playhead — exactly when the model would report them —
+   * so the predictive cut and the held HUD work unchanged. While loaded, the
+   * model's own shot events are ignored (the scorer stays armed so the hoop
+   * clip keeps its side-channel delay). Throws before START are skipped.
+   */
+  loadReplay(opts: {
+    fileName: string;
+    shots: ReplayShot[];
+    basket: BbReplayBasket;
+    loop: boolean;
+  }): BbReplayState {
+    if (!this.fileClock()) {
+      throw new Error(
+        'Attach a file camera first (USE FILE) — the replay follows its playhead.',
+      );
+    }
+    this.clearReplayTimer();
+    this.replay = {
+      fileName: opts.fileName,
+      basket: opts.basket,
+      loop: opts.loop,
+      shots: [...opts.shots].sort((a, b) => a.tMs - b.tMs),
+      cursor: 0,
+      loopIndex: 0,
+      fired: 0,
+      skipped: 0,
+      clockSig: null,
+      nextFireAt: null,
+    };
+    this.engaged = true;
+    this.scheduleReplay();
+    this.ensureRunning();
+    this.broadcastState();
+    return this.replaySnapshot() as BbReplayState;
+  }
+
+  unloadReplay(): void {
+    if (!this.replay) return;
+    this.clearReplayTimer();
+    this.replay = null;
+    this.broadcastState();
+  }
+
+  replaySnapshot(): BbReplayState | null {
+    const r = this.replay;
+    if (!r) return null;
+    const now = this.now();
+    const next = r.cursor < r.shots.length ? r.shots[r.cursor] : null;
+    return {
+      fileName: r.fileName,
+      active: true,
+      basket: r.basket,
+      loop: r.loop,
+      total: r.shots.length,
+      fired: r.fired,
+      skipped: r.skipped,
+      nextEventTMs: next?.tMs ?? null,
+      nextFireInMs:
+        r.nextFireAt != null ? Math.max(0, r.nextFireAt - now) : null,
+      clockRole: this.fileClock()?.role ?? null,
+    };
+  }
+
+  private clearReplayTimer(): void {
+    if (this.replayTimer) {
+      clearTimeout(this.replayTimer);
+      this.replayTimer = null;
+    }
+  }
+
+  private static clockSig(fc: { inputId: string; clock: BbFileClock }): string {
+    return `${fc.inputId}:${fc.clock.anchorWallMs}:${fc.clock.playFromMs}`;
+  }
+
+  /**
+   * Wall time the model would report this throw: the frame at `tMs` reaches
+   * the AI at anchor + (tMs − playFrom) and viewers `delayMs` later; the HUD
+   * hold assumes HUD_HOLD_MS of that, so a clip without a side channel fires
+   * early by the difference.
+   */
+  private replayFireAt(
+    shot: ReplayShot,
+    loopIndex: number,
+    clock: BbFileClock,
+  ): number {
+    const loopMs =
+      clock.durationMs && clock.durationMs > 0
+        ? loopIndex * clock.durationMs
+        : 0;
+    return (
+      clock.anchorWallMs +
+      (shot.tMs + loopMs - clock.playFromMs) +
+      clock.delayMs -
+      HUD_HOLD_MS +
+      REPLAY_DETECT_LAG_MS
+    );
+  }
+
+  /** (Re)compute the next fire from the current file clock. */
+  private scheduleReplay(): void {
+    this.clearReplayTimer();
+    const r = this.replay;
+    if (!r || this.disposed) return;
+    const fc = this.fileClock();
+    if (!fc) {
+      r.clockSig = null;
+      r.nextFireAt = null;
+      return;
+    }
+    const now = this.now();
+    const dur =
+      fc.clock.durationMs && fc.clock.durationMs > 0
+        ? fc.clock.durationMs
+        : null;
+    const sig = BasketballGameController.clockSig(fc);
+    if (r.clockSig !== sig) {
+      // New anchor (attach / scorer re-arm / sync / kick): seek the cursor to
+      // the playhead instead of counting everything before it as skipped.
+      r.clockSig = sig;
+      const elapsed = now - fc.clock.anchorWallMs + fc.clock.playFromMs;
+      r.loopIndex = dur ? Math.max(0, Math.floor(elapsed / dur)) : 0;
+      r.cursor = 0;
+    }
+    for (;;) {
+      if (r.cursor >= r.shots.length) {
+        if (r.loop && dur && r.shots.length > 0) {
+          r.loopIndex++;
+          r.cursor = 0;
+          continue;
+        }
+        r.nextFireAt = null;
+        return;
+      }
+      const fireAt = this.replayFireAt(
+        r.shots[r.cursor],
+        r.loopIndex,
+        fc.clock,
+      );
+      if (fireAt < now - REPLAY_LATE_MAX_MS) {
+        r.cursor++;
+        continue;
+      }
+      r.nextFireAt = fireAt;
+      this.replayTimer = setTimeout(
+        () => this.fireReplay(),
+        Math.max(0, fireAt - now),
+      );
+      return;
+    }
+  }
+
+  private fireReplay(): void {
+    this.replayTimer = null;
+    const r = this.replay;
+    if (!r || this.disposed) return;
+    const fc = this.fileClock();
+    const shot = r.shots[r.cursor];
+    if (!fc || !shot || BasketballGameController.clockSig(fc) !== r.clockSig) {
+      this.scheduleReplay();
+      return;
+    }
+    const now = this.now();
+    const fireAt = this.replayFireAt(shot, r.loopIndex, fc.clock);
+    if (Math.abs(fireAt - now) > REPLAY_LATE_MAX_MS) {
+      this.scheduleReplay();
+      return;
+    }
+    r.cursor++;
+    if (!this.matchAcceptsShots()) {
+      r.skipped++;
+      this.scheduleReplay();
+      this.broadcastState();
+      return;
+    }
+    r.fired++;
+    this.scheduleReplay();
+    if (shot.made) {
+      this.ingestShot({
+        source: 'replay',
+        aiTeam: shot.team,
+        aiConfidence: 1,
+        points: shot.points,
+        gtPoints: shot.gtPoints,
+        mediaMs: shot.tMs,
+      });
+    } else {
+      this.ingestMiss(shot.team, now);
+    }
+  }
+
+  /** Tick: follow clock changes (attach / sync / kick) and keep the panel countdown fresh. */
+  private checkReplayClock(now: number): void {
+    const r = this.replay;
+    if (!r) return;
+    const fc = this.fileClock();
+    const sig = fc ? BasketballGameController.clockSig(fc) : null;
+    if (sig !== r.clockSig) this.scheduleReplay();
+    if (now - this.lastReplayBroadcastAt >= REPLAY_BROADCAST_MS) {
+      this.lastReplayBroadcastAt = now;
+      this.broadcastState();
+    }
   }
 
   /** Enable (or re-configure) the scorer on the hoop input with the full param set. */
@@ -1748,14 +2041,22 @@ export class BasketballGameController {
     team: BbTeamId | null,
     status: BbShotEvent['status'],
   ): BbShotEvent {
+    let mediaMs = input.mediaMs;
+    if (mediaMs == null) {
+      const fc = this.fileClock();
+      if (fc)
+        mediaMs = Math.round(BasketballGameController.mediaAt(fc.clock, now));
+    }
     return {
       id: randomUUID(),
       index:
         status === 'voided' && !this.matchAcceptsShots() ? 0 : ++this.shotSeq,
       atMs: now,
       ...(input.sourceT != null ? { sourceT: input.sourceT } : {}),
+      ...(mediaMs != null ? { mediaMs } : {}),
       team,
       points: input.points ?? 1,
+      ...(input.gtPoints != null ? { gtPoints: input.gtPoints } : {}),
       aiTeam: input.aiTeam,
       aiConfidence: clamp(input.aiConfidence, 0, 1),
       colorSample: input.colorSample ?? null,
@@ -1934,6 +2235,8 @@ export class BasketballGameController {
         if (typeof ev.index !== 'number' || ev.index <= this.lastMadeIndex)
           continue;
         this.lastMadeIndex = ev.index;
+        // Ground-truth replay owns the ledger; the model only tracks the ball.
+        if (this.replay) continue;
         this.ingestShot({
           source: 'ai',
           aiTeam: isTeamId(ev.team) ? ev.team : null,
@@ -1954,17 +2257,23 @@ export class BasketballGameController {
           continue;
         this.lastAttemptIndex = ev.index;
         // Made attempts are represented by the ledger; only misses count here.
-        if (ev.result === 'made' || !this.matchAcceptsShots()) continue;
-        this.attempts.push({
-          index: ++this.attemptSeq,
-          atMs: now,
-          team: isTeamId(ev.team) ? ev.team : null,
-          made: false,
-        });
-        this.recompute();
-        this.broadcastState();
+        if (ev.result === 'made' || this.replay) continue;
+        this.ingestMiss(isTeamId(ev.team) ? ev.team : null, now);
       }
     }
+  }
+
+  /** A missed attempt (AI or replay): FG% material, never in the ledger. */
+  private ingestMiss(team: BbTeamId | null, now: number): void {
+    if (!this.matchAcceptsShots()) return;
+    this.attempts.push({
+      index: ++this.attemptSeq,
+      atMs: now,
+      team,
+      made: false,
+    });
+    this.recompute();
+    this.broadcastState();
   }
 
   // ── Stage / layout ────────────────────────────────────────────────────────
@@ -2296,7 +2605,8 @@ export class BasketballGameController {
       this.phase === 'lobby' &&
       this.cams.size === 0 &&
       !this.commentator &&
-      this.lastShot == null
+      this.lastShot == null &&
+      !this.replay
     ) {
       this.stop();
     }
@@ -2308,6 +2618,7 @@ export class BasketballGameController {
     const now = this.now();
     this.tickClock(now);
     this.pollCameras(now);
+    this.checkReplayClock(now);
     this.syncScene(now);
     if (this.phase !== 'lobby') {
       if (now - this.lastMatchBroadcastAt >= MATCH_BROADCAST_MS) {
@@ -2382,6 +2693,7 @@ export class BasketballGameController {
         calibrated: role === 'hoop' ? this.config.rim != null : false,
       };
     }
+    const clip = this.clipSnapshot(cam, this.now());
     return {
       role,
       name: cam.name,
@@ -2392,6 +2704,7 @@ export class BasketballGameController {
       ...(cam.source === 'file' && cam.fileName
         ? { fileName: cam.fileName }
         : {}),
+      ...(clip ? { clip } : {}),
       ...(cam.camWidth && cam.camHeight
         ? { camWidth: cam.camWidth, camHeight: cam.camHeight }
         : {}),
@@ -2444,6 +2757,7 @@ export class BasketballGameController {
       leadChanges: this.leadChanges,
       winner: this.winner,
       isRecording: this.deps.hasActiveRecording?.() ?? false,
+      replay: this.replaySnapshot(),
     };
   }
 
@@ -2631,6 +2945,8 @@ export class BasketballGameController {
   dispose(): void {
     this.disposed = true;
     this.stop();
+    this.clearReplayTimer();
+    this.replay = null;
     for (const t of this.hudTimers) clearTimeout(t);
     this.hudTimers.clear();
     if (this.parkTimer) {

@@ -14,6 +14,7 @@
 // (deliberately not orange — the HSV person detector keys on them).
 
 import { spawn } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -177,12 +178,28 @@ let expectedAttempts = 0;
 let t = 0;
 const hold = (p, dur) => (t = push(t, dur, () => ({ ...hands(p) })));
 
+// Ground truth for scripts/basketball-bench.mjs (same shape as
+// apidis-events.mjs): one 'throw' per shot, tMs = when the ball reaches the rim.
+const gtEvents = [];
+const teamOf = (p) => (p === PLAYER.A ? 'A' : 'B');
+const gtThrow = (from, rimT, made) =>
+  gtEvents.push({
+    tMs: Math.round(rimT * 1000),
+    kind: 'throw',
+    made,
+    points: made ? 2 : 0,
+    team: teamOf(from),
+    shotType: 'jump',
+    basket: 'left',
+  });
+
 function swish(from) {
   expectedMakes++;
   expectedAttempts++;
   const h = hands(from);
   const entry = { x: RIM.cx, y: RIM.cy - 3.5 * RXY };
   t = push(t, 0.7, arc(h, entry, RIM.cy - 4.5 * RXY));
+  gtThrow(from, t + (RIM.cy - entry.y) / 1.3, true);
   // fast descent into the rim (≈1.3 heights/s)
   t = push(t, (RIM.cy - entry.y) / 1.3, (u) => ({
     x: RIM.cx,
@@ -203,6 +220,7 @@ function rimOut(from) {
   expectedAttempts++;
   const h = hands(from);
   const edge = { x: RIM.cx - RIM.rx * 0.95, y: RIM.cy - RIM.ry };
+  gtThrow(from, t + 0.8, false);
   t = push(t, 0.8, arc(h, edge, RIM.cy - 3.5 * RXY));
   // bounce up and away
   const away = { x: RIM.cx - 0.22, y: RIM.cy - 0.1 };
@@ -219,6 +237,7 @@ function passBy(from) {
   expectedAttempts++;
   const h = hands(from);
   const top = { x: RIM.cx, y: RIM.cy - 3.5 * RXY };
+  gtThrow(from, t + 0.7 + 0.3, false);
   t = push(t, 0.7, arc(h, top, RIM.cy - 4.5 * RXY));
   // straight through the projected ellipse and the net band at free fall
   const end = { x: RIM.cx, y: floor };
@@ -312,10 +331,26 @@ await new Promise((resolve, reject) => {
     code === 0 ? resolve() : reject(new Error(`ffmpeg exited ${code}`)),
   );
 });
+// Ground truth next to the clip (scripts/basketball-bench.mjs --events).
+const eventsOut = out.replace(/\.mp4$/i, '') + '.events.json';
+fs.writeFileSync(
+  eventsOut,
+  JSON.stringify(
+    {
+      source: 'basketball-synth-clip.mjs',
+      t0Utc: null,
+      teams: { A: { attacks: 'left' }, B: { attacks: 'left' } },
+      events: gtEvents,
+    },
+    null,
+    2,
+  ) + '\n',
+);
 console.log(
   JSON.stringify(
     {
       file: out,
+      events: eventsOut,
       seconds: Math.round(total * 10) / 10,
       fps: FPS,
       rim: RIM,
