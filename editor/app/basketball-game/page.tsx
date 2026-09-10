@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import { BasketballGameArcade } from '@/components/basketball-game/arcade';
-import { bigShoulders, plexMono } from './fonts';
+import { bbDisplay, bbMono } from './fonts';
 
 export const metadata: Metadata = {
   title: 'BLACKTOP · BASKETBALL',
@@ -14,7 +14,7 @@ export const metadata: Metadata = {
  */
 export default function BasketballGamePage() {
   return (
-    <div className={`${bigShoulders.variable} ${plexMono.variable}`}>
+    <div className={`${bbDisplay.variable} ${bbMono.variable}`}>
       <Suspense>
         <BasketballGameArcade />
       </Suspense>

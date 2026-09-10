@@ -31,6 +31,7 @@ import { LobbyScreen } from './screens/lobby-screen';
 import { LiveScreen } from './screens/live-screen';
 import { ResultsScreen } from './screens/results-screen';
 import '@/components/kettlebell-tournament/kbt-kit.css';
+import '../basketball-game/bb-kit.css';
 
 type Screen = 'title' | 'setup' | 'lobby' | 'live' | 'results';
 

@@ -1,0 +1,255 @@
+/* Blacktop kit — CSS side (docs/design/blacktop): hard edges everywhere,
+ * electric focus ring, stamp-in for SCORE! / TEST MAKE, the button reset.
+ * Mirrors the structure of the kettlebell kit's CSS so behaviour parity is
+ * easy to check; the two never load on the same page. */
+
+@keyframes bb-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.bb-pulse {
+  animation: bb-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes bb-blink {
+  0%,
+  54% {
+    opacity: 1;
+  }
+  55%,
+  100% {
+    opacity: 0.25;
+  }
+}
+
+.bb-blink {
+  animation: bb-blink 1.2s steps(1, end) infinite;
+}
+
+/* Screen entry: quick fade + settle. */
+@keyframes bb-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.bb-enter {
+  animation: bb-enter 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Stamp: scale 1.6 → .96 → 1, alpha 0 → 1 in 120 ms, 2-frame shake at 180.
+   SCORE! and TEST MAKE only — never on data. */
+@keyframes bb-stamp {
+  0% {
+    opacity: 0;
+    transform: scale(1.6) rotate(-6deg);
+  }
+  40% {
+    opacity: 0.8;
+    transform: scale(1.15) rotate(-3deg);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(0.96) rotate(-2deg) translate(3px, -3px);
+  }
+  70% {
+    transform: scale(0.96) rotate(-2deg) translate(-3px, 3px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(-2deg);
+  }
+}
+
+.bb-stamp {
+  animation: bb-stamp 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Indeterminate progress sweep. */
+@keyframes bb-sweep-bar {
+  from {
+    left: -45%;
+  }
+  to {
+    left: 100%;
+  }
+}
+
+.bb-sweep-bar {
+  animation: bb-sweep-bar 1.2s linear infinite;
+}
+
+.bb-btn {
+  cursor: pointer;
+  border: none;
+  background: none;
+  padding: 0;
+  text-align: center;
+  position: relative;
+  touch-action: manipulation;
+  transition:
+    filter 0.15s ease,
+    opacity 0.15s ease,
+    transform 0.1s ease,
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+/* Hover wash in the text colour, so it reads on every variant. */
+.bb-btn:not([data-variant='solid'])::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  pointer-events: none;
+}
+
+@media (hover: hover) {
+  .bb-btn:not([data-variant='solid']):hover:not(:disabled):not(
+      [data-locked]
+    )::after {
+    opacity: 0.08;
+  }
+
+  .bb-btn[data-variant='solid']:hover:not(:disabled):not([data-locked]) {
+    filter: brightness(1.08);
+  }
+}
+
+.bb-btn:active:not(:disabled):not([data-locked]):not(.bb-strip) {
+  transform: translateY(1px);
+}
+
+.bb-btn:not([data-variant='solid']):active:not(:disabled):not(
+    [data-locked]
+  )::after {
+  opacity: 0.16;
+}
+
+.bb-btn[data-variant='solid']:active:not(:disabled) {
+  filter: brightness(0.9);
+}
+
+.bb-btn:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.bb-btn[data-locked] {
+  cursor: default;
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+/* Keyboard focus: electric ring (outside the clip, on the button itself). */
+.bb-btn:focus-visible,
+.bb-input:focus-visible {
+  outline: 2px solid #22d3ee;
+  outline-offset: 2px;
+}
+
+.bb-input {
+  border-radius: 0;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.bb-input::placeholder {
+  color: rgba(232, 228, 218, 0.3);
+}
+
+@media (hover: hover) {
+  .bb-input:hover:not(:focus) {
+    border-color: rgba(232, 228, 218, 0.45) !important;
+  }
+}
+
+.bb-input:focus {
+  border-color: #22d3ee !important;
+  border-width: 2px !important;
+  outline: none;
+}
+
+/* Electric underline sweep — the chip hover signature. */
+.bb-sweep::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: #22d3ee;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (hover: hover) {
+  .bb-sweep:hover:not(:disabled)::before {
+    transform: scaleX(1);
+  }
+}
+
+.bb-sweep:focus-visible::before {
+  transform: scaleX(1);
+}
+
+/* Danger disarm countdown: amber bar drains over the arm window. */
+@keyframes bb-disarm {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+.bb-disarm-bar {
+  height: 2px;
+  background: #ffd21f;
+  transform-origin: left;
+  animation: bb-disarm var(--bb-disarm-ms, 5000ms) linear forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bb-pulse,
+  .bb-blink,
+  .bb-enter,
+  .bb-stamp,
+  .bb-sweep-bar,
+  .bb-disarm-bar {
+    animation: none;
+  }
+
+  .bb-sweep::before,
+  .bb-btn,
+  .bb-btn::after,
+  .bb-input {
+    transition: none;
+  }
+}
+
+/* Scrollable region inside the scaled Stage: keep the scroll, hide the bar. */
+.bb-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.bb-scroll::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}

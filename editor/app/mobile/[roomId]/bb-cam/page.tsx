@@ -23,7 +23,7 @@ import {
   resolveMediaUrl,
   toWsUrl,
 } from '@/lib/server-url';
-import { bigShoulders, plexMono } from '@/app/basketball-game/fonts';
+import { bbDisplay, bbMono } from '@/app/basketball-game/fonts';
 import {
   KBT,
   KbtButton,
@@ -593,7 +593,7 @@ export default function BasketballCamPage() {
     requestCam();
   };
 
-  const fontClass = `${bigShoulders.variable} ${plexMono.variable}`;
+  const fontClass = `${bbDisplay.variable} ${bbMono.variable}`;
   const statusStrip =
     step === 'connect' ? null : !connected ? (
       <KbtStatusStrip text='RECONNECTING…' />

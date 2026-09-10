@@ -3,7 +3,7 @@
 import { Suspense } from 'react';
 import { useParams } from 'next/navigation';
 import { ModeratorPanel } from '@/components/basketball-game/panel/moderator-panel';
-import { bigShoulders, plexMono } from '../../fonts';
+import { bbDisplay, bbMono } from '../../fonts';
 
 /**
  * Courtside moderator panel (phone/tablet friendly): confirm the AI's calls
@@ -13,7 +13,7 @@ import { bigShoulders, plexMono } from '../../fonts';
 export default function ModeratorPanelPage() {
   const { roomId } = useParams();
   return (
-    <div className={`${bigShoulders.variable} ${plexMono.variable}`}>
+    <div className={`${bbDisplay.variable} ${bbMono.variable}`}>
       <Suspense>
         <ModeratorPanel roomId={String(roomId)} />
       </Suspense>

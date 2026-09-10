@@ -401,6 +401,8 @@ class SmelterManager {
       '../fonts/big-shoulders/BigShouldersDisplay-Medium.ttf',
       '../fonts/big-shoulders/BigShouldersDisplay-Bold.ttf',
       '../fonts/big-shoulders/BigShouldersDisplay-ExtraBold.ttf',
+      // Black (900) is the Blacktop HUD's headline weight (BbHud.tsx).
+      '../fonts/big-shoulders/BigShouldersDisplay-Black.ttf',
       '../fonts/ibm-plex-mono/IBMPlexMono-Regular.ttf',
       '../fonts/ibm-plex-mono/IBMPlexMono-Medium.ttf',
       '../fonts/ibm-plex-mono/IBMPlexMono-SemiBold.ttf',

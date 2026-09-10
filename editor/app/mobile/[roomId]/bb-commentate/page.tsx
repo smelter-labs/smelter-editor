@@ -15,7 +15,7 @@ import {
   resolveMediaUrl,
   toWsUrl,
 } from '@/lib/server-url';
-import { bigShoulders, plexMono } from '@/app/basketball-game/fonts';
+import { bbDisplay, bbMono } from '@/app/basketball-game/fonts';
 import {
   Bar,
   KBT,
@@ -398,7 +398,7 @@ export default function BasketballCommentatorPage() {
     connectWs();
   }, [roomId, roomStatus, connectWs]);
 
-  const fontClass = `${bigShoulders.variable} ${plexMono.variable}`;
+  const fontClass = `${bbDisplay.variable} ${bbMono.variable}`;
   const meta = STEP_META[step];
   const teams = bbState?.teams;
 

@@ -3,7 +3,7 @@
 import { Suspense } from 'react';
 import { useParams } from 'next/navigation';
 import { BasketballGameArcade } from '@/components/basketball-game/arcade';
-import { bigShoulders, plexMono } from '../fonts';
+import { bbDisplay, bbMono } from '../fonts';
 
 /**
  * The arcade bound to a live room: /basketball-game rewrites its URL here
@@ -12,7 +12,7 @@ import { bigShoulders, plexMono } from '../fonts';
 export default function BasketballGameRoomPage() {
   const { roomId } = useParams();
   return (
-    <div className={`${bigShoulders.variable} ${plexMono.variable}`}>
+    <div className={`${bbDisplay.variable} ${bbMono.variable}`}>
       <Suspense>
         <BasketballGameArcade initialRoomId={String(roomId)} />
       </Suspense>
