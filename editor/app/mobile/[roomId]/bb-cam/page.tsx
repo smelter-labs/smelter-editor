@@ -25,16 +25,17 @@ import {
 } from '@/lib/server-url';
 import { bbDisplay, bbMono } from '@/app/basketball-game/fonts';
 import {
-  KBT,
-  KbtButton,
-  KbtConnectStep,
-  KbtPhoneShell,
-  KbtStatusStrip,
-  KbtTextInput,
-  Label,
-  Plate,
-  kbtMonoFont,
-} from '@/components/kettlebell-tournament/kbt-kit';
+  BB,
+  BbButton,
+  BbPlate,
+  Copy,
+  Display,
+  HazardStrip,
+  Mono,
+} from '@/components/basketball-game/bb-kit';
+import { BbPhoneShell } from '@/components/basketball-game/phone/bb-phone-shell';
+import { BbConnectStep } from '@/components/basketball-game/phone/bb-connect-step';
+import { BbNameStep } from '@/components/basketball-game/phone/bb-name-step';
 import {
   createFileCamera,
   type FileCamera,
@@ -49,7 +50,7 @@ import {
   writeCamSession,
   type CamSession,
 } from '@/components/basketball-game/phone/cam-session';
-import '@/components/kettlebell-tournament/kbt-kit.css';
+import '@/components/basketball-game/bb-kit.css';
 
 // The fixed-camera wizard: boot → role → name → camera rig → (hoop only)
 // rim calibration → live. A refresh resumes via the stored camKey.
@@ -596,9 +597,9 @@ export default function BasketballCamPage() {
   const fontClass = `${bbDisplay.variable} ${bbMono.variable}`;
   const statusStrip =
     step === 'connect' ? null : !connected ? (
-      <KbtStatusStrip text='RECONNECTING…' />
+      <HazardStrip text='RECONNECTING…' />
     ) : notice ? (
-      <KbtStatusStrip text={notice} />
+      <HazardStrip text={notice} />
     ) : needsSource ? (
       <>
         <input
@@ -612,20 +613,20 @@ export default function BasketballCamPage() {
             if (file) void swapToFile(file);
           }}
         />
-        <KbtStatusStrip
+        <HazardStrip
           text='VIDEO OFF — TAP TO PICK YOUR RECORDING'
           tone='bad'
           onTap={() => stripFileRef.current?.click()}
         />
       </>
     ) : publishStuck ? (
-      <KbtStatusStrip
+      <HazardStrip
         text='VIDEO DOWN — TAP TO RETRY'
         tone='bad'
         onTap={retryPublishNow}
       />
     ) : wantsCam && !live ? (
-      <KbtStatusStrip text='RESTORING VIDEO…' />
+      <HazardStrip text='RESTORING VIDEO…' />
     ) : null;
 
   if (step === 'live' && role) {
@@ -654,17 +655,140 @@ export default function BasketballCamPage() {
     );
   }
 
+  if (step === 'calibrate') {
+    return (
+      <div className={fontClass}>
+        {statusStrip}
+        <RimCalibrator
+          attachVideo={attachPreview}
+          initial={rim ?? sessionRef.current.rim ?? null}
+          onCalibrate={calibrate}
+          onSkip={rim ? () => setStep('live') : undefined}
+        />
+      </div>
+    );
+  }
+
   const meta = STEP_META[step as Exclude<Step, 'live'>];
+  const shellTitle = role
+    ? role === 'hoop'
+      ? 'HOOP CAM'
+      : 'COURT CAM'
+    : 'CAMERA';
+  const takenBy =
+    role && bbState?.cams[role]?.joined ? bbState.cams[role].name : null;
+  const roleCard = (
+    r: BbCamRole,
+    title: string,
+    sub: string,
+    primary: boolean,
+  ) => (
+    <button
+      type='button'
+      className='bb-btn'
+      onClick={() => {
+        setRole(r);
+        roleRef.current = r;
+        setStep('name');
+      }}
+      style={{
+        textAlign: 'left',
+        fontFamily: 'inherit',
+        background: 'none',
+        border: 'none',
+        padding: 0,
+        width: '100%',
+      }}>
+      <BbPlate
+        cutPx={14}
+        border={primary ? `2px solid ${BB.electric}` : `1px solid ${BB.rule2}`}
+        style={{
+          padding: 22,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 10,
+        }}>
+        <div
+          style={{
+            position: 'relative',
+            height: 90,
+            background:
+              r === 'hoop'
+                ? 'radial-gradient(ellipse at 50% 40%,#2c2c30,#161618 75%)'
+                : 'radial-gradient(ellipse at 50% 85%,#3a3a3e,#1c1c1f 70%)',
+            overflow: 'hidden',
+          }}>
+          {r === 'hoop' ? (
+            <>
+              <span
+                aria-hidden
+                style={{
+                  position: 'absolute',
+                  left: '50%',
+                  top: 10,
+                  width: 110,
+                  height: 30,
+                  marginLeft: -55,
+                  border: '2px solid rgba(232,228,218,.4)',
+                }}
+              />
+              <span
+                aria-hidden
+                style={{
+                  position: 'absolute',
+                  left: '50%',
+                  top: 34,
+                  width: 70,
+                  height: 20,
+                  marginLeft: -35,
+                  border: `3px solid ${BB.ballOrange}`,
+                  borderRadius: '50%',
+                }}
+              />
+            </>
+          ) : (
+            <span
+              aria-hidden
+              style={{
+                position: 'absolute',
+                left: '50%',
+                bottom: -70,
+                width: 200,
+                height: 200,
+                marginLeft: -100,
+                border: '2px solid rgba(232,228,218,.4)',
+                borderRadius: '50%',
+              }}
+            />
+          )}
+        </div>
+        <Display size={32} weight={800}>
+          {title}
+        </Display>
+        <Mono
+          size={12}
+          tracking={0.14}
+          color={BB.chalk}
+          style={{ opacity: 0.7 }}>
+          {sub}
+        </Mono>
+      </BbPlate>
+    </button>
+  );
+
   return (
     <div className={fontClass}>
       {statusStrip}
-      <KbtPhoneShell
-        title='BLACKTOP'
+      <BbPhoneShell
+        title={shellTitle}
         stepIndex={meta.index}
-        stepCount={Object.keys(STEP_META).length}
-        stepLabel={meta.label}>
+        stepCount={4}
+        compact={step === 'camera'}
+        noScroll={step === 'camera'}
+        gap={step === 'camera' ? 8 : undefined}>
         {step === 'connect' ? (
-          <KbtConnectStep
+          <BbConnectStep
+            roomId={String(roomId)}
             roomStatus={roomStatus}
             wsConnected={connected}
             wsError={wsDbg}
@@ -675,100 +799,53 @@ export default function BasketballCamPage() {
             style={{
               display: 'flex',
               flexDirection: 'column',
-              gap: 12,
-              justifyContent: 'center',
+              gap: 20,
               flex: 1,
             }}>
-            <Plate
-              cutPx={14}
-              innerStyle={{
-                padding: '14px 16px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 8,
-              }}>
-              <Label size={10}>WHICH CAMERA IS THIS PHONE?</Label>
-              <div
-                style={{
-                  fontFamily: kbtMonoFont,
-                  fontSize: 11,
-                  lineHeight: 1.6,
-                  color: KBT.dim,
-                }}>
-                The hoop camera runs the AI referee and must stay put on a
-                tripod. The court camera is the wide picture viewers watch.
-              </div>
-            </Plate>
-            <KbtButton
-              block
-              active
-              label='HOOP CAM'
-              sub='on the rim · runs the AI'
-              onClick={() => {
-                setRole('hoop');
-                roleRef.current = 'hoop';
-                setStep('name');
-              }}
-            />
-            <KbtButton
-              block
-              label='COURT CAM'
-              sub='wide on the court'
-              onClick={() => {
-                setRole('court');
-                roleRef.current = 'court';
-                setStep('name');
-              }}
-            />
+            <Display
+              size={44}
+              weight={800}
+              lineHeight={0.95}
+              style={{ marginTop: 8 }}>
+              WHICH{'\n'}CAMERA?
+            </Display>
+            {roleCard('hoop', 'HOOP CAM', 'ON THE RIM · RUNS THE AI', true)}
+            {roleCard('court', 'COURT CAM', 'WIDE ON THE COURT', false)}
+            <Copy
+              size={12}
+              color={BB.dim2}
+              lineHeight={1.6}
+              style={{ marginTop: 'auto', letterSpacing: '.04em' }}>
+              {bbState?.cams.hoop.joined
+                ? `The hoop cam is taken by ${bbState.cams.hoop.name || 'a phone'}. Picking it again asks to take over.`
+                : 'The hoop camera runs the AI referee and must stay put on a tripod. The court camera is the wide picture viewers watch.'}
+            </Copy>
           </div>
         ) : step === 'name' ? (
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 12,
-              justifyContent: 'center',
-              flex: 1,
-            }}>
-            <Plate
-              cutPx={14}
-              innerStyle={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 12,
-                padding: '18px 16px',
-              }}>
-              <Label size={10}>
-                {role === 'hoop' ? 'HOOP CAM' : 'COURT CAM'} · OPERATOR NAME
-                (OPTIONAL)
-              </Label>
-              <KbtTextInput
-                value={name}
-                onChange={setName}
-                placeholder={
-                  role === 'hoop' ? 'E.G. RIM PHONE' : 'E.G. BASELINE'
-                }
-                maxLength={20}
-                autoCapitalize='characters'
+          <BbNameStep
+            heading={['OPERATOR']}
+            hint={
+              takenBy
+                ? `This camera is held by ${takenBy}. Claiming it takes over.`
+                : 'Your name shows in the lobby and on the PiP chip.'
+            }
+            name={name}
+            onName={setName}
+            onContinue={join}
+            continueLabel='CLAIM THIS CAMERA'
+            placeholder={role === 'hoop' ? 'E.G. MAREK' : 'E.G. OLA'}
+            optional
+            secondary={
+              <BbButton
+                block
+                variant='outline'
+                size='md'
+                label='CHANGE ROLE'
+                onClick={() => setStep('role')}
+                style={{ fontSize: 20 }}
               />
-              <div
-                style={{
-                  fontFamily: kbtMonoFont,
-                  fontSize: 11,
-                  lineHeight: 1.6,
-                  color: KBT.dim,
-                }}>
-                Shows in the lobby so the crew knows which phone is which.
-              </div>
-            </Plate>
-            <KbtButton block active label='CLAIM THIS CAMERA' onClick={join} />
-            <KbtButton
-              block
-              variant='outline'
-              label='CHANGE ROLE'
-              onClick={() => setStep('role')}
-            />
-          </div>
+            }
+          />
         ) : step === 'camera' && role ? (
           <FixedCamStep
             role={role}
@@ -789,15 +866,8 @@ export default function BasketballCamPage() {
             onGoLive={requestCam}
             onContinue={() => setStep(role === 'hoop' ? 'calibrate' : 'live')}
           />
-        ) : step === 'calibrate' ? (
-          <RimCalibrator
-            attachVideo={attachPreview}
-            initial={rim ?? sessionRef.current.rim ?? null}
-            onCalibrate={calibrate}
-            onSkip={rim ? () => setStep('live') : undefined}
-          />
         ) : null}
-      </KbtPhoneShell>
+      </BbPhoneShell>
     </div>
   );
 }

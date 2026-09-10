@@ -7,32 +7,26 @@ import {
   applyServerUrlFromQueryParam,
   resolveMediaUrl,
 } from '@/lib/server-url';
-import {
-  KBT,
-  KbtButton,
-  KbtConnectStep,
-  KbtPhoneShell,
-  KbtStatusStrip,
-  Label,
-} from '@/components/kettlebell-tournament/kbt-kit';
-import { NameStep } from '@/components/kettlebell-tournament/phone/name-step';
-import { CameraStep } from '@/components/kettlebell-tournament/phone/camera-step';
 import { useCommentatorRig } from '@/components/kettlebell-tournament/panel/use-commentator-rig';
 import { useCamRecovery } from '@/components/kettlebell-tournament/panel/use-cam-recovery';
-import { DevicePickers } from '@/components/kettlebell-tournament/panel/device-pickers';
-import '@/components/kettlebell-tournament/kbt-kit.css';
+import { BbDevicePickers, HazardStrip } from '../bb-kit';
+import { BbPhoneShell } from '../phone/bb-phone-shell';
+import { BbConnectStep } from '../phone/bb-connect-step';
+import { BbNameStep } from '../phone/bb-name-step';
+import { BbCamMicStep } from '../phone/bb-cam-mic-step';
 import { useBbPanelSocket, readModeratorSession } from './use-bb-panel-socket';
 import { PanelScreen } from './panel-screen';
+import '../bb-kit.css';
 
-// Courtside moderator wizard: boot → name → (optional) cam+mic → the panel.
-// Phone/tablet first: one scrolling column; a laptop gets the same page wide.
+// Courtside moderator wizard: connecting → name → (optional) cam+mic → the
+// panel. Phone/tablet first: one scrolling column; a laptop gets it wide.
 type Step = 'connect' | 'name' | 'camera' | 'panel';
 
-const STEP_META: Record<Step, { index: number; label: string }> = {
-  connect: { index: 0, label: 'CONNECTING' },
-  name: { index: 1, label: 'MODERATOR NAME' },
-  camera: { index: 2, label: 'CAM + MIC (OPTIONAL)' },
-  panel: { index: -1, label: 'COURTSIDE' },
+const STEP_INDEX: Record<Step, number> = {
+  connect: 0,
+  name: 1,
+  camera: 2,
+  panel: -1,
 };
 
 const NAME_KEY = 'bb-moderator-name';
@@ -125,66 +119,55 @@ export function ModeratorPanel({ roomId }: { roomId: string }) {
     socket.retry();
   }, [roomStatus, loadRoom, socket]);
 
-  const meta = STEP_META[step];
   const statusStrip =
     step === 'connect' ? null : !socket.connected ? (
-      <KbtStatusStrip text='RECONNECTING…' />
+      <HazardStrip text='RECONNECTING…' />
     ) : recovery.restoring && !rig.live ? (
-      <KbtStatusStrip text='RESTORING VIDEO…' />
+      <HazardStrip text='RESTORING VIDEO…' />
     ) : null;
 
   return (
     <>
       {statusStrip}
-      <KbtPhoneShell
-        title='BLACKTOP'
-        stepIndex={meta.index}
-        stepCount={3}
-        stepLabel={meta.label}
-        compact={step === 'panel'}>
+      <BbPhoneShell
+        title='MODERATOR'
+        stepIndex={STEP_INDEX[step]}
+        stepCount={4}
+        compact={step === 'panel'}
+        hideHeader={step === 'panel'}
+        gap={step === 'panel' ? 12 : undefined}>
         {step === 'connect' ? (
-          <KbtConnectStep
+          <BbConnectStep
+            roomId={roomId}
             roomStatus={roomStatus}
             wsConnected={socket.connected}
             wsError={socket.wsError}
             onRetry={retryConnect}
           />
         ) : step === 'name' ? (
-          <NameStep
+          <BbNameStep
+            heading={['MODERATOR', 'NAME']}
+            hint='Shown on the lobby and in the ledger next to your calls.'
             name={name}
             onName={setName}
             onContinue={join}
-            variant='commentator'
+            continueLabel='CONTINUE'
+            placeholder='YOUR NAME'
           />
         ) : step === 'camera' ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <CameraStep
-              camOn={rig.camOn}
-              camErr={rig.camErr}
-              facing='user'
-              cameraView='front'
-              publishing={rig.publishing}
-              live={rig.live}
-              attachVideo={rig.attachPreview}
-              onEnable={() => void rig.enableCamera()}
-              onGoLive={goLive}
-              onContinue={() => setStep('panel')}
-              variant={narrow ? 'commentator-phone' : 'commentator-desktop'}
-              micLevel={rig.camOn ? rig.micLevel : null}
-            />
-            {!narrow ? <DevicePickers rig={rig} /> : null}
-            <KbtButton
-              block
-              variant='outline'
-              label='MODERATE WITHOUT A CAMERA'
-              sub='ledger, clock and views only — no voice on air'
-              onClick={() => setStep('panel')}
-            />
-            <Label size={9} tracking={1} color={KBT.dim}>
-              a camera + mic puts you on air as the commentator; skip it to only
-              referee the AI&apos;s calls
-            </Label>
-          </div>
+          <BbCamMicStep
+            camOn={rig.camOn}
+            camErr={rig.camErr}
+            publishing={rig.publishing}
+            live={rig.live}
+            attachVideo={rig.attachPreview}
+            onEnable={() => void rig.enableCamera()}
+            onGoLive={goLive}
+            onContinue={() => setStep('panel')}
+            onSkip={() => setStep('panel')}
+            micLevel={rig.camOn ? rig.micLevel : null}
+            devicePickers={!narrow ? <BbDevicePickers rig={rig} /> : null}
+          />
         ) : (
           <PanelScreen
             socket={socket}
@@ -196,7 +179,7 @@ export function ModeratorPanel({ roomId }: { roomId: string }) {
             narrow={narrow}
           />
         )}
-      </KbtPhoneShell>
+      </BbPhoneShell>
     </>
   );
 }

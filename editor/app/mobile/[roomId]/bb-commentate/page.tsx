@@ -17,19 +17,24 @@ import {
 } from '@/lib/server-url';
 import { bbDisplay, bbMono } from '@/app/basketball-game/fonts';
 import {
-  Bar,
-  KBT,
-  KbtButton,
-  KbtConnectStep,
-  KbtPhoneShell,
-  KbtStatusStrip,
-  Label,
-  Tab,
+  BB,
+  BbButton,
+  BbPlate,
+  Copy,
+  HazardStrip,
+  Meta,
+  MicMeter,
+  Mono,
+  ScoreRow,
+  StatusPill,
   WarnPlate,
-  kbtMonoFont,
-} from '@/components/kettlebell-tournament/kbt-kit';
-import { NameStep } from '@/components/kettlebell-tournament/phone/name-step';
-import { CameraStep } from '@/components/kettlebell-tournament/phone/camera-step';
+  Wordmark,
+} from '@/components/basketball-game/bb-kit';
+import { BbPhoneShell } from '@/components/basketball-game/phone/bb-phone-shell';
+import { BbConnectStep } from '@/components/basketball-game/phone/bb-connect-step';
+import { BbNameStep } from '@/components/basketball-game/phone/bb-name-step';
+import { BbCamMicStep } from '@/components/basketball-game/phone/bb-cam-mic-step';
+import { LowerThirdPreview } from '@/components/basketball-game/phone/bb-lower-third-preview';
 import { usePreviewSet } from '@/components/kettlebell-tournament/phone/use-preview';
 import { useMicLevel } from '@/components/kettlebell-tournament/phone/use-mic-level';
 import { usePublishWatchdog } from '@/components/kettlebell-tournament/phone/use-publish-watchdog';
@@ -37,7 +42,7 @@ import {
   readModeratorSession,
   writeModeratorSession,
 } from '@/components/basketball-game/panel/use-bb-panel-socket';
-import '@/components/kettlebell-tournament/kbt-kit.css';
+import '@/components/basketball-game/bb-kit.css';
 
 // Phone commentator for the basketball game: boot → name → cam+mic → on air.
 // Voice goes into the mix (delayed with the cameras so "SCORE!" lands with
@@ -404,41 +409,191 @@ export default function BasketballCommentatorPage() {
 
   const statusStrip =
     step === 'connect' ? null : !connected ? (
-      <KbtStatusStrip text='RECONNECTING…' />
+      <HazardStrip text='RECONNECTING…' />
     ) : notice ? (
-      <KbtStatusStrip text={notice} />
+      <HazardStrip text={notice} />
     ) : camOn && !live && wantsCamRef.current ? (
-      <KbtStatusStrip text='RESTORING VIDEO…' />
+      <HazardStrip text='RESTORING VIDEO…' />
     ) : null;
+
+  if (step === 'onair') {
+    return (
+      <div className={fontClass}>
+        {statusStrip}
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: BB.page,
+            overflow: 'hidden',
+            color: BB.chalk,
+          }}>
+          <video
+            autoPlay
+            playsInline
+            muted
+            ref={attachPreview}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              transform: facing === 'user' ? 'scaleX(-1)' : undefined,
+              filter: muted ? 'saturate(.5) brightness(.8)' : undefined,
+            }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              left: 'calc(env(safe-area-inset-left, 0px) + 16px)',
+              top: 'calc(env(safe-area-inset-top, 0px) + 16px)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              gap: 8,
+            }}>
+            {live ? (
+              <StatusPill tone='onair' size={11} height={30}>
+                ON AIR
+              </StatusPill>
+            ) : (
+              <StatusPill tone='idle' size={11} height={30}>
+                OFFLINE
+              </StatusPill>
+            )}
+            <span style={{ background: BB.plate, padding: '4px 8px' }}>
+              <Mono
+                size={10}
+                tracking={0.2}
+                color={BB.chalk}
+                style={{ opacity: 0.85 }}>
+                MIRRORED · 3 S BEHIND THE COURT
+              </Mono>
+            </span>
+          </div>
+          <span
+            style={{
+              position: 'absolute',
+              right: 'calc(env(safe-area-inset-right, 0px) + 16px)',
+              top: 'calc(env(safe-area-inset-top, 0px) + 16px)',
+              background: BB.plate,
+              padding: '4px 10px',
+            }}>
+            <Wordmark size={26} />
+          </span>
+          <div
+            style={{
+              position: 'absolute',
+              left: 'calc(env(safe-area-inset-left, 0px) + 16px)',
+              right: 'calc(env(safe-area-inset-right, 0px) + 16px)',
+              bottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+            }}>
+            {teams ? (
+              <div
+                style={{
+                  height: 56,
+                  background: BB.plate,
+                  padding: '0 14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                }}>
+                <ScoreRow
+                  teams={teams}
+                  nameSize={20}
+                  scoreSize={30}
+                  stripe={{ w: 8, h: 28 }}
+                  separator='—'
+                  style={{ flex: 1 }}
+                />
+              </div>
+            ) : null}
+            <BbPlate
+              cutPx={0}
+              fill={BB.plate}
+              style={{
+                padding: 14,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 10,
+              }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <Meta size={10} tracking={0.22}>
+                  MIC
+                </Meta>
+                <Meta
+                  size={10}
+                  tracking={0.22}
+                  weight={600}
+                  color={muted ? BB.bad : BB.good}>
+                  {muted ? 'MUTED' : 'LIVE'}
+                </Meta>
+              </div>
+              <MicMeter
+                level={micLevel}
+                muted={muted}
+                segments={12}
+                height={14}
+              />
+            </BbPlate>
+            {camErr ? <WarnPlate tone='bad'>{camErr}</WarnPlate> : null}
+            <BbButton
+              block
+              size='lg'
+              variant={muted ? 'dangerSolid' : 'chalk'}
+              active={muted}
+              label={muted ? 'MIC MUTED — UNMUTE' : 'MUTE MIC'}
+              onClick={toggleMute}
+              style={{ height: 60, fontSize: 26 }}
+            />
+            <Copy
+              size={11}
+              color='rgba(232,228,218,.7)'
+              lineHeight={1.6}
+              style={{ textAlign: 'center', letterSpacing: '.04em' }}>
+              {muted
+                ? 'Your camera is still going out. Only the mic is off.'
+                : 'Your voice travels with the cameras, about 3 s behind the court. Call it as you see it, not as the screen shows it.'}
+            </Copy>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={fontClass}>
       {statusStrip}
-      <KbtPhoneShell
-        title='BLACKTOP'
-        stepIndex={meta.index}
-        stepCount={Object.keys(STEP_META).length}
-        stepLabel={meta.label}>
+      <BbPhoneShell title='COMMENTARY' stepIndex={meta.index} stepCount={3}>
         {step === 'connect' ? (
-          <KbtConnectStep
+          <BbConnectStep
+            roomId={String(roomId)}
             roomStatus={roomStatus}
             wsConnected={connected}
             wsError={wsDbg}
             onRetry={retryConnect}
           />
         ) : step === 'name' ? (
-          <NameStep
+          <BbNameStep
+            heading={['COMMENTATOR', 'NAME']}
+            hint='Goes on the lower third when you are on air.'
             name={name}
             onName={setName}
             onContinue={join}
-            variant='commentator'
+            continueLabel='CONTINUE'
+            placeholder='YOUR NAME'
+            preview={<LowerThirdPreview name={name} />}
           />
-        ) : step === 'camera' ? (
-          <CameraStep
+        ) : (
+          <BbCamMicStep
+            optional={false}
+            hint='Go on air as the courtside voice. Your picture and voice ride with the cameras, about 3 s behind.'
             camOn={camOn}
             camErr={camErr}
             facing={facing}
-            cameraView='front'
             publishing={publishing}
             live={live}
             attachVideo={attachPreview}
@@ -446,96 +601,10 @@ export default function BasketballCommentatorPage() {
             onFlip={flipCamera}
             onGoLive={requestCam}
             onContinue={() => setStep('onair')}
-            variant='commentator-phone'
             micLevel={camOn ? micLevel : null}
           />
-        ) : (
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 16,
-              padding: '24px 16px',
-              textAlign: 'center',
-            }}>
-            <Tab color={live ? KBT.good : KBT.bad} textColor={KBT.dark}>
-              {live ? 'ON AIR' : 'OFFLINE'}
-            </Tab>
-            <video
-              autoPlay
-              playsInline
-              muted
-              ref={attachPreview}
-              style={{
-                width: '70%',
-                maxWidth: 260,
-                border: `1px solid ${KBT.border}`,
-                transform: facing === 'user' ? 'scaleX(-1)' : undefined,
-              }}
-            />
-            {teams ? (
-              <div
-                style={{
-                  fontFamily: 'var(--font-kbt-display)',
-                  fontWeight: 800,
-                  fontSize: 26,
-                }}>
-                <span style={{ color: teams.A.color }}>
-                  {teams.A.name.toUpperCase()} {teams.A.score}
-                </span>
-                <span style={{ color: KBT.dim }}> — </span>
-                <span style={{ color: teams.B.color }}>
-                  {teams.B.score} {teams.B.name.toUpperCase()}
-                </span>
-              </div>
-            ) : null}
-            <div
-              style={{
-                alignSelf: 'stretch',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                minHeight: 14,
-              }}>
-              <Label size={9} tracking={2}>
-                MIC
-              </Label>
-              {muted ? (
-                <Label size={9} tracking={2} color={KBT.bad}>
-                  MUTED
-                </Label>
-              ) : (
-                <Bar
-                  value={micLevel}
-                  max={1}
-                  color={micLevel > 0.03 ? KBT.good : KBT.amber}
-                  style={{ flex: 1 }}
-                />
-              )}
-            </div>
-            <div
-              style={{
-                fontFamily: kbtMonoFont,
-                fontSize: 11,
-                letterSpacing: 0.5,
-                lineHeight: 1.6,
-                color: KBT.dim,
-              }}>
-              Your voice is live in the broadcast mix, delayed with the cameras
-              so your calls land with the ball. Referee controls live on the
-              panel.
-            </div>
-            {camErr ? <WarnPlate>{camErr}</WarnPlate> : null}
-            <KbtButton
-              variant={muted ? 'danger' : 'outline'}
-              label={muted ? 'MIC MUTED — UNMUTE' : 'MUTE MIC'}
-              active={muted}
-              onClick={toggleMute}
-            />
-          </div>
         )}
-      </KbtPhoneShell>
+      </BbPhoneShell>
     </div>
   );
 }

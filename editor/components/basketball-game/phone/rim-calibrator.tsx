@@ -2,14 +2,36 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { BbRim } from '@smelter-editor/types';
-import {
-  ChipButton,
-  KBT,
-  KbtButton,
-  Label,
-  Plate,
-  kbtMonoFont,
-} from '@/components/kettlebell-tournament/kbt-kit';
+import { BB, BbButton, Chip, Display, Mono } from '../bb-kit';
+
+// SVG attributes need real colours (no CSS vars).
+const RIM_ORANGE = '#E8632A';
+const NET_GREEN = '#2EE06A';
+const CHALK = '#E8E4DA';
+const ELECTRIC = '#22D3EE';
+const DARK = '#141416';
+
+/** Electric square handle with a cut corner + glyph (design: 32 px). */
+function Handle({ x, y, glyph }: { x: number; y: number; glyph: string }) {
+  const s = 32;
+  const c = 8;
+  const pts = `${x},${y} ${x + s - c},${y} ${x + s},${y + c} ${x + s},${y + s} ${x},${y + s}`;
+  return (
+    <g>
+      <polygon points={pts} fill={ELECTRIC} />
+      <text
+        x={x + s / 2}
+        y={y + s / 2 + 5}
+        textAnchor='middle'
+        fontSize={14}
+        fontWeight={600}
+        fill={DARK}
+        fontFamily='IBM Plex Mono, monospace'>
+        {glyph}
+      </text>
+    </g>
+  );
+}
 import {
   clientToNorm,
   defaultRim,
@@ -125,29 +147,37 @@ export function RimCalibrator({
   const rxPx = local && dims ? rim.rx * dims.w * local.scale : 0;
   const ryPx = local && dims ? rim.ry * dims.h * local.scale : 0;
 
+  const netH = dims ? rxPx * 2 * (dims.w / dims.h) * 0.45 : 0;
+  const nudge = 0.005;
+  const tool = (label: string, onClick: () => void, square = false) => (
+    <Chip
+      label={label}
+      onClick={onClick}
+      disabled={!still}
+      style={{
+        height: 44,
+        width: square ? 44 : undefined,
+        padding: square ? 0 : '0 14px',
+        background: BB.plate,
+      }}
+    />
+  );
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <Plate
-        cutPx={14}
-        innerStyle={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 8,
-          padding: '12px 14px',
-        }}>
-        <Label size={10}>CALIBRATE THE RIM</Label>
-        <div
-          style={{
-            fontFamily: kbtMonoFont,
-            fontSize: 11,
-            lineHeight: 1.6,
-            color: KBT.dim,
-          }}>
-          Drag the ring onto the rim. Pull the ▸ handle to the rim&apos;s width
-          and the ▾ handle to its height as seen from here. The AI counts a make
-          when the ball drops through this ring into the net below it.
-        </div>
-      </Plate>
+    <div
+      ref={boxRef}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: BB.page,
+        touchAction: 'none',
+        userSelect: 'none',
+        overflow: 'hidden',
+      }}>
       {/* hidden live preview — the still is grabbed from it */}
       <video
         autoPlay
@@ -156,158 +186,215 @@ export function RimCalibrator({
         ref={attach}
         style={{ display: 'none' }}
       />
-      <div
-        ref={boxRef}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
-        style={{
-          position: 'relative',
-          width: '100%',
-          aspectRatio: `${aspect}`,
-          background: '#000',
-          border: `1px solid ${KBT.border}`,
-          touchAction: 'none',
-          userSelect: 'none',
-          overflow: 'hidden',
-        }}>
-        {still ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={still}
-            alt=''
-            draggable={false}
-            style={{
-              position: 'absolute',
-              inset: 0,
-              width: '100%',
-              height: '100%',
-              objectFit: 'contain',
-            }}
+      {still ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={still}
+          alt=''
+          draggable={false}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            objectFit: 'contain',
+            filter: 'saturate(.6)',
+          }}
+        />
+      ) : (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+          <Mono size={12} weight={600} tracking={0.24}>
+            WAITING FOR THE CAMERA…
+          </Mono>
+        </div>
+      )}
+      {local ? (
+        <svg
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            pointerEvents: 'none',
+          }}>
+          {/* net zone: where the ball counts */}
+          <polygon
+            points={`${local.x - rxPx * 1.3},${local.y + ryPx} ${local.x + rxPx * 1.3},${local.y + ryPx} ${local.x + rxPx * 0.75},${local.y + ryPx + netH} ${local.x - rxPx * 0.75},${local.y + ryPx + netH}`}
+            fill='rgba(46,224,106,.25)'
+            stroke={NET_GREEN}
+            strokeWidth={2}
           />
-        ) : (
-          <div
-            style={{
-              position: 'absolute',
-              inset: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}>
-            <Label size={11}>WAITING FOR THE CAMERA…</Label>
-          </div>
-        )}
-        {local ? (
-          <svg
-            style={{
-              position: 'absolute',
-              inset: 0,
-              width: '100%',
-              height: '100%',
-              pointerEvents: 'none',
-            }}>
-            <ellipse
-              cx={local.x}
-              cy={local.y}
-              rx={rxPx}
-              ry={ryPx}
-              fill='rgba(255,106,31,.15)'
-              stroke={KBT.accent}
-              strokeWidth={3}
-            />
-            <ellipse
-              cx={local.x}
-              cy={local.y}
-              rx={rxPx * 1.15}
-              ry={ryPx * 1.15}
-              fill='none'
-              stroke='rgba(244,239,230,.35)'
-              strokeDasharray='6 6'
-            />
-            <rect
-              x={local.x - rxPx * 1.4}
-              y={local.y + ryPx}
-              width={rxPx * 2.8}
-              height={2 * rxPx * (dims ? dims.w / dims.h : 1.78) * 0.9}
-              fill='rgba(46,224,106,.08)'
-              stroke='rgba(46,224,106,.5)'
-              strokeDasharray='4 6'
-            />
-            <circle cx={local.x} cy={local.y} r={7} fill={KBT.cream} />
-            <circle
-              cx={local.x + rxPx}
-              cy={local.y}
-              r={11}
-              fill={KBT.accent}
-              stroke={KBT.dark}
-              strokeWidth={2}
-            />
-            <circle
-              cx={local.x}
-              cy={local.y + ryPx}
-              r={11}
-              fill={KBT.accent}
-              stroke={KBT.dark}
-              strokeWidth={2}
-            />
-          </svg>
-        ) : null}
-      </div>
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-        <ChipButton dense label='FREEZE NEW FRAME' onClick={grabStill} />
-        <ChipButton
-          dense
-          label='BIGGER'
-          onClick={() => setRim((r) => scaleRim(r, 1.1))}
-        />
-        <ChipButton
-          dense
-          label='SMALLER'
-          onClick={() => setRim((r) => scaleRim(r, 0.9))}
-        />
-        <ChipButton
-          dense
-          label='◀'
-          onClick={() => setRim((r) => nudgeRim(r, -0.005, 0))}
-        />
-        <ChipButton
-          dense
-          label='▶'
-          onClick={() => setRim((r) => nudgeRim(r, 0.005, 0))}
-        />
-        <ChipButton
-          dense
-          label='▲'
-          onClick={() => setRim((r) => nudgeRim(r, 0, -0.005))}
-        />
-        <ChipButton
-          dense
-          label='▼'
-          onClick={() => setRim((r) => nudgeRim(r, 0, 0.005))}
-        />
-      </div>
+          <ellipse
+            cx={local.x}
+            cy={local.y}
+            rx={rxPx * 1.15}
+            ry={ryPx * 1.15}
+            fill='none'
+            stroke='rgba(232,228,218,.7)'
+            strokeWidth={2}
+            strokeDasharray='6 6'
+          />
+          <ellipse
+            cx={local.x}
+            cy={local.y}
+            rx={rxPx}
+            ry={ryPx}
+            fill='rgba(232,99,42,.15)'
+            stroke={RIM_ORANGE}
+            strokeWidth={4}
+          />
+          <circle cx={local.x} cy={local.y} r={5} fill={CHALK} />
+          <Handle x={local.x + rxPx - 16} y={local.y - 16} glyph='▸' />
+          <Handle x={local.x - 16} y={local.y + ryPx - 16} glyph='▾' />
+        </svg>
+      ) : null}
+
+      {/* top-left: title + instructions */}
       <div
         style={{
-          fontFamily: kbtMonoFont,
-          fontSize: 10,
-          letterSpacing: 1,
-          color: KBT.dim,
+          position: 'absolute',
+          left: 'calc(env(safe-area-inset-left, 0px) + 16px)',
+          top: 'calc(env(safe-area-inset-top, 0px) + 16px)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'flex-start',
+          gap: 8,
+          pointerEvents: 'none',
         }}>
-        centre {rim.cx.toFixed(3)} · {rim.cy.toFixed(3)} · rx{' '}
-        {rim.rx.toFixed(3)} · ry {rim.ry.toFixed(3)}
+        <span
+          style={{
+            height: 26,
+            padding: '0 10px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 8,
+            background: BB.plate,
+          }}>
+          <span style={{ width: 8, height: 8, background: BB.amber }} />
+          <Mono size={10} weight={600} tracking={0.22}>
+            {still ? 'FROZEN FRAME' : 'LIVE'}
+          </Mono>
+        </span>
+        <Display
+          size={30}
+          weight={800}
+          style={{ background: BB.plate, padding: '6px 10px' }}>
+          RIM CALIBRATION
+        </Display>
+        <span
+          style={{ background: BB.plate, padding: '6px 10px', maxWidth: 300 }}>
+          <Mono
+            size={10}
+            tracking={0.14}
+            color={BB.chalk}
+            style={{ opacity: 0.85, lineHeight: 1.5 }}>
+            DRAG THE ORANGE RING ONTO THE RIM. PULL ▸ FOR WIDTH, ▾ FOR HEIGHT.
+            GREEN = NET ZONE, WHERE THE BALL COUNTS.
+          </Mono>
+        </span>
       </div>
-      <KbtButton
-        block
-        active
-        label='CALIBRATE'
-        sub='send the ring to the AI'
-        onClick={() => onCalibrate(rim)}
-        disabled={!still}
-      />
-      {onSkip ? (
-        <KbtButton block variant='outline' label='LATER' onClick={onSkip} />
-      ) : null}
+
+      {/* top-right: readout */}
+      <div
+        style={{
+          position: 'absolute',
+          right: 'calc(env(safe-area-inset-right, 0px) + 16px)',
+          top: 'calc(env(safe-area-inset-top, 0px) + 16px)',
+          background: BB.plate,
+          padding: '10px 12px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 4,
+          pointerEvents: 'none',
+        }}>
+        {(
+          [
+            [
+              'CX · CY',
+              dims
+                ? `${Math.round(rim.cx * dims.w)} · ${Math.round(rim.cy * dims.h)}`
+                : '—',
+              BB.chalk,
+            ],
+            [
+              'RX · RY',
+              dims
+                ? `${Math.round(rim.rx * dims.w)} · ${Math.round(rim.ry * dims.h)}`
+                : '—',
+              BB.chalk,
+            ],
+            [
+              'NET',
+              dims ? `${Math.round(netH / (local?.scale ?? 1))} PX` : '—',
+              BB.good,
+            ],
+          ] as const
+        ).map(([k, v, c]) => (
+          <div
+            key={k}
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              gap: 24,
+            }}>
+            <Mono
+              size={10}
+              tracking={0.14}
+              color={BB.chalk}
+              style={{ opacity: 0.6 }}>
+              {k}
+            </Mono>
+            <Mono size={10} weight={600} tracking={0.14} color={c}>
+              {v}
+            </Mono>
+          </div>
+        ))}
+      </div>
+
+      {/* bottom bar: tools + CALIBRATE */}
+      <div
+        onPointerDown={(e) => e.stopPropagation()}
+        style={{
+          position: 'absolute',
+          left: 'calc(env(safe-area-inset-left, 0px) + 16px)',
+          right: 'calc(env(safe-area-inset-right, 0px) + 16px)',
+          bottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)',
+          display: 'flex',
+          gap: 6,
+          alignItems: 'center',
+          flexWrap: 'wrap',
+        }}>
+        {tool('FREEZE NEW FRAME', grabStill)}
+        {tool('BIGGER', () => setRim((r) => scaleRim(r, 1.1)))}
+        {tool('SMALLER', () => setRim((r) => scaleRim(r, 0.9)))}
+        {tool('◂', () => setRim((r) => nudgeRim(r, -nudge, 0)), true)}
+        {tool('▴', () => setRim((r) => nudgeRim(r, 0, -nudge)), true)}
+        {tool('▾', () => setRim((r) => nudgeRim(r, 0, nudge)), true)}
+        {tool('▸', () => setRim((r) => nudgeRim(r, nudge, 0)), true)}
+        <div style={{ flex: 1 }} />
+        {onSkip ? (
+          <Chip
+            label='LATER'
+            onClick={onSkip}
+            style={{ height: 44, background: BB.plate }}
+          />
+        ) : null}
+        <BbButton
+          size='sm'
+          active
+          label='CALIBRATE'
+          disabled={!still}
+          onClick={() => onCalibrate(rim)}
+          style={{ height: 44, fontSize: 22, padding: '0 22px' }}
+        />
+      </div>
     </div>
   );
 }

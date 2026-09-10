@@ -2238,6 +2238,7 @@ export function RefCallCard({
   keysHint,
   scale = 1,
   right,
+  stillUrl,
 }: {
   shot: BbShotEvent;
   teams: TeamsLite;
@@ -2254,8 +2255,10 @@ export function RefCallCard({
   keysHint?: string;
   scale?: number;
   right?: React.ReactNode;
+  /** Resolved (absolute) still URL; defaults to the shot's own frame path. */
+  stillUrl?: string | null;
 }) {
-  const still = shot.releaseFrameUrl ?? shot.frameUrl ?? null;
+  const still = stillUrl ?? shot.releaseFrameUrl ?? shot.frameUrl ?? null;
   const pctA =
     shot.aiTeam === 'A'
       ? shot.aiConfidence

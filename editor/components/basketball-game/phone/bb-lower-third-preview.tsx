@@ -16,7 +16,7 @@ export function LowerThirdPreview({ name }: { name: string }) {
           ON AIR
         </StatusPill>
         <BbPlate
-          fill={BB.plate}
+          fill={BB.plate2}
           cutPx={14}
           style={{
             height: 88,

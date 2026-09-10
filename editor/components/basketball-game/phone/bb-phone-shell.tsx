@@ -14,6 +14,7 @@ export function BbPhoneShell({
   stepCount,
   compact = false,
   hideHeader = false,
+  noScroll = false,
   gap,
   children,
 }: {
@@ -26,6 +27,8 @@ export function BbPhoneShell({
   compact?: boolean;
   /** No header at all (full-bleed steps draw their own wordmark). */
   hideHeader?: boolean;
+  /** Pin the content (landscape rig / calibration draw full-bleed). */
+  noScroll?: boolean;
   gap?: number;
   children: React.ReactNode;
 }) {
@@ -66,17 +69,17 @@ export function BbPhoneShell({
         </div>
       )}
       <div
-        className={compact ? undefined : 'bb-scroll'}
+        className={noScroll ? undefined : 'bb-scroll'}
         style={{
           position: 'relative',
           flex: 1,
           minHeight: 0,
-          overflowY: compact ? 'hidden' : 'auto',
+          overflowY: noScroll ? 'hidden' : 'auto',
           display: 'flex',
           flexDirection: 'column',
           gap: gap ?? (small ? 12 : 24),
           padding: small
-            ? `8px calc(env(safe-area-inset-right, 0px) + 16px) calc(env(safe-area-inset-bottom, 0px) + 12px) calc(env(safe-area-inset-left, 0px) + 16px)`
+            ? `${hideHeader ? 'calc(env(safe-area-inset-top, 0px) + 12px)' : '8px'} calc(env(safe-area-inset-right, 0px) + 16px) calc(env(safe-area-inset-bottom, 0px) + 12px) calc(env(safe-area-inset-left, 0px) + 16px)`
             : `28px calc(env(safe-area-inset-right, 0px) + 24px) calc(env(safe-area-inset-bottom, 0px) + 32px) calc(env(safe-area-inset-left, 0px) + 24px)`,
         }}>
         {children}

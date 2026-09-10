@@ -3,43 +3,37 @@
 import React from 'react';
 import type { BbCamRole } from '@smelter-editor/types';
 import {
-  ChipButton,
-  KBT,
-  KbtButton,
-  Label,
-  Plate,
-  StatusDot,
+  BB,
+  BbButton,
+  BbPlate,
+  Chip,
+  Copy,
+  Display,
+  Mono,
+  UseCameraLink,
+  UseRecordingLink,
   WarnPlate,
-  kbtMonoFont,
-} from '@/components/kettlebell-tournament/kbt-kit';
-import {
-  UseCameraButton,
-  UseRecordingButton,
-} from '@/components/kettlebell-tournament/phone/use-recording-button';
+  Wordmark,
+  useIsLandscape,
+} from '../bb-kit';
 
-const COPY: Record<BbCamRole, { title: string; lines: string[] }> = {
+const COPY: Record<BbCamRole, { title: string; text: string; hint: string }> = {
   hoop: {
-    title: 'THE HOOP CAMERA',
-    lines: [
-      'Tripod or clamp — the phone must not move once calibrated.',
-      '45° off the backboard, 5–8 m from the hoop, above head height.',
-      'Rim in the upper-middle third, backboard fully in frame, net visible.',
-      'Landscape. Rear camera. No sun into the lens.',
-    ],
+    title: 'CAMERA RIG',
+    text: 'Tripod 5–8 m from the hoop, 45° off the backboard, above head height. Lock exposure. Whole rim and net in frame. Do not touch the phone after calibrating.',
+    hint: 'PUT THE RIM IN THE CENTRE CROSS',
   },
   court: {
-    title: 'THE COURT CAMERA',
-    lines: [
-      'Wide on the whole half-court — this is the picture viewers watch.',
-      'Tripod at mid-court, as high as you can get it.',
-      'Landscape. Rear camera.',
-    ],
+    title: 'CAMERA RIG',
+    text: 'Wide on the whole half-court — this is the picture viewers watch. Tripod at mid-court, as high as you can get it. Landscape, rear camera.',
+    hint: 'WIDE ON THE HALF COURT',
   },
 };
 
 /**
- * The fixed camera rig: rear camera preview with role-specific framing copy,
- * "use a recording" for tests, GO LIVE publishes into the room via WHIP.
+ * The fixed camera rig: rear-camera preview with the centre cross (hoop),
+ * role copy, ENABLE → GO LIVE → CONTINUE. Landscape puts the panel beside
+ * the preview; portrait stacks it.
  */
 export function FixedCamStep({
   role,
@@ -79,101 +73,142 @@ export function FixedCamStep({
   onContinue: () => void;
 }) {
   const copy = COPY[role];
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <Plate
-        cutPx={14}
-        innerStyle={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 8,
-          padding: '12px 14px',
-        }}>
-        <Label size={10}>{copy.title}</Label>
-        <ul
-          style={{
-            margin: 0,
-            paddingLeft: 16,
-            fontFamily: kbtMonoFont,
-            fontSize: 11,
-            lineHeight: 1.6,
-            color: KBT.dim,
-          }}>
-          {copy.lines.map((l) => (
-            <li key={l}>{l}</li>
-          ))}
-        </ul>
-      </Plate>
-      <div
+  const landscape = useIsLandscape();
+  const status = live
+    ? sendFps != null
+      ? `SENDING ${Math.round(sendFps)} FPS`
+      : 'LIVE'
+    : publishing
+      ? 'CONNECTING…'
+      : camOn
+        ? 'PREVIEW · REAR CAMERA'
+        : 'CAMERA OFF';
+
+  const preview = (
+    <div
+      style={{
+        position: 'relative',
+        flex: landscape ? 1 : undefined,
+        aspectRatio: landscape ? undefined : '16 / 9',
+        background: 'radial-gradient(ellipse at 50% 40%,#2c2c30,#161618 75%)',
+        overflow: 'hidden',
+        minHeight: 0,
+      }}>
+      <video
+        autoPlay
+        playsInline
+        muted
+        ref={attachVideo}
         style={{
-          position: 'relative',
+          position: 'absolute',
+          inset: 0,
           width: '100%',
-          aspectRatio: '16 / 9',
-          background: '#000',
-          border: `1px solid ${live ? KBT.good : KBT.border}`,
-          overflow: 'hidden',
-        }}>
-        <video
-          autoPlay
-          playsInline
-          muted
-          ref={attachVideo}
-          style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-        />
-        {!camOn ? (
-          <div
+          height: '100%',
+          objectFit: 'contain',
+          opacity: camOn ? 1 : 0,
+        }}
+      />
+      {role === 'hoop' ? (
+        <>
+          <span
+            aria-hidden
             style={{
               position: 'absolute',
-              inset: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}>
-            <Label size={11}>CAMERA OFF</Label>
-          </div>
-        ) : null}
-        <div
-          style={{
-            position: 'absolute',
-            top: 8,
-            left: 8,
-            display: 'flex',
-            gap: 8,
-            alignItems: 'center',
-          }}>
-          <StatusDot
-            state={live ? 'good' : publishing ? 'warn' : 'idle'}
-            pulse={publishing && !live}
+              left: 0,
+              right: 0,
+              top: '50%',
+              height: 1,
+              background: 'rgba(34,211,238,.5)',
+            }}
           />
           <span
+            aria-hidden
             style={{
-              fontFamily: kbtMonoFont,
-              fontSize: 10,
-              letterSpacing: 1.5,
-              color: KBT.cream,
-              background: KBT.scrim,
-              padding: '2px 6px',
-            }}>
-            {live
-              ? sendFps != null
-                ? `SENDING ${Math.round(sendFps)} FPS`
-                : 'LIVE'
-              : publishing
-                ? 'CONNECTING…'
-                : 'PREVIEW'}
-          </span>
-        </div>
-      </div>
-      {camErr ? <WarnPlate>{camErr}</WarnPlate> : null}
-      {!camOn ? (
-        <KbtButton
-          block
-          active
-          label='ENABLE THE CAMERA'
-          sub='rear camera, landscape'
-          onClick={onEnable}
+              position: 'absolute',
+              top: 0,
+              bottom: 0,
+              left: '50%',
+              width: 1,
+              background: 'rgba(34,211,238,.5)',
+            }}
+          />
+        </>
+      ) : null}
+      <span
+        style={{
+          position: 'absolute',
+          left: 12,
+          top: 12,
+          height: 26,
+          padding: '0 10px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          background: BB.plate,
+        }}>
+        <span
+          className={publishing && !live ? 'bb-pulse' : undefined}
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: '50%',
+            background: live ? BB.good : publishing ? BB.amber : BB.rule2,
+          }}
+        />
+        <Mono size={10} weight={600} tracking={0.22}>
+          {status}
+        </Mono>
+      </span>
+      {camOn && !fileMode ? (
+        <Chip
+          dense
+          label='FLIP'
+          onClick={onFlip}
+          style={{
+            position: 'absolute',
+            right: 12,
+            top: 12,
+            background: BB.plate,
+          }}
         />
       ) : null}
+      {camOn ? (
+        <span
+          style={{
+            position: 'absolute',
+            left: 12,
+            bottom: 12,
+            padding: '5px 10px',
+            background: BB.plate,
+            opacity: 0.9,
+          }}>
+          <Mono size={10} tracking={0.18}>
+            {copy.hint}
+          </Mono>
+        </span>
+      ) : null}
+    </div>
+  );
+
+  const panel = (
+    <BbPlate
+      cutPx={0}
+      style={{
+        padding: landscape ? 20 : 16,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 10,
+        width: landscape ? 280 : undefined,
+        flexShrink: 0,
+      }}>
+      {landscape ? <Wordmark size={24} /> : null}
+      <Display size={28} weight={800} lineHeight={0.95}>
+        {copy.title}
+      </Display>
+      <Copy size={11} color='rgba(232,228,218,.75)' lineHeight={1.7}>
+        {copy.text}
+      </Copy>
+      {camErr ? <WarnPlate tone='bad'>{camErr}</WarnPlate> : null}
       {camOn ? (
         <div
           style={{
@@ -182,43 +217,89 @@ export function FixedCamStep({
             flexWrap: 'wrap',
             alignItems: 'center',
           }}>
-          {!fileMode ? (
-            <ChipButton dense label='FLIP' onClick={onFlip} />
-          ) : null}
           {fileMode ? (
             <>
-              <ChipButton
+              <Chip
                 dense
                 label={filePlaying ? 'PAUSE CLIP' : 'PLAY CLIP'}
                 onClick={onToggleFile}
               />
-              <ChipButton dense label='RESTART CLIP' onClick={onRestartFile} />
-              <UseCameraButton onClick={onUseCamera} />
+              <Chip dense label='RESTART CLIP' onClick={onRestartFile} />
+              <UseCameraLink onClick={onUseCamera} />
             </>
           ) : (
-            <UseRecordingButton onUseFile={onUseFile} />
+            <UseRecordingLink onUseFile={onUseFile} />
           )}
         </div>
       ) : null}
-      {camOn && !live ? (
-        <KbtButton
-          block
-          active
-          label={publishing ? 'CONNECTING…' : 'GO LIVE'}
-          sub='publish this camera into the room'
-          onClick={onGoLive}
-          disabled={publishing}
-        />
-      ) : null}
-      {live ? (
-        <KbtButton
-          block
-          active
-          label='CONTINUE'
-          sub={role === 'hoop' ? 'next: calibrate the rim' : 'to the live view'}
-          onClick={onContinue}
-        />
-      ) : null}
+      <div
+        style={{
+          marginTop: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+        }}>
+        {!camOn ? (
+          <BbButton
+            block
+            variant='outline'
+            size='sm'
+            label='ENABLE THE CAMERA'
+            active
+            onClick={onEnable}
+          />
+        ) : null}
+        {camOn && !live ? (
+          <BbButton
+            block
+            active={!publishing}
+            disabled={publishing}
+            size='md'
+            label={
+              publishing
+                ? 'CONNECTING…'
+                : role === 'hoop'
+                  ? 'GO LIVE → CALIBRATE'
+                  : 'GO LIVE'
+            }
+            onClick={onGoLive}
+            style={{ height: 52, fontSize: 24 }}
+          />
+        ) : null}
+        {live ? (
+          <BbButton
+            block
+            active
+            size='md'
+            label={role === 'hoop' ? 'CALIBRATE THE RIM' : 'CONTINUE'}
+            onClick={onContinue}
+            style={{ height: 52, fontSize: 24 }}
+          />
+        ) : null}
+      </div>
+    </BbPlate>
+  );
+
+  if (landscape) {
+    return (
+      <div
+        style={{
+          flex: 1,
+          display: 'flex',
+          gap: 0,
+          minHeight: 0,
+          margin:
+            '-8px -16px calc(-1 * env(safe-area-inset-bottom, 0px) - 12px)',
+        }}>
+        {preview}
+        {panel}
+      </div>
+    );
+  }
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {preview}
+      {panel}
     </div>
   );
 }
