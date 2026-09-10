@@ -10,7 +10,7 @@ import type {
   BbShotEdit,
   BbTeamId,
 } from '@smelter-editor/types';
-import { BB_DEFAULT_CONFIG } from '@smelter-editor/types';
+import { BB_DEFAULT_CONFIG, BB_YOLO_WEIGHTS } from '@smelter-editor/types';
 import {
   controlBbMatch,
   createNewRoom,
@@ -67,9 +67,8 @@ export function sanitizeBbDetector(
         ? d.ballDetector
         : 'auto',
     yoloWeights:
-      d?.yoloWeights === 'yolo11n.pt' ||
-      d?.yoloWeights === 'yolo11s.pt' ||
-      d?.yoloWeights === 'yolo11m.pt'
+      d?.yoloWeights != null &&
+      (BB_YOLO_WEIGHTS as readonly string[]).includes(d.yoloWeights)
         ? d.yoloWeights
         : 'auto',
     imgsz:

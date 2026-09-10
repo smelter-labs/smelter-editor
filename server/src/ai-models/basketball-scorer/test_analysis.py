@@ -9,7 +9,10 @@ the rim, and pin makes on the right jersey.
 from __future__ import annotations
 
 from analysis import (
+    ABOVE_DEPTH,
+    ABOVE_HALF_WIDTH,
     ATTEMPT_DIST,
+    CROP_MIN_SIDE,
     NET_DEPTH,
     BallTrack,
     Rim,
@@ -18,6 +21,7 @@ from analysis import (
     ball_in_hands,
     classify_team,
     median_color,
+    rim_crop_box,
     rim_from_params,
     torso_region,
     zone_of,
@@ -174,6 +178,26 @@ check("zone: far below the net", zone_of(RIM.cx, RIM.cy + 0.5, RIM, ASPECT) == "
 check("rim_from_params off", rim_from_params({"rimSet": 0}) is None)
 check("rim_from_params on", rim_from_params(PARAMS) == RIM)
 check("interval clamps", analysis_interval_s({"analysisFps": 99}, 0.05) == 1 / 30 and analysis_interval_s({"analysisFps": 2}, 0.05) == 1 / 8 and analysis_interval_s({}, 0.05) == 0.05)
+
+# ── rim crop (shared by training data + the worker's ball pass) ──────────────
+APIDIS_CAM7 = Rim(cx=0.1812, cy=0.1765, rx=0.0232, ry=0.0081)  # 1600x1200, rim near the top-left
+x0, y0, side = rim_crop_box(APIDIS_CAM7, 1600, 1200)
+check("rim crop: side is 16 rx rounded to 32", side == 608, str(side))
+check("rim crop: shifted to stay inside the frame", x0 == 0 and y0 == 0, f"{x0},{y0}")
+rx_px = APIDIS_CAM7.rx * 1600
+above_top = APIDIS_CAM7.cy * 1200 - ABOVE_DEPTH * rx_px
+net_bottom = (APIDIS_CAM7.cy + APIDIS_CAM7.ry) * 1200 + NET_DEPTH * rx_px
+band_left = APIDIS_CAM7.cx * 1600 - ABOVE_HALF_WIDTH * rx_px
+band_right = APIDIS_CAM7.cx * 1600 + ABOVE_HALF_WIDTH * rx_px
+check(
+    "rim crop: covers the approach band and the net bottom",
+    y0 <= above_top and net_bottom <= y0 + side and x0 <= band_left and band_right <= x0 + side,
+    f"crop {x0},{y0}+{side} vs y {above_top:.0f}..{net_bottom:.0f} x {band_left:.0f}..{band_right:.0f}",
+)
+x0, y0, side = rim_crop_box(RIM, 1280, 720)
+check("rim crop: never larger than the frame", side == 720 and x0 == 280 and y0 == 0, f"{x0},{y0}+{side}")
+x0, y0, side = rim_crop_box(Rim(0.5, 0.5, 0.005, 0.002), 1600, 1200)
+check("rim crop: minimum side for a tiny rim", side == CROP_MIN_SIDE and x0 == 560 and y0 == 360, f"{x0},{y0}+{side}")
 
 # ── track ────────────────────────────────────────────────────────────────────
 tr = BallTrack()

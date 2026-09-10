@@ -25,6 +25,7 @@ import {
   BB_DEFAULT_CONFIG,
   BB_MATCH_ACTIONS,
   BB_TEAM_IDS,
+  BB_YOLO_WEIGHTS,
 } from '@smelter-editor/types';
 import type { BbHudScene, BbHudStage, BbHudState } from '../app/store';
 import {
@@ -1543,10 +1544,8 @@ export class BasketballGameController {
         c.detector.ballDetector = d.ballDetector;
       }
       if (
-        d.yoloWeights === 'auto' ||
-        d.yoloWeights === 'yolo11n.pt' ||
-        d.yoloWeights === 'yolo11s.pt' ||
-        d.yoloWeights === 'yolo11m.pt'
+        d.yoloWeights != null &&
+        (BB_YOLO_WEIGHTS as readonly string[]).includes(d.yoloWeights)
       ) {
         c.detector.yoloWeights = d.yoloWeights;
       }

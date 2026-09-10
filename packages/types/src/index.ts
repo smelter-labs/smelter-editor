@@ -315,4 +315,5 @@ export {
   BB_TEAM_COLOR_PRESETS,
   BB_DEFAULT_CONFIG,
   BB_MATCH_ACTIONS,
+  BB_YOLO_WEIGHTS,
 } from "./basketball-game-events.js";

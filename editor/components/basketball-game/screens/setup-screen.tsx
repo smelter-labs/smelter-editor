@@ -441,6 +441,9 @@ export function SetupScreen({
                   <option value='yolo11n.pt'>yolo11n.pt</option>
                   <option value='yolo11s.pt'>yolo11s.pt</option>
                   <option value='yolo11m.pt'>yolo11m.pt</option>
+                  <option value='bb-ball.pt'>
+                    bb-ball.pt (HALL FINE-TUNE)
+                  </option>
                 </BbSelect>
               </KvRow>
               <KvRow label='INFERENCE'>

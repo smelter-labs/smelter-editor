@@ -23,7 +23,20 @@ export type BbPeriod = "reg" | "ot";
 export type BbRim = { cx: number; cy: number; rx: number; ry: number };
 
 export type BbBallDetector = "auto" | "yolo" | "hsv";
-export type BbYoloWeights = "auto" | "yolo11n.pt" | "yolo11s.pt" | "yolo11m.pt";
+/**
+ * COCO weights shipped with the worker, or `bb-ball.pt` — the single-class
+ * ball detector fine-tuned on hall footage (server/scripts/bb-ball; the file
+ * is gitignored and the worker falls back to auto when it is missing).
+ */
+export type BbYoloWeights =
+  "auto" | "yolo11n.pt" | "yolo11s.pt" | "yolo11m.pt" | "bb-ball.pt";
+export const BB_YOLO_WEIGHTS: readonly BbYoloWeights[] = [
+  "auto",
+  "yolo11n.pt",
+  "yolo11s.pt",
+  "yolo11m.pt",
+  "bb-ball.pt",
+];
 
 export type BbTeamConfig = {
   name: string;
@@ -103,17 +116,20 @@ export type BbShotEdit = {
 };
 
 /** Eight bib colours that stay apart on camera (streetball teams pick two). */
-export const BB_TEAM_COLOR_PRESETS: { id: string; label: string; color: string }[] =
-  [
-    { id: "orange", label: "ORANGE", color: "#ff6a1f" },
-    { id: "blue", label: "BLUE", color: "#1f7bff" },
-    { id: "red", label: "RED", color: "#ff2e3d" },
-    { id: "green", label: "GREEN", color: "#2ee06a" },
-    { id: "yellow", label: "YELLOW", color: "#ffd21f" },
-    { id: "purple", label: "PURPLE", color: "#a35bff" },
-    { id: "white", label: "WHITE", color: "#f4efe6" },
-    { id: "black", label: "BLACK", color: "#141416" },
-  ];
+export const BB_TEAM_COLOR_PRESETS: {
+  id: string;
+  label: string;
+  color: string;
+}[] = [
+  { id: "orange", label: "ORANGE", color: "#ff6a1f" },
+  { id: "blue", label: "BLUE", color: "#1f7bff" },
+  { id: "red", label: "RED", color: "#ff2e3d" },
+  { id: "green", label: "GREEN", color: "#2ee06a" },
+  { id: "yellow", label: "YELLOW", color: "#ffd21f" },
+  { id: "purple", label: "PURPLE", color: "#a35bff" },
+  { id: "white", label: "WHITE", color: "#f4efe6" },
+  { id: "black", label: "BLACK", color: "#141416" },
+];
 
 export const BB_DEFAULT_CONFIG: BbConfig = {
   teams: {
@@ -230,7 +246,7 @@ export type BbCam = {
   /** The WHIP input is publishing (receiving heartbeat acks). */
   camConnected: boolean;
   /** 'whip' = phone-published stream; 'file' = looping mp4 from data/mp4s. */
-  source: 'whip' | 'file';
+  source: "whip" | "file";
   /** source === 'file' only: path relative to data/mp4s. */
   fileName?: string;
   /** source === 'file' and connected: where the looping clip's playhead is. */
@@ -255,14 +271,7 @@ export type BbCommentator = {
  * split (court + commentator) only come from the panel's view override.
  */
 export type BbSceneName =
-  | "lobby"
-  | "live"
-  | "score"
-  | "hoop"
-  | "court"
-  | "caster"
-  | "split"
-  | "ended";
+  "lobby" | "live" | "score" | "hoop" | "court" | "caster" | "split" | "ended";
 
 export type BbViewOverride =
   | { mode: "auto" }

@@ -217,6 +217,28 @@ class Rim:
         return self.cy + self.ry + NET_DEPTH * self.rx * aspect
 
 
+# Square crop the ball pass runs on: wide enough for the approach band above
+# the rim (ABOVE_DEPTH) and the net band below it, at native resolution (the
+# detector letterboxes it up to its imgsz when smaller). One rule for training
+# data (scripts/bb-ball/build_dataset.py) and inference (worker.detect_yolo).
+CROP_RADII = 16.0  # crop side in rim radii (rx, in px)
+CROP_MIN_SIDE = 480
+
+
+def rim_crop_box(rim: Rim, w: int, h: int) -> tuple[int, int, int]:
+    """(x0, y0, side) of the rim crop in frame pixels: side is CROP_RADII·rx
+    rounded to 32, at least CROP_MIN_SIDE, never larger than the frame, and
+    the square is shifted to stay inside the frame."""
+    side = int(round(CROP_RADII * rim.rx * w / 32.0)) * 32
+    side = max(CROP_MIN_SIDE, side)
+    side = min(side, w, h)
+    cx = int(rim.cx * w)
+    cy = int(rim.cy * h)
+    x0 = max(0, min(w - side, cx - side // 2))
+    y0 = max(0, min(h - side, cy - side // 2))
+    return x0, y0, side
+
+
 def rim_from_params(params: dict) -> Optional[Rim]:
     if str(params.get("rimSet", "0")).strip().lower() not in ("1", "true", "on"):
         return None

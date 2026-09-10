@@ -35,12 +35,15 @@ const BASKETBALL_SCORER_PARAMS: ModelParamSpec[] = [
     type: 'select',
     key: 'yoloWeights',
     label: 'YOLO weights',
-    description: 'Auto picks Small on CUDA and Nano on CPU.',
+    description:
+      'Auto picks Small on CUDA and Nano on CPU. bb-ball.pt is the ball-only ' +
+      'fine-tune for fixed hall cameras (falls back to Auto when the file is missing).',
     options: [
       { value: 'auto', label: 'Auto (by device)' },
       { value: 'yolo11n.pt', label: 'YOLO11 Nano (CPU)' },
       { value: 'yolo11s.pt', label: 'YOLO11 Small' },
       { value: 'yolo11m.pt', label: 'YOLO11 Medium (GPU)' },
+      { value: 'bb-ball.pt', label: 'Hall fine-tune (ball only)' },
     ],
     default: 'auto',
   },

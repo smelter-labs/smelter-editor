@@ -50,6 +50,7 @@ from analysis import (
     classify_team,
     hex_to_rgb,
     median_color,
+    rim_crop_box,
     rim_from_params,
     torso_region,
 )
@@ -166,13 +167,47 @@ def _cap_torch_threads() -> None:
         pass
 
 
-def _resolve_weights(params: dict) -> str:
-    w = str(params.get("yoloWeights", "auto")).strip()
-    if w in ("yolo11n.pt", "yolo11s.pt", "yolo11m.pt"):
-        return w
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+COCO_WEIGHTS = ("yolo11n.pt", "yolo11s.pt", "yolo11m.pt")
+# Fine-tuned single-class ball detectors (scripts/bb-ball/train.py --install);
+# they live next to this file, gitignored, and fall back to COCO when absent.
+CUSTOM_WEIGHTS = ("bb-ball.pt",)
+_missing_custom_warned: set[str] = set()
+
+
+def _default_weights() -> str:
     if WEIGHTS_ENV:
         return WEIGHTS_ENV
     return "yolo11s.pt" if _select_device().startswith("cuda") else "yolo11n.pt"
+
+
+def _resolve_weights(params: dict) -> str:
+    w = str(params.get("yoloWeights", "auto")).strip()
+    if w in COCO_WEIGHTS:
+        return w
+    if w in CUSTOM_WEIGHTS:
+        path = os.path.join(_SCRIPT_DIR, w)
+        if os.path.exists(path):
+            return path
+        # Never hand a missing custom name to ultralytics: a failed download
+        # would mark the backend broken and drop the worker to HSV for good.
+        if w not in _missing_custom_warned:
+            _missing_custom_warned.add(w)
+            log.warning("yoloWeights=%s not found at %s — using %s", w, path, _default_weights())
+    return _default_weights()
+
+
+def _ball_class(model) -> int:
+    """COCO 'sports ball', or class 0 of a single-class fine-tune."""
+    names = getattr(model, "names", None) or {}
+    return 0 if len(names) == 1 else BALL_CLASS
+
+
+def _person_model(ball_model):
+    """Persons come from a COCO model; a single-class ball model has none."""
+    if _ball_class(ball_model) == BALL_CLASS:
+        return ball_model
+    return _get_model(_default_weights())
 
 
 def _get_model(weights: str):
@@ -219,7 +254,7 @@ def _predict(model, img, imgsz: int, conf: float, classes: list[int]):
         raise
 
 
-def _boxes_from(result, ox: int, oy: int, frame_w: int, frame_h: int):
+def _boxes_from(result, ox: int, oy: int, frame_w: int, frame_h: int, ball_cls: int = BALL_CLASS):
     """Split one result into normalized person / ball boxes (offset back into
     the full frame when the pass ran on a crop)."""
     persons: list[dict] = []
@@ -238,44 +273,62 @@ def _boxes_from(result, ox: int, oy: int, frame_w: int, frame_h: int):
             "h": round((y2 - y1) / frame_h, 4),
             "conf": round(conf, 3),
         }
-        if cls == PERSON_CLASS:
-            persons.append(box)
-        elif cls == BALL_CLASS:
+        if cls == ball_cls:
             balls.append(box)
+        elif cls == PERSON_CLASS:
+            persons.append(box)
     return persons, balls
 
 
+# Crop pass resolution: the rim crop (analysis.rim_crop_box, 480–~700 px on
+# the cameras seen so far) is letterboxed up to this so a ~30 px ball keeps
+# its size or grows; the training crops go through the same resize.
+CROP_IMGSZ = 640
+
+
 def detect_yolo(rgb, params: dict, rim) -> dict | None:
-    """Full-frame pass (person + ball), plus a rim-centred crop pass when the
-    ball is missing. Returns None when the backend is unavailable."""
-    model = _get_model(_resolve_weights(params))
-    if model is None:
+    """Ball + persons for one frame. With a rim calibrated the ball is looked
+    for first in the rim crop at native resolution (that is where makes are
+    decided), then in the full frame at `imgsz`; persons always come from the
+    full-frame pass of a COCO model. Returns None when the backend is
+    unavailable."""
+    ball_model = _get_model(_resolve_weights(params))
+    if ball_model is None:
         return None
     h, w = rgb.shape[:2]
     imgsz = int(float(params.get("imgsz", IMGSZ)))
     ball_conf = float(params.get("ballConf", BALL_CONF))
-    results = _predict(model, rgb, imgsz, min(ball_conf, PERSON_CONF), [PERSON_CLASS, BALL_CLASS])
-    persons: list[dict] = []
+    ball_cls = _ball_class(ball_model)
+    rim_crop = rim is not None and (_flag(params, "rimCrop") if "rimCrop" in params else True)
+
     balls: list[dict] = []
-    if results:
-        persons, balls = _boxes_from(results[0], 0, 0, w, h)
-    persons = [p for p in persons if p["conf"] >= PERSON_CONF]
-    balls = [b for b in balls if b["conf"] >= ball_conf]
     crop_used = False
-    if not balls and rim is not None and _flag(params, "rimCrop") if "rimCrop" in params else (not balls and rim is not None):
-        side = int(max(6 * rim.rx * w, 6 * rim.ry * h, 320))
-        side = min(side, w, h)
-        cx = int(rim.cx * w)
-        cy = int(rim.cy * h)
-        x0 = max(0, min(w - side, cx - side // 2))
-        y0 = max(0, min(h - side, cy - side // 2))
+    if rim_crop:
+        x0, y0, side = rim_crop_box(rim, w, h)
         crop = np.ascontiguousarray(rgb[y0 : y0 + side, x0 : x0 + side])
-        crop_imgsz = min(640, max(320, (side // 32) * 32))
-        cres = _predict(model, crop, crop_imgsz, ball_conf * 0.8, [BALL_CLASS])
+        cres = _predict(ball_model, crop, CROP_IMGSZ, ball_conf, [ball_cls])
         if cres:
-            _, cballs = _boxes_from(cres[0], x0, y0, w, h)
-            balls = [b for b in cballs if b["conf"] >= ball_conf * 0.8]
+            _, balls = _boxes_from(cres[0], x0, y0, w, h, ball_cls)
+            balls = [b for b in balls if b["conf"] >= ball_conf]
             crop_used = bool(balls)
+
+    person_model = _person_model(ball_model)
+    persons: list[dict] = []
+    if person_model is not None:
+        # One COCO pass covers persons and (when it is the ball model too) the ball.
+        classes = [PERSON_CLASS] + ([BALL_CLASS] if person_model is ball_model else [])
+        results = _predict(person_model, rgb, imgsz, min(ball_conf, PERSON_CONF), classes)
+        if results:
+            fp, fb = _boxes_from(results[0], 0, 0, w, h)
+            persons = [p for p in fp if p["conf"] >= PERSON_CONF]
+            if not balls:
+                balls = [b for b in fb if b["conf"] >= ball_conf]
+    if not balls and person_model is not ball_model:
+        # Custom ball model: full-frame fallback for a ball away from the rim.
+        results = _predict(ball_model, rgb, imgsz, ball_conf, [ball_cls])
+        if results:
+            _, fb = _boxes_from(results[0], 0, 0, w, h, ball_cls)
+            balls = [b for b in fb if b["conf"] >= ball_conf]
     return {"persons": persons, "balls": balls, "crop": crop_used}
 
 
