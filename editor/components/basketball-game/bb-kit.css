@@ -17,6 +17,21 @@
   animation: bb-pulse 1.6s ease-in-out infinite;
 }
 
+/* Buttons that want pressing: a gentle brightness breath, never a dim. */
+@keyframes bb-breathe {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.18);
+  }
+}
+
+.bb-breathe {
+  animation: bb-breathe 1.6s ease-in-out infinite;
+}
+
 @keyframes bb-blink {
   0%,
   54% {

@@ -7,12 +7,7 @@ import {
   getMP4Suggestions,
   syncBbFileCams,
 } from '@/app/actions/actions';
-import {
-  ChipButton,
-  KBT,
-  KbtSelect,
-  Label,
-} from '@/components/kettlebell-tournament/kbt-kit';
+import { BB, BbSelect, Chip, Meta } from './bb-kit';
 
 type Cams = Record<BbCamRole, BbCam>;
 
@@ -100,6 +95,7 @@ export function FileCamPicker({
   };
 
   const isCurrent = cam?.source === 'file' && cam.fileName === selected;
+  const h = dense ? 28 : 36;
 
   return (
     <div
@@ -118,11 +114,12 @@ export function FileCamPicker({
           width: '100%',
           minWidth: 0,
         }}>
-        <KbtSelect
+        <BbSelect
           label={dense ? 'CLIP' : 'CLIP FROM DATA/MP4S'}
           value={selected}
           onChange={setSelected}
-          style={{ minWidth: 0 }}>
+          height={h}
+          style={{ flex: 1, minWidth: 0 }}>
           {files.length === 0 ? (
             <option value=''>
               {loading ? 'loading…' : 'no mp4s in data/mp4s'}
@@ -133,8 +130,8 @@ export function FileCamPicker({
               {f}
             </option>
           ))}
-        </KbtSelect>
-        <ChipButton
+        </BbSelect>
+        <Chip
           dense={dense}
           label={busy ? 'ATTACHING…' : isCurrent ? 'RESTART' : 'USE FILE'}
           title={
@@ -144,13 +141,13 @@ export function FileCamPicker({
           }
           disabled={busy || !selected}
           onClick={() => void use()}
-          style={{ flexShrink: 0, marginBottom: 1 }}
+          style={{ flexShrink: 0 }}
         />
       </div>
       {error ? (
-        <Label size={9} tracking={1} color={KBT.amber}>
+        <Meta size={9} tracking={0.1} color={BB.amber}>
           {error}
-        </Label>
+        </Meta>
       ) : null}
     </div>
   );
@@ -210,7 +207,7 @@ export function FileCamSyncButton({
         flexWrap: 'wrap',
       }}>
       {fileCams.length > 0 ? (
-        <ChipButton
+        <Chip
           dense={dense}
           label={busy ? 'RESTARTING…' : 'RESTART CLIPS 0:00'}
           title='Restart every file camera from the beginning, in sync'
@@ -219,12 +216,12 @@ export function FileCamSyncButton({
         />
       ) : null}
       {onReload ? (
-        <ChipButton dense={dense} label='RELOAD LIST' onClick={onReload} />
+        <Chip dense={dense} label='RELOAD LIST' onClick={onReload} />
       ) : null}
       {note ? (
-        <Label size={9} tracking={1}>
+        <Meta size={9} tracking={0.1}>
           {note}
-        </Label>
+        </Meta>
       ) : null}
     </div>
   );

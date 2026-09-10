@@ -3,88 +3,71 @@
 import React from 'react';
 import type { BbTeamId } from '@smelter-editor/types';
 import {
-  ChipButton,
-  FooterHint,
-  Frame,
-  KBT,
-  KbtButton,
-  KbtSelect,
-  KbtTextInput,
-  Label,
-  Num,
-  Plate,
-  PlateTitle,
+  BB,
+  BbButton,
+  BbPlate,
+  BbSelect,
+  Display,
+  HostFrame,
+  JerseyGrid,
+  Meta,
+  Mono,
+  NameField,
+  PlateHead,
+  ProgressBar,
+  Segment,
+  Stepper,
+  TeamStripe,
   WarnPlate,
-  kbtMonoFont,
-} from '@/components/kettlebell-tournament/kbt-kit';
+  colorsTooClose,
+} from '../bb-kit';
 import { useArcadeKeys } from '@/components/duck-hunter/use-arcade-input';
 import { RESOLUTION_PRESETS, type ResolutionPreset } from '@/lib/resolution';
 import type { BbUiConfig } from '../use-bb-room';
-import { ColorPicker, TeamSwatch, colorsTooClose } from '../bb-kit';
 
 const OUTPUT_RESOLUTIONS: { value: ResolutionPreset; label: string }[] = [
-  { value: '720p', label: '720p' },
-  { value: '1080p', label: '1080p' },
-  { value: '1440p', label: '1440p' },
+  { value: '720p', label: '720' },
+  { value: '1080p', label: '1080' },
+  { value: '1440p', label: '1440' },
   { value: '4k', label: '4K' },
 ];
 
-function Stepper({
-  value,
-  min,
-  max,
-  step = 1,
-  onChange,
-  render,
+/* host = design × 2/3 */
+const PLATE_PAD = '16px 19px';
+const CONTROL_H = 30;
+
+function Field({
+  label,
+  span = 1,
+  children,
 }: {
-  value: number;
-  min: number;
-  max: number;
-  step?: number;
-  onChange: (v: number) => void;
-  render?: (v: number) => string;
+  label: string;
+  span?: number;
+  children: React.ReactNode;
 }) {
-  const btn = (glyph: string, delta: number, disabled: boolean) => (
-    <button
-      type='button'
-      className='kbt-btn'
-      disabled={disabled}
-      onClick={() =>
-        onChange(
-          Math.round(Math.min(max, Math.max(min, value + delta)) * 1000) / 1000,
-        )
-      }
-      style={{
-        width: 30,
-        height: 30,
-        background: KBT.fillStrong,
-        border: `1px solid ${KBT.border}`,
-        color: KBT.cream,
-        fontFamily: kbtMonoFont,
-        fontWeight: 600,
-        fontSize: 14,
-      }}>
-      {glyph}
-    </button>
-  );
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      {btn('-', -step, value <= min)}
-      <Num size={19} style={{ minWidth: 64, textAlign: 'center' }}>
-        {render ? render(value) : `${value}`}
-      </Num>
-      {btn('+', step, value >= max)}
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 5,
+        gridColumn: span > 1 ? `span ${span}` : undefined,
+        minWidth: 0,
+      }}>
+      <Meta size={10} tracking={0.22}>
+        {label}
+      </Meta>
+      {children}
     </div>
   );
 }
 
-function Row({
+/** key · value row with a hairline under it (AI referee plate). */
+function KvRow({
   label,
-  hint,
   children,
 }: {
   label: string;
-  hint?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -93,25 +76,20 @@ function Row({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        gap: 12,
+        gap: 10,
+        borderBottom: `1px solid ${BB.rule}`,
+        padding: '5px 0',
         minHeight: 34,
       }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <Label size={10} tracking={2} color={KBT.cream}>
-          {label}
-        </Label>
-        {hint ? (
-          <Label size={9} tracking={1}>
-            {hint}
-          </Label>
-        ) : null}
-      </div>
+      <Meta size={10} tracking={0.14}>
+        {label}
+      </Meta>
       {children}
     </div>
   );
 }
 
-function TeamEditor({
+function TeamPlate({
   team,
   config,
   onConfig,
@@ -121,43 +99,47 @@ function TeamEditor({
   onConfig: (c: BbUiConfig) => void;
 }) {
   const t = config.teams[team];
+  const other = config.teams[team === 'A' ? 'B' : 'A'];
   const set = (patch: Partial<{ name: string; color: string }>) =>
     onConfig({
       ...config,
       teams: { ...config.teams, [team]: { ...t, ...patch } },
     });
   return (
-    <Plate
-      cutPx={14}
-      accentBar
-      accentColor={t.color}
-      innerStyle={{
+    <BbPlate
+      cutPx={12}
+      style={{
+        padding: PLATE_PAD,
         display: 'flex',
         flexDirection: 'column',
         gap: 10,
-        padding: '12px 14px',
       }}>
-      <PlateTitle
-        right={
-          <span
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-            <TeamSwatch color={t.color} />
-            <Label size={9} tracking={1.5}>
-              JERSEY / BIB
-            </Label>
-          </span>
-        }>
-        TEAM {team}
-      </PlateTitle>
-      <KbtTextInput
-        value={t.name}
-        onChange={(v) => set({ name: v })}
-        placeholder={team === 'A' ? 'E.G. BLACKTOP' : 'E.G. CHALK CREW'}
-        maxLength={16}
-        autoCapitalize='characters'
-      />
-      <ColorPicker value={t.color} onChange={(hex) => set({ color: hex })} />
-    </Plate>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <TeamStripe color={t.color} w={8} h={15} />
+        <Display size={19} weight={800} tracking={0.06}>
+          TEAM {team}
+        </Display>
+      </div>
+      <Field label='NAME · 16 MAX'>
+        <NameField
+          value={t.name}
+          onChange={(v) => set({ name: v })}
+          placeholder={team === 'A' ? 'E.G. FURNACE' : 'E.G. DOCKSIDE'}
+          maxLength={16}
+          counter
+          height={43}
+          fontSize={25}
+        />
+      </Field>
+      <Field label='JERSEY / BIB'>
+        <JerseyGrid
+          value={t.color}
+          taken={other.color}
+          onChange={(hex) => set({ color: hex })}
+          gap={5}
+        />
+      </Field>
+    </BbPlate>
   );
 }
 
@@ -182,267 +164,413 @@ export function SetupScreen({
     onConfig({ ...config, perf: { ...config.perf, ...patch } });
 
   return (
-    <Frame
+    <HostFrame
       title='MATCH SETUP'
-      footer={
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}>
-          <FooterHint
-            hints={[
-              { key: 'ESC', label: 'BACK' },
-              { key: 'ENTER', label: 'OPEN THE COURT' },
-            ]}
+      meta={
+        <Meta size={10} tracking={0.22}>
+          ROOM · NEW
+        </Meta>
+      }
+      actions={
+        <>
+          <BbButton
+            variant='outline'
+            label='BACK'
+            onClick={onBack}
+            style={{ height: 43, fontSize: 17, padding: '0 21px' }}
           />
-          <div style={{ display: 'flex', gap: 10 }}>
-            <KbtButton label='BACK' variant='outline' onClick={onBack} />
-            <KbtButton label='OPEN THE COURT' active onClick={onConfirm} />
-          </div>
-        </div>
-      }>
+          <div style={{ flex: 1 }} />
+          <BbButton
+            active
+            label='OPEN THE COURT'
+            keyBadge='ENTER'
+            onClick={onConfirm}
+            style={{ height: 43, fontSize: 20, padding: '0 24px' }}
+          />
+        </>
+      }
+      hints={[
+        { key: 'ENTER', label: 'OPEN' },
+        { key: 'ESC', label: 'BACK' },
+        { key: 'TAB', label: 'NEXT FIELD' },
+      ]}>
       <div
-        className='kbt-scroll'
+        className='bb-scroll'
         style={{
           display: 'grid',
           gridTemplateColumns: '1fr 1fr',
-          gap: 14,
+          gap: 19,
           flex: 1,
           minHeight: 0,
           overflowY: 'auto',
           overflowX: 'hidden',
-          paddingRight: 4,
         }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <TeamEditor team='A' config={config} onConfig={onConfig} />
-          <TeamEditor team='B' config={config} onConfig={onConfig} />
+        {/* ── teams + rules ── */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: 13,
+            }}>
+            <TeamPlate team='A' config={config} onConfig={onConfig} />
+            <TeamPlate team='B' config={config} onConfig={onConfig} />
+          </div>
           {tooClose ? (
-            <WarnPlate>
-              TEAM COLOURS ARE TOO CLOSE — the AI tells shooters apart by jersey
-              colour. Pick two contrasting bibs.
+            <WarnPlate cutPx={0} style={{ padding: '7px 12px' }}>
+              TEAM COLOURS ARE TOO CLOSE · THE AI MAY CONFUSE JERSEYS
             </WarnPlate>
           ) : null}
-          <Plate
-            cutPx={14}
-            innerStyle={{
+          <BbPlate
+            cutPx={12}
+            style={{
+              padding: PLATE_PAD,
               display: 'flex',
               flexDirection: 'column',
-              gap: 10,
-              padding: '12px 14px',
+              gap: 12,
+              flex: 1,
             }}>
-            <PlateTitle>RULES · FIBA 3x3</PlateTitle>
-            <Row label='FORMAT'>
-              <div style={{ display: 'flex', gap: 6 }}>
-                {([1, 2, 3] as const).map((n) => (
-                  <ChipButton
-                    key={n}
-                    label={`${n}v${n}`}
-                    active={config.teamSize === n}
-                    onClick={() => onConfig({ ...config, teamSize: n })}
-                  />
-                ))}
-              </div>
-            </Row>
-            <Row label='FIRST TO' hint='points that end the game'>
-              <Stepper
-                value={config.targetPoints}
-                min={5}
-                max={51}
-                onChange={(v) => onConfig({ ...config, targetPoints: v })}
-              />
-            </Row>
-            <Row label='GAME CLOCK' hint='overtime if tied at the buzzer'>
-              <Stepper
-                value={config.durationSec}
-                min={60}
-                max={1800}
-                step={60}
-                onChange={(v) => onConfig({ ...config, durationSec: v })}
-                render={(v) => `${Math.round(v / 60)} MIN`}
-              />
-            </Row>
-            <Row label='OVERTIME' hint='first team to score this many'>
-              <Stepper
-                value={config.otWinPoints}
-                min={1}
-                max={5}
-                onChange={(v) => onConfig({ ...config, otWinPoints: v })}
-                render={(v) => `+${v}`}
-              />
-            </Row>
-            <Row label='BEYOND THE ARC' hint='the moderator marks a long one'>
-              <div style={{ display: 'flex', gap: 6 }}>
-                {([1, 2] as const).map((n) => (
-                  <ChipButton
-                    key={n}
-                    label={`${n} PT`}
-                    active={config.arcPoints === n}
-                    onClick={() => onConfig({ ...config, arcPoints: n })}
-                  />
-                ))}
-              </div>
-            </Row>
-          </Plate>
+            <PlateHead
+              size={19}
+              tracking={0.06}
+              right={
+                <Meta size={10} tracking={0.22}>
+                  FIBA 3X3
+                </Meta>
+              }>
+              RULES
+            </PlateHead>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: '9px 19px',
+              }}>
+              <Field label='FORMAT'>
+                <Segment
+                  height={CONTROL_H}
+                  fontSize={10}
+                  options={[
+                    { value: 1, label: '1V1' },
+                    { value: 2, label: '2V2' },
+                    { value: 3, label: '3V3' },
+                  ]}
+                  value={config.teamSize}
+                  onChange={(n) =>
+                    onConfig({ ...config, teamSize: n as 1 | 2 | 3 })
+                  }
+                />
+              </Field>
+              <Field label='FIRST TO'>
+                <Stepper
+                  height={CONTROL_H}
+                  fontSize={20}
+                  value={config.targetPoints}
+                  min={5}
+                  max={51}
+                  onChange={(v) => onConfig({ ...config, targetPoints: v })}
+                />
+              </Field>
+              <Field label='GAME CLOCK'>
+                <Stepper
+                  height={CONTROL_H}
+                  font='mono'
+                  fontSize={15}
+                  value={config.durationSec}
+                  min={60}
+                  max={1800}
+                  step={60}
+                  onChange={(v) => onConfig({ ...config, durationSec: v })}
+                  render={(v) =>
+                    `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`
+                  }
+                />
+              </Field>
+              <Field label='OVERTIME · FIRST TO'>
+                <Stepper
+                  height={CONTROL_H}
+                  fontSize={20}
+                  value={config.otWinPoints}
+                  min={1}
+                  max={5}
+                  onChange={(v) => onConfig({ ...config, otWinPoints: v })}
+                  render={(v) => `+${v}`}
+                />
+              </Field>
+              <Field label='BEYOND THE ARC' span={2}>
+                <Segment
+                  height={CONTROL_H}
+                  fontSize={10}
+                  options={[
+                    { value: 1, label: '1 PT' },
+                    { value: 2, label: '2 PT · MODERATOR MARKS' },
+                  ]}
+                  value={config.arcPoints}
+                  onChange={(n) =>
+                    onConfig({ ...config, arcPoints: n as 1 | 2 })
+                  }
+                />
+              </Field>
+            </div>
+          </BbPlate>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <Plate
-            cutPx={14}
-            innerStyle={{
+        {/* ── AI referee + output ── */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>
+          <BbPlate
+            cutPx={12}
+            texture='lines'
+            style={{
+              padding: PLATE_PAD,
               display: 'flex',
               flexDirection: 'column',
               gap: 10,
-              padding: '12px 14px',
+              flex: 1,
             }}>
-            <PlateTitle>AI REFEREE</PlateTitle>
-            <Row
-              label='AUTO-CALL ABOVE'
-              hint='below this the make waits for the moderator'>
-              <Stepper
-                value={config.autoAssignMinConf}
-                min={0.3}
-                max={0.95}
-                step={0.05}
-                onChange={(v) => onConfig({ ...config, autoAssignMinConf: v })}
-                render={(v) => `${Math.round(v * 100)}%`}
-              />
-            </Row>
-            <Row
-              label='SHOT STILLS'
-              hint='release + make frames on air and in the queue'>
-              <ChipButton
-                label={config.shotFrames ? 'ON' : 'OFF'}
-                active={config.shotFrames}
-                onClick={() =>
-                  onConfig({ ...config, shotFrames: !config.shotFrames })
-                }
-              />
-            </Row>
-            <Row label='BALL DETECTOR'>
-              <KbtSelect
-                label=''
-                value={det.ballDetector}
-                onChange={(v) =>
-                  setDet({ ballDetector: v as typeof det.ballDetector })
-                }>
-                <option value='auto'>YOLO + HSV FALLBACK</option>
-                <option value='yolo'>YOLO ONLY</option>
-                <option value='hsv'>HSV BLOB ONLY (TEST CLIPS)</option>
-              </KbtSelect>
-            </Row>
-            <Row label='YOLO WEIGHTS'>
-              <KbtSelect
-                label=''
-                value={det.yoloWeights}
-                onChange={(v) =>
-                  setDet({ yoloWeights: v as typeof det.yoloWeights })
-                }>
-                <option value='auto'>AUTO (GPU → SMALL, CPU → NANO)</option>
-                <option value='yolo11n.pt'>NANO</option>
-                <option value='yolo11s.pt'>SMALL</option>
-                <option value='yolo11m.pt'>MEDIUM</option>
-              </KbtSelect>
-            </Row>
-            <Row
-              label='INFERENCE SIZE'
-              hint='bigger catches a far ball, slower on CPU'>
-              <Stepper
-                value={det.imgsz}
-                min={320}
-                max={1280}
-                step={160}
-                onChange={(v) => setDet({ imgsz: v })}
-              />
-            </Row>
-            <Row label='ANALYSIS FPS'>
-              <Stepper
-                value={det.analysisFps}
-                min={8}
-                max={30}
-                onChange={(v) => setDet({ analysisFps: v })}
-              />
-            </Row>
-            <Row label='BALL CONFIDENCE'>
-              <Stepper
-                value={det.ballConf}
-                min={0.05}
-                max={0.9}
-                step={0.05}
-                onChange={(v) => setDet({ ballConf: v })}
-                render={(v) => v.toFixed(2)}
-              />
-            </Row>
-          </Plate>
-          <Plate
-            cutPx={14}
-            innerStyle={{
+            <PlateHead
+              size={19}
+              tracking={0.06}
+              right={
+                <Mono
+                  size={10}
+                  weight={600}
+                  tracking={0.22}
+                  color={BB.electric}>
+                  ● REFEREE PANEL
+                </Mono>
+              }>
+              AI REFEREE
+            </PlateHead>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: 10,
+                }}>
+                <Meta size={10} tracking={0.22}>
+                  AUTO-CALL THRESHOLD
+                </Meta>
+                <Stepper
+                  height={26}
+                  font='mono'
+                  fontSize={13}
+                  style={{ width: 120 }}
+                  value={config.autoAssignMinConf}
+                  min={0.3}
+                  max={0.95}
+                  step={0.05}
+                  onChange={(v) =>
+                    onConfig({ ...config, autoAssignMinConf: v })
+                  }
+                  render={(v) => v.toFixed(2)}
+                />
+              </div>
+              <div
+                style={{
+                  position: 'relative',
+                  paddingTop: 4,
+                  paddingBottom: 4,
+                }}>
+                <ProgressBar
+                  value={config.autoAssignMinConf}
+                  height={4}
+                  color={BB.electric}
+                />
+                <span
+                  aria-hidden
+                  style={{
+                    position: 'absolute',
+                    left: `${config.autoAssignMinConf * 100}%`,
+                    top: 0,
+                    width: 3,
+                    height: 12,
+                    marginLeft: -1,
+                    background: BB.chalk,
+                  }}
+                />
+              </div>
+              <Meta size={9} tracking={0.1} color={BB.dim2}>
+                BELOW THRESHOLD → REF CALL ON THE MODERATOR PANEL
+              </Meta>
+            </div>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: '0 16px',
+              }}>
+              <KvRow label='SHOT STILLS'>
+                <Segment
+                  height={22}
+                  fontSize={9}
+                  style={{ width: 90 }}
+                  options={[
+                    { value: 'on', label: 'ON' },
+                    { value: 'off', label: 'OFF' },
+                  ]}
+                  value={config.shotFrames ? 'on' : 'off'}
+                  onChange={(v) =>
+                    onConfig({ ...config, shotFrames: v === 'on' })
+                  }
+                />
+              </KvRow>
+              <KvRow label='DETECTOR'>
+                <BbSelect
+                  value={det.ballDetector}
+                  height={24}
+                  style={{ width: 150 }}
+                  onChange={(v) =>
+                    setDet({ ballDetector: v as typeof det.ballDetector })
+                  }>
+                  <option value='auto'>YOLO + HSV</option>
+                  <option value='yolo'>YOLO ONLY</option>
+                  <option value='hsv'>HSV BLOB (TEST CLIPS)</option>
+                </BbSelect>
+              </KvRow>
+              <KvRow label='WEIGHTS'>
+                <BbSelect
+                  value={det.yoloWeights}
+                  height={24}
+                  style={{ width: 150 }}
+                  onChange={(v) =>
+                    setDet({ yoloWeights: v as typeof det.yoloWeights })
+                  }>
+                  <option value='auto'>AUTO (GPU → S, CPU → N)</option>
+                  <option value='yolo11n.pt'>yolo11n.pt</option>
+                  <option value='yolo11s.pt'>yolo11s.pt</option>
+                  <option value='yolo11m.pt'>yolo11m.pt</option>
+                </BbSelect>
+              </KvRow>
+              <KvRow label='INFERENCE'>
+                <Stepper
+                  height={24}
+                  font='mono'
+                  fontSize={12}
+                  style={{ width: 110 }}
+                  value={det.imgsz}
+                  min={320}
+                  max={1280}
+                  step={160}
+                  onChange={(v) => setDet({ imgsz: v })}
+                  render={(v) => `${v} PX`}
+                />
+              </KvRow>
+              <KvRow label='FPS'>
+                <Stepper
+                  height={24}
+                  font='mono'
+                  fontSize={12}
+                  style={{ width: 90 }}
+                  value={det.analysisFps}
+                  min={8}
+                  max={30}
+                  onChange={(v) => setDet({ analysisFps: v })}
+                />
+              </KvRow>
+              <KvRow label='CONFIDENCE'>
+                <Stepper
+                  height={24}
+                  font='mono'
+                  fontSize={12}
+                  style={{ width: 90 }}
+                  value={det.ballConf}
+                  min={0.05}
+                  max={0.9}
+                  step={0.05}
+                  onChange={(v) => setDet({ ballConf: v })}
+                  render={(v) => v.toFixed(2)}
+                />
+              </KvRow>
+            </div>
+          </BbPlate>
+          <BbPlate
+            cutPx={12}
+            style={{
+              padding: PLATE_PAD,
               display: 'flex',
               flexDirection: 'column',
               gap: 10,
-              padding: '12px 14px',
             }}>
-            <PlateTitle>OUTPUT</PlateTitle>
-            <Row label='RESOLUTION' hint='fixed once the court opens'>
-              <div style={{ display: 'flex', gap: 6 }}>
-                {OUTPUT_RESOLUTIONS.filter(
-                  (r) => r.value in RESOLUTION_PRESETS,
-                ).map((r) => (
-                  <ChipButton
-                    key={r.value}
-                    label={r.label}
-                    active={config.resolution === r.value}
-                    onClick={() => onConfig({ ...config, resolution: r.value })}
-                  />
-                ))}
-              </div>
-            </Row>
-            <Row label='HUD PUBLISH' hint='Hz'>
-              <div style={{ display: 'flex', gap: 6 }}>
-                {([10, 5, 2] as const).map((hz) => (
-                  <ChipButton
-                    key={hz}
-                    label={String(hz)}
-                    active={config.perf.hudPublishHz === hz}
-                    onClick={() => setPerf({ hudPublishHz: hz })}
-                  />
-                ))}
-              </div>
-            </Row>
-            <Row label='RECORDING PRESET'>
-              <KbtSelect
-                label=''
-                value={config.perf.recordingPreset}
-                onChange={(v) =>
-                  setPerf({
-                    recordingPreset: v as BbUiConfig['perf']['recordingPreset'],
-                  })
-                }>
-                {['ultrafast', 'superfast', 'veryfast', 'fast', 'medium'].map(
-                  (p) => (
-                    <option key={p} value={p}>
-                      {p.toUpperCase()}
-                    </option>
-                  ),
-                )}
-              </KbtSelect>
-            </Row>
-            <Row label='RECORDING SCALE'>
-              <div style={{ display: 'flex', gap: 6 }}>
-                {([1, 0.75, 0.5] as const).map((s) => (
-                  <ChipButton
-                    key={s}
-                    label={`${Math.round(s * 100)}%`}
-                    active={config.perf.recordingScale === s}
-                    onClick={() => setPerf({ recordingScale: s })}
-                  />
-                ))}
-              </div>
-            </Row>
-          </Plate>
+            <PlateHead
+              size={19}
+              tracking={0.06}
+              right={
+                <Meta size={10} tracking={0.22}>
+                  FIXED ONCE THE COURT OPENS
+                </Meta>
+              }>
+              OUTPUT
+            </PlateHead>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1.4fr 1fr 1fr',
+                gap: 13,
+              }}>
+              <Field label='RESOLUTION'>
+                <Segment
+                  height={CONTROL_H}
+                  fontSize={10}
+                  options={OUTPUT_RESOLUTIONS.filter(
+                    (r) => r.value in RESOLUTION_PRESETS,
+                  )}
+                  value={config.resolution}
+                  onChange={(v) => onConfig({ ...config, resolution: v })}
+                />
+              </Field>
+              <Field label='HUD HZ'>
+                <Segment
+                  height={CONTROL_H}
+                  fontSize={10}
+                  options={[
+                    { value: 10, label: '10' },
+                    { value: 5, label: '5' },
+                    { value: 2, label: '2' },
+                  ]}
+                  value={config.perf.hudPublishHz}
+                  onChange={(hz) => setPerf({ hudPublishHz: hz as 10 | 5 | 2 })}
+                />
+              </Field>
+              <Field label='RECORDING'>
+                <BbSelect
+                  value={config.perf.recordingPreset}
+                  height={CONTROL_H}
+                  onChange={(v) =>
+                    setPerf({
+                      recordingPreset:
+                        v as BbUiConfig['perf']['recordingPreset'],
+                    })
+                  }>
+                  {['ultrafast', 'superfast', 'veryfast', 'fast', 'medium'].map(
+                    (p) => (
+                      <option key={p} value={p}>
+                        {p.toUpperCase()}
+                      </option>
+                    ),
+                  )}
+                </BbSelect>
+              </Field>
+              <Field label='RECORDING SCALE' span={3}>
+                <Segment
+                  height={CONTROL_H}
+                  fontSize={10}
+                  options={[
+                    { value: 1, label: '100 %' },
+                    { value: 0.75, label: '75 %' },
+                    { value: 0.5, label: '50 %' },
+                  ]}
+                  value={config.perf.recordingScale}
+                  onChange={(s) =>
+                    setPerf({ recordingScale: s as 1 | 0.75 | 0.5 })
+                  }
+                />
+              </Field>
+            </div>
+          </BbPlate>
         </div>
       </div>
-    </Frame>
+    </HostFrame>
   );
 }

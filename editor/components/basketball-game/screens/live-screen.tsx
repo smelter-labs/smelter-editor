@@ -3,24 +3,34 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { connectWhep } from '@/lib/webrtc/whep-connect';
 import {
-  ConfirmRail,
-  FooterHint,
-  Frame,
-  KBT,
-  KbtButton,
-  Label,
-  Plate,
-  PlateTitle,
-  StatusDot,
-  Tab,
-} from '@/components/kettlebell-tournament/kbt-kit';
-import { ScoreLine, ShotRow } from '../bb-kit';
+  BB,
+  BbButton,
+  BbPlate,
+  Chip,
+  Clock,
+  ConfirmCard,
+  HostFrame,
+  LedgerRow,
+  Meta,
+  Mono,
+  PlateHead,
+  ScoreRow,
+  StatusPill,
+  TagChip,
+  useArmed,
+} from '../bb-kit';
 import type { BbFeed } from '../use-bb-feed';
 import { formatClock, remainingNow } from '../use-bb-feed';
 import type { BbRoom } from '../use-bb-room';
 
 /** PROGRAM monitor with reconnect (the arcade page has no mic — unmuted is fine). */
-function ProgramMonitor({ whepUrl }: { whepUrl: string | null }) {
+function ProgramMonitor({
+  whepUrl,
+  caption,
+}: {
+  whepUrl: string | null;
+  caption: string;
+}) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [feedDown, setFeedDown] = useState(false);
 
@@ -79,10 +89,11 @@ function ProgramMonitor({ whepUrl }: { whepUrl: string | null }) {
     <div
       style={{
         position: 'relative',
-        width: '100%',
-        aspectRatio: '16 / 9',
-        background: '#000',
-        border: `1px solid ${KBT.border}`,
+        flex: 1,
+        minHeight: 0,
+        background: 'radial-gradient(ellipse at 50% 85%,#3a3a3e,#1c1c1f 70%)',
+        border: `1px solid ${BB.rule}`,
+        overflow: 'hidden',
       }}>
       <video
         ref={videoRef}
@@ -94,23 +105,31 @@ function ProgramMonitor({ whepUrl }: { whepUrl: string | null }) {
           width: '100%',
           height: '100%',
           objectFit: 'contain',
+          background: '#000',
         }}
       />
       {feedDown ? (
         <div style={{ position: 'absolute', top: 8, left: 8 }}>
-          <Tab size={10} color={KBT.bad} textColor={KBT.dark}>
+          <TagChip tone='bad' size={10}>
             PROGRAM FEED RECONNECTING
-          </Tab>
+          </TagChip>
         </div>
       ) : null}
+      <Mono
+        size={9}
+        tracking={0.22}
+        color={BB.chalk}
+        style={{ position: 'absolute', left: 10, bottom: 8, opacity: 0.6 }}>
+        {caption}
+      </Mono>
     </div>
   );
 }
 
 /**
- * The match in progress: program monitor + score/clock on the left, the
- * ledger (with the moderator's pending queue mirrored) and the flow
- * controls on the right.
+ * The match in progress: program monitor + score/clock + flow on the left,
+ * the referee queue (mirrored from the panel) and the ledger on the right.
+ * Keys: SPACE pause/resume · O overtime · E end (arms) · U undo.
  */
 export function LiveScreen({ room, feed }: { room: BbRoom; feed: BbFeed }) {
   const [, forceTick] = useState(0);
@@ -124,159 +143,271 @@ export function LiveScreen({ room, feed }: { room: BbRoom; feed: BbFeed }) {
   const remaining = remainingNow(match, feed.matchReceivedAt);
   const clock =
     phase === 'overtime'
-      ? 'OVERTIME'
+      ? 'OT'
       : phase === 'ended'
         ? 'FINAL'
         : formatClock(remaining);
-  const clockColor =
+  const clockTone =
     phase === 'paused'
-      ? KBT.amber
+      ? 'amber'
       : phase === 'overtime'
-        ? KBT.accent
+        ? 'electric'
         : remaining <= 10_000 && phase === 'live'
-          ? KBT.bad
-          : KBT.good;
+          ? 'bad'
+          : 'chalk';
   const teams = state?.teams;
   const pending = state?.pending ?? [];
   const recent = state?.recent ?? [];
+  const arc = (state?.config.arcPoints ?? 2) as 1 | 2;
+  const confirm = useArmed(5000);
+
+  const phones =
+    (state?.cams.hoop.joined ? 1 : 0) +
+    (state?.cams.court.joined ? 1 : 0) +
+    (state?.commentator ? 1 : 0);
+
+  // Keyboard: SPACE pause/resume, O overtime, E end (two-press), U undo.
+  const keyRef = useRef({ phase, confirm });
+  keyRef.current = { phase, confirm };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      const p = keyRef.current.phase;
+      const c = keyRef.current.confirm;
+      if (e.key === ' ') {
+        e.preventDefault();
+        if (p === 'paused') void room.control('resume');
+        else if (p === 'live' || p === 'overtime') void room.control('pause');
+      } else if (e.key === 'o' || e.key === 'O') {
+        if (p === 'live' || p === 'paused') void room.control('start_overtime');
+      } else if (e.key === 'e' || e.key === 'E') {
+        if (c.armed === 'end') {
+          c.disarm();
+          void room.control('end');
+        } else c.arm('end');
+      } else if (e.key === 'u' || e.key === 'U') {
+        void room.editShot({ op: 'undo' });
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [room]);
+
+  const flowButtons = (
+    <div style={{ display: 'flex', gap: 8 }}>
+      {phase === 'paused' ? (
+        <BbButton
+          variant='good'
+          label='RESUME'
+          keyBadge='SPACE'
+          active
+          onClick={() => void room.control('resume')}
+          style={{ flex: 1, height: 43, fontSize: 17 }}
+        />
+      ) : (
+        <BbButton
+          variant='chalk'
+          label='PAUSE'
+          keyBadge='SPACE'
+          disabled={phase !== 'live' && phase !== 'overtime'}
+          onClick={() => void room.control('pause')}
+          style={{ flex: 1, height: 43, fontSize: 17 }}
+        />
+      )}
+      <BbButton
+        variant='outline'
+        label='GO TO OVERTIME'
+        dimmed={phase !== 'live' && phase !== 'paused'}
+        disabled={phase !== 'live' && phase !== 'paused'}
+        onClick={() => void room.control('start_overtime')}
+        style={{ flex: 1, height: 43, fontSize: 17 }}
+      />
+      <BbButton
+        variant='outline'
+        label='END MATCH'
+        onClick={() => confirm.arm('end')}
+        style={{ flex: 1, height: 43, fontSize: 17 }}
+      />
+      <BbButton
+        variant='danger'
+        label='RESET'
+        onClick={() => confirm.arm('reset')}
+        style={{ width: 93, height: 43, fontSize: 15, padding: 0 }}
+      />
+    </div>
+  );
 
   return (
-    <Frame
-      title='LIVE'
-      tab={
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <StatusDot
-            state={feed.connected ? 'good' : 'bad'}
-            pulse={!feed.connected}
-          />
-          <Tab
-            size={11}
-            color={phase === 'paused' ? KBT.amber : KBT.good}
-            textColor={KBT.dark}>
-            {phase.toUpperCase()}
-          </Tab>
-          {state?.cams.hoop.camConnected ? null : (
-            <Label size={10} tracking={1.5} color={KBT.bad}>
+    <HostFrame
+      title={
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <StatusPill
+            tone={
+              phase === 'paused'
+                ? 'paused'
+                : phase === 'ended'
+                  ? 'chalk'
+                  : 'live'
+            }
+            size={9}>
+            {phase === 'overtime' ? 'OVERTIME' : phase.toUpperCase()}
+          </StatusPill>
+          {state && !state.cams.hoop.camConnected ? (
+            <StatusPill tone='bad' size={9} dot={false}>
               HOOP CAM DOWN
-            </Label>
-          )}
+            </StatusPill>
+          ) : null}
         </div>
       }
-      footer={
-        <FooterHint
-          hints={[
-            { key: 'MODERATOR', label: 'confirms pending makes on the panel' },
-          ]}
-          right={
-            <Label size={9} tracking={1.5}>
-              the program runs ~3 s behind the court
-            </Label>
-          }
-        />
+      meta={
+        <Meta size={10} tracking={0.22}>
+          ROOM {room.roomId ?? '—'} · ON AIR: {state?.scene ?? '—'} · {phones}{' '}
+          {phones === 1 ? 'PHONE' : 'PHONES'}
+        </Meta>
+      }
+      hints={[
+        { key: 'SPACE', label: 'PAUSE / RESUME' },
+        { key: 'O', label: 'OVERTIME' },
+        { key: 'E', label: 'END MATCH' },
+        { key: 'U', label: 'UNDO' },
+      ]}
+      hintsRight={
+        <Mono
+          size={10}
+          tracking={0.22}
+          color={BB.chalk}
+          style={{ opacity: 0.7 }}>
+          RESET AND END ASK TWICE · PROGRAM RUNS ~3 S BEHIND
+        </Mono>
       }>
-      <div style={{ display: 'flex', gap: 14, flex: 1, minHeight: 0 }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '58fr 42fr',
+          gap: 19,
+          flex: 1,
+          minHeight: 0,
+        }}>
+        {/* ── program + score + flow ── */}
         <div
           style={{
-            flex: '0 0 58%',
             display: 'flex',
             flexDirection: 'column',
-            gap: 10,
+            gap: 13,
             minWidth: 0,
+            minHeight: 0,
           }}>
-          <ProgramMonitor whepUrl={room.whepUrl} />
-          <Plate
-            cutPx={14}
-            innerStyle={{
+          <ProgramMonitor
+            whepUrl={room.whepUrl}
+            caption={`PROGRAM · ${(state?.config as { resolution?: string } | undefined)?.resolution ?? '1080P'} · −3.0 S`}
+          />
+          <BbPlate
+            cutPx={12}
+            style={{
+              height: 80,
+              padding: '0 21px',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '10px 16px',
               gap: 16,
+              flexShrink: 0,
             }}>
-            {teams ? <ScoreLine teams={teams} size={48} /> : null}
-            <div style={{ textAlign: 'right' }}>
-              <div
-                style={{
-                  fontFamily: 'var(--font-kbt-mono)',
-                  fontSize: 34,
-                  fontWeight: 600,
-                  color: clockColor,
-                }}>
-                {clock}
-              </div>
-              <Label size={9} tracking={2}>
-                {match?.period === 'ot' ? 'OVERTIME' : 'REGULATION'} · TO{' '}
-                {state?.config.targetPoints ?? 21}
-              </Label>
+            {teams ? (
+              <ScoreRow
+                teams={teams}
+                nameSize={20}
+                scoreSize={32}
+                stripe={{ w: 13, h: 37 }}
+                style={{ flex: 1, minWidth: 0 }}
+              />
+            ) : (
+              <div style={{ flex: 1 }} />
+            )}
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-end',
+                gap: 4,
+                borderLeft: `1px solid ${BB.rule}`,
+                paddingLeft: 16,
+                flexShrink: 0,
+              }}>
+              <Clock text={clock} size={23} tone={clockTone} />
+              <Meta size={9} tracking={0.22}>
+                {match?.period === 'ot'
+                  ? 'OVERTIME · FIRST TO +' + (state?.config.otWinPoints ?? 2)
+                  : `REGULATION · TO ${state?.config.targetPoints ?? 21}`}
+              </Meta>
             </div>
-          </Plate>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {phase === 'paused' ? (
-              <KbtButton
-                label='RESUME'
-                active
-                onClick={() => void room.control('resume')}
-              />
-            ) : phase === 'live' || phase === 'overtime' ? (
-              <KbtButton
-                label='PAUSE'
-                variant='outline'
-                onClick={() => void room.control('pause')}
-              />
-            ) : null}
-            {phase === 'live' || phase === 'paused' ? (
-              <KbtButton
-                label='GO TO OVERTIME'
-                variant='outline'
-                onClick={() => void room.control('start_overtime')}
-              />
-            ) : null}
-            <div style={{ flex: 1 }} />
-            <ConfirmRail
-              actions={[
-                { id: 'end', label: 'END MATCH', prompt: 'end the match now?' },
-                {
-                  id: 'reset',
-                  label: 'RESET',
-                  prompt: 'wipe the score and go back to the lobby?',
-                },
-              ]}
-              onConfirm={(id) =>
-                void room.control(id === 'end' ? 'end' : 'reset')
+          </BbPlate>
+          {confirm.armed ? (
+            <ConfirmCard
+              key={confirm.armed}
+              scale={0.75}
+              title={
+                confirm.armed === 'end' ? 'END THE MATCH?' : 'RESET THE MATCH?'
               }
+              copy={
+                confirm.armed === 'end'
+                  ? 'The clock stops and the final card goes on air.'
+                  : 'Score, clock and ledger go back to zero. The stream stays on.'
+              }
+              confirmLabel={confirm.armed === 'end' ? 'END MATCH' : 'RESET'}
+              onKeep={confirm.disarm}
+              onConfirm={() => {
+                const id = confirm.armed;
+                confirm.disarm();
+                void room.control(id === 'end' ? 'end' : 'reset');
+              }}
+              style={{ padding: '10px 14px', gap: 8 }}
             />
-          </div>
+          ) : (
+            flowButtons
+          )}
         </div>
+
+        {/* ── ref queue + ledger ── */}
         <div
-          className='kbt-scroll'
+          className='bb-scroll'
           style={{
-            flex: 1,
             display: 'flex',
             flexDirection: 'column',
-            gap: 10,
+            gap: 13,
             minWidth: 0,
             overflowY: 'auto',
             overflowX: 'hidden',
           }}>
           {pending.length > 0 && teams ? (
-            <Plate
-              cutPx={14}
-              accentBar
-              accentColor={KBT.amber}
-              innerStyle={{
+            <BbPlate
+              cutPx={12}
+              leftBar={4}
+              leftBarColor={BB.amber}
+              style={{
+                padding: '14px 19px 6px 21px',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: 8,
-                padding: '10px 12px',
               }}>
-              <PlateTitle color={KBT.amber}>
+              <PlateHead
+                size={19}
+                tracking={0.06}
+                color={BB.amber}
+                right={
+                  <Meta size={9} tracking={0.22}>
+                    MODERATOR DECIDES
+                  </Meta>
+                }
+                style={{ marginBottom: 6 }}>
                 AWAITING THE REF · {pending.length}
-              </PlateTitle>
+              </PlateHead>
               {pending.map((s) => (
-                <ShotRow
+                <LedgerRow
                   key={s.id}
                   shot={s}
                   teams={teams}
+                  dense
+                  scale={0.85}
                   onAssign={(team) =>
                     void room.editShot({ op: 'resolve', shotId: s.id, team })
                   }
@@ -292,58 +423,60 @@ export function LiveScreen({ room, feed }: { room: BbRoom; feed: BbFeed }) {
                   }
                 />
               ))}
-            </Plate>
+            </BbPlate>
           ) : null}
-          <Plate
-            cutPx={14}
-            innerStyle={{
+          <BbPlate
+            cutPx={12}
+            style={{
+              padding: '14px 19px 6px',
               display: 'flex',
               flexDirection: 'column',
-              gap: 8,
-              padding: '10px 12px',
+              flex: 1,
             }}>
-            <PlateTitle
+            <PlateHead
+              size={19}
+              tracking={0.06}
               right={
                 teams ? (
                   <div style={{ display: 'flex', gap: 6 }}>
                     {(['A', 'B'] as const).map((t) => (
-                      <KbtButton
+                      <Chip
                         key={t}
                         dense
-                        variant='outline'
-                        label={`+${state?.config.arcPoints ?? 2} ${teams[t].name.toUpperCase()}`}
+                        label={`+${arc} ${teams[t].name}`}
                         onClick={() =>
                           void room.editShot({
                             op: 'add',
                             team: t,
-                            points: (state?.config.arcPoints ?? 2) as 1 | 2,
+                            points: arc,
                           })
                         }
                       />
                     ))}
-                    <KbtButton
+                    <Chip
                       dense
-                      variant='danger'
                       label='UNDO LAST'
                       onClick={() => void room.editShot({ op: 'undo' })}
                     />
                   </div>
                 ) : null
-              }>
+              }
+              style={{ marginBottom: 6 }}>
               LEDGER
-            </PlateTitle>
+            </PlateHead>
             {recent.length === 0 ? (
-              <Label size={10} tracking={1.5}>
+              <Meta size={10} tracking={0.16} style={{ padding: '10px 0' }}>
                 no makes yet — the AI calls them from the hoop cam
-              </Label>
+              </Meta>
             ) : null}
             {teams
               ? recent.map((s) => (
-                  <ShotRow
+                  <LedgerRow
                     key={s.id}
                     shot={s}
                     teams={teams}
                     dense
+                    scale={0.85}
                     onAssign={(team) =>
                       void room.editShot({ op: 'resolve', shotId: s.id, team })
                     }
@@ -364,9 +497,9 @@ export function LiveScreen({ room, feed }: { room: BbRoom; feed: BbFeed }) {
                   />
                 ))
               : null}
-          </Plate>
+          </BbPlate>
         </div>
       </div>
-    </Frame>
+    </HostFrame>
   );
 }

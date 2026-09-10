@@ -5,17 +5,19 @@ import { useRouter } from 'next/navigation';
 import type { BbMatchEvent, BbStateEvent } from '@smelter-editor/types';
 import { getBbState, setBbConfig } from '@/app/actions/actions';
 import { RESOLUTION_PRESETS } from '@/lib/resolution';
-import {
-  DisplayText,
-  KBT,
-  KbtButton,
-  KbtStatusStrip,
-  Stage,
-  WarnPlate,
-  kbtMonoFont,
-} from '@/components/kettlebell-tournament/kbt-kit';
 import { useKbtRecording } from '@/components/kettlebell-tournament/use-kbt-recording';
-import { RecChip } from '@/components/kettlebell-tournament/recording-control';
+import {
+  BB,
+  BbButton,
+  BbRecChip,
+  BbStage,
+  Display,
+  HazardStrip,
+  Mono,
+  ProgressBar,
+  WarnPlate,
+  chainLink,
+} from './bb-kit';
 import {
   DEFAULT_BB_UI_CONFIG,
   sanitizeBbDetector,
@@ -24,14 +26,13 @@ import {
   useBbRoom,
   type BbUiConfig,
 } from './use-bb-room';
-import { useBbFeed } from './use-bb-feed';
+import { formatClock, remainingNow, useBbFeed } from './use-bb-feed';
 import { TitleScreen } from './screens/title-screen';
 import { SetupScreen } from './screens/setup-screen';
 import { LobbyScreen } from './screens/lobby-screen';
 import { LiveScreen } from './screens/live-screen';
 import { ResultsScreen } from './screens/results-screen';
-import '@/components/kettlebell-tournament/kbt-kit.css';
-import '../basketball-game/bb-kit.css';
+import './bb-kit.css';
 
 type Screen = 'title' | 'setup' | 'lobby' | 'live' | 'results';
 
@@ -93,6 +94,7 @@ export function BasketballGameArcade({
     initialRoomId ? null : 'title',
   );
   const [config, setConfig] = useState<BbUiConfig>(DEFAULT_BB_UI_CONFIG);
+  const [recordingSaved, setRecordingSaved] = useState(false);
   const router = useRouter();
 
   const room = useBbRoom(initialRoomId);
@@ -178,6 +180,18 @@ export function BasketballGameArcade({
     }
   }, [phase, screen]);
 
+  // "RECORDING SAVED" on the final card once a stop finalized.
+  const wasRecordingRef = useRef(false);
+  useEffect(() => {
+    if (rec.effectiveIsRecording) {
+      wasRecordingRef.current = true;
+      setRecordingSaved(false);
+    } else if (wasRecordingRef.current && !rec.isWaitingForDownload) {
+      wasRecordingRef.current = false;
+      setRecordingSaved(true);
+    }
+  }, [rec.effectiveIsRecording, rec.isWaitingForDownload]);
+
   const openLobby = async () => {
     setScreen('lobby');
     if (!room.roomId) {
@@ -214,10 +228,13 @@ export function BasketballGameArcade({
     screen !== 'setup' &&
     room.roomStatus === 'gone';
 
+  const teams = feed.state?.teams;
+  const remaining = remainingNow(feed.match, feed.matchReceivedAt);
+
   return (
-    <Stage>
+    <BbStage>
       {room.roomStatus === 'ok' && !feed.connected && screen !== null ? (
-        <KbtStatusStrip position='absolute' text='FEED RECONNECTING…' />
+        <HazardStrip position='absolute' text='FEED RECONNECTING… · COURT' />
       ) : null}
       {room.roomId && room.roomStatus === 'ok' && screen !== null ? (
         <div
@@ -228,20 +245,23 @@ export function BasketballGameArcade({
             transform: 'translateX(-50%)',
             zIndex: 45,
           }}>
-          <RecChip rec={rec} />
+          <BbRecChip rec={rec} scale={0.85} />
         </div>
       ) : null}
       {room.lastError || room.error ? (
         <div
           style={{
             position: 'absolute',
-            bottom: 18,
+            bottom: 50,
             left: '50%',
             transform: 'translateX(-50%)',
             zIndex: 50,
+            width: 560,
             maxWidth: '80%',
           }}>
-          <WarnPlate>{room.lastError ?? room.error}</WarnPlate>
+          <WarnPlate tone='bad' title='SOMETHING BROKE'>
+            {room.lastError ?? room.error}
+          </WarnPlate>
         </div>
       ) : null}
       {courtClosed ? (
@@ -254,28 +274,61 @@ export function BasketballGameArcade({
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: 18,
-            background: KBT.overlayHeavy,
+            gap: 16,
+            background: BB.page,
+            backgroundImage: chainLink(0.06, 22),
+            overflow: 'hidden',
           }}>
-          <DisplayText size={34} weight={800} tracking={3} color={KBT.bad}>
-            COURT CLOSED
-          </DisplayText>
-          <span
+          <div
+            aria-hidden
             style={{
-              fontFamily: kbtMonoFont,
-              fontSize: 12,
-              color: KBT.dim,
+              position: 'absolute',
+              left: -20,
+              right: -20,
+              top: '46%',
+              height: 26,
+              background: `repeating-linear-gradient(90deg, transparent 0 40px, ${BB.page} 40px 42px), ${BB.amber}`,
+              transform: 'rotate(-4deg)',
+            }}
+          />
+          <Display
+            size={64}
+            weight={900}
+            tracking={0.06}
+            style={{
+              position: 'relative',
+              background: BB.page,
+              padding: '6px 20px',
+            }}>
+            COURT CLOSED
+          </Display>
+          <Mono
+            size={11}
+            tracking={0.06}
+            uppercase={false}
+            color={BB.dim}
+            style={{
+              position: 'relative',
+              background: BB.page,
+              padding: '4px 12px',
               textAlign: 'center',
               maxWidth: 460,
             }}>
             The room no longer exists on the server (restart or idle cleanup).
             Start a fresh court.
-          </span>
-          <KbtButton
+          </Mono>
+          <BbButton
+            variant='outline'
             label='BACK TO TITLE'
             onClick={() => {
               window.history.replaceState(null, '', '/basketball-game');
               setScreen('title');
+            }}
+            style={{
+              position: 'relative',
+              background: BB.page,
+              height: 48,
+              fontSize: 22,
             }}
           />
         </div>
@@ -283,14 +336,28 @@ export function BasketballGameArcade({
       {screen === null ? (
         <div
           style={{
-            flex: 1,
+            position: 'absolute',
+            inset: 0,
             display: 'flex',
+            flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
+            gap: 18,
           }}>
-          <DisplayText size={26} weight={700} tracking={3} color={KBT.dim}>
+          <ProgressBar width={280} height={6} indeterminate />
+          <Mono size={14} weight={600} tracking={0.24}>
             RESTORING THE COURT…
-          </DisplayText>
+          </Mono>
+          <Mono
+            size={12}
+            tracking={0.18}
+            color={BB.chalk}
+            style={{ opacity: 0.5 }}>
+            ROOM {initialRoomId ?? '—'}
+            {teams
+              ? ` · SCORE ${teams.A.score} : ${teams.B.score} · ${formatClock(remaining)}`
+              : ''}
+          </Mono>
         </div>
       ) : null}
       {screen === 'title' ? (
@@ -319,6 +386,8 @@ export function BasketballGameArcade({
       {screen === 'results' ? (
         <ResultsScreen
           feed={feed}
+          roomId={room.roomId}
+          recordingSaved={recordingSaved}
           onNewMatch={async () => {
             await room.control('reset');
             setScreen('lobby');
@@ -326,6 +395,6 @@ export function BasketballGameArcade({
           onExit={() => void exitToTitle()}
         />
       ) : null}
-    </Stage>
+    </BbStage>
   );
 }

@@ -654,7 +654,7 @@ export function BbButton({
   return (
     <button
       type='button'
-      className={`bb-btn${active && !disabled ? ' bb-pulse' : ''}`}
+      className={`bb-btn${active && !disabled ? ' bb-breathe' : ''}`}
       data-variant={solid ? 'solid' : variant}
       data-locked={locked && !disabled ? '' : undefined}
       disabled={disabled}

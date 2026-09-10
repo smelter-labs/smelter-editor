@@ -1,26 +1,26 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import QRCode from 'react-qr-code';
 import type { BbCam } from '@smelter-editor/types';
 import { setBbConfig } from '@/app/actions/actions';
 import { buildJoinUrl, useJoinLinks } from '@/lib/arcade/use-join-link';
 import {
-  ChipButton,
-  FooterHint,
-  Frame,
-  KBT,
-  KbtButton,
-  Label,
-  Plate,
-  PlateTitle,
-  StatusDot,
-  Tab,
-  kbtMonoFont,
+  BB,
+  BbButton,
+  BbPlate,
+  Chip,
+  Copy,
+  Display,
+  HostFrame,
+  Meta,
+  Mono,
+  QrBox,
+  TeamStripe,
+  chainLink,
+  colorsTooClose,
   useArmed,
-} from '@/components/kettlebell-tournament/kbt-kit';
+} from '../bb-kit';
 import { useArcadeKeys } from '@/components/duck-hunter/use-arcade-input';
-import { TeamBadge, colorsTooClose } from '../bb-kit';
 import {
   FileCamPicker,
   FileCamSyncButton,
@@ -34,19 +34,58 @@ import { formatClock } from '../use-bb-feed';
 const ROLE_META = {
   hoop: {
     title: 'HOOP CAM',
-    sub: 'tripod, 45° off the backboard, 5–8 m out, above head height — runs the AI',
+    role: 'ROLE 1',
+    sub: 'On the rim, 45° off the board, above head height. Runs the AI that counts makes and reads jersey colour.',
   },
   court: {
     title: 'COURT CAM',
-    sub: 'wide on the whole half-court — the broadcast picture',
+    role: 'ROLE 2',
+    sub: 'Wide on the half court. The main picture for the stream.',
   },
   commentator: {
     title: 'MODERATOR / COMMENTARY',
-    sub: 'courtside phone: confirm the calls, run the clock, talk on air',
+    role: 'ROLE 3',
+    sub: 'Courtside. Confirms disputed makes, runs the clock, switches shots. Optionally on air with camera and mic.',
   },
 } as const;
 
-function JoinPlate({
+type Status = 'live' | 'connecting' | 'waiting';
+
+function StatusLine({ status, name }: { status: Status; name: string | null }) {
+  const color =
+    status === 'live' ? BB.good : status === 'connecting' ? BB.amber : BB.chalk;
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        opacity: status === 'waiting' ? 0.6 : 1,
+      }}>
+      <span
+        className={status === 'connecting' ? 'bb-pulse' : undefined}
+        style={{
+          width: 8,
+          height: 8,
+          borderRadius: '50%',
+          background: status === 'live' ? color : 'transparent',
+          border: `${status === 'connecting' ? 2 : 1}px solid ${color}`,
+          boxSizing: 'border-box',
+          flexShrink: 0,
+        }}
+      />
+      <Mono size={10} weight={600} tracking={0.2} color={color}>
+        {status === 'live'
+          ? `LIVE${name ? ` · ${name}` : ''}`
+          : status === 'connecting'
+            ? `CONNECTING${name ? ` · ${name}` : ''}`
+            : 'WAITING'}
+      </Mono>
+    </div>
+  );
+}
+
+function RolePlate({
   role,
   url,
   cam,
@@ -63,96 +102,105 @@ function JoinPlate({
   picker?: React.ReactNode;
 }) {
   const meta = ROLE_META[role];
-  // The clip picker takes a row at the bottom — trade some QR size for it
-  // so the plate still fits a laptop viewport.
-  const qrSize = picker ? 124 : 150;
   const joined =
     role === 'commentator' ? commentatorName != null : !!cam?.joined;
-  const live = role === 'commentator' ? false : !!cam?.camConnected;
-  const state = !joined
-    ? 'idle'
-    : role === 'commentator'
-      ? 'good'
-      : live
-        ? 'good'
-        : 'warn';
-  const status = !joined
-    ? 'WAITING'
-    : role === 'commentator'
-      ? `JOINED · ${commentatorName}`
-      : live
-        ? `LIVE · ${camSourceLabel(cam)}`
-        : `CONNECTING · ${camSourceLabel(cam)}`;
+  const live = role === 'commentator' ? joined : !!cam?.camConnected;
+  const status: Status = !joined ? 'waiting' : live ? 'live' : 'connecting';
+  const name =
+    role === 'commentator' ? commentatorName : camSourceLabel(cam) || null;
+  const barColor =
+    status === 'live' ? BB.good : status === 'connecting' ? BB.amber : BB.rule2;
+  const second =
+    role === 'hoop' && joined
+      ? cam?.calibrated
+        ? { text: 'RIM CALIBRATED', color: BB.good }
+        : { text: 'CALIBRATE THE RIM', color: BB.amber }
+      : null;
+  const qr = 128;
   return (
-    <Plate
-      cutPx={16}
-      style={{ flex: 1, minWidth: 0 }}
-      innerStyle={{
+    <BbPlate
+      cutPx={15}
+      bottomBar={3}
+      bottomBarColor={barColor}
+      style={{
+        flex: 1,
+        minWidth: 0,
+        padding: '16px 19px 19px',
         display: 'flex',
         flexDirection: 'column',
-        alignItems: 'center',
-        gap: 10,
-        padding: '14px 14px',
-        height: '100%',
+        gap: 12,
       }}>
-      <PlateTitle>{meta.title}</PlateTitle>
-      {url ? (
-        <div style={{ background: KBT.cream, padding: 10 }}>
-          <QRCode
-            value={url}
-            size={qrSize}
-            fgColor={KBT.dark}
-            bgColor={KBT.cream}
-          />
-        </div>
-      ) : (
-        <div
-          style={{
-            width: qrSize + 20,
-            height: qrSize + 20,
-            background: KBT.fill,
-            border: `1px solid ${KBT.border}`,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}>
-          <Label size={11}>{creating ? 'BUILDING…' : 'NO COURT'}</Label>
-        </div>
-      )}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <StatusDot
-          state={state}
-          pulse={joined && !live && role !== 'commentator'}
-        />
-        <Label size={10} tracking={1.5} color={joined ? KBT.cream : KBT.dim}>
-          {status}
-        </Label>
-      </div>
-      {role === 'hoop' ? (
-        <Tab
-          size={10}
-          color={cam?.calibrated ? KBT.good : KBT.amber}
-          textColor={KBT.dark}>
-          {cam?.calibrated ? 'RIM CALIBRATED' : 'RIM NOT CALIBRATED'}
-        </Tab>
-      ) : null}
       <div
         style={{
-          fontFamily: kbtMonoFont,
-          fontSize: 10,
-          letterSpacing: 0.5,
-          lineHeight: 1.5,
-          color: KBT.dim,
-          textAlign: 'center',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'baseline',
+          gap: 8,
         }}>
-        {meta.sub}
+        <Display
+          size={24}
+          weight={800}
+          style={{
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}>
+          {meta.title}
+        </Display>
+        <Meta size={10} tracking={0.22} style={{ flexShrink: 0 }}>
+          {meta.role}
+        </Meta>
+      </div>
+      <div style={{ display: 'flex', gap: 14, alignItems: 'stretch' }}>
+        {url ? (
+          <QrBox url={url} size={qr} padding={12} />
+        ) : (
+          <div
+            style={{
+              width: qr + 24,
+              height: qr + 24,
+              border: `1px dashed ${BB.rule2}`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}>
+            <Meta size={10}>{creating ? 'BUILDING…' : 'NO COURT'}</Meta>
+          </div>
+        )}
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+            minWidth: 0,
+            flex: 1,
+          }}>
+          <Copy size={10} color='rgba(232,228,218,.8)' lineHeight={1.6}>
+            {meta.sub}
+          </Copy>
+          <div
+            style={{
+              marginTop: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 5,
+            }}>
+            <StatusLine status={status} name={name} />
+            <Mono
+              size={9}
+              tracking={0.2}
+              color={second ? second.color : BB.chalk}
+              style={{ opacity: second ? 0.9 : 0.4 }}>
+              {second ? second.text : '—'}
+            </Mono>
+          </div>
+        </div>
       </div>
       {picker ? (
-        <div style={{ width: '100%', minWidth: 0, marginTop: 'auto' }}>
-          {picker}
-        </div>
+        <div style={{ width: '100%', minWidth: 0 }}>{picker}</div>
       ) : null}
-    </Plate>
+    </BbPlate>
   );
 }
 
@@ -234,54 +282,91 @@ export function LobbyScreen({
   useArcadeKeys({ confirm: start, back: onBack });
   const teams = state?.teams;
   const tooClose = teams ? colorsTooClose(teams.A.color, teams.B.color) : false;
+  const armed = !hoopReady && force.armed === 'start';
 
   return (
-    <Frame
+    <HostFrame
       title='COURT OPEN'
-      tab={
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <Label size={10} tracking={1.5}>
-            ROOM {roomId ?? '—'}
-          </Label>
-          <StatusDot
-            state={feed.connected ? 'good' : 'bad'}
-            pulse={!feed.connected}
+      background={
+        <div
+          aria-hidden
+          style={{
+            position: 'absolute',
+            inset: 0,
+            backgroundImage: chainLink(0.04, 20),
+          }}
+        />
+      }
+      meta={
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              background: BB.plate2,
+              border: `1px solid ${BB.rule2}`,
+              padding: '5px 10px',
+            }}>
+            <Meta size={10} tracking={0.22} color={BB.chalk}>
+              ROOM ·{' '}
+              <span style={{ fontWeight: 600, color: BB.electric }}>
+                {roomId ?? '—'}
+              </span>
+            </Meta>
+          </span>
+          <span
+            className={feed.connected ? undefined : 'bb-pulse'}
+            title={feed.connected ? 'feed connected' : 'feed down'}
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              background: feed.connected ? BB.good : BB.bad,
+            }}
           />
         </div>
       }
-      footer={
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}>
-          <FooterHint
-            hints={[
-              { key: 'ESC', label: 'SETUP' },
-              { key: 'ENTER', label: 'TIP-OFF' },
-            ]}
+      actions={
+        <>
+          <BbButton
+            variant='outline'
+            label='SETUP'
+            onClick={onBack}
+            style={{ height: 43, fontSize: 17, padding: '0 21px' }}
           />
-          <div style={{ display: 'flex', gap: 10 }}>
-            <KbtButton label='SETUP' variant='outline' onClick={onBack} />
-            <KbtButton
-              label={
-                hoopReady
-                  ? 'TIP-OFF'
-                  : force.armed === 'start'
-                    ? 'TIP-OFF ANYWAY?'
-                    : 'TIP-OFF'
-              }
-              sub={
-                hoopReady
-                  ? 'start the clock'
-                  : 'hoop cam not ready — press twice'
-              }
-              active={hoopReady || force.armed === 'start'}
-              onClick={start}
-            />
-          </div>
-        </div>
+          <div style={{ flex: 1 }} />
+          <BbButton
+            variant={armed ? 'chalk' : 'primary'}
+            active={hoopReady || armed}
+            label={armed ? 'TIP-OFF ANYWAY?' : 'TIP-OFF'}
+            keyBadge='ENTER'
+            onClick={start}
+            style={{
+              height: 43,
+              fontSize: 20,
+              padding: '0 24px',
+              ...(armed ? { background: BB.amber } : {}),
+            }}
+          />
+        </>
+      }
+      hints={[
+        { key: 'ENTER', label: 'TIP-OFF' },
+        { key: 'ESC', label: 'SETUP' },
+      ]}
+      hintsRight={
+        <Mono
+          size={10}
+          tracking={0.22}
+          color={BB.chalk}
+          style={{ opacity: 0.7, whiteSpace: 'nowrap' }}>
+          HOOP CAM NOT READY → BUTTON READS{' '}
+          <span style={{ fontWeight: 600, color: BB.amber }}>
+            TIP-OFF ANYWAY?
+          </span>{' '}
+          · TWO PRESSES
+        </Mono>
       }>
       <div
         style={{
@@ -294,12 +379,12 @@ export function LobbyScreen({
         <div
           style={{
             display: 'flex',
-            gap: 12,
+            gap: 19,
             alignItems: 'stretch',
             flex: 1,
             minHeight: 0,
           }}>
-          <JoinPlate
+          <RolePlate
             role='hoop'
             url={links.hoop}
             cam={cams?.hoop ?? null}
@@ -318,7 +403,7 @@ export function LobbyScreen({
               ) : null
             }
           />
-          <JoinPlate
+          <RolePlate
             role='court'
             url={links.court}
             cam={cams?.court ?? null}
@@ -337,7 +422,7 @@ export function LobbyScreen({
               ) : null
             }
           />
-          <JoinPlate
+          <RolePlate
             role='commentator'
             url={links.commentator}
             cam={null}
@@ -345,57 +430,72 @@ export function LobbyScreen({
             creating={room.creating}
           />
         </div>
-        {roomId ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Label size={9} tracking={1.5}>
-              TEST CLIPS
-            </Label>
-            <FileCamSyncButton
-              dense
-              roomId={roomId}
-              cams={cams}
-              onReload={library.reload}
-            />
-          </div>
-        ) : null}
-        <Plate
-          cutPx={14}
-          innerStyle={{
+
+        <div
+          style={{
             display: 'flex',
             alignItems: 'center',
-            gap: 18,
-            padding: '10px 14px',
-            flexWrap: 'wrap',
+            gap: 12,
+            height: 43,
+            padding: '0 19px',
+            background: BB.plate,
+            border: `1px solid ${BB.rule}`,
+            boxSizing: 'border-box',
           }}>
           {teams ? (
             <>
-              <TeamBadge name={teams.A.name} color={teams.A.color} />
-              <Label size={10} tracking={2}>
+              <TeamStripe color={teams.A.color} w={8} h={16} />
+              <Display size={20} weight={800}>
+                {teams.A.name}
+              </Display>
+              <Meta size={10} tracking={0.18}>
                 VS
-              </Label>
-              <TeamBadge name={teams.B.name} color={teams.B.color} />
+              </Meta>
+              <Display size={20} weight={800}>
+                {teams.B.name}
+              </Display>
+              <TeamStripe color={teams.B.color} w={8} h={16} />
             </>
           ) : null}
-          <Label size={10} tracking={1.5} style={{ marginLeft: 'auto' }}>
+          {tooClose ? (
+            <Mono
+              size={9}
+              weight={600}
+              tracking={0.18}
+              color={BB.amber}
+              style={{ marginLeft: 12 }}>
+              TEAM COLOURS TOO CLOSE FOR THE AI
+            </Mono>
+          ) : null}
+          <Mono
+            size={10}
+            tracking={0.18}
+            color={BB.chalk}
+            style={{ marginLeft: 'auto', opacity: 0.75, whiteSpace: 'nowrap' }}>
             FIRST TO {state?.config.targetPoints ?? 21} ·{' '}
             {formatClock(state?.config.durationMs ?? 600_000)} · OT TO +
             {state?.config.otWinPoints ?? 2}
-          </Label>
-          {tooClose ? (
-            <Label size={10} tracking={1.5} color={KBT.amber}>
-              TEAM COLOURS TOO CLOSE FOR THE AI
-            </Label>
-          ) : null}
-        </Plate>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Label size={9} tracking={1.5}>
+          </Mono>
+        </div>
+
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            minWidth: 0,
+          }}>
+          <Meta size={9} tracking={0.18}>
             PANEL LINK FOR A LAPTOP
-          </Label>
-          <div
+          </Meta>
+          <Mono
+            size={10}
+            weight={500}
+            tracking={0.04}
+            uppercase={false}
+            color={BB.chalk}
             style={{
-              fontFamily: kbtMonoFont,
-              fontSize: 10,
-              color: KBT.dim,
+              opacity: 0.9,
               flex: 1,
               minWidth: 0,
               overflow: 'hidden',
@@ -403,8 +503,8 @@ export function LobbyScreen({
               whiteSpace: 'nowrap',
             }}>
             {panelUrl || '—'}
-          </div>
-          <ChipButton
+          </Mono>
+          <Chip
             dense
             label={
               copyState === 'copied'
@@ -415,8 +515,21 @@ export function LobbyScreen({
             }
             onClick={copyPanel}
           />
+          {roomId ? (
+            <>
+              <Meta size={9} tracking={0.18} style={{ marginLeft: 8 }}>
+                TEST CLIPS
+              </Meta>
+              <FileCamSyncButton
+                dense
+                roomId={roomId}
+                cams={cams}
+                onReload={library.reload}
+              />
+            </>
+          ) : null}
         </div>
       </div>
-    </Frame>
+    </HostFrame>
   );
 }
