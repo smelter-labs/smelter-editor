@@ -2537,12 +2537,15 @@ export class BasketballGameController {
         hoop: {
           inputId: hoop?.inputId ?? null,
           live: hoop?.camConnected ?? false,
+          name: hoop?.name ?? null,
         },
         court: {
           inputId: court?.inputId ?? null,
           live: court?.camConnected ?? false,
+          name: court?.name ?? null,
         },
       },
+      otWinPoints: this.config.otWinPoints,
       lobby:
         this.phase === 'lobby'
           ? {

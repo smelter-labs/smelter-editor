@@ -1,15 +1,26 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Image, Rescaler, Text, View } from '@swmansion/smelter';
+import type { Api } from '@swmansion/smelter';
+
+type TextWeight = Api.TextWeight;
 import type { BbHudRect, BbHudState } from '../app/store';
 import { KBT_VIEW_TRANSITION_MS } from '../app/store';
 import { TransitionShaderWrapper } from './transitionWrapper';
+import {
+  clockFace,
+  monoWidth,
+  pipFrameOrigin,
+  tagChipRect,
+} from './bbHudMetrics';
 
 /**
- * Basketball game ("Blacktop") broadcast chrome: asphalt plates, chalk rules,
- * orange accent, team colours painted at runtime. Static art comes from
- * scripts/bb-render-assets.mjs (imgs/bb/*.png registered as `bb-<name>`);
- * this file composites the dynamic values on top. Coordinates are the
- * design's 1080p pixel values scaled by resolution.height/1080.
+ * Basketball game ("Blacktop") broadcast chrome — docs/design/blacktop/
+ * Blacktop HUD.dc.html. Asphalt plates with one cut corner, chalk text,
+ * one electric accent, gold only on the winner; team colours painted at
+ * runtime as 16 px stripes / 4 px rules, never under text. Static art
+ * comes from scripts/bb-render-assets.mjs (imgs/bb/*.png registered as
+ * `bb-<name>`); this file composites the dynamic values on top at the
+ * design's 1080p pixel positions scaled by resolution.height/1080.
  *
  * Two kinds of state arrive in one snapshot (see BbHudStage): `stage` follows
  * the layout immediately (which cam is main, where the PiP sits), everything
@@ -19,12 +30,18 @@ import { TransitionShaderWrapper } from './transitionWrapper';
 
 const DISPLAY = 'Big Shoulders Display';
 const MONO = 'IBM Plex Mono';
-const ORANGE = '#FF6A1F';
 const CHALK = '#F4EFE6';
-const DIM = '#F4EFE68C';
+const CHALK_85 = '#F4EFE6D9';
+const DIM = '#F4EFE6B3';
+const DIM2 = '#F4EFE680';
+const DARK = '#141416';
+const ELECTRIC = '#33E1FF';
+const GOLD = '#E8B33A';
 const GOOD = '#2EE06A';
 const AMBER = '#FFD21F';
 const BAD = '#FF2E3D';
+/** Registered as BigShouldersDisplay-Black.ttf; drop to 'extra_bold' if missing. */
+const BLACK: TextWeight = 'black';
 
 type Resolution = { width: number; height: number };
 
@@ -69,7 +86,7 @@ function Art({
   );
 }
 
-/** Solid rectangle at design-px coords (team colour bars, veils). */
+/** Solid rectangle at design-px coords (team colour stripes, rules, veils). */
 function Block({
   x,
   y,
@@ -141,7 +158,7 @@ function Label({
   k,
   color = CHALK,
   font = DISPLAY,
-  weight = 'bold',
+  weight = 'extra_bold',
   align = 'left',
   centerIn,
 }: {
@@ -153,13 +170,14 @@ function Label({
   k: number;
   color?: string;
   font?: string;
-  weight?: 'normal' | 'medium' | 'semi_bold' | 'bold' | 'extra_bold';
+  weight?: TextWeight;
   align?: 'left' | 'center' | 'right';
+  /** Vertically centre the cap band inside this height (design px). */
   centerIn?: number;
 }) {
   const width = Math.round(w * k);
   const top =
-    centerIn != null ? centerIn / 2 - (CAP_CENTER[font] ?? 0.585) * fs : y;
+    centerIn != null ? y + centerIn / 2 - (CAP_CENTER[font] ?? 0.585) * fs : y;
   return (
     <View
       style={{
@@ -184,177 +202,218 @@ function Label({
   );
 }
 
-// ── Live chrome ──────────────────────────────────────────────────────────────
-
-function clockText(hud: BbHudState): {
-  main: string;
-  tag: string;
-  tagColor: string;
-} {
-  const c = hud.clock;
-  switch (c.phase) {
-    case 'lobby':
-      return {
-        main: formatClock(hud.lobby?.durationMs ?? c.remainingMs),
-        tag: 'WARM-UP',
-        tagColor: DIM,
-      };
-    case 'paused':
-      return {
-        main: formatClock(c.remainingMs),
-        tag: 'PAUSED',
-        tagColor: AMBER,
-      };
-    case 'overtime':
-      return { main: 'OT', tag: 'FIRST TO +2', tagColor: ORANGE };
-    case 'ended':
-      return {
-        main: 'FINAL',
-        tag: c.period === 'ot' ? 'AFTER OT' : 'FULL TIME',
-        tagColor: ORANGE,
-      };
-    default:
-      return {
-        main: formatClock(c.remainingMs),
-        tag: c.period === 'ot' ? 'OT' : 'REG',
-        tagColor: DIM,
-      };
+/** Runtime tag chip: coloured block + dark mono 11 text, centred on cx. */
+function TagChip({
+  text,
+  cx,
+  y,
+  k,
+  tone,
+}: {
+  text: string;
+  cx: number;
+  y: number;
+  k: number;
+  tone: 'electric' | 'amber' | 'chalk' | 'outline';
+}) {
+  const r = tagChipRect(text, 11, cx, y, 16);
+  if (tone === 'outline') {
+    return (
+      <>
+        <Art id='bb-tag-outline' x={r.x} y={r.y} w={r.w} h={r.h} k={k} />
+        <Label
+          x={r.x}
+          y={r.y}
+          w={r.w}
+          text={text}
+          fs={11}
+          k={k}
+          font={MONO}
+          weight='semi_bold'
+          align='center'
+          color={DIM}
+          centerIn={r.h}
+        />
+      </>
+    );
   }
-}
-
-/** Score bug: team colours + names + scores around the clock (top-left). */
-function ScoreBug({ hud, k }: { hud: BbHudState; k: number }) {
-  const { main, tag, tagColor } = clockText(hud);
-  const a = hud.teams.A;
-  const b = hud.teams.B;
+  const bg = tone === 'electric' ? ELECTRIC : tone === 'amber' ? AMBER : CHALK;
   return (
-    <Group x={70} y={40} w={820} h={92} k={k}>
-      <Art id='bb-scorebug-plate' x={0} y={0} w={820} h={92} k={k} />
-      <Block x={0} y={0} w={16} h={92} k={k} color={a.color} />
-      <Block x={804} y={0} w={16} h={92} k={k} color={b.color} />
+    <>
+      <Block x={r.x} y={r.y} w={r.w} h={r.h} k={k} color={bg} />
       <Label
-        x={32}
-        w={190}
-        text={a.name.toUpperCase()}
-        fs={26}
-        k={k}
-        centerIn={92}
-      />
-      <Label
-        x={214}
-        w={106}
-        text={String(a.score)}
-        fs={58}
-        k={k}
-        weight='extra_bold'
-        align='right'
-        centerIn={92}
-      />
-      <Label
-        x={340}
-        y={14}
-        w={124}
-        text={main}
-        fs={main.length > 5 ? 22 : 30}
+        x={r.x}
+        y={r.y}
+        w={r.w}
+        text={text}
+        fs={11}
         k={k}
         font={MONO}
         weight='semi_bold'
         align='center'
+        color={DARK}
+        centerIn={r.h}
+      />
+    </>
+  );
+}
+
+// ── Live chrome ──────────────────────────────────────────────────────────────
+
+const CLOCK_COLOR = {
+  chalk: CHALK,
+  amber: AMBER,
+  bad: BAD,
+  electric: ELECTRIC,
+  dim: DIM,
+} as const;
+
+/** Score bug (70,40) 820×92: stripes + names + scores around the clock cell. */
+function ScoreBug({ hud, k }: { hud: BbHudState; k: number }) {
+  const face = clockFace(
+    hud.clock,
+    hud.otWinPoints ?? 2,
+    hud.lobby?.durationMs ?? null,
+    formatClock,
+  );
+  const a = hud.teams.A;
+  const b = hud.teams.B;
+  const scoring =
+    hud.stage.scene === 'score' && hud.lastShot && !hud.lastShot.pending
+      ? hud.lastShot.team
+      : null;
+  const mainFs = face.main.length > 5 ? 22 : 30;
+  return (
+    <Group x={70} y={40} w={820} h={92} k={k}>
+      <Art id='bb-scorebug-plate' x={0} y={0} w={820} h={92} k={k} />
+      <Block x={0} y={0} w={16} h={92} k={k} color={a.color} />
+      {/* B stripe starts under the 18 px corner cut. */}
+      <Block x={804} y={18} w={16} h={74} k={k} color={b.color} />
+      <Label
+        x={38}
+        y={26}
+        w={250}
+        text={a.name.toUpperCase()}
+        fs={34}
+        k={k}
+        centerIn={40}
       />
       <Label
-        x={340}
-        y={58}
-        w={124}
-        text={tag}
-        fs={11}
+        x={288}
+        y={16}
+        w={96}
+        text={String(a.score)}
+        fs={58}
+        k={k}
+        align='center'
+        centerIn={60}
+        color={scoring === 'A' ? ELECTRIC : CHALK}
+      />
+      <Label
+        x={384}
+        y={20}
+        w={150}
+        text={face.main}
+        fs={mainFs}
         k={k}
         font={MONO}
-        weight='medium'
+        weight='semi_bold'
         align='center'
-        color={tagColor}
+        centerIn={32}
+        color={CLOCK_COLOR[face.mainColor]}
       />
+      <TagChip text={face.tag} cx={459} y={58} k={k} tone={face.tagTone} />
       <Label
-        x={484}
-        w={106}
+        x={554}
+        y={16}
+        w={96}
         text={String(b.score)}
         fs={58}
         k={k}
-        weight='extra_bold'
-        centerIn={92}
+        align='center'
+        centerIn={60}
+        color={scoring === 'B' ? ELECTRIC : CHALK}
       />
       <Label
-        x={582}
-        w={190}
+        x={532}
+        y={26}
+        w={250}
         text={b.name.toUpperCase()}
-        fs={26}
+        fs={34}
         k={k}
         align='right'
-        centerIn={92}
+        centerIn={40}
       />
     </Group>
   );
 }
 
-/** Chalk frame + role tag around the picture-in-picture, plus SIGNAL LOST. */
+/** Plate + chip around the picture-in-picture; SIGNAL LOST variant. */
 function PipFrame({ hud, k }: { hud: BbHudState; k: number }) {
   const pip = hud.stage.pip;
   if (!pip) return null;
-  // The rect is in output pixels; the frame art is 496×320 design px with
-  // the 480×270 window at (8, 42).
-  const x = pip.rect.x / k - 8;
-  const y = pip.rect.y / k - 42;
+  const o = pipFrameOrigin(pip.rect, k);
   const cam = hud.cams[pip.role];
   const lost = cam.inputId != null && !cam.live;
+  const id = lost ? `bb-pip-lost-${pip.role}` : `bb-pip-frame-${pip.role}`;
   return (
     <>
-      {lost ? (
-        <Group x={pip.rect.x / k} y={pip.rect.y / k} w={480} h={270} k={k}>
-          <Block x={0} y={0} w={480} h={270} k={k} color='#141416CC' />
-          <Label
-            x={0}
-            w={480}
-            text='SIGNAL LOST'
-            fs={30}
-            k={k}
-            align='center'
-            centerIn={270}
-            color={BAD}
-          />
-        </Group>
+      <Art id={id} x={o.x} y={o.y} w={496} h={320} k={k} />
+      {cam.name ? (
+        <Label
+          x={o.x + 300}
+          y={o.y + 8}
+          w={180}
+          text={cam.name.toUpperCase()}
+          fs={12}
+          k={k}
+          font={MONO}
+          weight='medium'
+          align='right'
+          color={DIM2}
+          centerIn={26}
+        />
       ) : null}
-      <Art id={`bb-pip-frame-${pip.role}`} x={x} y={y} w={496} h={320} k={k} />
     </>
   );
 }
 
-/** "+1 TEAM" toast under the score bug (outside the featured score scene). */
+/** "+2 TEAM" toast under the score bug (outside the featured score scene). */
 function ShotToast({ hud, k }: { hud: BbHudState; k: number }) {
   const shot = hud.lastShot;
   if (!shot || !shot.showBanner) return null;
-  const text = shot.pending
-    ? `+${shot.points} · REF CALL`
-    : `+${shot.points} ${(shot.teamName ?? '').toUpperCase()}`;
   return (
     <Group x={70} y={150} w={460} h={64} k={k}>
-      <Art id='bb-toast-plate' x={0} y={0} w={460} h={64} k={k} />
-      <Block
-        x={0}
-        y={0}
-        w={14}
-        h={64}
-        k={k}
-        color={shot.pending ? CHALK : shot.color}
-      />
+      {shot.pending ? (
+        <Art id='bb-toast-refcall' x={0} y={0} w={460} h={64} k={k} />
+      ) : (
+        <>
+          <Art id='bb-toast-plate' x={0} y={0} w={460} h={64} k={k} />
+          <Block x={0} y={0} w={64} h={64} k={k} color={shot.color} />
+        </>
+      )}
       <Label
-        x={34}
-        w={400}
-        text={text}
-        fs={34}
+        x={84}
+        y={12}
+        w={70}
+        text={`+${shot.points}`}
+        fs={40}
         k={k}
-        weight='extra_bold'
-        centerIn={64}
-        color={shot.pending ? CHALK : shot.color}
+        weight={BLACK}
+        color={ELECTRIC}
+        centerIn={40}
       />
+      {!shot.pending ? (
+        <Label
+          x={168}
+          y={15}
+          w={200}
+          text={(shot.teamName ?? '').toUpperCase()}
+          fs={34}
+          k={k}
+          centerIn={36}
+        />
+      ) : null}
     </Group>
   );
 }
@@ -367,15 +426,15 @@ function PendingPill({ hud, k }: { hud: BbHudState; k: number }) {
     <Group x={70} y={y} w={270} h={54} k={k}>
       <Art id='bb-pending-pill' x={0} y={0} w={270} h={54} k={k} />
       <Label
-        x={190}
-        w={60}
+        x={214}
+        y={12}
+        w={40}
         text={String(hud.pendingCount)}
         fs={30}
         k={k}
-        weight='extra_bold'
         align='right'
-        centerIn={54}
-        color={ORANGE}
+        centerIn={32}
+        color={ELECTRIC}
       />
     </Group>
   );
@@ -385,55 +444,103 @@ function PendingPill({ hud, k }: { hud: BbHudState; k: number }) {
 function ScoreBanner({ hud, k }: { hud: BbHudState; k: number }) {
   const shot = hud.lastShot;
   if (!shot || !shot.showBanner) return null;
-  const color = shot.pending ? CHALK : shot.color;
-  const line = shot.pending
-    ? `+${shot.points} · REF CALL`
-    : `+${shot.points}  ${(shot.teamName ?? '').toUpperCase()}`;
+  const pip = hud.stage.pip;
+  const still = pip ? pipFrameOrigin(pip.rect, k) : { x: 1368, y: 704 };
   return (
     <>
       <Group x={460} y={320} w={1000} h={290} k={k}>
-        <Block x={0} y={0} w={1000} h={10} k={k} color={color} />
-        <Art id='bb-banner-score' x={0} y={10} w={1000} h={280} k={k} />
-        <Label
+        <Art id='bb-banner-score' x={0} y={0} w={1000} h={290} k={k} />
+        <Block
           x={0}
-          y={196}
-          w={1000}
-          text={line}
-          fs={60}
+          y={0}
+          w={16}
+          h={290}
           k={k}
-          weight='extra_bold'
-          align='center'
-          color={color}
+          color={shot.pending ? CHALK : shot.color}
+        />
+        <Label
+          x={250}
+          y={214}
+          w={90}
+          text={`+${shot.points}`}
+          fs={54}
+          k={k}
+          weight={BLACK}
+          align='right'
+          color={ELECTRIC}
+          centerIn={60}
+        />
+        <Label
+          x={360}
+          y={214}
+          w={500}
+          text={
+            shot.pending ? '· REF CALL' : (shot.teamName ?? '').toUpperCase()
+          }
+          fs={54}
+          k={k}
+          color={shot.pending ? ELECTRIC : CHALK}
+          centerIn={60}
         />
       </Group>
       {shot.frameImageId ? (
         <>
-          <Art id={shot.frameImageId} x={1378} y={708} w={480} h={270} k={k} />
-          <Art id='bb-still-frame' x={1370} y={666} w={496} h={320} k={k} />
+          <Art
+            id={shot.frameImageId}
+            x={still.x + 8}
+            y={still.y + 42}
+            w={480}
+            h={270}
+            k={k}
+          />
+          <Art
+            id='bb-still-frame'
+            x={still.x}
+            y={still.y}
+            w={496}
+            h={320}
+            k={k}
+          />
         </>
       ) : null}
     </>
   );
 }
 
-/** Lead change / overtime / final / hype banner (bottom centre). */
+/** Lead change / overtime / final banner (bottom centre, 510,880 900×84). */
 function Banner({ hud, k }: { hud: BbHudState; k: number }) {
   const banner = hud.banner;
   if (!banner) return null;
+  const draw = banner.kind === 'final' && banner.text.startsWith('FINAL');
+  const textColor =
+    banner.kind === 'overtime'
+      ? AMBER
+      : banner.kind === 'final' && !draw
+        ? GOLD
+        : CHALK;
+  const weight: TextWeight = banner.kind === 'overtime' ? BLACK : 'bold';
   return (
     <Group x={510} y={880} w={900} h={84} k={k}>
       <Art id='bb-banner-plate' x={0} y={0} w={900} h={84} k={k} />
-      <Block x={0} y={0} w={900} h={4} k={k} color={banner.color} />
+      {draw ? (
+        <>
+          <Block x={0} y={80} w={450} h={4} k={k} color={hud.teams.A.color} />
+          <Block x={450} y={80} w={450} h={4} k={k} color={hud.teams.B.color} />
+        </>
+      ) : (
+        <Block x={0} y={80} w={900} h={4} k={k} color={banner.color} />
+      )}
       <Label
-        x={20}
-        w={860}
+        x={40}
+        y={16}
+        w={820}
         text={banner.text.toUpperCase()}
         fs={44}
         k={k}
-        weight='extra_bold'
+        weight={weight}
         align='center'
-        centerIn={84}
-        color={banner.color}
+        centerIn={48}
+        color={textColor}
       />
     </Group>
   );
@@ -453,11 +560,6 @@ function CasterLowerThird({ hud, k }: { hud: BbHudState; k: number }) {
   const plateY = cy + ch - 88;
   return (
     <>
-      {/* chalk frame around the cam tile */}
-      <Block x={cx - 4} y={cy - 4} w={cw + 8} h={4} k={k} color={CHALK} />
-      <Block x={cx - 4} y={cy + ch} w={cw + 8} h={4} k={k} color={CHALK} />
-      <Block x={cx - 4} y={cy} w={4} h={ch} k={k} color={CHALK} />
-      <Block x={cx + cw} y={cy} w={4} h={ch} k={k} color={CHALK} />
       {!c.camConnected ? (
         <Group x={cx} y={cy} w={cw} h={ch} k={k}>
           <Block x={0} y={0} w={cw} h={ch} k={k} color='#141416CC' />
@@ -467,6 +569,8 @@ function CasterLowerThird({ hud, k }: { hud: BbHudState; k: number }) {
             text='NO SIGNAL'
             fs={16}
             k={k}
+            font={MONO}
+            weight='semi_bold'
             align='center'
             centerIn={ch}
             color={BAD}
@@ -483,13 +587,13 @@ function CasterLowerThird({ hud, k }: { hud: BbHudState; k: number }) {
       />
       <Art id='bb-caster-plate' x={plateX} y={plateY} w={470} h={88} k={k} />
       <Label
-        x={plateX + 30}
-        y={plateY + 12}
+        x={plateX + 24}
+        y={plateY + 14}
         w={420}
         text={c.name.toUpperCase()}
         fs={36}
         k={k}
-        weight='extra_bold'
+        centerIn={40}
       />
     </>
   );
@@ -502,22 +606,22 @@ function CasterOnAirMini({ hud, k }: { hud: BbHudState; k: number }) {
   return <Art id='bb-caster-onair' x={70} y={974} w={130} h={36} k={k} />;
 }
 
-/** Commentator full-frame: name plate bottom-left. */
+/** Commentator full-frame: chip + name plate bottom-left. */
 function CasterFullScene({ hud, k }: { hud: BbHudState; k: number }) {
   const c = hud.commentator;
   if (!c) return null;
   return (
     <>
-      <Art id='bb-caster-onair' x={70} y={880} w={130} h={36} k={k} />
-      <Art id='bb-caster-plate' x={70} y={922} w={470} h={88} k={k} />
+      <Art id='bb-caster-onair' x={70} y={850} w={130} h={36} k={k} />
+      <Art id='bb-caster-plate' x={70} y={892} w={470} h={88} k={k} />
       <Label
-        x={100}
-        y={934}
+        x={94}
+        y={906}
         w={420}
         text={c.name.toUpperCase()}
         fs={36}
         k={k}
-        weight='extra_bold'
+        centerIn={40}
       />
     </>
   );
@@ -530,16 +634,15 @@ const LOBBY_ROLES = ['hoop', 'court', 'commentator'] as const;
 function LobbyScene({ hud, k }: { hud: BbHudState; k: number }) {
   const lobby = hud.lobby;
   if (!lobby) return null;
-  const PX = 370;
-  const PY = 620;
   return (
     <>
-      <Block x={0} y={0} w={1920} h={1080} k={k} color='#14141699' />
+      <Art id='bb-lobby-scrim' x={0} y={0} w={1920} h={1080} k={k} />
       <Art id='bb-lobby-title' x={70} y={60} w={760} h={150} k={k} />
-      <Group x={PX} y={PY} w={1180} h={400} k={k}>
+      <Art id='bb-lobby-tag' x={1150} y={40} w={700} h={220} k={k} />
+      <Group x={370} y={620} w={1180} h={400} k={k}>
         <Art id='bb-lobby-panel' x={0} y={0} w={1180} h={400} k={k} />
         {LOBBY_ROLES.map((role, i) => {
-          const col = 40 + i * 380;
+          const col = 32 + i * 384;
           const qr = lobby.qr[role];
           const cam =
             role === 'commentator'
@@ -549,19 +652,15 @@ function LobbyScene({ hud, k }: { hud: BbHudState; k: number }) {
             role === 'commentator'
               ? lobby.commentatorName != null
               : !!cam?.joined;
-          const live = role === 'commentator' ? false : !!cam?.live;
+          const live = role === 'commentator' ? joined : !!cam?.live;
           const status = !joined
-            ? 'WAITING FOR PHONE'
-            : role === 'commentator'
-              ? 'JOINED'
-              : live
-                ? 'LIVE'
-                : 'CONNECTING';
-          const statusColor = !joined
-            ? DIM
-            : live || role === 'commentator'
-              ? GOOD
-              : AMBER;
+            ? '○ WAITING FOR PHONE'
+            : live
+              ? role === 'commentator'
+                ? '● JOINED'
+                : '● LIVE'
+              : '◌ CONNECTING';
+          const statusColor = !joined ? DIM : live ? GOOD : AMBER;
           const name =
             role === 'commentator'
               ? (lobby.commentatorName ?? '')
@@ -569,99 +668,97 @@ function LobbyScene({ hud, k }: { hud: BbHudState; k: number }) {
           return (
             <React.Fragment key={role}>
               {qr.imageId ? (
-                <Art id={qr.imageId} x={col} y={95} w={150} h={150} k={k} />
+                <Art id={qr.imageId} x={col} y={84} w={150} h={150} k={k} />
               ) : null}
               <Label
-                x={col + 190}
-                y={104}
-                w={170}
+                x={col + 170}
+                y={120}
+                w={180}
                 text={status}
-                fs={13}
+                fs={11}
                 k={k}
                 font={MONO}
                 weight='semi_bold'
                 color={statusColor}
+                centerIn={16}
               />
               <Label
-                x={col + 190}
-                y={130}
-                w={170}
-                text={name.toUpperCase()}
-                fs={24}
+                x={col + 170}
+                y={146}
+                w={180}
+                text={name}
+                fs={22}
                 k={k}
+                font={MONO}
+                weight='medium'
+                centerIn={28}
               />
-              {role === 'hoop' ? (
+              {role === 'hoop' && joined ? (
                 <Label
-                  x={col + 190}
-                  y={168}
-                  w={170}
+                  x={col + 170}
+                  y={222}
+                  w={180}
                   text={
                     cam?.calibrated ? 'RIM CALIBRATED' : 'CALIBRATE THE RIM'
                   }
-                  fs={12}
+                  fs={11}
                   k={k}
                   font={MONO}
-                  weight='medium'
-                  color={cam?.calibrated ? GOOD : ORANGE}
+                  weight='semi_bold'
+                  color={cam?.calibrated ? GOOD : AMBER}
+                  centerIn={14}
                 />
               ) : null}
               {qr.label ? (
                 <Label
-                  x={col + 190}
-                  y={268}
-                  w={170}
+                  x={col + 170}
+                  y={248}
+                  w={180}
                   text={qr.label}
-                  fs={12}
+                  fs={11}
                   k={k}
                   font={MONO}
-                  weight='medium'
-                  color={DIM}
+                  weight='normal'
+                  color={DIM2}
+                  centerIn={14}
                 />
               ) : null}
             </React.Fragment>
           );
         })}
         {/* teams + rules strip */}
-        <Block x={40} y={332} w={10} h={28} k={k} color={hud.teams.A.color} />
+        <Block x={32} y={344} w={12} h={22} k={k} color={hud.teams.A.color} />
         <Label
-          x={62}
-          y={328}
-          w={260}
+          x={56}
+          y={340}
+          w={300}
           text={hud.teams.A.name.toUpperCase()}
           fs={28}
           k={k}
+          centerIn={32}
         />
+        <Block x={440} y={344} w={12} h={22} k={k} color={hud.teams.B.color} />
         <Label
-          x={330}
-          y={336}
-          w={40}
-          text='VS'
-          fs={13}
-          k={k}
-          font={MONO}
-          weight='semi_bold'
-          color={DIM}
-        />
-        <Block x={380} y={332} w={10} h={28} k={k} color={hud.teams.B.color} />
-        <Label
-          x={402}
-          y={328}
-          w={260}
+          x={464}
+          y={340}
+          w={300}
           text={hud.teams.B.name.toUpperCase()}
           fs={28}
           k={k}
+          centerIn={32}
         />
         <Label
-          x={740}
-          y={336}
-          w={400}
-          text={`FIRST TO ${lobby.targetPoints} · ${formatClock(lobby.durationMs)} · OT TO +2`}
-          fs={13}
+          x={700}
+          y={348}
+          w={440}
+          text={`FIRST TO ${lobby.targetPoints} · ${formatClock(lobby.durationMs)} · OT TO +${hud.otWinPoints ?? 2}`}
+          fs={14}
           k={k}
           font={MONO}
-          weight='semi_bold'
+          weight='normal'
           align='right'
           color={DIM}
+          centerIn={16}
         />
       </Group>
     </>
@@ -670,90 +767,129 @@ function LobbyScene({ hud, k }: { hud: BbHudState; k: number }) {
 
 function pct(makes: number, attempts: number): string {
   if (attempts <= 0) return '—';
-  return `${Math.round((makes / attempts) * 100)}%`;
+  return `${Math.round((makes / attempts) * 100)}`;
 }
 
 function EndedScene({ hud, k }: { hud: BbHudState; k: number }) {
   const ended = hud.ended;
   if (!ended) return null;
-  const PX = 360;
-  const PY = 180;
+  const winnerName = ended.winner
+    ? hud.teams[ended.winner].name.toUpperCase()
+    : null;
+  const headline = winnerName ? `${winnerName} WINS` : 'FINAL — DRAW';
+  const rest = ` · LEAD CHANGES ${ended.leadChanges} · ${ended.otPlayed ? 'OVERTIME' : 'FULL TIME'}`;
+  const headW = monoWidth(headline, 14);
   return (
     <>
-      <Block x={0} y={0} w={1920} h={1080} k={k} color='#141416B0' />
-      <Group x={PX} y={PY} w={1200} h={720} k={k}>
+      <Block x={0} y={0} w={1920} h={1080} k={k} color='#141416D1' />
+      <Group x={360} y={180} w={1200} h={720} k={k}>
         <Art id='bb-ended-panel' x={0} y={0} w={1200} h={720} k={k} />
         {(['A', 'B'] as const).map((team, i) => {
-          const col = 60 + i * 600;
+          const right = i === 1;
           const t = hud.teams[team];
           const s = ended.teams[team];
           const win = ended.winner === team;
-          const rows: [string, string][] = [
-            ['MAKES', String(s.makes)],
-            ['ATTEMPTS', String(s.attempts)],
-            ['FG%', pct(s.makes, s.attempts)],
-            ['TWOS', String(s.twos)],
+          const cells: string[] = [
+            String(s.makes),
+            String(s.attempts),
+            pct(s.makes, s.attempts),
+            String(s.twos),
           ];
+          const nameW = Math.min(380, t.name.length * 0.5 * 40 + 20);
           return (
             <React.Fragment key={team}>
-              <Block x={col} y={120} w={480} h={10} k={k} color={t.color} />
-              <Label
-                x={col}
+              <Block
+                x={right ? 1140 : 44}
                 y={150}
-                w={340}
+                w={16}
+                h={470}
+                k={k}
+                color={t.color}
+              />
+              <Label
+                x={right ? 1114 - 380 : 86}
+                y={150}
+                w={380}
                 text={t.name.toUpperCase()}
                 fs={40}
                 k={k}
+                align={right ? 'right' : 'left'}
+                centerIn={44}
               />
               {win ? (
-                <Label
-                  x={col + 300}
+                <Art
+                  id='bb-winner-tag'
+                  x={right ? 1114 - nameW - 16 - 110 : 86 + nameW + 16}
                   y={160}
-                  w={180}
-                  text='WINNER'
-                  fs={16}
+                  w={110}
+                  h={24}
                   k={k}
-                  font={MONO}
-                  weight='semi_bold'
-                  align='right'
-                  color={ORANGE}
                 />
               ) : null}
               <Label
-                x={col}
-                y={200}
+                x={right ? 1114 - 480 : 86}
+                y={204}
                 w={480}
                 text={String(s.score)}
                 fs={190}
                 k={k}
-                weight='extra_bold'
-                color={win ? t.color : CHALK}
+                weight={BLACK}
+                align={right ? 'right' : 'left'}
+                color={win ? GOLD : ended.winner ? CHALK_85 : CHALK}
+                centerIn={180}
               />
-              {rows.map(([label, value], r) => (
+              {cells.map((value, c) => (
                 <Label
-                  key={label}
-                  x={col + 240}
-                  y={422 + r * 48}
-                  w={240}
+                  key={c}
+                  x={right ? 1114 - 110 - c * 120 : 86 + c * 120}
+                  y={586}
+                  w={110}
                   text={value}
-                  fs={30}
+                  fs={36}
                   k={k}
-                  align='right'
+                  align={right ? 'right' : 'left'}
+                  centerIn={40}
                 />
               ))}
             </React.Fragment>
           );
         })}
         <Label
-          x={60}
-          y={648}
-          w={1080}
-          text={`${ended.winner ? `${hud.teams[ended.winner].name.toUpperCase()} WINS` : 'DRAW'} · LEAD CHANGES ${ended.leadChanges}${ended.otPlayed ? ' · OVERTIME' : ''}`}
-          fs={16}
+          x={44}
+          y={662}
+          w={headW + 20}
+          text={headline}
+          fs={14}
           k={k}
           font={MONO}
-          weight='semi_bold'
+          weight='normal'
+          color={winnerName ? GOLD : CHALK}
+          centerIn={20}
+        />
+        <Label
+          x={44 + headW}
+          y={662}
+          w={1112 - headW}
+          text={rest}
+          fs={14}
+          k={k}
+          font={MONO}
+          weight='normal'
           color={DIM}
+          centerIn={20}
+        />
+        <Label
+          x={700}
+          y={662}
+          w={456}
+          text={winnerName ? 'CHAMPION OF THE BLACKTOP' : 'NO WINNER · NO GOLD'}
+          fs={14}
+          k={k}
+          font={MONO}
+          weight='normal'
+          align='right'
+          color={DIM2}
+          centerIn={20}
         />
       </Group>
     </>
@@ -797,6 +933,7 @@ function SceneChrome({
         <Banner hud={hud} k={k} />
       ) : null}
       {scene === 'caster' ? <CasterFullScene hud={hud} k={k} /> : null}
+      {scene === 'caster' ? <ScoreBug hud={hud} k={k} /> : null}
       {hud.stage.caster ? (
         <CasterLowerThird hud={hud} k={k} />
       ) : liveLike ? (

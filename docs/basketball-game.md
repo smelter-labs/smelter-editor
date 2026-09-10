@@ -85,6 +85,36 @@ score bug) · score (hoop full-frame, SCORE! banner, release still) · hoop /
 court / caster / split (moderator overrides) · ended (final card with makes,
 attempts, FG%, twos, lead changes).
 
+## Design ("Blacktop")
+
+The design package lives in `docs/design/blacktop/` (Claude Design canvases:
+open `Blacktop.dc.html` for the index — brandbook, HUD 1920×1080 with the
+per-plate position table, host app, moderator, phones). The language:
+asphalt `#141416`, chalk text (`#F4EFE6` on air, `#E8E4DA` in the apps),
+one electric accent (`#33E1FF` / `#22D3EE`), gold only on WINNER, plates
+`rgba(20,20,22,.94)` / `rgba(30,30,34,.94)` with a single cut top-right
+corner and no hairline, team colours only ever as 16 px stripes / 4 px rules
+/ 12 px chips — never under text. Big Shoulders Display (900 wordmark /
+SCORE! / FINAL / final scores, 800 names + scores, 700 banners) and IBM Plex
+Mono (600 clocks + tags, 500 status, 400 tracked meta).
+
+- Web: `editor/components/basketball-game/bb-kit.tsx` (+ `bb-kit.css`) is
+  the whole kit — tokens `BB`, `Wordmark`, `BbPlate`, `BbButton`, `Segment`,
+  `Stepper`, `NameField`, `JerseyGrid`, `ScoreRow`, `LedgerRow`,
+  `RefCallCard`, `StatusPill`, `HostFrame`; phones use `phone/bb-phone-shell`
+  + `bb-connect-step` / `bb-name-step` / `bb-cam-mic-step`. Host screens draw
+  at 2/3 of the 1080p design in the 1280×720 arcade stage. Fonts come from
+  `app/basketball-game/fonts.ts` (`--font-bb-display` / `--font-bb-mono`).
+  Nothing under `basketball-game/` imports the kettlebell kit; only its
+  hooks (rig, recovery, recording, preview, WHIP) are shared.
+- Broadcast: `server/scripts/bb-render-assets.mjs` renders the neutral
+  plates into `server/imgs/bb/*.png` (committed; re-run after editing);
+  `server/src/inputs/BbHud.tsx` composites runtime text at the design's
+  positions (`bbHudMetrics.ts` holds the clock face / tag chip / PiP anchor
+  maths, unit-tested). Big Shoulders Black 900 is
+  `server/fonts/big-shoulders/BigShouldersDisplay-Black.ttf` (instanced from
+  the Google Fonts VF at opsz 72 / wght 900).
+
 ## Running it
 
 ```bash

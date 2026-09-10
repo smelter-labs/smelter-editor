@@ -677,7 +677,12 @@ export type BbHudState = {
   } | null;
   /** Makes awaiting a team in the moderator queue ("+1 ?" pill). */
   pendingCount: number;
-  cams: Record<'hoop' | 'court', { inputId: string | null; live: boolean }>;
+  cams: Record<
+    'hoop' | 'court',
+    { inputId: string | null; live: boolean; name?: string | null }
+  >;
+  /** Overtime target (the OT clock tag reads "FIRST TO +n"). */
+  otWinPoints?: number;
   lobby: {
     qr: Record<
       'hoop' | 'court' | 'commentator',
