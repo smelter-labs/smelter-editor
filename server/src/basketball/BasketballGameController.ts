@@ -158,6 +158,10 @@ type CamState = {
   camHeight: number | null;
   /** hoop only: the worker sees a ball right now. */
   ballTracked: boolean;
+  /** 'file' when the input is a looping mp4 from data/mp4s (no phone). */
+  source: 'whip' | 'file';
+  /** source === 'file' only: path relative to data/mp4s. */
+  fileName: string | null;
 };
 
 type CommentatorState = {
@@ -592,6 +596,8 @@ export class BasketballGameController {
         camWidth: null,
         camHeight: null,
         ballTracked: false,
+        source: 'whip',
+        fileName: null,
       };
       this.cams.set(role, cam);
     }
@@ -630,6 +636,9 @@ export class BasketballGameController {
       return;
     }
     this.retireCamInput(cam);
+    // A phone taking over a file-backed slot turns it back into a WHIP cam.
+    cam.source = 'whip';
+    cam.fileName = null;
     if (dims) {
       cam.camWidth = dims.width;
       cam.camHeight = dims.height;
@@ -711,14 +720,16 @@ export class BasketballGameController {
   }
 
   /**
-   * Dev hook (BB_SIM=1): adopt an already-connected input (local-mp4) as a
-   * camera role, in place of a phone-published WHIP stream. Everything
-   * downstream is inputId-keyed and works unchanged.
+   * Adopt an already-connected input (a looping local-mp4 from data/mp4s) as
+   * a camera role, in place of a phone-published WHIP stream. Everything
+   * downstream is inputId-keyed and works unchanged. A phone currently
+   * holding the slot keeps it, but its stream is retired.
    */
   attachExternalCam(
     role: BbCamRole,
     inputId: string,
     dims?: { width: number; height: number },
+    fileName?: string,
   ): boolean {
     this.engaged = true;
     let cam = this.cams.get(role);
@@ -727,7 +738,7 @@ export class BasketballGameController {
         role,
         clientId: null,
         camKey: randomUUID(),
-        name: role === 'hoop' ? 'Hoop cam (file)' : 'Court cam (file)',
+        name: '',
         connected: false,
         disconnectedAt: null,
         inputId: null,
@@ -736,11 +747,16 @@ export class BasketballGameController {
         camWidth: null,
         camHeight: null,
         ballTracked: false,
+        source: 'file',
+        fileName: null,
       };
       this.cams.set(role, cam);
     } else {
       this.retireCamInput(cam);
     }
+    cam.source = 'file';
+    cam.fileName = fileName ?? null;
+    cam.name = role === 'hoop' ? 'Hoop cam (file)' : 'Court cam (file)';
     if (dims) {
       cam.camWidth = dims.width;
       cam.camHeight = dims.height;
@@ -752,6 +768,17 @@ export class BasketballGameController {
     this.ensureRunning();
     this.broadcastState();
     return true;
+  }
+
+  /** Inputs of the file-backed cams (for the clip sync/restart action). */
+  fileCamInputIds(): { role: BbCamRole; inputId: string }[] {
+    const out: { role: BbCamRole; inputId: string }[] = [];
+    for (const cam of this.cams.values()) {
+      if (cam.source === 'file' && cam.inputId != null) {
+        out.push({ role: cam.role, inputId: cam.inputId });
+      }
+    }
+    return out;
   }
 
   /** Enable (or re-configure) the scorer on the hoop input with the full param set. */
@@ -2351,6 +2378,7 @@ export class BasketballGameController {
         joined: false,
         connected: false,
         camConnected: false,
+        source: 'whip',
         calibrated: role === 'hoop' ? this.config.rim != null : false,
       };
     }
@@ -2360,6 +2388,10 @@ export class BasketballGameController {
       joined: true,
       connected: cam.connected,
       camConnected: cam.camConnected,
+      source: cam.source,
+      ...(cam.source === 'file' && cam.fileName
+        ? { fileName: cam.fileName }
+        : {}),
       ...(cam.camWidth && cam.camHeight
         ? { camWidth: cam.camWidth, camHeight: cam.camHeight }
         : {}),

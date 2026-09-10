@@ -29,6 +29,12 @@ import type { CamRecovery } from '@/components/kettlebell-tournament/panel/use-c
 import { useKbtRecording } from '@/components/kettlebell-tournament/use-kbt-recording';
 import { RecordingPlate } from '@/components/kettlebell-tournament/recording-control';
 import { ScoreLine, ShotRow, TeamSwatch } from '../bb-kit';
+import {
+  FileCamPicker,
+  FileCamSyncButton,
+  camSourceLabel,
+  useMp4Library,
+} from '../file-cam-picker';
 import { formatClock, remainingNow } from '../use-bb-feed';
 import type { BbPanelSocket } from './use-bb-panel-socket';
 
@@ -154,6 +160,7 @@ export function PanelScreen({
   narrow: boolean;
 }) {
   const rec = useKbtRecording(roomId, socket.state?.isRecording ?? false);
+  const library = useMp4Library();
   const [, forceTick] = useState(0);
   useEffect(() => {
     const t = window.setInterval(() => forceTick((n) => n + 1), 250);
@@ -654,44 +661,63 @@ export function PanelScreen({
           return (
             <div
               key={role}
-              style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <StatusDot
-                state={
-                  !cam?.joined ? 'idle' : cam.camConnected ? 'good' : 'warn'
-                }
-                pulse={!!cam?.joined && !cam.camConnected}
-              />
-              <Label
-                size={10}
-                tracking={1.5}
-                color={KBT.cream}
-                style={{ minWidth: 80 }}>
-                {role.toUpperCase()} CAM
-              </Label>
-              <Label size={9} tracking={1} style={{ flex: 1 }}>
-                {!cam?.joined
-                  ? 'waiting'
-                  : cam.camConnected
-                    ? `live · ${cam.name}`
-                    : `connecting · ${cam.name}`}
-                {role === 'hoop'
-                  ? cam?.calibrated
-                    ? ' · rim set'
-                    : ' · RIM NOT CALIBRATED'
-                  : ''}
-                {role === 'hoop' && cam?.ballTracked ? ' · ball' : ''}
-              </Label>
-              {cam?.joined ? (
-                <ChipButton
-                  dense
-                  tone='danger'
-                  label='KICK'
-                  onClick={() => socket.sendMatch('kick_cam', role)}
+              style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <StatusDot
+                  state={
+                    !cam?.joined ? 'idle' : cam.camConnected ? 'good' : 'warn'
+                  }
+                  pulse={!!cam?.joined && !cam.camConnected}
                 />
-              ) : null}
+                <Label
+                  size={10}
+                  tracking={1.5}
+                  color={KBT.cream}
+                  style={{ minWidth: 80 }}>
+                  {role.toUpperCase()} CAM
+                </Label>
+                <Label size={9} tracking={1} style={{ flex: 1 }}>
+                  {!cam?.joined
+                    ? 'waiting'
+                    : cam.camConnected
+                      ? `live · ${camSourceLabel(cam)}`
+                      : `connecting · ${camSourceLabel(cam)}`}
+                  {role === 'hoop'
+                    ? cam?.calibrated
+                      ? ' · rim set'
+                      : ' · RIM NOT CALIBRATED'
+                    : ''}
+                  {role === 'hoop' && cam?.ballTracked ? ' · ball' : ''}
+                </Label>
+                {cam?.joined ? (
+                  <ChipButton
+                    dense
+                    tone='danger'
+                    label='KICK'
+                    onClick={() => socket.sendMatch('kick_cam', role)}
+                  />
+                ) : null}
+              </div>
+              {/* Clip from data/mp4s instead of a phone (test rigs). */}
+              <div style={{ paddingLeft: 18 }}>
+                <FileCamPicker
+                  dense
+                  roomId={roomId}
+                  role={role}
+                  cams={state?.cams}
+                  files={library.files}
+                  loading={library.loading}
+                />
+              </div>
             </div>
           );
         })}
+        <FileCamSyncButton
+          dense
+          roomId={roomId}
+          cams={state?.cams}
+          onReload={library.reload}
+        />
         <RecordingPlate rec={rec} />
       </Plate>
 

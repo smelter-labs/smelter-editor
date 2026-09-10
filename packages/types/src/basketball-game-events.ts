@@ -205,6 +205,10 @@ export type BbCam = {
   connected: boolean;
   /** The WHIP input is publishing (receiving heartbeat acks). */
   camConnected: boolean;
+  /** 'whip' = phone-published stream; 'file' = looping mp4 from data/mp4s. */
+  source: 'whip' | 'file';
+  /** source === 'file' only: path relative to data/mp4s. */
+  fileName?: string;
   camWidth?: number;
   camHeight?: number;
   /** hoop only: a rim ellipse is calibrated. */

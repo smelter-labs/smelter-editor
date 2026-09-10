@@ -133,6 +133,23 @@ try {
   if (MP4) {
     const cam = await api('POST', `/room/${roomId}/basketball-game/mp4-cam`, { role: 'hoop', fileName: MP4 });
     check('mp4 hoop cam attached', cam.status === 'ok' && !!cam.inputId, j(cam));
+    const courtCam = await api('POST', `/room/${roomId}/basketball-game/mp4-cam`, { role: 'court', fileName: MP4 });
+    check('mp4 court cam attached (replaces the phone stream)', courtCam.status === 'ok' && !!courtCam.inputId, j(courtCam));
+    const bad = await api('POST', `/room/${roomId}/basketball-game/mp4-cam`, { role: 'court', fileName: '../etc/passwd.mp4' }).catch((e) => String(e));
+    check('traversal fileName rejected', typeof bad === 'string' && bad.includes('400'), String(bad));
+    const synced = await api('POST', `/room/${roomId}/basketball-game/mp4-cam/sync`, { playFromMs: 0 });
+    check('file cams restarted in sync', synced.status === 'ok' && synced.inputIds.length === 2, j(synced));
+    snap = await state(roomId);
+    check('state reports file cams', snap.state.cams.hoop.source === 'file' && snap.state.cams.hoop.fileName === MP4 && snap.state.cams.court.source === 'file', j(snap.state.cams));
+    // The court phone still holds its slot: a fresh publish takes it back
+    // from the clip (the liveness checks below need a heartbeat-driven cam).
+    const prevCourtOffer = court.offer;
+    court.send({ type: 'bb_cam_request', nativeWidth: 1920, nativeHeight: 1080 });
+    for (let i = 0; i < 50 && court.offer === prevCourtOffer; i++) await sleep(100);
+    snap = await state(roomId);
+    check('court phone took the slot back from the clip', court.offer !== prevCourtOffer && snap.state.cams.court.source === 'whip' && !snap.state.cams.court.fileName, j(snap.state.cams.court));
+    const syncedOne = await api('POST', `/room/${roomId}/basketball-game/mp4-cam/sync`, {});
+    check('sync now restarts the hoop clip only', syncedOne.inputIds.length === 1 && syncedOne.inputIds[0] === cam.inputId, j(syncedOne));
   }
 
   await sleep(4500); // heartbeat acks → camConnected

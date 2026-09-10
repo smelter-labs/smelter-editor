@@ -2153,9 +2153,11 @@ export class RoomState {
   }
 
   /**
-   * Dev-only (BB_SIM=1): register a looping local-mp4 (from data/mp4s) as a
-   * camera role. The mp4 input gets the same video side channel a WHIP cam
-   * would, so the scorer sees real decoded frames — no phone needed.
+   * Register a looping local-mp4 (from data/mp4s) as a camera role. The mp4
+   * input gets the same video side channel a WHIP cam would, so the scorer
+   * sees real decoded frames — no phone needed. Arming the scorer on the
+   * hoop clip re-registers it (side channel), which restarts that clip a
+   * beat later — `syncBbFileCams` re-aligns hoop and court afterwards.
    */
   public async attachBbMp4Cam(
     role: BbCamRole,
@@ -2183,8 +2185,36 @@ export class RoomState {
       input.mp4VideoWidth && input.mp4VideoHeight
         ? { width: input.mp4VideoWidth, height: input.mp4VideoHeight }
         : undefined;
-    this.basketball.attachExternalCam(role, inputId, dims);
+    this.basketball.attachExternalCam(role, inputId, dims, fileName);
     return { inputId };
+  }
+
+  /**
+   * Restart every file-backed basketball cam from `playFromMs` (looping) so
+   * synchronized clips line up again. One critical section: the restarts
+   * run back to back, so both offsets come from (nearly) the same pipeline
+   * time; and because the scorer arming for the hoop clip queues on the same
+   * mutex, a sync issued right after an attach lands after that reconnect.
+   * Returns the inputs that restarted; a cam that is not connected (yet) is
+   * skipped, not fatal.
+   */
+  public async syncBbFileCams(playFromMs = 0): Promise<string[]> {
+    return this.mutex.runExclusive(async () => {
+      const restarted: string[] = [];
+      for (const { role, inputId } of this.basketball.fileCamInputIds()) {
+        try {
+          await this.inputManager.restartMp4Input(inputId, playFromMs, true);
+          restarted.push(inputId);
+        } catch (err) {
+          console.warn(
+            `[bb] clip sync skipped ${role} cam ${inputId}: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        }
+      }
+      return restarted;
+    });
   }
 
   /** Dev-only (BB_SIM=1): fabricate an AI make for UI work sans model. */

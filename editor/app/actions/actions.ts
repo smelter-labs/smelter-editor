@@ -113,9 +113,11 @@ export async function getTwitchSuggestions(): Promise<InputSuggestions> {
   }
 }
 
-export async function getMP4Suggestions(): Promise<MP4Suggestions> {
+export async function getMP4Suggestions(options?: {
+  refresh?: boolean;
+}): Promise<MP4Suggestions> {
   try {
-    return (await getClient()).getMP4Suggestions();
+    return (await getClient()).getMP4Suggestions(options);
   } catch (err) {
     if (isServerUnavailableError(err)) {
       return { mp4s: [] };
@@ -680,6 +682,21 @@ export async function editBbShot(
   match: import('@smelter-editor/types').BbMatchEvent;
 }> {
   return (await getClient()).editBbShot(roomId, cmd);
+}
+
+export async function attachBbMp4Cam(
+  roomId: string,
+  role: import('@smelter-editor/types').BbCamRole,
+  fileName: string,
+): Promise<{ inputId: string }> {
+  return (await getClient()).attachBbMp4Cam(roomId, role, fileName);
+}
+
+export async function syncBbFileCams(
+  roomId: string,
+  playFromMs = 0,
+): Promise<{ inputIds: string[] }> {
+  return (await getClient()).syncBbFileCams(roomId, playFromMs);
 }
 
 export async function setHaunterConfig(

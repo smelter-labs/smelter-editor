@@ -21,6 +21,12 @@ import {
 } from '@/components/kettlebell-tournament/kbt-kit';
 import { useArcadeKeys } from '@/components/duck-hunter/use-arcade-input';
 import { TeamBadge, colorsTooClose } from '../bb-kit';
+import {
+  FileCamPicker,
+  FileCamSyncButton,
+  camSourceLabel,
+  useMp4Library,
+} from '../file-cam-picker';
 import type { BbFeed } from '../use-bb-feed';
 import type { BbRoom } from '../use-bb-room';
 import { formatClock } from '../use-bb-feed';
@@ -46,14 +52,20 @@ function JoinPlate({
   cam,
   commentatorName,
   creating,
+  picker,
 }: {
   role: keyof typeof ROLE_META;
   url: string;
   cam: BbCam | null;
   commentatorName: string | null;
   creating: boolean;
+  /** Clip picker (hoop / court only) — a file instead of a phone. */
+  picker?: React.ReactNode;
 }) {
   const meta = ROLE_META[role];
+  // The clip picker takes a row at the bottom — trade some QR size for it
+  // so the plate still fits a laptop viewport.
+  const qrSize = picker ? 124 : 150;
   const joined =
     role === 'commentator' ? commentatorName != null : !!cam?.joined;
   const live = role === 'commentator' ? false : !!cam?.camConnected;
@@ -69,8 +81,8 @@ function JoinPlate({
     : role === 'commentator'
       ? `JOINED · ${commentatorName}`
       : live
-        ? `LIVE · ${cam?.name}`
-        : `CONNECTING · ${cam?.name}`;
+        ? `LIVE · ${camSourceLabel(cam)}`
+        : `CONNECTING · ${camSourceLabel(cam)}`;
   return (
     <Plate
       cutPx={16}
@@ -88,7 +100,7 @@ function JoinPlate({
         <div style={{ background: KBT.cream, padding: 10 }}>
           <QRCode
             value={url}
-            size={150}
+            size={qrSize}
             fgColor={KBT.dark}
             bgColor={KBT.cream}
           />
@@ -96,8 +108,8 @@ function JoinPlate({
       ) : (
         <div
           style={{
-            width: 170,
-            height: 170,
+            width: qrSize + 20,
+            height: qrSize + 20,
             background: KBT.fill,
             border: `1px solid ${KBT.border}`,
             display: 'flex',
@@ -135,6 +147,11 @@ function JoinPlate({
         }}>
         {meta.sub}
       </div>
+      {picker ? (
+        <div style={{ width: '100%', minWidth: 0, marginTop: 'auto' }}>
+          {picker}
+        </div>
+      ) : null}
     </Plate>
   );
 }
@@ -203,6 +220,7 @@ export function LobbyScreen({
 
   const state = feed.state;
   const cams = state?.cams ?? null;
+  const library = useMp4Library();
   const hoopReady = !!cams?.hoop.camConnected && !!cams?.hoop.calibrated;
   const force = useArmed(4000);
   const start = () => {
@@ -287,6 +305,18 @@ export function LobbyScreen({
             cam={cams?.hoop ?? null}
             commentatorName={null}
             creating={room.creating}
+            picker={
+              roomId ? (
+                <FileCamPicker
+                  dense
+                  roomId={roomId}
+                  role='hoop'
+                  cams={cams}
+                  files={library.files}
+                  loading={library.loading}
+                />
+              ) : null
+            }
           />
           <JoinPlate
             role='court'
@@ -294,6 +324,18 @@ export function LobbyScreen({
             cam={cams?.court ?? null}
             commentatorName={null}
             creating={room.creating}
+            picker={
+              roomId ? (
+                <FileCamPicker
+                  dense
+                  roomId={roomId}
+                  role='court'
+                  cams={cams}
+                  files={library.files}
+                  loading={library.loading}
+                />
+              ) : null
+            }
           />
           <JoinPlate
             role='commentator'
@@ -303,6 +345,19 @@ export function LobbyScreen({
             creating={room.creating}
           />
         </div>
+        {roomId ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Label size={9} tracking={1.5}>
+              TEST CLIPS
+            </Label>
+            <FileCamSyncButton
+              dense
+              roomId={roomId}
+              cams={cams}
+              onReload={library.reload}
+            />
+          </div>
+        ) : null}
         <Plate
           cutPx={14}
           innerStyle={{

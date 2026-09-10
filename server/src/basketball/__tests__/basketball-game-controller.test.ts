@@ -294,6 +294,107 @@ describe('BasketballGameController — cameras', () => {
   });
 });
 
+describe('BasketballGameController — file cams (attachExternalCam)', () => {
+  it('reports the file source, arms the scorer on the hoop clip only and lists the inputs', () => {
+    const h = harness();
+    h.connected.add('mp4-hoop');
+    h.connected.add('mp4-court');
+    h.controller.attachExternalCam(
+      'hoop',
+      'mp4-hoop',
+      { width: 1280, height: 720 },
+      'bb-test/hoop.mp4',
+    );
+    expect(h.lastState().cams.hoop).toMatchObject({
+      joined: true,
+      connected: false,
+      source: 'file',
+      fileName: 'bb-test/hoop.mp4',
+      name: 'Hoop cam (file)',
+      camWidth: 1280,
+    });
+    expect(h.aiCalls).toHaveLength(1);
+    expect(h.aiCalls[0]).toMatchObject({ inputId: 'mp4-hoop', enabled: true });
+
+    h.controller.attachExternalCam(
+      'court',
+      'mp4-court',
+      undefined,
+      'bb-test/court.mp4',
+    );
+    expect(h.aiCalls).toHaveLength(1);
+    expect(h.lastState().cams.court).toMatchObject({
+      source: 'file',
+      fileName: 'bb-test/court.mp4',
+      name: 'Court cam (file)',
+    });
+    expect(h.controller.fileCamInputIds()).toEqual([
+      { role: 'hoop', inputId: 'mp4-hoop' },
+      { role: 'court', inputId: 'mp4-court' },
+    ]);
+    // Empty and WHIP slots never carry a fileName.
+    expect(h.lastState().cams.hoop.fileName).toBe('bb-test/hoop.mp4');
+    h.controller.dispose();
+  });
+
+  it('replaces a phone stream, and a phone can take the slot back', async () => {
+    const h = harness();
+    h.controller.handleMessage('p1', {
+      type: 'bb_cam_join',
+      role: 'court',
+      name: 'PHONE',
+    });
+    await h.controller.startCamera('p1');
+    const whipIn = h.offerFor('p1')!.inputId;
+    expect(h.lastState().cams.court.source).toBe('whip');
+
+    h.connected.add('mp4-court');
+    h.controller.attachExternalCam('court', 'mp4-court', undefined, 'c.mp4');
+    expect(h.connected.has(whipIn)).toBe(false); // the phone's input retired
+    expect(h.lastState().cams.court).toMatchObject({
+      source: 'file',
+      fileName: 'c.mp4',
+      name: 'Court cam (file)',
+    });
+
+    // Swapping the file keeps a single input attached.
+    h.connected.add('mp4-court-2');
+    h.controller.attachExternalCam('court', 'mp4-court-2', undefined, 'd.mp4');
+    expect(h.connected.has('mp4-court')).toBe(false);
+    expect(h.controller.fileCamInputIds()).toEqual([
+      { role: 'court', inputId: 'mp4-court-2' },
+    ]);
+
+    // The phone still holds the slot and can publish again.
+    await h.controller.startCamera('p1');
+    expect(h.connected.has('mp4-court-2')).toBe(false);
+    const cam = h.lastState().cams.court;
+    expect(cam.source).toBe('whip');
+    expect(cam.fileName).toBeUndefined();
+    expect(h.controller.fileCamInputIds()).toEqual([]);
+    h.controller.dispose();
+  });
+
+  it('kick_cam drops a file cam and its input', () => {
+    const h = harness();
+    h.connected.add('mp4-hoop');
+    h.controller.attachExternalCam('hoop', 'mp4-hoop', undefined, 'h.mp4');
+    const r = h.controller.controlMatch({ action: 'kick_cam', role: 'hoop' });
+    expect(r.error).toBeUndefined();
+    expect(h.connected.has('mp4-hoop')).toBe(false);
+    expect(h.aiCalls[h.aiCalls.length - 1]).toMatchObject({
+      inputId: 'mp4-hoop',
+      enabled: false,
+    });
+    expect(h.lastState().cams.hoop).toMatchObject({
+      joined: false,
+      source: 'whip',
+    });
+    expect(h.controller.fileCamInputIds()).toEqual([]);
+    h.controller.dispose();
+  });
+});
+
 describe('BasketballGameController — ledger + match', () => {
   it('auto-assigns a confident make and queues an unsure one for the moderator', async () => {
     const h = harness();

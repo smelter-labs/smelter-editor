@@ -52,6 +52,7 @@ import { duckHunterTopScores } from '../duckHunter/topScores';
 import { DATA_DIR } from '../dataDir';
 import { ModelRegistry, registerAIModels } from '../ai-models';
 import { uploadRoutes, sanitizeFolderPath } from '../core/routes/uploadRoutes';
+import { sanitizeBbMp4FileName } from '../basketball/mp4CamFileName';
 
 registerAIModels();
 import {
@@ -435,9 +436,20 @@ routes.setErrorHandler((err: unknown, req, res) => {
   });
 });
 
-routes.get('/suggestions/mp4s', async (_req, res) => {
-  res.status(200).send({ mp4s: mp4SuggestionsMonitor.mp4Files });
-});
+// `?refresh=1` rescans data/mp4s first — the monitor only scans at startup
+// and after uploads, so clips copied in by hand would otherwise stay hidden.
+routes.get<{ Querystring: { refresh?: string } }>(
+  '/suggestions/mp4s',
+  {
+    schema: {
+      querystring: Type.Object({ refresh: Type.Optional(Type.String()) }),
+    },
+  },
+  async (req, res) => {
+    if (req.query.refresh === '1') mp4SuggestionsMonitor.refresh();
+    res.status(200).send({ mp4s: mp4SuggestionsMonitor.mp4Files });
+  },
+);
 
 routes.get<{ Querystring: { folder?: string } }>(
   '/suggestions/mp4s/browse',
@@ -3401,8 +3413,9 @@ routes.post<RoomIdParams & { Body: Static<typeof BbSimulateShotSchema> }>(
   },
 );
 
-// Dev-only mp4 camera (BB_SIM=1): attach a local-mp4 from data/mp4s as the
-// hoop or court camera — real decoded frames reach the scorer, no phone needed.
+// File camera: attach a looping local-mp4 from data/mp4s as the hoop or
+// court camera — real decoded frames reach the scorer, no phone needed.
+// `fileName` is relative to data/mp4s (sub-folders allowed).
 const BbMp4CamSchema = Type.Object({
   role: Type.Union([Type.Literal('hoop'), Type.Literal('court')]),
   fileName: Type.String(),
@@ -3412,16 +3425,41 @@ routes.post<RoomIdParams & { Body: Static<typeof BbMp4CamSchema> }>(
   '/room/:roomId/basketball-game/mp4-cam',
   { schema: { params: RoomIdParamsSchema, body: BbMp4CamSchema } },
   async (req, res) => {
-    if (process.env.BB_SIM !== '1') {
-      return res.status(404).send({ status: 'error', message: 'Not found' });
+    const fileName = sanitizeBbMp4FileName(req.body.fileName);
+    if (!fileName) {
+      return res.status(400).send({
+        status: 'error',
+        message: 'fileName must be an .mp4 path relative to data/mp4s',
+      });
     }
     const room = state.getRoom(req.params.roomId);
     try {
-      const { inputId } = await room.attachBbMp4Cam(
-        req.body.role,
-        req.body.fileName,
-      );
+      const { inputId } = await room.attachBbMp4Cam(req.body.role, fileName);
       res.status(200).send({ status: 'ok', inputId });
+    } catch (err) {
+      res.status(400).send({
+        status: 'error',
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  },
+);
+
+// Restart every file camera from the same playhead (looping) so synchronized
+// hoop/court clips line up again — needed after the hoop clip is re-registered
+// for the scorer's side channel, or whenever the operator wants a clean loop.
+const BbMp4CamSyncSchema = Type.Object({
+  playFromMs: Type.Optional(Type.Number({ minimum: 0 })),
+});
+
+routes.post<RoomIdParams & { Body: Static<typeof BbMp4CamSyncSchema> }>(
+  '/room/:roomId/basketball-game/mp4-cam/sync',
+  { schema: { params: RoomIdParamsSchema, body: BbMp4CamSyncSchema } },
+  async (req, res) => {
+    const room = state.getRoom(req.params.roomId);
+    try {
+      const inputIds = await room.syncBbFileCams(req.body.playFromMs ?? 0);
+      res.status(200).send({ status: 'ok', inputIds });
     } catch (err) {
       res.status(400).send({
         status: 'error',

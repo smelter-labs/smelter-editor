@@ -94,13 +94,33 @@ cd server && BB_SIM=1 SMELTER_PATH=~/.smelter/v0.6.0-scfix/main_process pnpm sta
 cd editor && pnpm dev
 ```
 
-`BB_SIM=1` enables the dev routes `POST /room/:id/basketball-game/simulate-shot`
-(`{team|null, confidence, points}`) and `POST …/mp4-cam` (`{role, fileName}`, a
-looping clip from `server/data/mp4s` as a camera with a real side channel).
+`BB_SIM=1` enables the dev route `POST /room/:id/basketball-game/simulate-shot`
+(`{team|null, confidence, points}`).
+
+### File cameras (test clips instead of phones)
+
+Drop clips into `server/data/mp4s` (sub-folders are fine, e.g.
+`bb-test/hoop.mp4` + `bb-test/court.mp4`) and pick them in the host lobby
+(under each camera's QR) or in the moderator panel (CAMERAS). The clip is
+registered as a looping `local-mp4` input with the same video side channel a
+phone would get, so the scorer sees real decoded frames; the list rescans the
+folder on every screen open (RELOAD LIST forces it). Attaching a clip to a
+role a phone holds retires the phone's stream (the phone shows NO SIGNAL); the
+phone keeps the slot and can publish again, which drops the clip.
+
+Synchronized clips: arming the scorer re-registers the hoop clip with its
+side channel a beat after it is attached, so hoop and court drift apart by
+that latency. The second USE FILE restarts both from 0:00 automatically, and
+RESTART CLIPS 0:00 does it again on demand (both go through one critical
+section, so the offsets come from the same pipeline time).
+
+REST: `POST /room/:id/basketball-game/mp4-cam` (`{role: hoop|court, fileName}`,
+relative to `data/mp4s`, `.mp4` only, no traversal) and
+`POST …/mp4-cam/sync` (`{playFromMs?}` → `{inputIds}`).
 
 Phones on 5G through a tunnel have no media path without TURN (see the
-kettlebell phone-testing memory) — use the same Wi-Fi as the server, or a
-recording via "USE A RECORDING" on the camera page.
+kettlebell phone-testing memory) — use the same Wi-Fi as the server, a file
+camera as above, or a recording via "USE A RECORDING" on the camera page.
 
 ### Tests
 
@@ -110,6 +130,7 @@ python3 src/ai-models/basketball-scorer/test_analysis.py      # stdlib only, 37 
 cd editor && pnpm vitest run components/basketball-game
 # end to end (API running with BB_SIM=1 SKIP_PYTHON=1)
 node server/scripts/basketball-e2e.mjs
+BB_E2E_MP4=bb-synth.mp4 node server/scripts/basketball-e2e.mjs   # + file cams, sync, model
 # synthetic clip through the real model (API with the Python sidecars)
 node server/scripts/basketball-synth-clip.mjs                 # → data/mp4s/bb-synth.mp4
 node server/scripts/basketball-model-check.mjs bb-synth.mp4 --detector hsv --teams '#2ee06a,#1f7bff' --expect-makes 3
@@ -147,9 +168,10 @@ Server → client: `bb_state`, `bb_match` (1 Hz clock), `bb_shot {kind, shot,
 scores}`, `bb_cam_joined`, `bb_commentator_joined`, `bb_cam_offer`, `bb_ball`
 (hoop phone), `bb_lead_change`, `bb_error`.
 
-REST: `POST /room/:id/basketball-game/{config,match,shot}`, `GET …/state`, dev
-`simulate-shot` + `mp4-cam` (BB_SIM=1). Types live in
-`packages/types/src/basketball-game-events.ts`.
+REST: `POST /room/:id/basketball-game/{config,match,shot}`, `GET …/state`,
+`POST …/mp4-cam` + `…/mp4-cam/sync` (file cameras), dev `simulate-shot`
+(BB_SIM=1). `bb_state.cams[role].source` is `whip` | `file` (+ `fileName`).
+Types live in `packages/types/src/basketball-game-events.ts`.
 
 ## Not in v1 (next steps)
 

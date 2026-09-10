@@ -70,7 +70,8 @@ interface SmelterApiClient {
   getRoomRecordings(roomId: string): Promise<RecordingInfo[]>;
 
   getTwitchSuggestions(): Promise<InputSuggestions>;
-  getMP4Suggestions(): Promise<MP4Suggestions>;
+  /** `refresh` rescans data/mp4s first (clips copied in by hand). */
+  getMP4Suggestions(options?: { refresh?: boolean }): Promise<MP4Suggestions>;
   getKickSuggestions(): Promise<KickSuggestions>;
   getPictureSuggestions(): Promise<PictureSuggestions>;
   getAudioSuggestions(): Promise<AudioSuggestions>;
@@ -276,6 +277,17 @@ interface SmelterApiClient {
     state: BbStateEvent;
     match: BbMatchEvent;
   }>;
+  /** Use a looping mp4 from data/mp4s as the hoop / court camera. */
+  attachBbMp4Cam(
+    roomId: string,
+    role: BbCamRole,
+    fileName: string,
+  ): Promise<{ inputId: string }>;
+  /** Restart every file camera from `playFromMs` so the clips line up. */
+  syncBbFileCams(
+    roomId: string,
+    playFromMs?: number,
+  ): Promise<{ inputIds: string[] }>;
 
   setHaunterConfig(
     roomId: string,
@@ -445,8 +457,11 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       return await req('get', '/suggestions/twitch');
     },
 
-    async getMP4Suggestions() {
-      return await req('get', '/suggestions/mp4s');
+    async getMP4Suggestions(options) {
+      return await req(
+        'get',
+        options?.refresh ? '/suggestions/mp4s?refresh=1' : '/suggestions/mp4s',
+      );
     },
 
     async getKickSuggestions() {
@@ -795,6 +810,24 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
         state: data.state as BbStateEvent,
         match: data.match as BbMatchEvent,
       };
+    },
+
+    async attachBbMp4Cam(roomId, role, fileName) {
+      const data = await req(
+        'post',
+        `/room/${enc(roomId)}/basketball-game/mp4-cam`,
+        { role, fileName },
+      );
+      return { inputId: data.inputId as string };
+    },
+
+    async syncBbFileCams(roomId, playFromMs) {
+      const data = await req(
+        'post',
+        `/room/${enc(roomId)}/basketball-game/mp4-cam/sync`,
+        { playFromMs: playFromMs ?? 0 },
+      );
+      return { inputIds: (data.inputIds ?? []) as string[] };
     },
 
     async setHaunterConfig(roomId, config) {
