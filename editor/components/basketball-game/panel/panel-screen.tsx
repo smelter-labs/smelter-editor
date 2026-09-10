@@ -45,6 +45,7 @@ import {
   camSourceLabel,
   useMp4Library,
 } from '../file-cam-picker';
+import { ReplayControl, useBbEventsLibrary } from '../replay-control';
 import { formatClock, remainingNow } from '../use-bb-feed';
 import type { BbPanelSocket } from './use-bb-panel-socket';
 
@@ -199,6 +200,7 @@ export function PanelScreen({
 }) {
   const rec = useKbtRecording(roomId, socket.state?.isRecording ?? false);
   const library = useMp4Library();
+  const events = useBbEventsLibrary();
   const [, forceTick] = useState(0);
   useEffect(() => {
     const t = window.setInterval(() => forceTick((n) => n + 1), 250);
@@ -899,7 +901,18 @@ export function PanelScreen({
         dense
         roomId={roomId}
         cams={state?.cams}
-        onReload={library.reload}
+        onReload={() => {
+          library.reload();
+          events.reload();
+        }}
+      />
+      <ReplayControl
+        dense
+        roomId={roomId}
+        cams={state?.cams}
+        replay={state?.replay}
+        files={events.files}
+        loading={events.loading}
       />
       <BbRecordingPlate rec={rec} />
     </BbPlate>

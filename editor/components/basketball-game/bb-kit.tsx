@@ -103,6 +103,9 @@ export const ruledLines = (pitch = 32): string =>
 /** Format an AI attribution for a ledger row ("AI: A 92%" / "AI: ? 31%"). */
 export function aiGuessLabel(shot: BbShotEvent): string {
   if (shot.source === 'manual') return 'MANUAL';
+  if (shot.source === 'replay') {
+    return `GT: ${shot.aiTeam ?? '?'}${shot.gtPoints ? ` ${shot.gtPoints}PT` : ''}`;
+  }
   const pct = Math.round(shot.aiConfidence * 100);
   return `AI: ${shot.aiTeam ?? '?'} ${pct}%`;
 }
@@ -2266,8 +2269,8 @@ export function RefCallCard({
         ? 1 - shot.aiConfidence
         : 0.5;
   const aiLine =
-    shot.source === 'manual'
-      ? 'MANUAL'
+    shot.source !== 'ai'
+      ? aiGuessLabel(shot)
       : `AI: A ${Math.round(pctA * 100)}% · B ${Math.round((1 - pctA) * 100)}%`;
   const leadTeam = shot.aiTeam;
   const teamBtn = (t: BbTeamId) => (
@@ -2385,7 +2388,7 @@ export function RefCallCard({
             tracking={0.1}
             color={BB.chalk}
             style={{ opacity: 0.7 }}>
-            {shot.source === 'manual' ? (
+            {shot.source !== 'ai' ? (
               aiLine
             ) : (
               <>

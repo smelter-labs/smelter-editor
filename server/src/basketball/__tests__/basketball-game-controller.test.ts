@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RoomEvent } from '@smelter-editor/types';
 import type { BbHudState } from '../../app/store';
-import { BasketballGameController } from '../BasketballGameController';
+import {
+  BasketballGameController,
+  type BbFileClock,
+} from '../BasketballGameController';
 
 const ROOM = 'room-bb';
 const HOLD = 3000;
@@ -21,6 +24,8 @@ function harness(opts?: { withLiveness?: boolean }) {
   const frameRegisters: string[] = [];
   const connected = new Set<string>();
   const live = new Set<string>();
+  // Playhead anchors of file cams (RoomState derives them from the engine).
+  const fileClocks = new Map<string, BbFileClock>();
   let camSeq = 0;
 
   const controller = new BasketballGameController(ROOM, {
@@ -72,6 +77,7 @@ function harness(opts?: { withLiveness?: boolean }) {
       return `img-${frameRegisters.length}`;
     },
     unregisterShotFrameImage: () => {},
+    getFileClock: (inputId) => fileClocks.get(inputId) ?? null,
   });
 
   return {
@@ -85,6 +91,7 @@ function harness(opts?: { withLiveness?: boolean }) {
     frameRegisters,
     connected,
     live,
+    fileClocks,
     ofType<T extends RoomEvent['type']>(type: T) {
       return events.filter((e) => e.type === type) as Extract<
         RoomEvent,
@@ -763,6 +770,213 @@ describe('BasketballGameController — stage + HUD', () => {
     expect(cfg.teams.A).toEqual({ color: '#ffffff', name: 'WHITES' });
     const last = h.aiCalls[h.aiCalls.length - 1];
     expect(last.params).toMatchObject({ imgsz: 992, teamColorA: '#ffffff' });
+    h.controller.dispose();
+  });
+});
+
+// ── ground-truth replay ──────────────────────────────────────────────────────
+
+/** Worker-side confirmation lag the replay adds on top of the clip time. */
+const REPLAY_LAG = 300;
+
+function fileRig(h: H, clock?: Partial<BbFileClock>) {
+  h.connected.add('mp4-hoop');
+  h.controller.attachExternalCam(
+    'hoop',
+    'mp4-hoop',
+    { width: 1600, height: 1200 },
+    'apidis/q2/cam7.mp4',
+  );
+  h.fileClocks.set('mp4-hoop', {
+    anchorWallMs: Date.now(),
+    playFromMs: 0,
+    durationMs: 60_000,
+    delayMs: HOLD,
+    ...clock,
+  });
+  h.controller.setConfig({ targetPoints: 21, durationMs: 60_000 });
+  return 'mp4-hoop';
+}
+
+const GT_MAKE = {
+  tMs: 10_000,
+  made: true,
+  team: 'A' as const,
+  points: 1 as const,
+  gtPoints: 2 as const,
+  basket: 'left' as const,
+};
+const GT_MISS = {
+  tMs: 20_000,
+  made: false,
+  team: 'B' as const,
+  points: 2 as const,
+  gtPoints: 3 as const,
+  basket: 'left' as const,
+};
+
+describe('BasketballGameController — ground-truth replay', () => {
+  it('needs a file cam and reports the clock it follows', () => {
+    const h = harness();
+    expect(() =>
+      h.controller.loadReplay({
+        fileName: 'x/events.json',
+        shots: [GT_MAKE],
+        basket: 'both',
+        loop: false,
+      }),
+    ).toThrow(/file camera/);
+    fileRig(h);
+    const r = h.controller.loadReplay({
+      fileName: 'apidis/q2/events.json',
+      shots: [GT_MISS, GT_MAKE],
+      basket: 'left',
+      loop: false,
+    });
+    expect(r).toMatchObject({
+      fileName: 'apidis/q2/events.json',
+      active: true,
+      basket: 'left',
+      total: 2,
+      fired: 0,
+      skipped: 0,
+      nextEventTMs: 10_000,
+      clockRole: 'hoop',
+    });
+    // Fires when the model would have confirmed it: frame time + side
+    // channel delay − the HUD hold the viewers see it under + detect lag.
+    expect(r.nextFireInMs).toBe(10_000 + HOLD - HOLD + REPLAY_LAG);
+    expect(h.lastState().replay).toMatchObject({
+      total: 2,
+      nextEventTMs: 10_000,
+    });
+    h.controller.dispose();
+  });
+
+  it('fires makes as replay shots at their clip time and misses as attempts', async () => {
+    const h = harness();
+    fileRig(h);
+    h.controller.controlMatch({ action: 'start' });
+    h.controller.loadReplay({
+      fileName: 'apidis/q2/events.json',
+      shots: [GT_MAKE, GT_MISS],
+      basket: 'both',
+      loop: false,
+    });
+    await vi.advanceTimersByTimeAsync(10_000 + REPLAY_LAG - 1);
+    expect(h.ofType('bb_shot')).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(1);
+    const made = h.ofType('bb_shot');
+    expect(made).toHaveLength(1);
+    expect(made[0].kind).toBe('made');
+    expect(made[0].shot).toMatchObject({
+      source: 'replay',
+      team: 'A',
+      aiTeam: 'A',
+      aiConfidence: 1,
+      points: 1,
+      gtPoints: 2,
+      mediaMs: 10_000,
+      status: 'confirmed',
+    });
+    expect(h.lastState().teams.A).toMatchObject({ score: 1, makes: 1 });
+    expect(h.lastState().replay).toMatchObject({
+      fired: 1,
+      nextEventTMs: 20_000,
+    });
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(h.lastState().teams.B).toMatchObject({ score: 0, attempts: 1 });
+    expect(h.lastState().replay).toMatchObject({
+      fired: 2,
+      nextEventTMs: null,
+      nextFireInMs: null,
+    });
+    h.controller.dispose();
+  });
+
+  it('skips throws before START without warm-up feedback and owns the ledger over the model', async () => {
+    const h = harness();
+    const hoopIn = fileRig(h);
+    h.controller.loadReplay({
+      fileName: 'apidis/q2/events.json',
+      shots: [
+        { ...GT_MAKE, tMs: 2_000 },
+        { ...GT_MAKE, tMs: 30_000 },
+      ],
+      basket: 'both',
+      loop: false,
+    });
+    await vi.advanceTimersByTimeAsync(2_000 + REPLAY_LAG + 10);
+    expect(h.ofType('bb_shot')).toHaveLength(0);
+    expect(h.lastState().replay).toMatchObject({
+      skipped: 1,
+      fired: 0,
+      nextEventTMs: 30_000,
+    });
+    h.controller.controlMatch({ action: 'start' });
+    h.controller.onWorkerResult(hoopIn, {
+      session: 's1',
+      events: [
+        { type: 'shot_made', index: 1, team: 'B', teamConfidence: 0.95 },
+        { type: 'shot_attempt', index: 2, result: 'miss', team: 'B' },
+      ],
+    });
+    expect(h.lastState().teams.B).toMatchObject({ score: 0, attempts: 0 });
+    h.controller.unloadReplay();
+    expect(h.lastState().replay).toBeNull();
+    h.controller.onWorkerResult(hoopIn, {
+      session: 's1',
+      events: [
+        { type: 'shot_made', index: 3, team: 'B', teamConfidence: 0.95 },
+      ],
+    });
+    expect(h.lastState().teams.B.score).toBe(1);
+    h.controller.dispose();
+  });
+
+  it('follows a re-synced clip, loops, and stops on dispose', async () => {
+    const h = harness();
+    fileRig(h, { durationMs: 30_000 });
+    h.controller.controlMatch({ action: 'start' });
+    h.controller.loadReplay({
+      fileName: 'apidis/q2/events.json',
+      shots: [{ ...GT_MAKE, tMs: 5_000, points: 2, gtPoints: 3 }],
+      basket: 'both',
+      loop: true,
+    });
+    await vi.advanceTimersByTimeAsync(5_000 + REPLAY_LAG);
+    expect(h.lastState().teams.A.score).toBe(2);
+    // Looping: the same throw is due again one clip length later.
+    expect(h.lastState().replay).toMatchObject({
+      fired: 1,
+      nextEventTMs: 5_000,
+      nextFireInMs: 30_000,
+    });
+    // RESTART CLIPS from 4.0 s → the tick re-anchors the schedule.
+    h.fileClocks.set('mp4-hoop', {
+      anchorWallMs: Date.now(),
+      playFromMs: 4_000,
+      durationMs: 30_000,
+      delayMs: HOLD,
+    });
+    await vi.advanceTimersByTimeAsync(1_000 + REPLAY_LAG);
+    expect(h.lastState().teams.A.score).toBe(4);
+    expect(h.lastState().replay).toMatchObject({ fired: 2 });
+    h.controller.dispose();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(h.lastState().teams.A.score).toBe(4);
+  });
+
+  it('fires earlier when the clip has no side-channel delay', () => {
+    const h = harness();
+    fileRig(h, { delayMs: 0 });
+    const r = h.controller.loadReplay({
+      fileName: 'apidis/q2/events.json',
+      shots: [GT_MAKE],
+      basket: 'both',
+      loop: false,
+    });
+    expect(r.nextFireInMs).toBe(10_000 - HOLD + REPLAY_LAG);
     h.controller.dispose();
   });
 });

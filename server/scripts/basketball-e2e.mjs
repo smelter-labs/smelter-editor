@@ -4,14 +4,22 @@
 //   BB_SIM=1 SKIP_PYTHON=1 pnpm start        # terminal 1
 //   node scripts/basketball-e2e.mjs          # terminal 2
 //   BB_E2E_MP4=bb-synth.mp4 node scripts/basketball-e2e.mjs   # + real model
+//   BB_E2E_MP4=apidis/q2/cam7.mp4 BB_E2E_REPLAY=apidis/q2/events.json node scripts/basketball-e2e.mjs
+//                                                          # + ground-truth replay (no model needed)
 //
 // Two fake camera phones (hoop + court) register real WHIP inputs through the
 // offer flow and ack their heartbeats like use-whip-heartbeat does; a fake
 // moderator joins over the same socket kind the panel uses. Then the ledger,
 // clock, overtime, adoption and error contracts are exercised.
 
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 const API = process.env.BB_API ?? 'http://localhost:3001';
 const MP4 = process.env.BB_E2E_MP4 ?? '';
+const REPLAY = process.env.BB_E2E_REPLAY ?? '';
+const DATA = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data');
 const j = JSON.stringify;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let fails = 0;
@@ -141,6 +149,16 @@ try {
     check('file cams restarted in sync', synced.status === 'ok' && synced.inputIds.length === 2, j(synced));
     snap = await state(roomId);
     check('state reports file cams', snap.state.cams.hoop.source === 'file' && snap.state.cams.hoop.fileName === MP4 && snap.state.cams.court.source === 'file', j(snap.state.cams));
+    if (REPLAY) {
+      const badGt = await api('POST', `/room/${roomId}/basketball-game/replay`, { fileName: '../events.json' }).catch((e) => String(e));
+      check('replay: traversal fileName rejected', typeof badGt === 'string' && badGt.includes('400'), String(badGt));
+      const loaded = await api('POST', `/room/${roomId}/basketball-game/replay`, { fileName: REPLAY, basket: 'both' });
+      check('replay: ground truth loaded on the file cams', loaded.status === 'ok' && loaded.replay?.total > 0 && loaded.replay.active === true, j(loaded.replay));
+      snap = await state(roomId);
+      check('replay: state carries the replay', snap.state.replay?.fileName === REPLAY && snap.state.replay.total === loaded.replay.total, j(snap.state.replay));
+      const off = await api('POST', `/room/${roomId}/basketball-game/replay`, { action: 'off' });
+      check('replay: off clears it', off.status === 'ok' && off.replay === null && (await state(roomId)).state.replay === null);
+    }
     // The court phone still holds its slot: a fresh publish takes it back
     // from the clip (the liveness checks below need a heartbeat-driven cam).
     const prevCourtOffer = court.offer;
@@ -242,7 +260,34 @@ try {
   const badStart = await api('POST', `/room/${roomId}/basketball-game/match`, { action: 'pause' });
   check('pause in the lobby is rejected', badStart.status === 'rejected' && badStart.error?.code === 'bad_action');
 
-  if (MP4) {
+  if (MP4 && REPLAY) {
+    // Fire one annotated make on the clip: seek just before it, load, START.
+    const gt = JSON.parse(fs.readFileSync(path.join(DATA, 'mp4s', REPLAY), 'utf8'));
+    const firstMake = gt.events.filter((e) => e.kind === 'throw' && e.made).sort((a, b) => a.tMs - b.tMs)[0];
+    check('replay: events file has a made throw', !!firstMake, REPLAY);
+    const hoopClip = await api('POST', `/room/${roomId}/basketball-game/mp4-cam`, { role: 'hoop', fileName: MP4 });
+    check('replay: hoop clip re-attached', hoopClip.status === 'ok', j(hoopClip));
+    for (let i = 0; i < 150 && !(await state(roomId)).state.cams.hoop.clip; i++) await sleep(200);
+    const seekMs = Math.max(0, firstMake.tMs - 4000);
+    await api('POST', `/room/${roomId}/basketball-game/mp4-cam/sync`, { playFromMs: seekMs });
+    for (let i = 0; i < 150; i++) {
+      snap = await state(roomId);
+      if (snap.state.cams.hoop.clip?.playFromMs === seekMs) break;
+      await sleep(200);
+    }
+    check('replay: clip seeked to just before the first make', snap.state.cams.hoop.clip?.playFromMs === seekMs, j(snap.state.cams.hoop.clip));
+    const loaded = await api('POST', `/room/${roomId}/basketball-game/replay`, { fileName: REPLAY, basket: 'both', loop: false });
+    check('replay: next throw is ahead of the playhead', loaded.replay?.nextEventTMs != null && loaded.replay.nextEventTMs >= seekMs, j(loaded.replay));
+    await api('POST', `/room/${roomId}/basketball-game/match`, { action: 'start' });
+    const waitMs = firstMake.tMs - seekMs + 6000;
+    console.log(`  waiting ${waitMs} ms for the ground-truth make at ${firstMake.tMs} ms…`);
+    await sleep(waitMs);
+    snap = await state(roomId);
+    const gtShots = snap.state.recent.filter((s) => s.source === 'replay');
+    check('replay: a ground-truth make landed in the ledger', gtShots.length >= 1, `fired=${snap.state.replay?.fired} skipped=${snap.state.replay?.skipped} recent=${j(snap.state.recent.map((s) => [s.source, s.mediaMs]))}`);
+    check('replay: no AI shots while the replay owns the ledger', !snap.state.recent.some((s) => s.source === 'ai'));
+    check('replay: shots carry the clip media time', gtShots.every((s) => typeof s.mediaMs === 'number'), j(gtShots.map((s) => s.mediaMs)));
+  } else if (MP4) {
     await api('POST', `/room/${roomId}/basketball-game/match`, { action: 'start' });
     console.log('  running the model on the clip for 25 s…');
     await sleep(25_000);

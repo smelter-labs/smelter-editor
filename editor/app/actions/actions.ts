@@ -699,6 +699,19 @@ export async function syncBbFileCams(
   return (await getClient()).syncBbFileCams(roomId, playFromMs);
 }
 
+export async function setBbReplay(
+  roomId: string,
+  request: import('@smelter-editor/types').BbReplayRequest,
+): Promise<{
+  replay: import('@smelter-editor/types').BbReplayState | null;
+}> {
+  return (await getClient()).setBbReplay(roomId, request);
+}
+
+export async function getBbEventsSuggestions(): Promise<{ files: string[] }> {
+  return (await getClient()).getBbEventsSuggestions();
+}
+
 export async function setHaunterConfig(
   roomId: string,
   config: {

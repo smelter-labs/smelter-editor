@@ -38,6 +38,8 @@ import type {
   BbConfigPatch,
   BbMatchAction,
   BbMatchEvent,
+  BbReplayRequest,
+  BbReplayState,
   BbShotEdit,
   BbShotEvent,
   BbStateEvent,
@@ -288,6 +290,16 @@ interface SmelterApiClient {
     roomId: string,
     playFromMs?: number,
   ): Promise<{ inputIds: string[] }>;
+  /**
+   * Replay the throws of a ground-truth events file (data/mp4s) on the file
+   * cams instead of the model; `{action: 'off'}` unloads it.
+   */
+  setBbReplay(
+    roomId: string,
+    request: BbReplayRequest,
+  ): Promise<{ replay: BbReplayState | null }>;
+  /** Ground-truth event files (`events.json` / `*.events.json`) under data/mp4s. */
+  getBbEventsSuggestions(): Promise<{ files: string[] }>;
 
   setHaunterConfig(
     roomId: string,
@@ -828,6 +840,20 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
         { playFromMs: playFromMs ?? 0 },
       );
       return { inputIds: (data.inputIds ?? []) as string[] };
+    },
+
+    async setBbReplay(roomId, request) {
+      const data = await req(
+        'post',
+        `/room/${enc(roomId)}/basketball-game/replay`,
+        request,
+      );
+      return { replay: (data.replay ?? null) as BbReplayState | null };
+    },
+
+    async getBbEventsSuggestions() {
+      const data = await req('get', '/suggestions/bb-events');
+      return { files: (data.files ?? []) as string[] };
     },
 
     async setHaunterConfig(roomId, config) {
