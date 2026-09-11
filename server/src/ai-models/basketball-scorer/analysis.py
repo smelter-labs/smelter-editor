@@ -392,6 +392,7 @@ class ShotDetector:
         self.entry_speed: Optional[float] = None
         self.net_since: Optional[float] = None
         self.net_samples = 0
+        self.net_lost = 0
         self.net_min_speed = math.inf
         self.last_above_t: Optional[float] = None
         self.lost_in_rim = False
@@ -516,6 +517,9 @@ class ShotDetector:
                     self.state = "flight"
                     self.last_above_t = t
             elif ball is None:
+                # The net hides the ball for a frame or two on a clean make
+                # (side views, 20-25 fps) — remembered as evidence below.
+                self.net_lost += 1
                 if dwell > LOST_IN_NET_MAX_S:
                     if self.net_samples >= 1 or self.lost_in_rim:
                         events += self._finish(t, made=True, evidence="lost_in_net")
@@ -530,14 +534,26 @@ class ShotDetector:
                     and self.entry_speed > 0
                     and speed <= NET_EXIT_SLOW_RATIO * self.entry_speed
                 )
+                # Seen in the net, lost inside it, out under the bottom: the
+                # mesh occluded the ball — a pass-by in front of the net never
+                # loses it, and a rim-out leaves upwards.
+                occluded = self.net_lost >= 1 and self.net_samples >= 1
                 if below_bottom and (
                     self._net_make_ok(dwell)
                     or exit_slow
+                    or occluded
                     or (self.lost_in_rim and self.net_samples == 0 and speed is None)
                 ):
-                    events += self._finish(
-                        t, made=True, evidence="exit_slow" if exit_slow else "net_dwell"
+                    evidence = (
+                        "exit_slow"
+                        if exit_slow
+                        else "net_dwell"
+                        if self._net_make_ok(dwell)
+                        else "net_occluded"
+                        if occluded
+                        else "net_dwell"
                     )
+                    events += self._finish(t, made=True, evidence=evidence)
                 else:
                     events += self._finish(t, made=False)
             return events
@@ -562,6 +578,7 @@ class ShotDetector:
         self.state = "net"
         self.net_since = t
         self.net_samples = 0
+        self.net_lost = 0
         self.net_min_speed = math.inf
         if self.entry_speed is None:
             self.entry_speed = speed

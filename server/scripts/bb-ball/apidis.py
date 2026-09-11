@@ -226,6 +226,20 @@ def iter_frames(archive: str, cam: int, minutes=LABEL_MINUTES) -> Iterator[tuple
             g += len(times) - i
 
 
+def minutes_for(media_from_s: float, media_to_s: float) -> tuple[str, ...]:
+    """Local-time minute file names (`HHMM00`) covering a media window."""
+    out = []
+    t = int(T0_UTC + media_from_s) // 60 * 60
+    end = T0_UTC + media_to_s
+    while t <= end:
+        local = t + LOCAL_OFFSET_S
+        hh = (local // 3600) % 24
+        mm = (local // 60) % 60
+        out.append(f"{hh:02d}{mm:02d}00")
+        t += 60
+    return tuple(out)
+
+
 def load_sidecar(data_dir: str, cam: int, quarter: str = "q2") -> dict:
     """`cam{N}.apidis.json` written by scripts/apidis-prep.mjs (rim, t0Utc)."""
     with open(os.path.join(data_dir, "mp4s", "apidis", quarter, f"cam{cam}.apidis.json"), encoding="utf8") as f:

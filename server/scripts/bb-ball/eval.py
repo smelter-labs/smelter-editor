@@ -46,7 +46,7 @@ COCO_BALL = 32
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--weights", default="bb-ball.pt")
-    p.add_argument("--mode", choices=("crops", "worker"), default="crops")
+    p.add_argument("--mode", choices=("crops", "worker", "trace"), default="crops")
     p.add_argument("--data", default=os.path.join(SERVER, "data", "bb-train", "apidis"))
     p.add_argument("--data-dir", default=os.path.join(SERVER, "data"))
     p.add_argument("--archive", default=os.environ.get("APIDIS_DIR"), help="worker mode: APIDIS archive root")
@@ -61,6 +61,7 @@ def parse_args():
     p.add_argument("--to-s", type=float, default=240.0)
     p.add_argument("--every", type=int, default=2, help="worker mode: frame stride")
     p.add_argument("--channels", choices=("rgb", "bgr"), default="rgb", help="worker mode: channel order handed to worker.detect (the side channel delivers RGB)")
+    p.add_argument("--rim", default=None, help="worker/trace: override the sidecar rim as cx,cy,rx,ry (normalised)")
     p.add_argument("--radius", type=float, default=0.6, help="hit radius in ball-box widths (min 20 px)")
     p.add_argument("--device", default=None)
     p.add_argument("--json", default=None)
@@ -84,6 +85,17 @@ def pick_device(explicit):
 
 def hit_radius(box_w: float, radius_boxes: float) -> float:
     return max(20.0, radius_boxes * box_w)
+
+
+def rim_for(a, cam: int):
+    """Sidecar rim of the camera, or the --rim override."""
+    from analysis import Rim  # noqa: E402
+
+    if a.rim:
+        cx, cy, rx, ry = (float(v) for v in a.rim.split(","))
+        return Rim(cx, cy, rx, ry)
+    d = apidis.load_sidecar(a.data_dir, cam)["rim"]
+    return Rim(d["cx"], d["cy"], d["rx"], d["ry"])
 
 
 # ── crops mode ───────────────────────────────────────────────────────────────
@@ -202,8 +214,7 @@ def eval_worker(a, weights: str, cams: list[int], out: dict) -> None:
     print(f"{'cam':>4} {'frames':>6} {'gt':>5} {'recall':>7} {'prec':>6} {'zone':>5} {'zrec':>6} {'src':>22} {'ms':>6}")
     rows = []
     for cam in cams:
-        rim_d = apidis.load_sidecar(a.data_dir, cam)["rim"]
-        rim = Rim(rim_d["cx"], rim_d["cy"], rim_d["rx"], rim_d["ry"])
+        rim = rim_for(a, cam)
         params = {
             "ballDetector": a.detector,
             "yoloWeights": name,
@@ -283,6 +294,79 @@ def eval_worker(a, weights: str, cams: list[int], out: dict) -> None:
     out["rows"] = rows
 
 
+def eval_trace(a, weights: str, cams: list[int], out: dict) -> None:
+    """Frame-by-frame: worker.detect → ShotDetector over a media window, next
+    to the ground-truth ball centre when the window is inside the labelled
+    minutes. Shows why a make does or does not fire."""
+    if not a.archive:
+        raise SystemExit("--archive (or APIDIS_DIR) is required in trace mode")
+    name = os.path.basename(weights)
+    os.chdir(SCORER)
+    os.environ["BASKETBALL_YOLO_WEIGHTS"] = weights
+    import numpy as np
+
+    import worker  # noqa: E402
+    from analysis import Rim, ShotDetector, zone_of  # noqa: E402
+
+    W, H = apidis.FRAME_W, apidis.FRAME_H
+    aspect = W / H
+    cam = cams[0]
+    rim = rim_for(a, cam)
+    params = {
+        "ballDetector": a.detector,
+        "yoloWeights": name,
+        "imgsz": a.imgsz,
+        "ballConf": a.ball_conf,
+        "rimSet": 1,
+        "rimCx": rim.cx,
+        "rimCy": rim.cy,
+        "rimRx": rim.rx,
+        "rimRy": rim.ry,
+        "analysisFps": 25,
+        "teamColorA": "#62611e",
+        "teamColorB": "#151711",
+    }
+    minutes = apidis.minutes_for(a.from_s, a.to_s)
+    refs = apidis.frame_refs(a.archive, cam, minutes)
+    times = [r.utc for r in refs]
+    try:
+        labels, _ = apidis.match_labels(times, apidis.load_centres(a.archive, cam))
+    except FileNotFoundError:
+        labels = {}
+    det = ShotDetector(params, aspect=aspect)
+    prev = None
+    misses = 0
+    rows = []
+    print(f"trace cam{cam} {name} media {a.from_s}-{a.to_s} s (minutes {','.join(minutes)}), rim {rim}")
+    print(f"{'t':>8} {'det x,y':>13} {'conf':>5} {'src':>4} {'gt x,y':>13} {'zone':>5} {'gtzn':>5} {'state':>8}  events")
+    for idx, utc, bgr in apidis.iter_frames(a.archive, cam, minutes):
+        m = apidis.media_s(utc)
+        if m < a.from_s:
+            continue
+        if m > a.to_s:
+            break
+        rgb = np.ascontiguousarray(bgr[:, :, ::-1])
+        r = worker.detect(rgb, params, rim, prev)
+        ball = r["ball"]
+        if ball is not None:
+            prev = (ball["x"] + ball["w"] / 2, ball["y"] + ball["h"] / 2)
+            misses = 0
+        else:
+            misses += 1
+            if misses > 20:
+                prev = None
+        events = det.observe(m, ball, r["persons"])
+        gt = labels.get(idx)
+        dx = f"{prev[0]:.3f},{prev[1]:.3f}" if ball is not None else "-"
+        gx = f"{gt[0] / W:.3f},{gt[1] / H:.3f}" if gt else "-"
+        gz = zone_of(gt[0] / W, gt[1] / H, rim, aspect) if gt else "-"
+        ev = " ".join(f"{e['type'].upper()}#{e.get('index')}({e.get('evidence', e.get('result', ''))})" for e in events)
+        line = f"{m:8.2f} {dx:>13} {ball['conf'] if ball else 0:5.2f} {(r['src'] or '-'):>4} {gx:>13} {det.zone:>5} {gz:>5} {det.state:>8}  {ev}"
+        print(line)
+        rows.append({"t": round(m, 3), "ball": ball, "src": r["src"], "gt": gt, "zone": det.zone, "gt_zone": gz, "state": det.state, "events": events})
+    out["rows"] = rows
+
+
 def main() -> int:
     a = parse_args()
     weights = resolve_weights(a.weights)
@@ -291,11 +375,14 @@ def main() -> int:
         return 2
     cams = [int(c) for c in a.cams.split(",") if c.strip()]
     out = {"weights": weights, "mode": a.mode, "args": vars(a)}
+    # Resolve before the worker modes chdir into the scorer dir.
+    path = os.path.abspath(a.json) if a.json else os.path.join(SERVER, "data", "bb-train", "eval", f"{os.path.basename(weights).replace('.pt', '')}-{a.mode}.json")
     if a.mode == "crops":
         eval_crops(a, weights, cams, out)
+    elif a.mode == "trace":
+        eval_trace(a, weights, cams, out)
     else:
         eval_worker(a, weights, cams, out)
-    path = a.json or os.path.join(SERVER, "data", "bb-train", "eval", f"{os.path.basename(weights).replace('.pt', '')}-{a.mode}.json")
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf8") as f:
         json.dump(out, f, indent=1)

@@ -244,6 +244,14 @@ below_idx = first_zone_after_apex(pts, "below")
 det, ev = run(pts, drop=set(range(below_idx, len(pts))))
 check("ball vanishing inside the net → make with weak evidence", len(makes(ev)) == 1 and makes(ev)[0]["evidence"] == "lost_in_net", str([(e["type"], e.get("evidence")) for e in ev]))
 
+# ── net occlusion: constant-speed drop, but the mesh hid the ball ────────────
+pts = pass_by(1.0)
+below = [i for i, p in enumerate(pts) if zone_of(p[1], p[2], RIM, ASPECT) == "below"]
+det, ev = run(pts, drop=set(below[1:3]))
+check("ball seen in the net, hidden by the mesh, out under it → make", len(makes(ev)) == 1 and makes(ev)[0]["evidence"] == "net_occluded", str([(e["type"], e.get("evidence")) for e in ev]))
+det, ev = run(pts, drop=set(below[:1]))
+check("a drop before any net sample is not occlusion evidence", len(makes(ev)) == 0, str([(e["type"], e.get("evidence")) for e in ev]))
+
 # ── fast ball skipping the rim sample ────────────────────────────────────────
 pts = swish(1.0, entry_v=3.0)
 pts = [p for p in pts if zone_of(p[1], p[2], RIM, ASPECT) != "rim"]
