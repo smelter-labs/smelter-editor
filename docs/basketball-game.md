@@ -148,9 +148,44 @@ REST: `POST /room/:id/basketball-game/mp4-cam` (`{role: hoop|court, fileName}`,
 relative to `data/mp4s`, `.mp4` only, no traversal) and
 `POST …/mp4-cam/sync` (`{playFromMs?}` → `{inputIds}`).
 
+`playFromMs` is a real seek only up to the pipeline's age: the engine can
+delay an input but not start it mid-file, so "play from X" places the clip's
+start at pipeline time now − X. Asking for more than the pipeline has lived
+restarts the clip at media ≈ pipeline age instead, and `cams[role].clip.playFromMs`
+reports that effective position (the server log says `clamp-offset`). To
+work on a later part of a long clip, cut it (`basketball-bench.mjs` does this
+itself, into `data/mp4s/bb-bench/`).
+
 Phones on 5G through a tunnel have no media path without TURN (see the
 kettlebell phone-testing memory) — use the same Wi-Fi as the server, a file
 camera as above, or a recording via "USE A RECORDING" on the camera page.
+
+### Ground-truth replay (annotated throws instead of the model)
+
+With file cameras attached, the moderator panel (CAMERAS → GROUND TRUTH) can
+load an `events.json` from `data/mp4s` (the one next to the clip is picked by
+default) and fire its throws at their clip media time instead of scoring with
+the model: makes land in the ledger as `source: 'replay'` (ledger rows say
+`GT: A 2PT`), misses count as attempts, and the model's own shot events are
+ignored while a replay is loaded (the scorer stays armed so the hoop clip
+keeps its 3 s side-channel delay and the ball overlay). Each throw fires when
+the model would have reported it — frame time + side-channel delay − the HUD
+hold + 300 ms — so the predictive cut and the held score behave exactly as on
+a live make. Throws before START are skipped; RESTART CLIPS / a re-attach
+re-anchors the schedule; the file loops with the clip.
+
+REST: `POST /room/:id/basketball-game/replay` (`{action?: 'load'|'off',
+fileName, basket?: left|right|both, loop?, pointsMap?, teamMap?}` → `{replay}`),
+`DELETE …/replay`, `GET /suggestions/bb-events`. `bb_state.replay` carries
+`{fileName, total, fired, skipped, nextEventTMs, nextFireInMs, clockRole}`;
+`bb_state.cams[role].clip` is the file cam's playhead `{playFromMs, mediaMs,
+durationMs, delayMs}` and every shot gets `mediaMs` when the hoop is a clip.
+
+Events file shape (`scripts/apidis-events.mjs`, `basketball-synth-clip.mjs`):
+`{t0Utc, teams: {A: {attacks}, B: {attacks}}, events: [{tMs, kind: 'throw',
+made, points: 0|1|2|3, team, shotType, basket: 'left'|'right', …}]}`;
+free throws and 2-pt field goals score 1 in the 3x3 ledger, 3-pt goals score
+`config.arcPoints`.
 
 ### Tests
 
@@ -161,11 +196,130 @@ cd editor && pnpm vitest run components/basketball-game
 # end to end (API running with BB_SIM=1 SKIP_PYTHON=1)
 node server/scripts/basketball-e2e.mjs
 BB_E2E_MP4=bb-synth.mp4 node server/scripts/basketball-e2e.mjs   # + file cams, sync, model
+BB_E2E_MP4=apidis/q2/cam7.mp4 BB_E2E_REPLAY=apidis/q2/events.json node server/scripts/basketball-e2e.mjs   # + ground-truth replay
 # synthetic clip through the real model (API with the Python sidecars)
-node server/scripts/basketball-synth-clip.mjs                 # → data/mp4s/bb-synth.mp4
+node server/scripts/basketball-synth-clip.mjs                 # → data/mp4s/bb-synth.mp4 + bb-synth.events.json
 node server/scripts/basketball-model-check.mjs bb-synth.mp4 --detector hsv --teams '#2ee06a,#1f7bff' --expect-makes 3
 node server/scripts/basketball-model-check.mjs my-clip.mp4 --detector auto --rim 0.5,0.35,0.06,0.02 --teams '#ff6a1f,#1f7bff'
+# precision / recall of AI makes against an events.json (see "Benchmark" below)
+node server/scripts/basketball-bench.mjs bb-synth.mp4 --events bb-synth.events.json --detector hsv --teams '#2ee06a,#1f7bff'
 ```
+
+### APIDIS dataset (fixed hall cameras)
+
+[APIDIS](http://www.apidis.org/Dataset) (UCLouvain, 2008): one basketball
+game from 7 fixed cameras (1600×1200, ~22 fps real) with every throw
+annotated (time, team, made / points) — **non-commercial research use only,
+credit the APIDIS project**. It is the reference footage for the scorer on
+fixed hall cameras; a local copy lives outside the repo (`APIDIS_DIR`).
+
+Layout: cams 7 (side, elevated — the hoop cam), 5 (fisheye above), 1 (wide
+side), 2 (behind the board) see the **left** basket; cams 3 (fisheye), 6
+(wide), 4 (corner) the right one. In the first half team A attacks the
+right basket (Q2 `events.json` says `teams.A.attacks = right`). File names
+carry local time (+02) with a misleading `Z`; the real UTC per frame is in
+the `.avi.idx` sidecars. The capture dropped frames, so a plain remux plays
+1.1–1.45× too fast — `apidis-prep.mjs` re-times from the sidecars.
+
+```bash
+A=~/…/pzpn/archive
+# ground truth for a quarter (media time = UTC − 16:46:00Z for Q2)
+node server/scripts/apidis-events.mjs --archive $A --quarter 2 --out server/data/mp4s/apidis/q2/events.json
+# true-time 25 fps clips (+ .apidis.json sidecars with a rim suggestion, stills)
+node server/scripts/apidis-prep.mjs --archive $A --cams 7,5,3,1,6 --from 2008-04-09T16:46:00Z --to 2008-04-09T17:04:30Z --out server/data/mp4s/apidis/q2 --stills
+```
+
+Then USE FILE hoop = `apidis/q2/cam7.mp4`, court = `cam1.mp4` in the panel
+(or the benchmark below). Needs ffmpeg and `mkvmerge` (`brew install mkvtoolnix`).
+
+### Ball detector fine-tune (`bb-ball.pt`)
+
+The COCO "sports ball" detector barely sees the ball on hall footage (~30 px,
+dark orange, 22 fps): through the worker it found the ball in 0.3 % of the
+annotated APIDIS frames, so no shot ever reached the state machine. The
+dataset's manual ball labels (6.6 k boxes over one minute × 7 cams, 12.9 k
+centres over three minutes) train a single-class YOLO11 ball model that the
+worker uses for the ball while persons still come from COCO:
+
+```bash
+cd server && V=src/ai-models/people-counter/.venv/bin/python
+$V scripts/bb-ball/build_dataset.py --archive $A --cams 7,5,3,6,1 --out data/bb-train/apidis --preview 20
+$V scripts/bb-ball/train.py --model yolo11n.pt --name bb-ball-n --smoke              # 1 epoch on 5 %
+$V scripts/bb-ball/train.py --model yolo11n.pt --name bb-ball-n --epochs 25 --install # → basketball-scorer/bb-ball.pt
+APIDIS_DIR=$A $V scripts/bb-ball/eval.py --weights yolo11n.pt --mode worker            # COCO baseline
+APIDIS_DIR=$A $V scripts/bb-ball/eval.py --weights bb-ball.pt --mode crops --conf 0.1,0.2,0.3
+APIDIS_DIR=$A $V scripts/bb-ball/eval.py --weights bb-ball.pt --mode worker            # the real detect() path
+```
+
+- Frames come from the source AVIs joined with the `.idx` timestamps (the 25
+  fps mp4s duplicate frames and would slip labels by up to a frame). Images:
+  the worker's rim crop (`analysis.rim_crop_box`, positives + negatives), a
+  jittered crop around the ball, and the full frame at 1280. Split by media
+  time: train ≤ 198 s, val ≥ 200 s; the benchmark runs on ≥ 240 s, outside
+  both.
+- `worker.detect_yolo` runs the ball model on the rim crop at 640 first (side
+  = 16·rx, ≥ 480 px, letterboxed up), then the full frame; `yoloWeights:
+  'bb-ball.pt'` selects it (setup → AI REFEREE → WEIGHTS, or the HALL CAM
+  preset). The file is gitignored — copy it to
+  `server/src/ai-models/basketball-scorer/` on every box; a missing file falls
+  back to `auto` with a warning.
+- To adapt to your own hall camera: label a few minutes of the ball (any tool
+  that writes YOLO txt), add them to `data/bb-train/<name>` next to the
+  APIDIS export and re-run `train.py` from `bb-ball.pt`.
+- Rim calibration matters more than the detector: the sidecar's rim is only
+  a guess from the annotated `basket` box (kept as `rimSuggested`); on a side
+  view the hoop sits at one edge of that box. Calibrate by hand — a zoomed
+  still of the basket (ffmpeg `crop`+`scale`+`drawgrid`) plus
+  `eval.py --mode trace --from-s <make−2> --to-s <make+1> --rim cx,cy,rx,ry`,
+  which prints the detected and annotated ball per frame with its zone and
+  the state machine's state — then write the ellipse into `cam{N}.apidis.json`
+  (`rim`) so the bench and USE FILE pick it up. Fisheye top views (APIDIS cams
+  3 and 5) show the hoop as a circle the ball drops *into*; the above → rim →
+  net state machine is a side-view model and does not score them.
+- Make evidence on real footage: a clean layup crosses the net in ~0.2 s with
+  no measurable deceleration at 22 fps, but the mesh hides the ball for a
+  frame or two — `net_occluded` (seen in the net, lost inside it, out under
+  the bottom) is what fires on APIDIS; `decel` / `net_dwell` cover balls the
+  net actually catches.
+
+### Benchmark (AI makes vs ground truth)
+
+`basketball-bench.mjs` plays a clip as the hoop file cam through the real
+pipeline, seeks to the window, starts a match and matches every AI make (by
+clip media time, ±4 s) against the made throws of an `events.json`:
+
+```bash
+node scripts/basketball-bench.mjs apidis/q2/cam7.mp4 --events apidis/q2/events.json --basket left --from-s 240 --to-s 600 --detector yolo --weights bb-ball.pt --teams '#62611e,#151711'
+```
+
+Reports precision / recall / F1, signed timing bias (`medianDeltaMs`), team
+accuracy (raw AI guess and after auto-assign), `ballTrackedPolls`, and writes
+`data/bb-bench/<clip>-<ts>.json`. Results on APIDIS Q2 (media ≥ 240 s; jerseys
+yellow `#62611e` vs dark `#151711`):
+
+| hoop cam | basket | detector | ball recall / precision (worker path, val 200–240 s) | zone recall | makes, 240–600 s window (2 annotated) |
+|---|---|---|---|---|---|
+| cam7 | left | COCO yolo11n @640 | 0.06 / 1.00 | 0.00 | 0 TP · 0 FP · ball in 0/362 polls |
+| cam7 | left | bb-ball.pt | 0.29 / 0.98 | 1.00 | **1 TP** (Δ −1.5 s) · 1 FP (rattled 3-pt miss) · ball in 220/360 polls |
+| cam6 | right | bb-ball.pt | 0.25 / 0.98 | 0.78 | 0 TP · 0 FP (offline trace on the source frames scores the 397.8 s layup) |
+| cam1 | left, wide | bb-ball.pt | 0.27 / 0.88 | 0.83 | 0 TP · 2 FP (conf ≤ 0.03, pending) — ball 27 px, rim 30 px |
+| cam5 / cam3 | fisheye, top view | bb-ball.pt | 0.19 / 0.85 · 0.21 / 0.87 | 0.80 · 1.00 | not scored — the side-view state machine does not apply |
+
+"Ball recall" counts every annotated frame, most of them far from the rim
+where only the full-frame pass at imgsz 640 looks (a 12 px ball); "zone
+recall" is the fraction of frames inside the above / rim / net zones the
+state machine needs — that is the number that matters. Team colours for
+APIDIS Q2: B (attacks left) is the yellow kit `#62611e`, A the dark `#151711`;
+pass `--teams '#151711,#62611e'` or team accuracy reads as 0.
+
+Known gaps after this pass (next steps): the live pipeline still scores
+fewer makes than the offline trace on the same throws (the 25 fps CFR clip
+carries ~12 % duplicated frames and the worker samples the newest frame at
+`analysisFps`, so the net crossing is seen with fewer distinct samples —
+try `analysisFps` 25 and a duplicate-frame guard in the worker); a rattled
+miss with a long dwell in the net band still reads as a make; cam1-style
+wide views need a larger crop / imgsz; fisheye top views need their own
+"ball entered the circle" rule.
 
 Visual check of the HUD: start a recording (`POST /room/:id/record/start`),
 drive the room, stop, and pull frames with `ffmpeg -ss <t> -i data/recordings/<file> -frames:v 1 out.png`.
@@ -174,11 +328,15 @@ drive the room, stop, and pull frames with `ffmpeg -ss <t> -i data/recordings/<f
 
 - Weights: `yolo11n.pt` (CPU default) / `yolo11s.pt` (CUDA default) are
   prefetched by the Dockerfile into `basketball-scorer/`; `BASKETBALL_YOLO_WEIGHTS`
-  or the `yoloWeights` setting overrides. The worker shares the
-  `people-counter` venv (no new venv volume).
+  or the `yoloWeights` setting overrides. `bb-ball.pt` (hall fine-tune) is not
+  in git: `scp` it into `server/src/ai-models/basketball-scorer/` (and
+  `dist/ai-models/basketball-scorer/` when running from dist) before selecting
+  it. The worker shares the `people-counter` venv (no new venv volume).
 - `SMELTER_SIDE_CHANNEL_MAX_RESOLUTION=640` (compose.dev) makes a far ball tiny;
-  the rim-crop second pass compensates, but prefer 1280 (or unset) on a GPU box
-  and have the hoop phone publish 1920×1080.
+  the rim crop runs at native resolution but a 640-wide frame leaves a hall
+  ball at ~12 px — use 1280 (or unset) for this game on a GPU box and have a
+  hoop phone publish 1920×1080. A live hall camera should give the rim ≥ 80 px
+  (≥ 1280 px wide, elevated side view like APIDIS cam7).
 - `AI_SIDECAR_NUM_THREADS` caps the worker's CPU threads next to the encoder.
 - Stills for the queue / SCORE inset are written to `data/bb-shot-frames/` and
   served at `/bb-shot-frames/:file`; they are swept when the room is deleted.
@@ -199,8 +357,10 @@ scores}`, `bb_cam_joined`, `bb_commentator_joined`, `bb_cam_offer`, `bb_ball`
 (hoop phone), `bb_lead_change`, `bb_error`.
 
 REST: `POST /room/:id/basketball-game/{config,match,shot}`, `GET …/state`,
-`POST …/mp4-cam` + `…/mp4-cam/sync` (file cameras), dev `simulate-shot`
-(BB_SIM=1). `bb_state.cams[role].source` is `whip` | `file` (+ `fileName`).
+`POST …/mp4-cam` + `…/mp4-cam/sync` (file cameras), `POST/DELETE …/replay` +
+`GET /suggestions/bb-events` (ground-truth replay), dev `simulate-shot`
+(BB_SIM=1). `bb_state.cams[role].source` is `whip` | `file` (+ `fileName`,
+`clip`); `bb_state.replay` is the loaded replay or null.
 Types live in `packages/types/src/basketball-game-events.ts`.
 
 ## Not in v1 (next steps)

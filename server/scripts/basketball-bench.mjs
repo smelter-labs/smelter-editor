@@ -12,14 +12,17 @@
 //   node scripts/basketball-bench.mjs bb-synth.mp4 --events bb-synth.events.json --detector hsv
 //
 // Flags: --basket left|right|both (default both) · --tolerance-s 4 ·
-//   --from-s/--to-s (media window; seeks via mp4-cam/sync) · --seconds (wall
-//   budget, default window + 8) · --court <clip> (optional second file cam) ·
+//   --from-s/--to-s (media window: the clip is cut to it with ffmpeg into
+//   data/mp4s/bb-bench/ and played from 0 — the engine cannot seek a clip
+//   beyond the pipeline's age; --no-cut seeks via mp4-cam/sync instead) ·
+//   --seconds (wall budget, default window + 8) · --court <clip> (optional second file cam) ·
 //   --rim cx,cy,rx,ry (default: the clip's .apidis.json suggestion) ·
 //   --teams '#a,#b' · --team-map A=A,B=B (GT letter → ledger team) ·
 //   --arc-points 1|2 · --detector auto|yolo|hsv · --imgsz · --ball-conf ·
 //   --weights · --analysis-fps · --shot-frames · --min-recall · --min-precision
 //   · --max-fp · --report-dir data/bb-bench · --no-report
 
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -88,6 +91,34 @@ if (!(toMs > fromMs)) {
 }
 const budgetS = Number(opt('seconds', String((toMs - fromMs) / 1000 + 8)));
 
+// ── cut the window out of the clip (the engine cannot seek past the pipeline age)
+function cutWindow(name) {
+  if (flag('no-cut') || (fromMs === 0 && toMs >= durationMs)) return { name, offsetMs: 0 };
+  const slug = name.replace(/\.mp4$/i, '').replace(/[^A-Za-z0-9_-]+/g, '_');
+  const cutName = `bb-bench/${slug}_${Math.round(fromMs / 1000)}-${Math.round(toMs / 1000)}.mp4`;
+  const cutPath = path.join(DATA, 'mp4s', cutName);
+  if (!fs.existsSync(cutPath)) {
+    fs.mkdirSync(path.dirname(cutPath), { recursive: true });
+    const encoders = execFileSync('ffmpeg', ['-hide_banner', '-encoders'], { encoding: 'utf8' });
+    const enc = /h264_videotoolbox/.test(encoders)
+      ? ['-c:v', 'h264_videotoolbox', '-b:v', '6M', '-allow_sw', '1', '-profile:v', 'high']
+      : ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20'];
+    console.log(`cutting ${name} ${(fromMs / 1000).toFixed(1)}–${(toMs / 1000).toFixed(1)} s → ${cutName}`);
+    execFileSync(
+      'ffmpeg',
+      ['-v', 'error', '-y', '-ss', String(fromMs / 1000), '-to', String(toMs / 1000), '-i', path.join(DATA, 'mp4s', name), '-an', ...enc, '-pix_fmt', 'yuv420p', '-movflags', '+faststart', cutPath + '.tmp.mp4'],
+      { stdio: 'inherit' },
+    );
+    fs.renameSync(cutPath + '.tmp.mp4', cutPath);
+  }
+  return { name: cutName, offsetMs: fromMs };
+}
+const hoopClip = cutWindow(clip);
+const courtClip = court ? cutWindow(court) : null;
+// Media time of the played clip → media time of the source clip.
+const mediaOffsetMs = hoopClip.offsetMs;
+const playFromMs = flag('no-cut') ? fromMs : 0;
+
 const gtThrows = gt.events.filter(
   (e) => e.kind === 'throw' && (basket === 'both' || e.basket === basket) && e.tMs >= fromMs && e.tMs <= toMs,
 );
@@ -117,20 +148,26 @@ try {
     arcPoints,
     durationMs: 1_800_000,
   });
-  const hoop = await api('POST', `/room/${roomId}/basketball-game/mp4-cam`, { role: 'hoop', fileName: clip });
-  console.log(`hoop cam input ${hoop.inputId}`);
-  if (court) {
-    const c = await api('POST', `/room/${roomId}/basketball-game/mp4-cam`, { role: 'court', fileName: court });
-    console.log(`court cam input ${c.inputId} (${court})`);
+  const hoop = await api('POST', `/room/${roomId}/basketball-game/mp4-cam`, { role: 'hoop', fileName: hoopClip.name });
+  console.log(`hoop cam input ${hoop.inputId} (${hoopClip.name})`);
+  if (courtClip) {
+    const c = await api('POST', `/room/${roomId}/basketball-game/mp4-cam`, { role: 'court', fileName: courtClip.name });
+    console.log(`court cam input ${c.inputId} (${courtClip.name})`);
   }
   await waitFor(async () => (await getState(roomId)).cams.hoop.clip != null, { label: 'hoop clip clock', timeoutMs: 60_000 });
   // The scorer arming reconnects the hoop clip (playhead → 0); the sync
   // queues behind it on the room mutex, so issue it after the clock shows up.
-  await api('POST', `/room/${roomId}/basketball-game/mp4-cam/sync`, { playFromMs: fromMs });
+  await api('POST', `/room/${roomId}/basketball-game/mp4-cam/sync`, { playFromMs });
   await waitFor(async () => {
     const h = (await getState(roomId)).cams.hoop;
-    return h.camConnected && h.clip && h.clip.playFromMs === fromMs;
-  }, { label: `playhead at ${fromMs} ms`, timeoutMs: 60_000 });
+    return h.camConnected && h.clip && Math.abs(h.clip.playFromMs - playFromMs) < 1500;
+  }, { label: `playhead at ${playFromMs} ms`, timeoutMs: 60_000 });
+  {
+    const h = (await getState(roomId)).cams.hoop;
+    if (Math.abs(h.clip.playFromMs - playFromMs) >= 1500) {
+      throw new Error(`clip plays from ${h.clip.playFromMs} ms, not ${playFromMs} ms — the engine cannot seek beyond the pipeline age (drop --no-cut)`);
+    }
+  }
   await api('POST', `/room/${roomId}/basketball-game/match`, { action: 'start' });
   const startedAt = Date.now();
 
@@ -143,7 +180,7 @@ try {
     polls.samples++;
     if (h.ballTracked) polls.tracked++;
     if (h.camConnected) polls.connected++;
-    const media = h.clip?.mediaMs ?? -1;
+    const media = h.clip ? h.clip.mediaMs + mediaOffsetMs : -1;
     const elapsed = (Date.now() - startedAt) / 1000;
     if (Date.now() - lastLog > 10_000) {
       lastLog = Date.now();
@@ -162,9 +199,11 @@ try {
 }
 
 // ── scoring ───────────────────────────────────────────────────────────────
-const aiMakes = [...ai.values()].filter(
-  (s) => s.status !== 'voided' && s.mediaMs != null && s.mediaMs >= fromMs - tolMs && s.mediaMs <= toMs + tolMs,
-);
+// Shots carry the played clip's media time; map it back onto the source clip.
+const aiMakes = [...ai.values()]
+  .filter((s) => s.status !== 'voided' && s.mediaMs != null)
+  .map((s) => ({ ...s, mediaMs: s.mediaMs + mediaOffsetMs }))
+  .filter((s) => s.mediaMs >= fromMs - tolMs && s.mediaMs <= toMs + tolMs);
 const pairs = [];
 for (const g of gtMakes) for (const a of aiMakes) {
   const d = a.mediaMs - g.tMs;
@@ -242,7 +281,7 @@ if (!flag('no-report')) {
     file,
     JSON.stringify(
       {
-        clip, eventsFile, court, window: { fromMs, toMs }, basket, tolMs,
+        clip, playedClip: hoopClip.name, eventsFile, court, window: { fromMs, toMs }, basket, tolMs,
         config: { rim: { cx, cy, rx, ry }, detector, imgsz, ballConf, weights, analysisFps, teams: { A: colorA, B: colorB }, teamMap, arcPoints },
         metrics,
         matches: matches.map((m) => ({ gtTMs: m.g.tMs, gtTeam: m.g.team, gtType: m.g.shotType, aiIndex: m.a.index, aiMediaMs: m.a.mediaMs, deltaMs: m.d, aiTeam: m.a.aiTeam, aiConfidence: m.a.aiConfidence, team: m.a.team, sourceT: m.a.sourceT })),

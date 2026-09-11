@@ -80,6 +80,13 @@ HSV_HUE_HI = int(os.environ.get("BASKETBALL_HSV_HUE_HI", "25"))
 HSV_SAT_MIN = int(os.environ.get("BASKETBALL_HSV_SAT_MIN", "120"))
 HSV_VAL_MIN = int(os.environ.get("BASKETBALL_HSV_VAL_MIN", "70"))
 
+# Debug: dump every Nth analysed frame (as seen by the detector, with the rim
+# crop and the ball box drawn) into this directory — `BASKETBALL_DUMP_FRAMES=/tmp/bb-dump`,
+# `BASKETBALL_DUMP_EVERY=50`.
+DUMP_DIR = os.environ.get("BASKETBALL_DUMP_FRAMES", "")
+DUMP_EVERY = max(1, int(os.environ.get("BASKETBALL_DUMP_EVERY", "50")))
+DUMP_MAX = 200
+
 # ── Frame ring buffer (release lookup + stills) ──────────────────────────────
 FRAME_DIR = os.environ.get("BASKETBALL_FRAME_DIR", "")
 FRAME_MAX_W = 400
@@ -108,6 +115,7 @@ class InputState:
     frames_written: int = 0
     prev_ball_center: tuple[float, float] | None = None
     yolo_misses: int = 0
+    ball_hits: int = 0
 
 
 active_inputs: dict[str, InputState] = {}
@@ -479,6 +487,43 @@ def detect(rgb, params: dict, rim, prev_center) -> dict:
     return {"ball": ball, "persons": persons, "src": src}
 
 
+_dump_count = 0
+
+
+def _dump_frame(input_id: str, state: "InputState", rgb, rim, ball, t: float) -> None:
+    """Write the analysed frame (RGB as received → BGR file) with the rim
+    crop and the ball box drawn; a sanity check for channel order, crop
+    placement and resolution of what the side channel delivers."""
+    global _dump_count
+    if _dump_count >= DUMP_MAX:
+        return
+    try:
+        os.makedirs(DUMP_DIR, exist_ok=True)
+        h, w = rgb.shape[:2]
+        img = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+        if rim is not None:
+            x0, y0, side = rim_crop_box(rim, w, h)
+            cv2.rectangle(img, (x0, y0), (x0 + side, y0 + side), (255, 200, 0), 2)
+            cv2.ellipse(
+                img,
+                (int(rim.cx * w), int(rim.cy * h)),
+                (max(1, int(rim.rx * w)), max(1, int(rim.ry * h))),
+                0,
+                0,
+                360,
+                (0, 0, 255),
+                2,
+            )
+        if ball is not None:
+            x1, y1 = int(ball["x"] * w), int(ball["y"] * h)
+            cv2.rectangle(img, (x1, y1), (x1 + int(ball["w"] * w), y1 + int(ball["h"] * h)), (0, 255, 0), 2)
+        name = f"{input_id[-12:]}-{state.analyzed_frames:06d}-t{t:08.2f}-{'ball' if ball else 'none'}.jpg"
+        cv2.imwrite(os.path.join(DUMP_DIR, name), img, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        _dump_count += 1
+    except Exception as err:  # noqa: BLE001
+        log.warning("frame dump failed: %s", err)
+
+
 # ── Frames: ring buffer, jersey colour, stills ───────────────────────────────
 
 
@@ -701,6 +746,7 @@ async def _run_detector_loop(input_id: str) -> int:
             if ball is not None:
                 state.prev_ball_center = (ball["x"] + ball["w"] / 2, ball["y"] + ball["h"] / 2)
                 state.yolo_misses = 0
+                state.ball_hits += 1
             else:
                 state.yolo_misses += 1
                 if state.yolo_misses > 20:
@@ -710,6 +756,23 @@ async def _run_detector_loop(input_id: str) -> int:
             detector.set_params(params)
             detector.set_aspect(frame_w / frame_h if frame_h else 16 / 9)
             events = detector.observe(t, ball, persons)
+            if DUMP_DIR and cv2 is not None and state.analyzed_frames % DUMP_EVERY == 0:
+                _dump_frame(input_id, state, rgb, rim, ball, t)
+            if state.analyzed_frames == 1 or state.analyzed_frames % 200 == 0:
+                log.info(
+                    "%s: %dx%d frames, %d analysed, ball in %d (%s), t=%.2f zone=%s state=%s makes=%d attempts=%d",
+                    input_id[-12:],
+                    frame_w,
+                    frame_h,
+                    state.analyzed_frames,
+                    state.ball_hits,
+                    det["src"] or "-",
+                    t,
+                    detector.zone,
+                    detector.state,
+                    detector.made_count,
+                    detector.attempt_count,
+                )
             for ev in events:
                 _attribute(state, ev, params)
             if events and cv2 is not None and FRAME_DIR and _flag(params, "captureShotFrames"):

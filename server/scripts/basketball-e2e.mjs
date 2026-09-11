@@ -268,19 +268,24 @@ try {
     const hoopClip = await api('POST', `/room/${roomId}/basketball-game/mp4-cam`, { role: 'hoop', fileName: MP4 });
     check('replay: hoop clip re-attached', hoopClip.status === 'ok', j(hoopClip));
     for (let i = 0; i < 150 && !(await state(roomId)).state.cams.hoop.clip; i++) await sleep(200);
-    const seekMs = Math.max(0, firstMake.tMs - 4000);
+    // The engine cannot seek a clip beyond the pipeline's age, so ask for the
+    // lesser of "just before the first make" and where the clip already is.
+    const ageMs = (await state(roomId)).state.cams.hoop.clip.mediaMs;
+    const seekMs = Math.max(0, Math.min(firstMake.tMs - 4000, ageMs));
     await api('POST', `/room/${roomId}/basketball-game/mp4-cam/sync`, { playFromMs: seekMs });
     for (let i = 0; i < 150; i++) {
       snap = await state(roomId);
-      if (snap.state.cams.hoop.clip?.playFromMs === seekMs) break;
+      if (snap.state.cams.hoop.clip && Math.abs(snap.state.cams.hoop.clip.playFromMs - seekMs) < 1500) break;
       await sleep(200);
     }
-    check('replay: clip seeked to just before the first make', snap.state.cams.hoop.clip?.playFromMs === seekMs, j(snap.state.cams.hoop.clip));
+    const playFrom = snap.state.cams.hoop.clip?.playFromMs ?? 0;
+    check('replay: clip restarted at the requested playhead', Math.abs(playFrom - seekMs) < 1500, `asked ${seekMs}, got ${j(snap.state.cams.hoop.clip)}`);
+    const target = gt.events.filter((e) => e.kind === 'throw' && e.made && e.tMs >= playFrom + 3000).sort((a, b) => a.tMs - b.tMs)[0] ?? firstMake;
     const loaded = await api('POST', `/room/${roomId}/basketball-game/replay`, { fileName: REPLAY, basket: 'both', loop: false });
-    check('replay: next throw is ahead of the playhead', loaded.replay?.nextEventTMs != null && loaded.replay.nextEventTMs >= seekMs, j(loaded.replay));
+    check('replay: next throw is ahead of the playhead', loaded.replay?.nextEventTMs != null && loaded.replay.nextEventTMs >= playFrom - 2000, j(loaded.replay));
     await api('POST', `/room/${roomId}/basketball-game/match`, { action: 'start' });
-    const waitMs = firstMake.tMs - seekMs + 6000;
-    console.log(`  waiting ${waitMs} ms for the ground-truth make at ${firstMake.tMs} ms…`);
+    const waitMs = Math.max(0, target.tMs - playFrom) + 6000;
+    console.log(`  waiting ${waitMs} ms for the ground-truth make at ${target.tMs} ms (clip at ${playFrom} ms)…`);
     await sleep(waitMs);
     snap = await state(roomId);
     const gtShots = snap.state.recent.filter((s) => s.source === 'replay');

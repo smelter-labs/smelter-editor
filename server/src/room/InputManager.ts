@@ -1272,11 +1272,15 @@ export class InputManager {
         );
       }
 
+      // The engine only delays an input (offsetMs ≥ 0): "play from X" works by
+      // placing the clip's t=0 at pipeline time now − X, which is only
+      // possible while X ≤ the pipeline's age. Beyond that the clip starts
+      // at media = pipeline age, and `input.playFromMs` says so (below).
       let offsetMs = SmelterInstance.getPipelineTimeMs() - normalizedPlayFromMs;
       if (offsetMs < 0) {
         logTimelineEvent(
           this.idPrefix,
-          `[mp4-restart] clamp-offset "${name}" requestedOffsetMs=${offsetMs} clampedOffsetMs=0`,
+          `[mp4-restart] clamp-offset "${name}" requestedOffsetMs=${offsetMs} clampedOffsetMs=0 — seek to ${normalizedPlayFromMs}ms is beyond the pipeline age, the clip plays from ~${SmelterInstance.getPipelineTimeMs()}ms`,
         );
         offsetMs = 0;
       }
@@ -1303,7 +1307,13 @@ export class InputManager {
       );
 
       input.registeredAtPipelineMs = SmelterInstance.getPipelineTimeMs();
-      input.playFromMs = normalizedPlayFromMs;
+      // Effective playhead at registration: clip t=0 sits at pipeline time
+      // `offsetMs`, so media now = pipeline now − offsetMs (equals the
+      // requested position unless the offset was clamped above).
+      input.playFromMs = Math.max(
+        0,
+        Math.round(input.registeredAtPipelineMs - offsetMs),
+      );
       input.registeredSideChannelDelayMs = sideChannel?.delayMs ?? 0;
       if (sideChannel) {
         // Re-signal readiness so workers re-subscribe to the recreated socket.
