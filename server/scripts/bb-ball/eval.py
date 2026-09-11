@@ -62,6 +62,7 @@ def parse_args():
     p.add_argument("--every", type=int, default=2, help="worker mode: frame stride")
     p.add_argument("--channels", choices=("rgb", "bgr"), default="rgb", help="worker mode: channel order handed to worker.detect (the side channel delivers RGB)")
     p.add_argument("--rim", default=None, help="worker/trace: override the sidecar rim as cx,cy,rx,ry (normalised)")
+    p.add_argument("--mp4", default=None, help="trace: read frames from this clip under data/mp4s instead of the APIDIS AVIs (media time = clip time; no ground truth)")
     p.add_argument("--radius", type=float, default=0.6, help="hit radius in ball-box widths (min 20 px)")
     p.add_argument("--device", default=None)
     p.add_argument("--json", default=None)
@@ -326,20 +327,40 @@ def eval_trace(a, weights: str, cams: list[int], out: dict) -> None:
         "teamColorA": "#62611e",
         "teamColorB": "#151711",
     }
-    minutes = apidis.minutes_for(a.from_s, a.to_s)
-    refs = apidis.frame_refs(a.archive, cam, minutes)
-    times = [r.utc for r in refs]
-    try:
-        labels, _ = apidis.match_labels(times, apidis.load_centres(a.archive, cam))
-    except FileNotFoundError:
+    if a.mp4:
+        import cv2
+
+        def frames_from_mp4():
+            cap = cv2.VideoCapture(os.path.join(a.data_dir, "mp4s", a.mp4))
+            fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+            i = 0
+            while True:
+                ok, bgr = cap.read()
+                if not ok:
+                    break
+                yield i, apidis.T0_UTC + i / fps, bgr
+                i += 1
+            cap.release()
+
+        frame_iter = frames_from_mp4()
         labels = {}
+        minutes = (a.mp4,)
+    else:
+        minutes = apidis.minutes_for(a.from_s, a.to_s)
+        refs = apidis.frame_refs(a.archive, cam, minutes)
+        times = [r.utc for r in refs]
+        try:
+            labels, _ = apidis.match_labels(times, apidis.load_centres(a.archive, cam))
+        except FileNotFoundError:
+            labels = {}
+        frame_iter = apidis.iter_frames(a.archive, cam, minutes)
     det = ShotDetector(params, aspect=aspect)
     prev = None
     misses = 0
     rows = []
     print(f"trace cam{cam} {name} media {a.from_s}-{a.to_s} s (minutes {','.join(minutes)}), rim {rim}")
     print(f"{'t':>8} {'det x,y':>13} {'conf':>5} {'src':>4} {'gt x,y':>13} {'zone':>5} {'gtzn':>5} {'state':>8}  events")
-    for idx, utc, bgr in apidis.iter_frames(a.archive, cam, minutes):
+    for idx, utc, bgr in frame_iter:
         m = apidis.media_s(utc)
         if m < a.from_s:
             continue

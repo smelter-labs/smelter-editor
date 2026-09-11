@@ -256,6 +256,27 @@ leave ≥ 8 s before it: after a sync the hoop clip runs 3 s ahead for the AI
 and its worker needs a couple of seconds to re-subscribe). Verified on
 `left-make-420s`: the AI scores the 9.0 s make 1.4 s early, team B at 0.62.
 
+A montage of several windows (`--windows a-b,c-d,…`) cuts every clip at the
+same points and concatenates them, so hoop and court stay in sync across the
+seams, with `events.json` remapped onto the montage timeline:
+
+```bash
+node server/scripts/bb-clip-window.mjs --clips apidis/q2/cam7.mp4,apidis/q2/cam1.mp4 \
+     --windows 204.35-232.35,411.65-439.65,561.3-589.3 --events apidis/q2/events.json --out demo/left-3-makes
+```
+
+→ `demo/left-3-makes/{cam7,cam1}.mp4`, 84 s, team B makes at 9 / 37 / 65 s.
+Through the pipeline (HALL CAM preset, `analysisFps` 25) all three are scored.
+Keep `analysisFps` at the clip's frame rate for hall footage: the net
+crossing lasts 3–5 frames, and at 20 fps the worker (~40 ms per frame on
+MPS) samples it too thinly. The full-frame person pass, needed only for the
+release lookup, runs every `BASKETBALL_PERSON_EVERY` frames (default 3) and
+the full-frame ball fallback every `BASKETBALL_FALLBACK_EVERY` (default 2);
+the rim-crop ball pass runs on every frame. Frames wait in a bounded queue
+(`BASKETBALL_FRAME_QUEUE`, default 6) instead of "newest only", so a slow
+frame no longer costs the next one; the worker's log line every 200 frames
+shows the achieved rate and the mean detect time.
+
 Manual points (panel → MANUAL POINTS) are refused in the lobby and after the
 final: START first. The panel shows every server refusal under the plate.
 

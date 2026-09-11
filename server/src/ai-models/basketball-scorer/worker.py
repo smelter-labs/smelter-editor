@@ -12,9 +12,11 @@ adds `ball`, `zone`, `state`, `attempts`, `makes`, `session` and discrete
 `shot_made` / `shot_attempt` events.
 
 Structure follows the kettlebell coach worker: a reader task drains the side
-channel and keeps only the newest frame (the socket must never back up), the
-analysis loop paces itself to `analysisFps`, all heavy backends load lazily so
-a missing torch/ultralytics only disables YOLO (HSV keeps working)."""
+channel into a short bounded queue (the socket must never back up; a frame is
+dropped only when FRAME_QUEUE are already waiting), the analysis loop paces
+itself to `analysisFps` while it keeps up and drains the backlog otherwise,
+all heavy backends load lazily so a missing torch/ultralytics only disables
+YOLO (HSV keeps working)."""
 
 from __future__ import annotations
 
@@ -68,6 +70,16 @@ MIN_ANALYSIS_INTERVAL_S = 1.0 / ANALYSIS_FPS if ANALYSIS_FPS > 0 else 0.05
 IMGSZ = int(os.environ.get("BASKETBALL_IMGSZ", "640"))
 BALL_CONF = float(os.environ.get("BASKETBALL_BALL_CONF", "0.2"))
 PERSON_CONF = 0.3
+# Full-frame person pass every Nth analysed frame (the ball pass runs on every
+# frame); persons only feed the release lookup, so stale boxes are fine.
+PERSON_EVERY = max(1, int(os.environ.get("BASKETBALL_PERSON_EVERY", "3")))
+# Full-frame ball fallback (ball away from the rim crop) every Nth frame.
+FALLBACK_EVERY = max(1, int(os.environ.get("BASKETBALL_FALLBACK_EVERY", "2")))
+# Frames buffered between the side-channel reader and the analysis loop: a
+# frame is only dropped when this many are already waiting (was: keep the
+# newest only, i.e. every slow frame cost the next one — at the net that is
+# the difference between a make and a miss).
+FRAME_QUEUE = max(1, int(os.environ.get("BASKETBALL_FRAME_QUEUE", "6")))
 WEIGHTS_ENV = os.environ.get("BASKETBALL_YOLO_WEIGHTS", "").strip()
 PERSON_CLASS = 0
 BALL_CLASS = 32  # COCO "sports ball"
@@ -116,6 +128,9 @@ class InputState:
     prev_ball_center: tuple[float, float] | None = None
     yolo_misses: int = 0
     ball_hits: int = 0
+    # Person boxes from the last full-frame pass (reused on skipped frames).
+    last_persons: list = field(default_factory=list)
+    proc_ms_sum: float = 0.0
 
 
 active_inputs: dict[str, InputState] = {}
@@ -299,12 +314,15 @@ def _boxes_from(result, ox: int, oy: int, frame_w: int, frame_h: int, ball_cls: 
 CROP_IMGSZ = 640
 
 
-def detect_yolo(rgb, params: dict, rim) -> dict | None:
+def detect_yolo(rgb, params: dict, rim, want_persons: bool = True, want_fallback: bool = True) -> dict | None:
     """Ball + persons for one frame. With a rim calibrated the ball is looked
     for first in the rim crop at native resolution (that is where makes are
-    decided), then in the full frame at `imgsz`; persons always come from the
-    full-frame pass of a COCO model. Returns None when the backend is
-    unavailable."""
+    decided), then in the full frame at `imgsz`; persons come from the
+    full-frame pass of a COCO model — only when `want_persons` (the loop asks
+    every PERSON_EVERY frames and reuses the last boxes in between: persons
+    only serve the release lookup, while the ball pass must not miss a frame
+    at the net). Returns None when the backend is unavailable; `persons` is
+    None when the pass was skipped."""
     ball_model = _get_model(_resolve_weights(params))
     if ball_model is None:
         return None
@@ -326,18 +344,21 @@ def detect_yolo(rgb, params: dict, rim) -> dict | None:
             crop_used = bool(balls)
 
     person_model = _person_model(ball_model)
-    persons: list[dict] = []
-    if person_model is not None:
+    persons: list[dict] | None = None
+    coco_is_ball = person_model is ball_model
+    if person_model is not None and (want_persons or (coco_is_ball and not balls)):
         # One COCO pass covers persons and (when it is the ball model too) the ball.
-        classes = [PERSON_CLASS] + ([BALL_CLASS] if person_model is ball_model else [])
+        classes = [PERSON_CLASS] + ([BALL_CLASS] if coco_is_ball else [])
         results = _predict(person_model, rgb, imgsz, min(ball_conf, PERSON_CONF), classes)
+        persons = []
         if results:
             fp, fb = _boxes_from(results[0], 0, 0, w, h)
             persons = [p for p in fp if p["conf"] >= PERSON_CONF]
             if not balls:
                 balls = [b for b in fb if b["conf"] >= ball_conf]
-    if not balls and person_model is not ball_model:
-        # Custom ball model: full-frame fallback for a ball away from the rim.
+    if not balls and not coco_is_ball and want_fallback:
+        # Custom ball model: full-frame fallback for a ball away from the rim
+        # (every other frame — the rim crop, which decides makes, runs on all).
         results = _predict(ball_model, rgb, imgsz, ball_conf, [ball_cls])
         if results:
             _, fb = _boxes_from(results[0], 0, 0, w, h, ball_cls)
@@ -461,17 +482,20 @@ def detect_hsv_persons(rgb, params: dict) -> list[dict]:
     return out
 
 
-def detect(rgb, params: dict, rim, prev_center) -> dict:
-    """Ball + persons for one frame (runs in a thread)."""
+def detect(
+    rgb, params: dict, rim, prev_center, want_persons: bool = True, want_fallback: bool = True
+) -> dict:
+    """Ball + persons for one frame (runs in a thread). `persons` is None when
+    the person pass was skipped this frame (caller reuses the last boxes)."""
     h, w = rgb.shape[:2]
     aspect = w / h if h else 16 / 9
     mode = str(params.get("ballDetector", "auto")).strip().lower()
-    persons: list[dict] = []
+    persons: list[dict] | None = []
     ball = None
     src = None
     yolo_ok = False
     if mode != "hsv":
-        r = detect_yolo(rgb, params, rim)
+        r = detect_yolo(rgb, params, rim, want_persons, want_fallback)
         if r is not None:
             yolo_ok = True
             persons = r["persons"]
@@ -688,7 +712,7 @@ async def run_detector(input_id: str) -> None:
 
 async def _run_detector_loop(input_id: str) -> int:
     frame_count = 0
-    latest: list = []
+    queue: deque = deque(maxlen=FRAME_QUEUE)
     frame_ready = asyncio.Event()
     reader_done = asyncio.Event()
 
@@ -701,7 +725,9 @@ async def _run_detector_loop(input_id: str) -> int:
                 frame_count += 1
                 if frame_count == 1:
                     log.info("First frame received for %s", input_id)
-                latest[:] = [(time.monotonic(), frame)]
+                # Bounded queue: bursts of slow frames no longer drop the
+                # next ones (the deque evicts the oldest when it overflows).
+                queue.append((time.monotonic(), frame))
                 frame_ready.set()
         finally:
             reader_done.set()
@@ -710,10 +736,10 @@ async def _run_detector_loop(input_id: str) -> int:
     reader = asyncio.create_task(read_frames())
     last_analysis_at = 0.0
     try:
-        while input_id in active_inputs and not (reader_done.is_set() and not latest):
+        while input_id in active_inputs and not (reader_done.is_set() and not queue):
             await frame_ready.wait()
             frame_ready.clear()
-            if not latest:
+            if not queue:
                 continue
             pending = active_inputs.get(input_id)
             if pending is None:
@@ -721,11 +747,14 @@ async def _run_detector_loop(input_id: str) -> int:
             pause_s = analysis_interval_s(pending.params, MIN_ANALYSIS_INTERVAL_S) - (
                 time.monotonic() - last_analysis_at
             )
-            if pause_s > 0:
+            # Pace to analysisFps only while keeping up; with a backlog, drain.
+            if pause_s > 0 and len(queue) <= 1:
                 await asyncio.sleep(pause_s)
-            if not latest:
+            if not queue:
                 continue
-            received_at, frame = latest.pop()
+            received_at, frame = queue.popleft()
+            if queue:
+                frame_ready.set()
             last_analysis_at = time.monotonic()
 
             state = active_inputs.get(input_id)
@@ -740,9 +769,19 @@ async def _run_detector_loop(input_id: str) -> int:
             _buffer_frame(state, t, rgb)
 
             rim = rim_from_params(params)
-            det = await asyncio.to_thread(detect, rgb, params, rim, state.prev_ball_center)
+            want_persons = state.analyzed_frames % PERSON_EVERY == 1 or PERSON_EVERY == 1
+            want_fallback = FALLBACK_EVERY == 1 or state.analyzed_frames % FALLBACK_EVERY == 0
+            t_det = time.monotonic()
+            det = await asyncio.to_thread(
+                detect, rgb, params, rim, state.prev_ball_center, want_persons, want_fallback
+            )
+            state.proc_ms_sum += (time.monotonic() - t_det) * 1000.0
             ball = det["ball"]
-            persons = det["persons"]
+            if det["persons"] is None:
+                persons = state.last_persons
+            else:
+                persons = det["persons"]
+                state.last_persons = persons
             if ball is not None:
                 state.prev_ball_center = (ball["x"] + ball["w"] / 2, ball["y"] + ball["h"] / 2)
                 state.yolo_misses = 0
@@ -760,11 +799,12 @@ async def _run_detector_loop(input_id: str) -> int:
                 _dump_frame(input_id, state, rgb, rim, ball, t)
             if state.analyzed_frames == 1 or state.analyzed_frames % 200 == 0:
                 log.info(
-                    "%s: %dx%d frames, %d analysed, ball in %d (%s), t=%.2f zone=%s state=%s makes=%d attempts=%d",
+                    "%s: %dx%d frames, %d analysed (%.0f ms/frame detect), ball in %d (%s), t=%.2f zone=%s state=%s makes=%d attempts=%d",
                     input_id[-12:],
                     frame_w,
                     frame_h,
                     state.analyzed_frames,
+                    state.proc_ms_sum / max(1, state.analyzed_frames),
                     state.ball_hits,
                     det["src"] or "-",
                     t,
