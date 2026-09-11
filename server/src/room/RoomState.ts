@@ -2277,7 +2277,27 @@ export class RoomState {
       const restarted: string[] = [];
       for (const { role, inputId } of this.basketball.fileCamInputIds()) {
         try {
-          await this.inputManager.restartMp4Input(inputId, playFromMs, true);
+          // Align what goes ON AIR, not the decoders: the hoop clip carries
+          // the scorer's side channel, which delays its picture by delayMs
+          // so the AI sees frames ahead of the viewers, while the court clip
+          // has no delay. Starting the delayed clip that much further into
+          // the file makes both show media `playFromMs` at the same moment
+          // (and the AI sees the hoop delayMs ahead — as with WHIP cams).
+          const input = this.inputManager
+            .getInputs()
+            .find((i) => i.inputId === inputId);
+          const delayMs =
+            (input &&
+              computeSideChannelConfig(
+                input.aiModels ?? {},
+                input.transcription,
+              )?.delayMs) ??
+            0;
+          await this.inputManager.restartMp4Input(
+            inputId,
+            playFromMs + delayMs,
+            true,
+          );
           restarted.push(inputId);
         } catch (err) {
           console.warn(

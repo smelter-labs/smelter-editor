@@ -235,22 +235,29 @@ try {
   await api('POST', `/room/${roomId}/basketball-game/mp4-cam/sync`, {
     playFromMs,
   });
+  // The sync starts the hoop clip its side-channel delay further in so the
+  // picture on air lines up with an undelayed court clip; the AI (and the
+  // shot media times) run that far ahead — which is what we compare to.
+  const expectedFrom = (h) => playFromMs + (h.clip?.delayMs ?? 0);
   await waitFor(
     async () => {
       const h = (await getState(roomId)).cams.hoop;
       return (
         h.camConnected &&
         h.clip &&
-        Math.abs(h.clip.playFromMs - playFromMs) < 1500
+        Math.abs(h.clip.playFromMs - expectedFrom(h)) < 1500
       );
     },
-    { label: `playhead at ${playFromMs} ms`, timeoutMs: 60_000 },
+    {
+      label: `playhead at ${playFromMs} ms (+ side-channel delay)`,
+      timeoutMs: 60_000,
+    },
   );
   {
     const h = (await getState(roomId)).cams.hoop;
-    if (Math.abs(h.clip.playFromMs - playFromMs) >= 1500) {
+    if (Math.abs(h.clip.playFromMs - expectedFrom(h)) >= 1500) {
       throw new Error(
-        `clip plays from ${h.clip.playFromMs} ms, not ${playFromMs} ms — the engine cannot seek beyond the pipeline age (drop --no-cut)`,
+        `clip plays from ${h.clip.playFromMs} ms, not ${expectedFrom(h)} ms — the engine cannot seek beyond the pipeline age (drop --no-cut)`,
       );
     }
   }

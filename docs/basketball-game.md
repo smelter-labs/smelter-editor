@@ -142,7 +142,12 @@ Synchronized clips: arming the scorer re-registers the hoop clip with its
 side channel a beat after it is attached, so hoop and court drift apart by
 that latency. The second USE FILE restarts both from 0:00 automatically, and
 RESTART CLIPS 0:00 does it again on demand (both go through one critical
-section, so the offsets come from the same pipeline time).
+section, so the offsets come from the same pipeline time). The side channel
+also delays the hoop picture by 3 s (the AI sees frames before the viewers;
+WHIP cams all carry that delay, a court clip does not), so the sync starts
+each clip at `playFromMs` + its own delay: the hoop clip runs 3 s further
+into the file and both show the same moment on air, while
+`cams.hoop.clip.playFromMs` / shot `mediaMs` report the AI-side media time.
 
 REST: `POST /room/:id/basketball-game/mp4-cam` (`{role: hoop|court, fileName}`,
 relative to `data/mp4s`, `.mp4` only, no traversal) and
@@ -238,15 +243,18 @@ windows that start just before a make:
 
 ```bash
 node server/scripts/bb-clip-window.mjs --clips apidis/q2/cam7.mp4,apidis/q2/cam1.mp4 \
-     --from-s 414 --to-s 474 --events apidis/q2/events.json --out demo/left-make-420s
+     --from-s 411.65 --to-s 471.65 --events apidis/q2/events.json --out demo/left-make-420s
 ```
 
-writes `data/mp4s/demo/left-make-420s/{cam7,cam1}.mp4` (60 s, make at 6.7 s),
+writes `data/mp4s/demo/left-make-420s/{cam7,cam1}.mp4` (60 s, make at 9.0 s),
 `events.json` shifted onto the window (+ `cam7.events.json` so GROUND TRUTH
 picks it), and `cam7.rim.json` — the hoop file cam applies a `<clip>.rim.json`
 (or the `.apidis.json` rim) on USE FILE, so no phone calibration is needed.
 Ready-made: `demo/left-make-213s`, `left-make-420s`, `left-make-570s` (all
-team B on the left basket, cam7 hoop + cam1 court; makes at 6.3 / 6.7 / 6.3 s).
+team B on the left basket, cam7 hoop + cam1 court; the make lands 9 s in —
+leave ≥ 8 s before it: after a sync the hoop clip runs 3 s ahead for the AI
+and its worker needs a couple of seconds to re-subscribe). Verified on
+`left-make-420s`: the AI scores the 9.0 s make 1.4 s early, team B at 0.62.
 
 Manual points (panel → MANUAL POINTS) are refused in the lobby and after the
 final: START first. The panel shows every server refusal under the plate.
