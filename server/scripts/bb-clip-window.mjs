@@ -37,6 +37,11 @@ const clips = opt('clips', '')
   .filter(Boolean);
 const eventsFile = opt('events', null);
 const out = opt('out', null);
+// Optional ffmpeg video filter applied to every clip (same look on all cams),
+// e.g. --vf eq=gamma=1.3:contrast=1.15:saturation=1.2 — measured on APIDIS:
+// a gamma lift keeps the fine-tuned ball detector happy, contrast /
+// saturation boosts cut its detections by more than half.
+const vf = opt('vf', null);
 
 // Windows in source media seconds, in montage order.
 let windows = [];
@@ -158,6 +163,7 @@ for (const clip of clips) {
         String(seg.toMs / 1000),
         '-i',
         path.join(MP4S, clip),
+        ...(vf ? ['-vf', vf] : []),
         '-an',
         ...enc,
         '-pix_fmt',
