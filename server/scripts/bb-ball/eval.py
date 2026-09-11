@@ -60,6 +60,7 @@ def parse_args():
     p.add_argument("--from-s", type=float, default=200.0, help="worker mode: media window start (val = 200 s)")
     p.add_argument("--to-s", type=float, default=240.0)
     p.add_argument("--every", type=int, default=2, help="worker mode: frame stride")
+    p.add_argument("--channels", choices=("rgb", "bgr"), default="rgb", help="worker mode: channel order handed to worker.detect (the side channel delivers RGB)")
     p.add_argument("--radius", type=float, default=0.6, help="hit radius in ball-box widths (min 20 px)")
     p.add_argument("--device", default=None)
     p.add_argument("--json", default=None)
@@ -234,7 +235,7 @@ def eval_worker(a, weights: str, cams: list[int], out: dict) -> None:
                 continue
             if m > a.to_s or (a.limit and n >= a.limit):
                 break
-            rgb = np.ascontiguousarray(bgr[:, :, ::-1])
+            rgb = np.ascontiguousarray(bgr[:, :, ::-1]) if a.channels == "rgb" else bgr
             t0 = time.time()
             det = worker.detect(rgb, params, rim, prev)
             t_sum += time.time() - t0

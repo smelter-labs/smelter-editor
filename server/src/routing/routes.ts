@@ -3230,6 +3230,7 @@ const BbConfigSchema = Type.Object({
           Type.Literal('yolo11n.pt'),
           Type.Literal('yolo11s.pt'),
           Type.Literal('yolo11m.pt'),
+          Type.Literal('bb-ball.pt'),
         ]),
       ),
       imgsz: Type.Optional(Type.Number()),

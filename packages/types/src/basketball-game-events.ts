@@ -160,6 +160,35 @@ export const BB_DEFAULT_CONFIG: BbConfig = {
   },
 };
 
+/**
+ * Detector presets for the two camera setups the game is tuned for:
+ * `phone` = a hoop phone close to the rim (COCO ball + HSV fallback);
+ * `hall` = a fixed, elevated hall camera (APIDIS-like) with the fine-tuned
+ * ball model, 25 fps analysis to match a 25 fps feed.
+ */
+export const BB_DETECTOR_PRESETS: {
+  id: "phone" | "hall";
+  label: string;
+  detector: BbDetectorConfig;
+}[] = [
+  {
+    id: "phone",
+    label: "PHONE",
+    detector: { ...BB_DEFAULT_CONFIG.detector },
+  },
+  {
+    id: "hall",
+    label: "HALL CAM",
+    detector: {
+      ballDetector: "yolo",
+      yoloWeights: "bb-ball.pt",
+      imgsz: 640,
+      ballConf: 0.2,
+      analysisFps: 25,
+    },
+  },
+];
+
 export type BbShotStatus = "pending" | "confirmed" | "voided";
 
 /**

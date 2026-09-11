@@ -239,9 +239,14 @@ def _get_model(weights: str):
             return None
 
 
-def _predict(model, img, imgsz: int, conf: float, classes: list[int]):
-    """One YOLO pass; a failing MPS backend drops to CPU once."""
+def _predict(model, rgb, imgsz: int, conf: float, classes: list[int]):
+    """One YOLO pass over an RGB array; a failing MPS backend drops to CPU once.
+
+    ultralytics treats numpy input as BGR (cv2 convention) — the side channel
+    delivers RGB, so the channels are swapped here; feeding RGB straight in
+    turns an orange ball blue and the fine-tuned ball model finds nothing."""
     global _device
+    img = np.ascontiguousarray(rgb[:, :, ::-1])
     try:
         return model.predict(
             img, imgsz=imgsz, conf=conf, classes=classes, verbose=False, device=_select_device()

@@ -2,6 +2,7 @@
 
 import React from 'react';
 import type { BbTeamId } from '@smelter-editor/types';
+import { BB_DETECTOR_PRESETS } from '@smelter-editor/types';
 import {
   BB,
   BbButton,
@@ -414,6 +415,28 @@ export function SetupScreen({
                   onChange={(v) =>
                     onConfig({ ...config, shotFrames: v === 'on' })
                   }
+                />
+              </KvRow>
+              <KvRow label='PRESET'>
+                <Segment
+                  height={22}
+                  fontSize={9}
+                  style={{ width: 170 }}
+                  options={BB_DETECTOR_PRESETS.map((p) => ({
+                    value: p.id,
+                    label: p.label,
+                  }))}
+                  value={
+                    BB_DETECTOR_PRESETS.find((p) =>
+                      (Object.keys(p.detector) as (keyof typeof det)[]).every(
+                        (k) => det[k] === p.detector[k],
+                      ),
+                    )?.id ?? ''
+                  }
+                  onChange={(id) => {
+                    const p = BB_DETECTOR_PRESETS.find((x) => x.id === id);
+                    if (p) setDet({ ...p.detector });
+                  }}
                 />
               </KvRow>
               <KvRow label='DETECTOR'>

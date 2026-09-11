@@ -316,4 +316,5 @@ export {
   BB_DEFAULT_CONFIG,
   BB_MATCH_ACTIONS,
   BB_YOLO_WEIGHTS,
+  BB_DETECTOR_PRESETS,
 } from "./basketball-game-events.js";
