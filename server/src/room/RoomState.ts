@@ -686,7 +686,11 @@ export class RoomState {
           anchorWallMs: start + input.registeredAtPipelineMs,
           playFromMs: input.playFromMs ?? 0,
           durationMs: input.mp4DurationMs ?? null,
-          delayMs: input.registeredSideChannelDelayMs ?? 0,
+          delayMs:
+            (input.registeredSideChannelDelayMs ?? 0) > 0
+              ? (input.registeredSideChannelDelayMs ?? 0) +
+                RoomState.FILE_CAM_DELAY_TRIM_MS
+              : 0,
         };
       },
       // Looping clips: the engine re-anchors a track at every wrap and a
@@ -2279,7 +2283,11 @@ export class RoomState {
    * Returns the inputs that restarted; a cam that is not connected (yet) is
    * skipped, not fatal.
    */
-  /** See syncBbFileCams: on-air lag of a side-channel clip past its delayMs. */
+  /**
+   * On-air lag of a side-channel clip beyond its delayMs (see
+   * syncBbFileCams); also added to the clip clock's delay so the replay and
+   * HUD timing see the delay the viewers actually get.
+   */
   private static readonly FILE_CAM_DELAY_TRIM_MS = 240;
 
   public async syncBbFileCams(playFromMs = 0): Promise<string[]> {
@@ -2305,11 +2313,12 @@ export class RoomState {
             0;
           const durationMs =
             input?.type === 'local-mp4' ? (input.mp4DurationMs ?? 0) : 0;
-          // A side-channel input anchors its track a beat later than a plain
-          // one (the receiver pre-fills its delay buffer first): measured
-          // with scripts/bb-sync-probe.mjs as a constant ~240 ms lag on air.
+          // A side-channel input lands on air a beat later than delayMs
+          // says (its track anchors after the receiver pre-fills the delay
+          // buffer): measured with scripts/bb-sync-probe.mjs as a constant
+          // ~240 ms, so it starts that much further in as well.
           const trimMs = delayMs > 0 ? RoomState.FILE_CAM_DELAY_TRIM_MS : 0;
-          let from = Math.max(0, playFromMs + delayMs - trimMs);
+          let from = Math.max(0, playFromMs + delayMs + trimMs);
           if (durationMs > 0 && from >= durationMs) {
             // Shorter than the side-channel delay (or a seek near the tail):
             // the delayed clip cannot run ahead — it will lag by the remainder.

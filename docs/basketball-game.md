@@ -170,9 +170,10 @@ so a side-channel input freezes for `delayMs` and then runs that much later
 recording): hoop −0.16 s before the first wrap, −2.8 s after it, no picture
 after the second. The controller therefore restarts both clips together
 (`RoomState.syncBbFileCams(0)`) 200 ms before the first of them wraps
-(`checkFileCamLoop`); the hoop starts `delayMs − 240 ms` further in (the
-side-channel track anchors a constant ~240 ms late — also measured). After
-the fix the probe reads hoop −0.24 s across wraps, i.e. ~0 with the trim.
+(`checkFileCamLoop`); the hoop starts `delayMs + 240 ms` further in (a
+side-channel clip lands on air a constant ~240 ms later than its delay —
+also measured; `cams.hoop.clip.delayMs` reports the sum). Without the trim
+the probe read hoop −0.24 s at every point across two wraps, with it ~0.
 The price is a ~3 s hole in the hoop picture at every wrap — with a 10-min
 file that is once per pass. Also from the engine source: the first `delayMs`
 of every new track never reaches the side channel, so the AI is blind for

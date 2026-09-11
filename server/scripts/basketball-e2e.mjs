@@ -464,11 +464,14 @@ try {
   await hoop2.open;
   hoop2.send({ type: 'bb_cam_join', role: 'hoop', camKey: hoopKey });
   await sleep(300);
+  // With a clip on the hoop slot the rim is the clip's own (its .rim.json /
+  // .apidis.json sidecar replaced the phone's calibration on USE FILE).
   check(
     'refreshed hoop phone re-adopts its role and input',
     hoop2.joined?.camKey === hoopKey &&
       hoop2.joined?.camInputActive === true &&
-      hoop2.joined?.rim?.rx === 0.06,
+      (MP4 ? hoop2.joined?.rim != null : hoop2.joined?.rim?.rx === 0.06),
+    j(hoop2.joined),
   );
   snap = await state(roomId);
   check(
