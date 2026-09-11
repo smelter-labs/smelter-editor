@@ -26,6 +26,7 @@ function harness(opts?: { withLiveness?: boolean }) {
   const live = new Set<string>();
   // Playhead anchors of file cams (RoomState derives them from the engine).
   const fileClocks = new Map<string, BbFileClock>();
+  const resyncs: number[] = [];
   let camSeq = 0;
 
   const controller = new BasketballGameController(ROOM, {
@@ -78,6 +79,9 @@ function harness(opts?: { withLiveness?: boolean }) {
     },
     unregisterShotFrameImage: () => {},
     getFileClock: (inputId) => fileClocks.get(inputId) ?? null,
+    resyncFileCams: async () => {
+      resyncs.push(Date.now());
+    },
   });
 
   return {
@@ -92,6 +96,7 @@ function harness(opts?: { withLiveness?: boolean }) {
     connected,
     live,
     fileClocks,
+    resyncs,
     ofType<T extends RoomEvent['type']>(type: T) {
       return events.filter((e) => e.type === type) as Extract<
         RoomEvent,
@@ -977,6 +982,60 @@ describe('BasketballGameController — ground-truth replay', () => {
       loop: false,
     });
     expect(r.nextFireInMs).toBe(10_000 - HOLD + REPLAY_LAG);
+    h.controller.dispose();
+  });
+});
+
+describe('BasketballGameController — looping file cams', () => {
+  it('asks for one joint restart per pass, just before the first clip wraps', async () => {
+    const h = harness();
+    // Hoop runs its 3 s side-channel delay ahead: it is the first to wrap.
+    fileRig(h, { playFromMs: HOLD, durationMs: 60_000, delayMs: HOLD });
+    h.connected.add('mp4-court');
+    h.controller.attachExternalCam(
+      'court',
+      'mp4-court',
+      { width: 1600, height: 1200 },
+      'apidis/q2/cam1.mp4',
+    );
+    h.fileClocks.set('mp4-court', {
+      anchorWallMs: Date.now(),
+      playFromMs: 0,
+      durationMs: 60_000,
+      delayMs: 0,
+    });
+    await vi.advanceTimersByTimeAsync(56_000);
+    expect(h.resyncs).toHaveLength(0);
+    // hoop unwrapped media = 3000 + 57 000 ≥ 60 000 − 200
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(h.resyncs).toHaveLength(1);
+    // Same pass (clock anchors unchanged): no second request.
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(h.resyncs).toHaveLength(1);
+    // The restart moved the anchors → the next pass gets its own resync.
+    const anchor = Date.now();
+    h.fileClocks.set('mp4-hoop', {
+      anchorWallMs: anchor,
+      playFromMs: HOLD,
+      durationMs: 60_000,
+      delayMs: HOLD,
+    });
+    h.fileClocks.set('mp4-court', {
+      anchorWallMs: anchor,
+      playFromMs: 0,
+      durationMs: 60_000,
+      delayMs: 0,
+    });
+    await vi.advanceTimersByTimeAsync(57_000);
+    expect(h.resyncs).toHaveLength(2);
+    h.controller.dispose();
+  });
+
+  it('never resyncs without a file cam clock', async () => {
+    const h = harness();
+    await started(h);
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(h.resyncs).toHaveLength(0);
     h.controller.dispose();
   });
 });

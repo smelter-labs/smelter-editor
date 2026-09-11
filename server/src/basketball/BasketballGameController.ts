@@ -150,6 +150,13 @@ export type BbControllerDeps = {
    * a connected file clip.
    */
   getFileClock?: (inputId: string) => BbFileClock | null;
+  /**
+   * Restart every file cam from 0 in one go (RoomState.syncBbFileCams(0)).
+   * Called once per pass of a looping clip, just before the first of them
+   * reaches its end: the engine re-anchors a looped track at the wrap and a
+   * side-channel input then falls behind by its delay.
+   */
+  resyncFileCams?: () => Promise<void>;
   now?: () => number;
 };
 
@@ -265,6 +272,8 @@ const REPLAY_DETECT_LAG_MS = 300;
  * (the playhead jumped past it — re-sync, loop, late load). */
 const REPLAY_LATE_MAX_MS = 2000;
 const REPLAY_BROADCAST_MS = 1000;
+/** Restart looping file cams this long before the first one reaches its end. */
+const LOOP_RESYNC_LEAD_MS = 200;
 const ANALYSIS_FPS_MIN = 8;
 const ANALYSIS_FPS_MAX = 30;
 
@@ -384,6 +393,8 @@ export class BasketballGameController {
   private replay: ReplayRun | null = null;
   private replayTimer: ReturnType<typeof setTimeout> | null = null;
   private lastReplayBroadcastAt = 0;
+  /** Clock signature of the file-cam pass a loop resync was issued for. */
+  private lastLoopResyncSig: string | null = null;
 
   private timer: ReturnType<typeof setInterval> | null = null;
   private lastCamPoll = 0;
@@ -1063,6 +1074,44 @@ export class BasketballGameController {
   }
 
   /** Tick: follow clock changes (attach / sync / kick) and keep the panel countdown fresh. */
+  /**
+   * Looping file cams: ask for a joint restart when the first clip (the
+   * hoop runs `delayMs` ahead for the AI) is about to wrap. Both then start
+   * a fresh pass aligned again; without this the engine re-anchors the
+   * wrapped track and the hoop picture lags by another `delayMs` per pass.
+   */
+  private checkFileCamLoop(now: number): void {
+    const resync = this.deps.resyncFileCams;
+    const get = this.deps.getFileClock;
+    if (!resync || !get) return;
+    const clocks: { inputId: string; clock: BbFileClock }[] = [];
+    for (const role of ['hoop', 'court'] as const) {
+      const cam = this.cams.get(role);
+      if (!cam || cam.source !== 'file' || cam.inputId == null) continue;
+      const clock = get(cam.inputId);
+      if (clock && clock.durationMs && clock.durationMs > 0) {
+        clocks.push({ inputId: cam.inputId, clock });
+      }
+    }
+    if (clocks.length === 0) return;
+    // One request per pass: the restart moves every anchor, which changes
+    // this signature; until then (or if the restart failed) stay quiet.
+    const sig = clocks.map((c) => BasketballGameController.clockSig(c)).join('|');
+    if (sig === this.lastLoopResyncSig) return;
+    const wrapping = clocks.some(
+      ({ clock }) =>
+        clock.playFromMs + (now - clock.anchorWallMs) >=
+        (clock.durationMs as number) - LOOP_RESYNC_LEAD_MS,
+    );
+    if (!wrapping) return;
+    this.lastLoopResyncSig = sig;
+    resync().catch((err) =>
+      console.warn(
+        `[bb] loop resync failed: ${err instanceof Error ? err.message : String(err)}`,
+      ),
+    );
+  }
+
   private checkReplayClock(now: number): void {
     const r = this.replay;
     if (!r) return;
@@ -2617,6 +2666,7 @@ export class BasketballGameController {
     const now = this.now();
     this.tickClock(now);
     this.pollCameras(now);
+    this.checkFileCamLoop(now);
     this.checkReplayClock(now);
     this.syncScene(now);
     if (this.phase !== 'lobby') {

@@ -153,13 +153,36 @@ REST: `POST /room/:id/basketball-game/mp4-cam` (`{role: hoop|court, fileName}`,
 relative to `data/mp4s`, `.mp4` only, no traversal) and
 `POST …/mp4-cam/sync` (`{playFromMs?}` → `{inputIds}`).
 
-`playFromMs` is a real seek only up to the pipeline's age: the engine can
-delay an input but not start it mid-file, so "play from X" places the clip's
-start at pipeline time now − X. Asking for more than the pipeline has lived
-restarts the clip at media ≈ pipeline age instead, and `cams[role].clip.playFromMs`
-reports that effective position (the server log says `clamp-offset`). To
-work on a later part of a long clip, cut it (`basketball-bench.mjs` does this
-itself, into `data/mp4s/bb-bench/`).
+`playFromMs` is a real seek (`seekMs` on the engine's mp4 input: decoding
+starts there, the track is anchored to the moment its first frame arrives).
+`basketball-bench.mjs` still cuts its window into `data/mp4s/bb-bench/`
+(deterministic, and it doubles as a demo clip); `--no-cut` seeks instead.
+
+**Why the hoop picture drifts behind the court on a looping clip, and what
+keeps them together.** The hoop clip carries the scorer's side channel; the
+engine implements that delay by shifting the input's PTS by `delayMs`
+(`smelter-core/src/queue/video_input.rs`, `frame.pts += self.delay`) while
+the side-channel subscriber reads the frames early. When a looping mp4
+reaches its end the engine starts a new track anchored to "now"
+(`smelter-core/src/pipeline/mp4/mp4_input.rs`, `QueueTrackOffset::None`),
+so a side-channel input freezes for `delayMs` and then runs that much later
+— measured with `scripts/bb-sync-probe.mjs` (timecode clips, program
+recording): hoop −0.16 s before the first wrap, −2.8 s after it, no picture
+after the second. The controller therefore restarts both clips together
+(`RoomState.syncBbFileCams(0)`) 200 ms before the first of them wraps
+(`checkFileCamLoop`); the hoop starts `delayMs − 240 ms` further in (the
+side-channel track anchors a constant ~240 ms late — also measured). After
+the fix the probe reads hoop −0.24 s across wraps, i.e. ~0 with the trim.
+The price is a ~3 s hole in the hoop picture at every wrap — with a 10-min
+file that is once per pass. Also from the engine source: the first `delayMs`
+of every new track never reaches the side channel, so the AI is blind for
+~3 s after any restart (leave ≥ 8 s before the first make of a clip). The
+proper fix is in the engine (continue the timeline across a loop instead
+of re-anchoring; deliver the pre-buffered frames to the side channel).
+
+```bash
+node scripts/bb-sync-probe.mjs --seconds 50 --clip-s 20   # timecode clips → recording → one frame per second
+```
 
 Phones on 5G through a tunnel have no media path without TURN (see the
 kettlebell phone-testing memory) — use the same Wi-Fi as the server, a file
@@ -266,6 +289,11 @@ node server/scripts/bb-clip-window.mjs --clips apidis/q2/cam7.mp4,apidis/q2/cam1
 ```
 
 → `demo/left-3-makes/{cam7,cam1}.mp4`, 84 s, team B makes at 9 / 37 / 65 s.
+`demo/left-10min/{cam7,cam1}.mp4` is a continuous 10 minutes (media
+204–804 s of Q2, 15 000 frames each): team B makes on the left basket at
+9 / 217 / 366 / 440 / 469 / 523 s, four team A makes on the right basket in
+the court picture, and the loop resync above keeps both cams aligned across
+passes.
 Through the pipeline (HALL CAM preset, `analysisFps` 25) all three are scored.
 Keep `analysisFps` at the clip's frame rate for hall footage: the net
 crossing lasts 3–5 frames, and at 20 fps the worker (~40 ms per frame on

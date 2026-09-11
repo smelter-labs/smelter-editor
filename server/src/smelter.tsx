@@ -109,6 +109,8 @@ export type RegisterSmelterInputOptions =
       filePath: string;
       loop?: boolean;
       offsetMs?: number;
+      /** Start the file at this media time (a real seek; loops restart at 0). */
+      seekMs?: number;
       sideChannel?: SideChannelOpts;
     }
   | {
@@ -585,7 +587,7 @@ class SmelterManager {
         logSideChannelRegistration(inputId, 'mp4', opts.sideChannel);
         const sideChannel = sideChannelSpread(opts.sideChannel);
         console.log(
-          `[smelter] registerInput MP4 inputId=${inputId} path=${opts.filePath} loop=${opts.loop ?? true} offsetMs=${opts.offsetMs}`,
+          `[smelter] registerInput MP4 inputId=${inputId} path=${opts.filePath} loop=${opts.loop ?? true} offsetMs=${opts.offsetMs} seekMs=${opts.seekMs}`,
         );
         await this.instance.registerInput(inputId, {
           type: 'mp4',
@@ -593,6 +595,9 @@ class SmelterManager {
           decoderMap: MP4_DECODER_MAP,
           loop: opts.loop ?? true,
           offsetMs: opts.offsetMs,
+          ...(opts.seekMs != null && opts.seekMs > 0
+            ? { seekMs: opts.seekMs }
+            : {}),
           ...sideChannel,
         });
         console.log(

@@ -1272,21 +1272,12 @@ export class InputManager {
         );
       }
 
-      // The engine only delays an input (offsetMs ≥ 0): "play from X" works by
-      // placing the clip's t=0 at pipeline time now − X, which is only
-      // possible while X ≤ the pipeline's age. Beyond that the clip starts
-      // at media = pipeline age, and `input.playFromMs` says so (below).
-      let offsetMs = SmelterInstance.getPipelineTimeMs() - normalizedPlayFromMs;
-      if (offsetMs < 0) {
-        logTimelineEvent(
-          this.idPrefix,
-          `[mp4-restart] clamp-offset "${name}" requestedOffsetMs=${offsetMs} clampedOffsetMs=0 — seek to ${normalizedPlayFromMs}ms is beyond the pipeline age, the clip plays from ~${SmelterInstance.getPipelineTimeMs()}ms`,
-        );
-        offsetMs = 0;
-      }
+      // A real seek: the engine starts decoding at `seekMs` (first frame
+      // gets pts 0) and, without an offset, anchors the track to the moment
+      // its first frame arrives — i.e. "now". A looping clip restarts at 0.
       logTimelineEvent(
         this.idPrefix,
-        `[mp4-restart] register "${name}" loop=${loop} offsetMs=${offsetMs}`,
+        `[mp4-restart] register "${name}" loop=${loop} seekMs=${normalizedPlayFromMs}`,
       );
       // Keep the side channel across the restart — without it the AI workers'
       // sockets disappear and the overlay hold uses a stale delay.
@@ -1298,7 +1289,7 @@ export class InputManager {
         type: 'mp4',
         filePath: input.mp4FilePath,
         loop,
-        offsetMs,
+        seekMs: normalizedPlayFromMs,
         ...(sideChannel ? { sideChannel } : {}),
       });
       logTimelineEvent(
@@ -1307,13 +1298,7 @@ export class InputManager {
       );
 
       input.registeredAtPipelineMs = SmelterInstance.getPipelineTimeMs();
-      // Effective playhead at registration: clip t=0 sits at pipeline time
-      // `offsetMs`, so media now = pipeline now − offsetMs (equals the
-      // requested position unless the offset was clamped above).
-      input.playFromMs = Math.max(
-        0,
-        Math.round(input.registeredAtPipelineMs - offsetMs),
-      );
+      input.playFromMs = normalizedPlayFromMs;
       input.registeredSideChannelDelayMs = sideChannel?.delayMs ?? 0;
       if (sideChannel) {
         // Re-signal readiness so workers re-subscribe to the recreated socket.

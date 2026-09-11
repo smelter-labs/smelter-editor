@@ -689,6 +689,13 @@ export class RoomState {
           delayMs: input.registeredSideChannelDelayMs ?? 0,
         };
       },
+      // Looping clips: the engine re-anchors a track at every wrap and a
+      // side-channel input then lags by its delay (and stalls after the
+      // second wrap), so the controller asks for a joint restart at the end
+      // of each pass.
+      resyncFileCams: async () => {
+        await this.syncBbFileCams(0);
+      },
       publishHud: (state) => this.output.store.getState().setBbGame(state),
       registerJoinQr: (url) =>
         this.registerJoinQrImage(url, {
@@ -2272,6 +2279,9 @@ export class RoomState {
    * Returns the inputs that restarted; a cam that is not connected (yet) is
    * skipped, not fatal.
    */
+  /** See syncBbFileCams: on-air lag of a side-channel clip past its delayMs. */
+  private static readonly FILE_CAM_DELAY_TRIM_MS = 240;
+
   public async syncBbFileCams(playFromMs = 0): Promise<string[]> {
     return this.mutex.runExclusive(async () => {
       const restarted: string[] = [];
@@ -2293,11 +2303,22 @@ export class RoomState {
                 input.transcription,
               )?.delayMs) ??
             0;
-          await this.inputManager.restartMp4Input(
-            inputId,
-            playFromMs + delayMs,
-            true,
-          );
+          const durationMs =
+            input?.type === 'local-mp4' ? (input.mp4DurationMs ?? 0) : 0;
+          // A side-channel input anchors its track a beat later than a plain
+          // one (the receiver pre-fills its delay buffer first): measured
+          // with scripts/bb-sync-probe.mjs as a constant ~240 ms lag on air.
+          const trimMs = delayMs > 0 ? RoomState.FILE_CAM_DELAY_TRIM_MS : 0;
+          let from = Math.max(0, playFromMs + delayMs - trimMs);
+          if (durationMs > 0 && from >= durationMs) {
+            // Shorter than the side-channel delay (or a seek near the tail):
+            // the delayed clip cannot run ahead — it will lag by the remainder.
+            console.warn(
+              `[bb] clip sync: ${role} cam needs to start ${from} ms in but the clip is ${durationMs} ms long — starting at ${from % durationMs} ms (out of sync by ${durationMs - delayMs} ms)`,
+            );
+            from %= durationMs;
+          }
+          await this.inputManager.restartMp4Input(inputId, from, true);
           restarted.push(inputId);
         } catch (err) {
           console.warn(
