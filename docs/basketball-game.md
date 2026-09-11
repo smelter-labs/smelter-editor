@@ -295,6 +295,10 @@ node server/scripts/bb-clip-window.mjs --clips apidis/q2/cam7.mp4,apidis/q2/cam1
 9 / 217 / 366 / 440 / 469 / 523 s, four team A makes on the right basket in
 the court picture, and the loop resync above keeps both cams aligned across
 passes.
+`demo/left-3-loop/{cam7,cam1}.mp4` is the loop demo: three 35 s windows
+(`--windows 204.35-239.35,411.65-446.65,561.3-596.3`), 105 s, a different
+team B make every 35 s (9 / 44 / 79 s: layup, free throw, jump shot) plus two
+team A makes on the far basket in the court picture (28 / 97 s).
 Through the pipeline (HALL CAM preset, `analysisFps` 25) all three are scored.
 Keep `analysisFps` at the clip's frame rate for hall footage: the net
 crossing lasts 3–5 frames, and at 20 fps the worker (~40 ms per frame on
