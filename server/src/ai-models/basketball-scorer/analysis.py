@@ -62,6 +62,19 @@ NET_MIN_DWELL_S = 0.10
 NET_SLOW_RATIO = 0.7  # net speed ≤ 70 % of the rim-entry speed = "caught"
 NET_LONG_DWELL_S = 0.25  # hanging in the net this long is a make regardless
 NET_EXIT_SLOW_RATIO = 0.8
+# A ball that drops through the ellipse and the net band with its centre
+# within this many rx of the rim centre, on ≥ 2 net samples, without any slow-
+# down or occlusion: a clean swish or a pass-by exactly through the middle —
+# reported as a WEAK make (evidence "net_pass") for the moderator to confirm.
+NET_PASS_HALF_WIDTH = 0.5
+NET_PASS_MIN_SAMPLES = 2
+# Flight → the ball vanishes over the rim (descending, within the rim span)
+# → reappears under the net bottom, on the hoop axis, within this long:
+# it went through rim and net while the mesh hid it. A pass-by in front of
+# the net stays visible; a rim-out comes back up; an air ball never gets here.
+# Reported as a WEAK make ("net_hidden") — same as "net_pass".
+NET_HIDDEN_MAX_S = 0.8
+NET_HIDDEN_HALF_WIDTH = 1.0
 LOST_IN_NET_MAX_S = 1.2
 RIM_MAX_S = 1.5  # rolling around the rim before we give up on it
 FLIGHT_LOST_S = 0.6
@@ -393,8 +406,12 @@ class ShotDetector:
         self.net_since: Optional[float] = None
         self.net_samples = 0
         self.net_lost = 0
+        self.net_centred = 0
         self.net_min_speed = math.inf
         self.last_above_t: Optional[float] = None
+        self.last_above_xy: Optional[tuple[float, float]] = None
+        self.last_above_desc = False
+        self.flight_lost = 0
         self.lost_in_rim = False
         self.touched_rim = False
 
@@ -439,11 +456,15 @@ class ShotDetector:
             self.min_dist = min(self.min_dist, dist)
 
         if self.state == "flight":
+            if ball is not None and zone != "none":
+                self.flight_lost = 0
             if zone == "rim":
                 if vy is None or vy >= 0:
                     self._enter_rim(t, speed)
             elif zone == "above":
                 self.last_above_t = t
+                self.last_above_xy = (cx, cy) if cx is not None and cy is not None else None
+                self.last_above_desc = vy is not None and vy > 0
             elif (
                 zone == "below"
                 and self.last_above_t is not None
@@ -459,9 +480,29 @@ class ShotDetector:
                 if speed is not None:
                     self.net_min_speed = speed
             elif ball is None:
+                self.flight_lost += 1
                 last_t = self.track.last_t()
                 if last_t is None or t - last_t > FLIGHT_LOST_S:
                     events += self._finish(t, made=False)
+            elif (
+                self.flight_lost >= 1
+                and self.last_above_t is not None
+                and t - self.last_above_t <= NET_HIDDEN_MAX_S
+                and self.last_above_xy is not None
+                and self.last_above_desc
+                and abs(self.last_above_xy[0] - rim.cx) <= rim.rx
+                and cx is not None
+                and cy is not None
+                and abs(cx - rim.cx) <= NET_HIDDEN_HALF_WIDTH * rim.rx
+                and cy > rim.net_bottom(self.aspect)
+            ):
+                # Hidden by the mesh from over the rim to under the net — a
+                # WEAK make ("net_hidden"): a ball dropped through the hoop by
+                # hand after a whistle looks the same, so the ref confirms.
+                self._enter_rim(self.last_above_t, speed)
+                self._enter_net(self.last_above_t, speed)
+                self.net_lost = self.flight_lost
+                events += self._finish(t, made=True, evidence="net_hidden")
             else:  # 'none' — flew away from the hoop
                 ref = self.last_above_t if self.last_above_t is not None else t
                 if t - ref > FLIGHT_AWAY_S:
@@ -503,6 +544,8 @@ class ShotDetector:
             dwell = t - self.net_since
             if zone == "below":
                 self.net_samples += 1
+                if cx is not None and abs(cx - rim.cx) <= NET_PASS_HALF_WIDTH * rim.rx:
+                    self.net_centred += 1
                 if speed is not None:
                     self.net_min_speed = min(self.net_min_speed, speed)
                 if self._net_make_ok(dwell):
@@ -538,10 +581,17 @@ class ShotDetector:
                 # mesh occluded the ball — a pass-by in front of the net never
                 # loses it, and a rim-out leaves upwards.
                 occluded = self.net_lost >= 1 and self.net_samples >= 1
+                # Straight down the middle of the net band on several samples
+                # with no other evidence: weak make (the ref confirms).
+                passed = (
+                    self.net_samples >= NET_PASS_MIN_SAMPLES
+                    and self.net_centred >= NET_PASS_MIN_SAMPLES
+                )
                 if below_bottom and (
                     self._net_make_ok(dwell)
                     or exit_slow
                     or occluded
+                    or passed
                     or (self.lost_in_rim and self.net_samples == 0 and speed is None)
                 ):
                     evidence = (
@@ -551,6 +601,8 @@ class ShotDetector:
                         if self._net_make_ok(dwell)
                         else "net_occluded"
                         if occluded
+                        else "net_pass"
+                        if passed
                         else "net_dwell"
                     )
                     events += self._finish(t, made=True, evidence=evidence)
@@ -579,6 +631,7 @@ class ShotDetector:
         self.net_since = t
         self.net_samples = 0
         self.net_lost = 0
+        self.net_centred = 0
         self.net_min_speed = math.inf
         if self.entry_speed is None:
             self.entry_speed = speed

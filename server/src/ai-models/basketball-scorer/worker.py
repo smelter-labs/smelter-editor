@@ -74,7 +74,7 @@ PERSON_CONF = 0.3
 # frame); persons only feed the release lookup, so stale boxes are fine.
 PERSON_EVERY = max(1, int(os.environ.get("BASKETBALL_PERSON_EVERY", "3")))
 # Full-frame ball fallback (ball away from the rim crop) every Nth frame.
-FALLBACK_EVERY = max(1, int(os.environ.get("BASKETBALL_FALLBACK_EVERY", "2")))
+FALLBACK_EVERY = max(1, int(os.environ.get("BASKETBALL_FALLBACK_EVERY", "3")))
 # Frames buffered between the side-channel reader and the analysis loop: a
 # frame is only dropped when this many are already waiting (was: keep the
 # newest only, i.e. every slow frame cost the next one — at the net that is

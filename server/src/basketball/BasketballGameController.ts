@@ -70,6 +70,10 @@ export type BbWorkerEvent =
       t?: number;
       team?: 'A' | 'B' | null;
       teamConfidence?: number;
+      /** How the state machine decided ('decel', 'net_dwell', 'net_occluded',
+       * 'exit_slow', 'lost_in_net'; 'net_pass' / 'net_hidden' = weak: the ref
+       * confirms). */
+      evidence?: string;
       colorSample?: string | null;
       releaseT?: number;
       frameFile?: string;
@@ -230,6 +234,8 @@ type ShotInput = {
   aiConfidence: number;
   /** Manual entries pin the team; AI entries resolve it by confidence. */
   team?: BbTeamId | null;
+  /** Weak AI evidence: never auto-confirm, always queue for the moderator. */
+  weak?: boolean;
   points?: 1 | 2;
   gtPoints?: 1 | 2 | 3;
   colorSample?: string | null;
@@ -272,6 +278,8 @@ const REPLAY_DETECT_LAG_MS = 300;
  * (the playhead jumped past it — re-sync, loop, late load). */
 const REPLAY_LATE_MAX_MS = 2000;
 const REPLAY_BROADCAST_MS = 1000;
+/** Worker make evidences that never auto-confirm (the moderator decides). */
+const BB_WEAK_EVIDENCE = new Set(['net_pass', 'net_hidden']);
 /** Restart looping file cams this long before the first one reaches its end. */
 const LOOP_RESYNC_LEAD_MS = 200;
 const ANALYSIS_FPS_MIN = 8;
@@ -2052,7 +2060,7 @@ export class BasketballGameController {
     const team =
       input.source === 'manual'
         ? (input.team ?? null)
-        : input.aiConfidence >= this.config.autoAssignMinConf
+        : !input.weak && input.aiConfidence >= this.config.autoAssignMinConf
           ? input.aiTeam
           : null;
     const shot = this.buildShot(
@@ -2290,6 +2298,11 @@ export class BasketballGameController {
           aiTeam: isTeamId(ev.team) ? ev.team : null,
           aiConfidence:
             typeof ev.teamConfidence === 'number' ? ev.teamConfidence : 0,
+          // A straight drop through the net with no slow-down / occlusion
+          // could be a pass-by, a ball hidden from the rim to under the net
+          // could have been dropped through by hand: both land in the ref's
+          // queue, never auto-confirmed.
+          ...(BB_WEAK_EVIDENCE.has(ev.evidence ?? '') ? { weak: true } : {}),
           colorSample:
             typeof ev.colorSample === 'string' ? ev.colorSample : null,
           ...(typeof ev.t === 'number' ? { sourceT: ev.t } : {}),

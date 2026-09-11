@@ -618,6 +618,38 @@ describe('BasketballGameController — worker feed', () => {
   });
 });
 
+describe('BasketballGameController — weak make evidence', () => {
+  it('queues a net_pass make for the moderator even with a confident team', async () => {
+    const h = harness();
+    const { hoopIn } = await started(h);
+    h.controller.onWorkerResult(hoopIn, {
+      session: 's1',
+      events: [
+        {
+          type: 'shot_made',
+          index: 1,
+          team: 'B',
+          teamConfidence: 0.95,
+          evidence: 'net_pass',
+        },
+      ],
+    });
+    expect(h.lastState().teams.B.score).toBe(0);
+    expect(h.lastState().pending).toHaveLength(1);
+    expect(h.lastState().pending[0]).toMatchObject({
+      aiTeam: 'B',
+      aiConfidence: 0.95,
+      status: 'pending',
+    });
+    h.controller.resolveShot({
+      shotId: h.lastState().pending[0].id,
+      team: 'B',
+    });
+    expect(h.lastState().teams.B.score).toBe(1);
+    h.controller.dispose();
+  });
+});
+
 function sentBall(h: H) {
   const found = [...h.sent].reverse().find((s) => s.event.type === 'bb_ball');
   return found?.event.type === 'bb_ball' ? found.event : null;

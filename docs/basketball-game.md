@@ -357,10 +357,14 @@ APIDIS_DIR=$A $V scripts/bb-ball/eval.py --weights bb-ball.pt --mode worker     
   (train/val lists with both the raw and the enhanced export) fine-tunes for
   both looks: the shipped `bb-ball.pt` is that mix (10 epochs, mAP50 0.90 on
   raw+enhanced val; rim-crop recall raw 0.90 / enhanced 0.87, precision
-  0.96 / 0.91; worker zone recall on raw frames 0.72 → 0.76). On the
-  enhanced loop it tracks 35 rim-zone frames and scores 2 of 3 makes
-  offline — still a little below the raw look, so keep the enhancement mild.
-  `bb-ball-raw.pt` (the raw-only model) stays next to it for comparison.
+  0.96 / 0.91; worker zone recall on raw frames 0.72 → 0.76). Even so, on
+  the loop makes the raw look still tracks best with the mixed model (rim-zone
+  frames raw 47 vs 34–38 for gamma-only / gamma+contrast looks; makes 2/3 vs
+  1/3 offline), so **the demo clips are cut raw** — use `--vf` only when the
+  look matters more than detection. `bb-ball-raw.pt` (the raw-only model)
+  stays next to `bb-ball.pt` for comparison. The worker's full-frame passes
+  default to every 3rd (persons) / 3rd (ball fallback) frame so the rim-crop
+  pass keeps up with 25 fps (~39 ms/frame on MPS with the replay buffer).
 - Rim calibration matters more than the detector: the sidecar's rim is only
   a guess from the annotated `basket` box (kept as `rimSuggested`); on a side
   view the hoop sits at one edge of that box. Calibrate by hand — a zoomed
@@ -375,7 +379,13 @@ APIDIS_DIR=$A $V scripts/bb-ball/eval.py --weights bb-ball.pt --mode worker     
   no measurable deceleration at 22 fps, but the mesh hides the ball for a
   frame or two — `net_occluded` (seen in the net, lost inside it, out under
   the bottom) is what fires on APIDIS; `decel` / `net_dwell` cover balls the
-  net actually catches.
+  net actually catches. Two **weak** evidences never auto-confirm and land
+  in the moderator's REF CALL queue instead: `net_pass` (straight down the
+  middle of the net band on ≥ 2 samples with nothing else) and `net_hidden`
+  (lost right over the rim while descending, back on the hoop axis under the
+  net within 0.8 s — the better ball model tracks a clean drop without any
+  in-net sample; a ball dropped through the hoop by hand after a whistle
+  looks identical, hence weak).
 
 ### Benchmark (AI makes vs ground truth)
 

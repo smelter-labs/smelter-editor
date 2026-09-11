@@ -97,13 +97,15 @@ def swish(t0: float, x: float = RIM.cx, x_from: float | None = None, y_from: flo
     return pts
 
 
-def pass_by(t0: float, v: float = 1.4):
+def pass_by(t0: float, v: float = 1.4, dx: float = 0.0):
     """Straight through the projected ellipse at constant speed (a ball in
-    front of or behind the rim): no deceleration, no dwell."""
+    front of or behind the rim): no deceleration, no dwell. `dx` in rx off
+    the rim centre."""
     pts = []
+    x = RIM.cx + dx * RIM.rx
     y0 = RIM.cy - 3.0 * RXY
     y1 = RIM.cy + RIM.ry + NET_DEPTH * RXY + 0.25
-    pts += segment(RIM.cx, y0, RIM.cx, y1, (y1 - y0) / v, t0)
+    pts += segment(x, y0, x, y1, (y1 - y0) / v, t0)
     return pts
 
 
@@ -215,9 +217,11 @@ check("swish evidence is deceleration", makes(ev) and makes(ev)[0]["evidence"] i
 check("swish make index 1", makes(ev) and makes(ev)[0]["index"] == 1)
 
 # ── pass-by (in front of / behind the rim) ───────────────────────────────────
-det, ev = run(pass_by(1.0))
-check("pass-by at constant speed → 0 makes", len(makes(ev)) == 0, str(ev))
+det, ev = run(pass_by(1.0, dx=0.8))
+check("pass-by at constant speed off the rim centre → 0 makes", len(makes(ev)) == 0, str(ev))
 check("pass-by still counts as an attempt", len(attempts(ev)) == 1 and attempts(ev)[0]["result"] == "miss")
+det, ev = run(pass_by(1.0))
+check("straight down the middle of the net at constant speed → weak make (net_pass)", len(makes(ev)) == 1 and makes(ev)[0]["evidence"] == "net_pass", str([(e["type"], e.get("evidence")) for e in ev]))
 
 # ── rim-out / air ball ───────────────────────────────────────────────────────
 det, ev = run(rim_out(1.0))
@@ -251,6 +255,19 @@ det, ev = run(pts, drop=set(below[1:3]))
 check("ball seen in the net, hidden by the mesh, out under it → make", len(makes(ev)) == 1 and makes(ev)[0]["evidence"] == "net_occluded", str([(e["type"], e.get("evidence")) for e in ev]))
 det, ev = run(pts, drop=set(below[:1]))
 check("a drop before any net sample is not occlusion evidence", len(makes(ev)) == 0, str([(e["type"], e.get("evidence")) for e in ev]))
+
+# ── hidden from the rim to under the net (the mesh hides a clean drop) ────────
+pts = swish(1.0)
+rim_idx = first_zone_after_apex(pts, "rim")
+under_idx = next(i for i in range(rim_idx, len(pts)) if pts[i][2] > RIM.net_bottom(ASPECT))
+det, ev = run(pts, drop=set(range(rim_idx, under_idx)))
+check("ball vanishing over the rim and reappearing under the net → weak make (net_hidden)", len(makes(ev)) == 1 and makes(ev)[0]["evidence"] == "net_hidden", str([(e["type"], e.get("evidence")) for e in ev]))
+pts = air_ball(1.0)
+det, ev = run(pts, drop=set(range(len(pts) // 2, len(pts) // 2 + 6)))
+check("air ball hidden for a moment is still no make", len(makes(ev)) == 0, str([(e["type"], e.get("evidence")) for e in ev]))
+pts = rim_out(1.0)
+det, ev = run(pts, drop=set(range(len(pts) // 2, len(pts) // 2 + 4)))
+check("rim-out hidden for a moment is still no make", len(makes(ev)) == 0, str([(e["type"], e.get("evidence")) for e in ev]))
 
 # ── fast ball skipping the rim sample ────────────────────────────────────────
 pts = swish(1.0, entry_v=3.0)
