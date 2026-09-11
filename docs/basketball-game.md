@@ -347,6 +347,20 @@ APIDIS_DIR=$A $V scripts/bb-ball/eval.py --weights bb-ball.pt --mode worker     
 - To adapt to your own hall camera: label a few minutes of the ball (any tool
   that writes YOLO txt), add them to `data/bb-train/<name>` next to the
   APIDIS export and re-run `train.py` from `bb-ball.pt`.
+- Picture "enhancement" and the detector: a brighter, punchier look for the
+  demo clips (`bb-clip-window.mjs --vf eq=gamma=1.25:contrast=1.2:saturation=1.25`)
+  cost the raw-trained model more than half of its detections (rim-zone
+  frames over the three loop makes: raw 50 → enhanced 13). `build_dataset.py
+  --enhance gamma=…:contrast=…:saturation=…` reproduces ffmpeg's `eq` on the
+  training frames (luma contrast/gamma, chroma saturation; ~2.7 levels mean
+  difference), and `train.py --model bb-ball.pt --data <mixed data.yaml>`
+  (train/val lists with both the raw and the enhanced export) fine-tunes for
+  both looks: the shipped `bb-ball.pt` is that mix (10 epochs, mAP50 0.90 on
+  raw+enhanced val; rim-crop recall raw 0.90 / enhanced 0.87, precision
+  0.96 / 0.91; worker zone recall on raw frames 0.72 → 0.76). On the
+  enhanced loop it tracks 35 rim-zone frames and scores 2 of 3 makes
+  offline — still a little below the raw look, so keep the enhancement mild.
+  `bb-ball-raw.pt` (the raw-only model) stays next to it for comparison.
 - Rim calibration matters more than the detector: the sidecar's rim is only
   a guess from the annotated `basket` box (kept as `rimSuggested`); on a side
   view the hoop sits at one edge of that box. Calibrate by hand — a zoomed

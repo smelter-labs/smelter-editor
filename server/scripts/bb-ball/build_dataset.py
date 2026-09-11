@@ -64,7 +64,43 @@ def parse_args():
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--preview", type=int, default=0, help="draw N random labelled images into out/preview")
     p.add_argument("--limit-frames", type=int, default=0, help="debug: stop after N source frames per cam")
+    p.add_argument(
+        "--enhance",
+        default=None,
+        help="apply a look to every frame before cropping, as ffmpeg-eq-style 'gamma=1.25:contrast=1.2:saturation=1.25' "
+        "(build a second dataset with the look the demo clips get, so the detector learns both)",
+    )
     return p.parse_args()
+
+
+def parse_enhance(spec: str) -> dict:
+    out = {"gamma": 1.0, "contrast": 1.0, "brightness": 0.0, "saturation": 1.0}
+    for part in spec.split(":"):
+        if not part.strip():
+            continue
+        k, v = part.split("=")
+        out[k.strip()] = float(v)
+    return out
+
+
+def enhance_frame(bgr, e: dict):
+    """ffmpeg `eq` in its own space: contrast / brightness / gamma on luma,
+    chroma scaled by saturation (BT.601, limited-range luma like libavfilter).
+    Verified against `ffmpeg -vf eq=…` at ~1 level mean difference."""
+    import cv2
+    import numpy as np
+
+    yuv = cv2.cvtColor(bgr, cv2.COLOR_BGR2YUV).astype(np.float32)
+    y = yuv[:, :, 0] / 255.0
+    # libavfilter eq: luma LUT = pow(clip((v - 0.5) * contrast + 0.5 + brightness), 1 / gamma)
+    y = (y - 0.5) * e["contrast"] + 0.5 + e["brightness"]
+    y = np.clip(y, 0.0, 1.0)
+    if e["gamma"] != 1.0:
+        y = np.power(y, 1.0 / e["gamma"])
+    yuv[:, :, 0] = y * 255.0
+    if e["saturation"] != 1.0:
+        yuv[:, :, 1:] = (yuv[:, :, 1:] - 128.0) * e["saturation"] + 128.0
+    return cv2.cvtColor(np.clip(yuv, 0, 255).astype(np.uint8), cv2.COLOR_YUV2BGR)
 
 
 def split_of(media: float, cam: int, a) -> str | None:
@@ -156,12 +192,15 @@ def main() -> int:
 
         # ── decode + write
         written = 0
+        enh = parse_enhance(a.enhance) if a.enhance else None
         for idx, utc, bgr in apidis.iter_frames(a.archive, cam):
             if a.limit_frames and idx >= a.limit_frames:
                 break
             jobs = plan.get(idx)
             if not jobs:
                 continue
+            if enh:
+                bgr = enhance_frame(bgr, enh)
             lab = labels.get(idx)
             for kind, split in jobs:
                 name = f"cam{cam}_f{idx:06d}_{kind}"

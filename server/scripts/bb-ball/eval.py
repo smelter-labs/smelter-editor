@@ -71,7 +71,7 @@ def parse_args():
 
 
 def resolve_weights(name: str) -> str:
-    return name if os.path.exists(name) else os.path.join(SCORER, name)
+    return os.path.abspath(name) if os.path.exists(name) else os.path.join(SCORER, name)
 
 
 def pick_device(explicit):
