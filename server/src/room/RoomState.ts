@@ -90,6 +90,7 @@ import type {
   BbMatchEvent,
   BbShotEvent,
   BbReplayState,
+  BbRim,
   BbStateEvent,
   BbTeamId,
 } from '@smelter-editor/types';
@@ -2222,7 +2223,44 @@ export class RoomState {
         ? { width: input.mp4VideoWidth, height: input.mp4VideoHeight }
         : undefined;
     this.basketball.attachExternalCam(role, inputId, dims, fileName);
+    if (role === 'hoop') {
+      // A clip can carry its rim calibration next to it — no phone needed.
+      const rim = await this.readBbClipRim(fileName);
+      if (rim) this.basketball.setConfig({ rim });
+    }
     return { inputId };
+  }
+
+  /**
+   * Rim ellipse stored next to a clip: `<clip>.rim.json` (`{cx, cy, rx, ry}`,
+   * written by scripts/bb-clip-window.mjs) or the `rim` of an
+   * `<clip>.apidis.json` sidecar (scripts/apidis-prep.mjs). Null when absent
+   * or malformed.
+   */
+  private async readBbClipRim(fileName: string): Promise<BbRim | null> {
+    const base = path.join(DATA_DIR, 'mp4s', fileName.replace(/\.mp4$/i, ''));
+    for (const [file, pick] of [
+      [`${base}.rim.json`, (j: Record<string, unknown>) => j],
+      [
+        `${base}.apidis.json`,
+        (j: Record<string, unknown>) => j.rim as Record<string, unknown>,
+      ],
+    ] as const) {
+      if (!(await pathExists(file))) continue;
+      try {
+        const raw = pick(JSON.parse(await readFile(file, 'utf8')));
+        const rim = {
+          cx: Number(raw?.cx),
+          cy: Number(raw?.cy),
+          rx: Number(raw?.rx),
+          ry: Number(raw?.ry),
+        };
+        if (Object.values(rim).every((v) => Number.isFinite(v))) return rim;
+      } catch {
+        // fall through to the next candidate
+      }
+    }
+    return null;
   }
 
   /**

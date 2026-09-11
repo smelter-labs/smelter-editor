@@ -24,6 +24,8 @@ const RECONNECT_MAX_MS = 8000;
 const TICKER_LEN = 12;
 
 type ModeratorSession = { commentatorKey?: string; name?: string };
+
+export type BbPanelError = { code: string; message: string; at: number };
 const sessionKey = (roomId: string) => `bb-moderator-${roomId}`;
 
 export function readModeratorSession(roomId: string): ModeratorSession {
@@ -52,6 +54,8 @@ export function writeModeratorSession(
 export type BbPanelSocket = {
   connected: boolean;
   wsError: string;
+  /** Last `bb_error` the server sent this socket (null until one arrives). */
+  lastError: BbPanelError | null;
   state: BbStateEvent | null;
   match: BbMatchEvent | null;
   matchReceivedAt: number;
@@ -91,6 +95,7 @@ export function useBbPanelSocket(
 ): BbPanelSocket {
   const [connected, setConnected] = useState(false);
   const [wsError, setWsError] = useState('');
+  const [lastError, setLastError] = useState<BbPanelError | null>(null);
   const [state, setState] = useState<BbStateEvent | null>(null);
   const [match, setMatch] = useState<BbMatchEvent | null>(null);
   const [matchReceivedAt, setMatchReceivedAt] = useState(0);
@@ -140,6 +145,15 @@ export function useBbPanelSocket(
           break;
         case 'bb_shot':
           setShots((prev) => [event, ...prev].slice(0, TICKER_LEN));
+          break;
+        case 'bb_error':
+          // Server-side refusals (add points in the lobby, a second panel
+          // tab that is not the moderator, …) — surfaced, not swallowed.
+          setLastError({
+            code: event.code,
+            message: event.message,
+            at: Date.now(),
+          });
           break;
         case 'bb_cam_offer':
           if (event.role === 'commentator' && wantsCamRef.current) {
@@ -287,6 +301,7 @@ export function useBbPanelSocket(
   return {
     connected,
     wsError,
+    lastError,
     state,
     match,
     matchReceivedAt,

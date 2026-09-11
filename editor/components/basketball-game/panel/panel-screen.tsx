@@ -533,9 +533,24 @@ export function PanelScreen({
     </BbPlate>
   );
 
+  const pointsLocked = phase === 'lobby' || phase === 'ended';
+  const recentError =
+    socket.lastError && Date.now() - socket.lastError.at < 6000
+      ? socket.lastError
+      : null;
   const manualPointsPlate = (
     <BbPlate cutPx={12} style={{ ...PLATE, gap: 10 }}>
-      <PlateHead size={22}>MANUAL POINTS</PlateHead>
+      <PlateHead
+        size={22}
+        right={
+          pointsLocked ? (
+            <Meta size={10} tracking={0.18} color={BB.amber}>
+              {phase === 'lobby' ? 'START THE MATCH FIRST' : 'MATCH ENDED'}
+            </Meta>
+          ) : undefined
+        }>
+        MANUAL POINTS
+      </PlateHead>
       {teams ? (
         <div
           style={{
@@ -557,6 +572,7 @@ export function PanelScreen({
               <BbButton
                 variant='outline'
                 label='+1'
+                disabled={pointsLocked}
                 onClick={() => socket.addShot(t, 1)}
                 style={{ fontSize: 26, fontWeight: 800, padding: 0 }}
               />
@@ -564,6 +580,7 @@ export function PanelScreen({
                 variant='outline'
                 label={`+${arc}`}
                 keyBadge={arc === 2 ? 'ARC' : undefined}
+                disabled={pointsLocked}
                 onClick={() => socket.addShot(t, arc)}
                 style={{ fontSize: 26, fontWeight: 800, padding: 0, gap: 8 }}
               />
@@ -590,6 +607,11 @@ export function PanelScreen({
             : ''}
         </Mono>
       </button>
+      {recentError ? (
+        <Meta size={10} tracking={0.12} color={BB.amber}>
+          {recentError.message.toUpperCase()}
+        </Meta>
+      ) : null}
     </BbPlate>
   );
 

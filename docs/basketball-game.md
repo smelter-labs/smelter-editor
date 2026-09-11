@@ -232,6 +232,25 @@ node server/scripts/apidis-prep.mjs --archive $A --cams 7,5,3,1,6 --from 2008-04
 Then USE FILE hoop = `apidis/q2/cam7.mp4`, court = `cam1.mp4` in the panel
 (or the benchmark below). Needs ffmpeg and `mkvmerge` (`brew install mkvtoolnix`).
 
+**Demo clips (first make within 10 s).** A full quarter starts with minutes
+of no scoring and a clip cannot be seeked past the pipeline's age, so cut
+windows that start just before a make:
+
+```bash
+node server/scripts/bb-clip-window.mjs --clips apidis/q2/cam7.mp4,apidis/q2/cam1.mp4 \
+     --from-s 414 --to-s 474 --events apidis/q2/events.json --out demo/left-make-420s
+```
+
+writes `data/mp4s/demo/left-make-420s/{cam7,cam1}.mp4` (60 s, make at 6.7 s),
+`events.json` shifted onto the window (+ `cam7.events.json` so GROUND TRUTH
+picks it), and `cam7.rim.json` — the hoop file cam applies a `<clip>.rim.json`
+(or the `.apidis.json` rim) on USE FILE, so no phone calibration is needed.
+Ready-made: `demo/left-make-213s`, `left-make-420s`, `left-make-570s` (all
+team B on the left basket, cam7 hoop + cam1 court; makes at 6.3 / 6.7 / 6.3 s).
+
+Manual points (panel → MANUAL POINTS) are refused in the lobby and after the
+final: START first. The panel shows every server refusal under the plate.
+
 ### Ball detector fine-tune (`bb-ball.pt`)
 
 The COCO "sports ball" detector barely sees the ball on hall footage (~30 px,

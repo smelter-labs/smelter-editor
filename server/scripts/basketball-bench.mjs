@@ -44,23 +44,39 @@ const { positional, opt, flag } = parseArgs(process.argv);
 const clip = positional[0];
 const eventsFile = opt('events', null);
 if (!clip || !eventsFile) {
-  console.error('usage: basketball-bench.mjs <clip.mp4> --events <events.json> [flags]');
+  console.error(
+    'usage: basketball-bench.mjs <clip.mp4> --events <events.json> [flags]',
+  );
   process.exit(2);
 }
 
 // ── ground truth + defaults from the clip's sidecar ──────────────────────
-const gt = JSON.parse(fs.readFileSync(path.join(DATA, 'mp4s', eventsFile), 'utf8'));
-const sidecarPath = path.join(DATA, 'mp4s', clip.replace(/\.mp4$/i, '.apidis.json'));
-const sidecar = fs.existsSync(sidecarPath) ? JSON.parse(fs.readFileSync(sidecarPath, 'utf8')) : null;
+const gt = JSON.parse(
+  fs.readFileSync(path.join(DATA, 'mp4s', eventsFile), 'utf8'),
+);
+const sidecarPath = path.join(
+  DATA,
+  'mp4s',
+  clip.replace(/\.mp4$/i, '.apidis.json'),
+);
+const rimPath = path.join(DATA, 'mp4s', clip.replace(/\.mp4$/i, '.rim.json'));
+const sidecar = fs.existsSync(sidecarPath)
+  ? JSON.parse(fs.readFileSync(sidecarPath, 'utf8'))
+  : fs.existsSync(rimPath)
+    ? { rim: JSON.parse(fs.readFileSync(rimPath, 'utf8')) }
+    : null;
 if (sidecar?.timing === 'nominal') {
-  console.error(`${clip} was converted with nominal timing (--mode naive); ground truth cannot line up. Re-run apidis-prep.mjs in cfr mode.`);
+  console.error(
+    `${clip} was converted with nominal timing (--mode naive); ground truth cannot line up. Re-run apidis-prep.mjs in cfr mode.`,
+  );
   process.exit(2);
 }
 const rimDefault = sidecar?.rim
   ? [sidecar.rim.cx, sidecar.rim.cy, sidecar.rim.rx, sidecar.rim.ry].join(',')
   : '0.5,0.35,0.06,0.02';
 const [cx, cy, rx, ry] = opt('rim', rimDefault).split(',').map(Number);
-const teamsDefault = sidecar?.dataset === 'APIDIS' ? '#62611e,#151711' : '#2ee06a,#1f7bff';
+const teamsDefault =
+  sidecar?.dataset === 'APIDIS' ? '#62611e,#151711' : '#2ee06a,#1f7bff';
 const [colorA, colorB] = opt('teams', teamsDefault).split(',');
 const teamMap = Object.fromEntries(
   opt('team-map', 'A=A,B=B')
@@ -83,8 +99,14 @@ const maxFp = opt('max-fp', null);
 const reportDir = opt('report-dir', path.join(DATA, 'bb-bench'));
 
 // ── clip length + window ──────────────────────────────────────────────────
-const { durationMs } = await api('GET', `/suggestions/mp4-duration?fileName=${encodeURIComponent(clip)}`);
-const toMs = Math.min(Math.round(Number(opt('to-s', String(durationMs / 1000))) * 1000), durationMs);
+const { durationMs } = await api(
+  'GET',
+  `/suggestions/mp4-duration?fileName=${encodeURIComponent(clip)}`,
+);
+const toMs = Math.min(
+  Math.round(Number(opt('to-s', String(durationMs / 1000))) * 1000),
+  durationMs,
+);
 if (!(toMs > fromMs)) {
   console.error(`bad window ${fromMs}..${toMs} (clip ${durationMs} ms)`);
   process.exit(2);
@@ -93,20 +115,51 @@ const budgetS = Number(opt('seconds', String((toMs - fromMs) / 1000 + 8)));
 
 // ── cut the window out of the clip (the engine cannot seek past the pipeline age)
 function cutWindow(name) {
-  if (flag('no-cut') || (fromMs === 0 && toMs >= durationMs)) return { name, offsetMs: 0 };
+  if (flag('no-cut') || (fromMs === 0 && toMs >= durationMs))
+    return { name, offsetMs: 0 };
   const slug = name.replace(/\.mp4$/i, '').replace(/[^A-Za-z0-9_-]+/g, '_');
   const cutName = `bb-bench/${slug}_${Math.round(fromMs / 1000)}-${Math.round(toMs / 1000)}.mp4`;
   const cutPath = path.join(DATA, 'mp4s', cutName);
   if (!fs.existsSync(cutPath)) {
     fs.mkdirSync(path.dirname(cutPath), { recursive: true });
-    const encoders = execFileSync('ffmpeg', ['-hide_banner', '-encoders'], { encoding: 'utf8' });
+    const encoders = execFileSync('ffmpeg', ['-hide_banner', '-encoders'], {
+      encoding: 'utf8',
+    });
     const enc = /h264_videotoolbox/.test(encoders)
-      ? ['-c:v', 'h264_videotoolbox', '-b:v', '6M', '-allow_sw', '1', '-profile:v', 'high']
+      ? [
+          '-c:v',
+          'h264_videotoolbox',
+          '-b:v',
+          '6M',
+          '-allow_sw',
+          '1',
+          '-profile:v',
+          'high',
+        ]
       : ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20'];
-    console.log(`cutting ${name} ${(fromMs / 1000).toFixed(1)}–${(toMs / 1000).toFixed(1)} s → ${cutName}`);
+    console.log(
+      `cutting ${name} ${(fromMs / 1000).toFixed(1)}–${(toMs / 1000).toFixed(1)} s → ${cutName}`,
+    );
     execFileSync(
       'ffmpeg',
-      ['-v', 'error', '-y', '-ss', String(fromMs / 1000), '-to', String(toMs / 1000), '-i', path.join(DATA, 'mp4s', name), '-an', ...enc, '-pix_fmt', 'yuv420p', '-movflags', '+faststart', cutPath + '.tmp.mp4'],
+      [
+        '-v',
+        'error',
+        '-y',
+        '-ss',
+        String(fromMs / 1000),
+        '-to',
+        String(toMs / 1000),
+        '-i',
+        path.join(DATA, 'mp4s', name),
+        '-an',
+        ...enc,
+        '-pix_fmt',
+        'yuv420p',
+        '-movflags',
+        '+faststart',
+        cutPath + '.tmp.mp4',
+      ],
       { stdio: 'inherit' },
     );
     fs.renameSync(cutPath + '.tmp.mp4', cutPath);
@@ -120,7 +173,11 @@ const mediaOffsetMs = hoopClip.offsetMs;
 const playFromMs = flag('no-cut') ? fromMs : 0;
 
 const gtThrows = gt.events.filter(
-  (e) => e.kind === 'throw' && (basket === 'both' || e.basket === basket) && e.tMs >= fromMs && e.tMs <= toMs,
+  (e) =>
+    e.kind === 'throw' &&
+    (basket === 'both' || e.basket === basket) &&
+    e.tMs >= fromMs &&
+    e.tMs <= toMs,
 );
 const gtMakes = gtThrows.filter((e) => e.made);
 console.log(
@@ -140,35 +197,66 @@ const polls = { samples: 0, tracked: 0, connected: 0 };
 let finalState = null;
 try {
   await api('POST', `/room/${roomId}/basketball-game/config`, {
-    teams: { A: { name: 'TEAM A', color: colorA }, B: { name: 'TEAM B', color: colorB } },
+    teams: {
+      A: { name: 'TEAM A', color: colorA },
+      B: { name: 'TEAM B', color: colorB },
+    },
     rim: { cx, cy, rx, ry },
-    detector: { ballDetector: detector, imgsz, ballConf, yoloWeights: weights, analysisFps },
+    detector: {
+      ballDetector: detector,
+      imgsz,
+      ballConf,
+      yoloWeights: weights,
+      analysisFps,
+    },
     shotFrames: flag('shot-frames'),
     autoAssignMinConf: 0.6,
     arcPoints,
     durationMs: 1_800_000,
   });
-  const hoop = await api('POST', `/room/${roomId}/basketball-game/mp4-cam`, { role: 'hoop', fileName: hoopClip.name });
+  const hoop = await api('POST', `/room/${roomId}/basketball-game/mp4-cam`, {
+    role: 'hoop',
+    fileName: hoopClip.name,
+  });
   console.log(`hoop cam input ${hoop.inputId} (${hoopClip.name})`);
   if (courtClip) {
-    const c = await api('POST', `/room/${roomId}/basketball-game/mp4-cam`, { role: 'court', fileName: courtClip.name });
+    const c = await api('POST', `/room/${roomId}/basketball-game/mp4-cam`, {
+      role: 'court',
+      fileName: courtClip.name,
+    });
     console.log(`court cam input ${c.inputId} (${courtClip.name})`);
   }
-  await waitFor(async () => (await getState(roomId)).cams.hoop.clip != null, { label: 'hoop clip clock', timeoutMs: 60_000 });
+  await waitFor(async () => (await getState(roomId)).cams.hoop.clip != null, {
+    label: 'hoop clip clock',
+    timeoutMs: 60_000,
+  });
   // The scorer arming reconnects the hoop clip (playhead → 0); the sync
   // queues behind it on the room mutex, so issue it after the clock shows up.
-  await api('POST', `/room/${roomId}/basketball-game/mp4-cam/sync`, { playFromMs });
-  await waitFor(async () => {
-    const h = (await getState(roomId)).cams.hoop;
-    return h.camConnected && h.clip && Math.abs(h.clip.playFromMs - playFromMs) < 1500;
-  }, { label: `playhead at ${playFromMs} ms`, timeoutMs: 60_000 });
+  await api('POST', `/room/${roomId}/basketball-game/mp4-cam/sync`, {
+    playFromMs,
+  });
+  await waitFor(
+    async () => {
+      const h = (await getState(roomId)).cams.hoop;
+      return (
+        h.camConnected &&
+        h.clip &&
+        Math.abs(h.clip.playFromMs - playFromMs) < 1500
+      );
+    },
+    { label: `playhead at ${playFromMs} ms`, timeoutMs: 60_000 },
+  );
   {
     const h = (await getState(roomId)).cams.hoop;
     if (Math.abs(h.clip.playFromMs - playFromMs) >= 1500) {
-      throw new Error(`clip plays from ${h.clip.playFromMs} ms, not ${playFromMs} ms — the engine cannot seek beyond the pipeline age (drop --no-cut)`);
+      throw new Error(
+        `clip plays from ${h.clip.playFromMs} ms, not ${playFromMs} ms — the engine cannot seek beyond the pipeline age (drop --no-cut)`,
+      );
     }
   }
-  await api('POST', `/room/${roomId}/basketball-game/match`, { action: 'start' });
+  await api('POST', `/room/${roomId}/basketball-game/match`, {
+    action: 'start',
+  });
   const startedAt = Date.now();
 
   let lastLog = 0;
@@ -205,10 +293,11 @@ const aiMakes = [...ai.values()]
   .map((s) => ({ ...s, mediaMs: s.mediaMs + mediaOffsetMs }))
   .filter((s) => s.mediaMs >= fromMs - tolMs && s.mediaMs <= toMs + tolMs);
 const pairs = [];
-for (const g of gtMakes) for (const a of aiMakes) {
-  const d = a.mediaMs - g.tMs;
-  if (Math.abs(d) <= tolMs) pairs.push({ g, a, d });
-}
+for (const g of gtMakes)
+  for (const a of aiMakes) {
+    const d = a.mediaMs - g.tMs;
+    if (Math.abs(d) <= tolMs) pairs.push({ g, a, d });
+  }
 pairs.sort((x, y) => Math.abs(x.d) - Math.abs(y.d));
 const matchedG = new Set();
 const matchedA = new Set();
@@ -224,24 +313,37 @@ const fp = aiMakes.filter((a) => !matchedA.has(a));
 const fn = gtMakes.filter((g) => !matchedG.has(g));
 const precision = aiMakes.length ? tp / aiMakes.length : 0;
 const recall = gtMakes.length ? tp / gtMakes.length : 0;
-const f1 = precision + recall ? (2 * precision * recall) / (precision + recall) : 0;
+const f1 =
+  precision + recall ? (2 * precision * recall) / (precision + recall) : 0;
 const deltas = matches.map((m) => m.d).sort((a, b) => a - b);
 const median = deltas.length ? deltas[Math.floor(deltas.length / 2)] : null;
-const meanAbs = deltas.length ? deltas.reduce((s, d) => s + Math.abs(d), 0) / deltas.length : null;
+const meanAbs = deltas.length
+  ? deltas.reduce((s, d) => s + Math.abs(d), 0) / deltas.length
+  : null;
 const withTeam = matches.filter((m) => m.g.team && teamMap[m.g.team]);
-const teamRawOk = withTeam.filter((m) => m.a.aiTeam === teamMap[m.g.team]).length;
-const teamFinalOk = withTeam.filter((m) => m.a.team === teamMap[m.g.team]).length;
+const teamRawOk = withTeam.filter(
+  (m) => m.a.aiTeam === teamMap[m.g.team],
+).length;
+const teamFinalOk = withTeam.filter(
+  (m) => m.a.team === teamMap[m.g.team],
+).length;
 
 console.log('\nPER GT SHOT');
 for (const g of gtThrows) {
   const m = matches.find((x) => x.g === g);
   const tag = `${(g.tMs / 1000).toFixed(2).padStart(8)}s ${(g.shotType ?? '?').padEnd(6)} ${g.team ?? '-'} ${g.points}pt ${g.made ? 'MADE' : 'miss'}`;
-  if (m) console.log(`  ${tag} → AI #${m.a.index} Δ=${(m.d / 1000).toFixed(2)}s ai=${m.a.aiTeam ?? '-'}@${m.a.aiConfidence.toFixed(2)} → ${m.a.team ?? 'pending'}`);
+  if (m)
+    console.log(
+      `  ${tag} → AI #${m.a.index} Δ=${(m.d / 1000).toFixed(2)}s ai=${m.a.aiTeam ?? '-'}@${m.a.aiConfidence.toFixed(2)} → ${m.a.team ?? 'pending'}`,
+    );
   else console.log(`  ${tag}${g.made ? '   MISSED' : ''}`);
 }
 if (fp.length) {
   console.log('FALSE POSITIVES');
-  for (const a of fp) console.log(`  AI #${a.index} media=${(a.mediaMs / 1000).toFixed(2)}s ai=${a.aiTeam ?? '-'}@${a.aiConfidence.toFixed(2)} ${a.status}`);
+  for (const a of fp)
+    console.log(
+      `  AI #${a.index} media=${(a.mediaMs / 1000).toFixed(2)}s ai=${a.aiTeam ?? '-'}@${a.aiConfidence.toFixed(2)} ${a.status}`,
+    );
 }
 const metrics = {
   gtMakes: gtMakes.length,
@@ -255,11 +357,19 @@ const metrics = {
   f1: +f1.toFixed(3),
   medianDeltaMs: median,
   meanAbsDeltaMs: meanAbs != null ? Math.round(meanAbs) : null,
-  teamAccuracyRaw: withTeam.length ? +(teamRawOk / withTeam.length).toFixed(3) : null,
-  teamAccuracyFinal: withTeam.length ? +(teamFinalOk / withTeam.length).toFixed(3) : null,
+  teamAccuracyRaw: withTeam.length
+    ? +(teamRawOk / withTeam.length).toFixed(3)
+    : null,
+  teamAccuracyFinal: withTeam.length
+    ? +(teamFinalOk / withTeam.length).toFixed(3)
+    : null,
   pending: finalState?.pending.length ?? null,
   aiMisses: finalState
-    ? finalState.teams.A.attempts + finalState.teams.B.attempts + finalState.unattributedMisses - finalState.teams.A.makes - finalState.teams.B.makes
+    ? finalState.teams.A.attempts +
+      finalState.teams.B.attempts +
+      finalState.unattributedMisses -
+      finalState.teams.A.makes -
+      finalState.teams.B.makes
     : null,
   gtMisses: gtThrows.length - gtMakes.length,
   ballTrackedPolls: `${polls.tracked}/${polls.samples}`,
@@ -268,23 +378,62 @@ const metrics = {
 console.log('\nRESULT', metrics);
 
 let failed = false;
-if (minRecall != null && recall < Number(minRecall)) { console.log(`recall ${recall.toFixed(3)} < ${minRecall}`); failed = true; }
-if (minPrecision != null && precision < Number(minPrecision)) { console.log(`precision ${precision.toFixed(3)} < ${minPrecision}`); failed = true; }
-if (maxFp != null && fp.length > Number(maxFp)) { console.log(`fp ${fp.length} > ${maxFp}`); failed = true; }
+if (minRecall != null && recall < Number(minRecall)) {
+  console.log(`recall ${recall.toFixed(3)} < ${minRecall}`);
+  failed = true;
+}
+if (minPrecision != null && precision < Number(minPrecision)) {
+  console.log(`precision ${precision.toFixed(3)} < ${minPrecision}`);
+  failed = true;
+}
+if (maxFp != null && fp.length > Number(maxFp)) {
+  console.log(`fp ${fp.length} > ${maxFp}`);
+  failed = true;
+}
 if (failed) process.exitCode = 1;
 
 if (!flag('no-report')) {
   fs.mkdirSync(reportDir, { recursive: true });
   const slug = clip.replace(/\.mp4$/i, '').replace(/[^A-Za-z0-9_-]+/g, '_');
-  const file = path.join(reportDir, `${slug}-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
+  const file = path.join(
+    reportDir,
+    `${slug}-${new Date().toISOString().replace(/[:.]/g, '-')}.json`,
+  );
   fs.writeFileSync(
     file,
     JSON.stringify(
       {
-        clip, playedClip: hoopClip.name, eventsFile, court, window: { fromMs, toMs }, basket, tolMs,
-        config: { rim: { cx, cy, rx, ry }, detector, imgsz, ballConf, weights, analysisFps, teams: { A: colorA, B: colorB }, teamMap, arcPoints },
+        clip,
+        playedClip: hoopClip.name,
+        eventsFile,
+        court,
+        window: { fromMs, toMs },
+        basket,
+        tolMs,
+        config: {
+          rim: { cx, cy, rx, ry },
+          detector,
+          imgsz,
+          ballConf,
+          weights,
+          analysisFps,
+          teams: { A: colorA, B: colorB },
+          teamMap,
+          arcPoints,
+        },
         metrics,
-        matches: matches.map((m) => ({ gtTMs: m.g.tMs, gtTeam: m.g.team, gtType: m.g.shotType, aiIndex: m.a.index, aiMediaMs: m.a.mediaMs, deltaMs: m.d, aiTeam: m.a.aiTeam, aiConfidence: m.a.aiConfidence, team: m.a.team, sourceT: m.a.sourceT })),
+        matches: matches.map((m) => ({
+          gtTMs: m.g.tMs,
+          gtTeam: m.g.team,
+          gtType: m.g.shotType,
+          aiIndex: m.a.index,
+          aiMediaMs: m.a.mediaMs,
+          deltaMs: m.d,
+          aiTeam: m.a.aiTeam,
+          aiConfidence: m.a.aiConfidence,
+          team: m.a.team,
+          sourceT: m.a.sourceT,
+        })),
         falsePositives: fp,
         missed: fn,
         gtThrows,
