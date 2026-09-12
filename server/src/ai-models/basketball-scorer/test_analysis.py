@@ -21,6 +21,7 @@ from analysis import (
     ball_in_hands,
     classify_team,
     median_color,
+    replay_frame_plan,
     rim_crop_box,
     rim_from_params,
     torso_region,
@@ -311,6 +312,20 @@ det = ShotDetector({"rimSet": 0}, aspect=ASPECT)
 det.set_params(PARAMS)
 _, ev = run(swish(1.0), detector=det)
 check("set_params enables the rim on a running detector", len(makes(ev)) == 1)
+
+# ── instant replay frame plan ────────────────────────────────────────────────
+buf = [(i / 20, i) for i in range(100)]  # 5 s at 20 fps, payload = index
+plan, dur = replay_frame_plan(buf, 4.0)
+check("replay: 4 s of source at 0.5× → ~8 s at 30 fps", 236 <= len(plan) <= 241 and 7800 <= dur <= 8100, f"{len(plan)} frames, {dur} ms")
+check("replay: starts 3 s before the make (frame 20)", plan[0] == 20, str(plan[:3]))
+check("replay: ends at the newest frame covering t+1 s", plan[-1] == 99, str(plan[-3:]))
+check("replay: frames repeat, never skip", all(0 <= b - a <= 1 for a, b in zip(plan, plan[1:])))
+irregular = [(0.0, 0), (0.3, 1), (0.31, 2), (1.0, 3), (2.4, 4), (2.5, 5)]
+plan, dur = replay_frame_plan(irregular, 2.0, before=1.0, after=0.5)
+check("replay: irregular pts pick the nearest frame per sample", plan[0] == 3 and plan[-1] == 5 and len(plan) == 91, f"{len(plan)} {plan[:2]} {plan[-2:]}")
+check("replay: window clipped to the buffer", replay_frame_plan(buf, 0.5)[1] < 4000 and replay_frame_plan(buf, 0.5)[0][0] == 0)
+check("replay: empty buffer → empty plan", replay_frame_plan([], 1.0) == ([], 0))
+check("replay: make outside the buffer → empty plan", replay_frame_plan(buf, 30.0) == ([], 0))
 
 print(f"\n{passed} passed, {failed} failed")
 raise SystemExit(1 if failed else 0)

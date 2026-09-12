@@ -106,6 +106,34 @@ function buildShaderParams(
   ];
 }
 
+/**
+ * Shader progress for a transition at wall time `nowMs`: 0→1 for `in`, 1→0
+ * for `out`, clamped to the transition window. Pure — the wrapper derives its
+ * first frame from it, so no intermediate value can reach the compositor.
+ */
+export function transitionProgress(
+  transition: Pick<
+    ActiveTransition,
+    'startedAtMs' | 'durationMs' | 'direction'
+  >,
+  nowMs: number,
+): number {
+  const { startedAtMs, durationMs, direction } = transition;
+  const raw =
+    durationMs <= 0
+      ? 1
+      : Math.min(1, Math.max(0, (nowMs - startedAtMs) / durationMs));
+  return direction === 'out' ? 1 - raw : raw;
+}
+
+/**
+ * The progress is computed in the render body, not in an effect: smelter-core
+ * ships the scene from `resetAfterCommit`, i.e. BEFORE any effect runs, and
+ * the first update after an idle period goes out immediately. A state seeded
+ * with a constant (the old `useState(0)`) therefore aired one frame with the
+ * wrong opacity — an outgoing element blinked off and back on, an incoming
+ * one re-used a stale value. The interval below only forces re-renders.
+ */
 export function TransitionShaderWrapper({
   transition,
   resolution,
@@ -115,28 +143,30 @@ export function TransitionShaderWrapper({
   resolution: Resolution;
   children: React.ReactElement;
 }) {
-  const [progress, setProgress] = useState(0);
+  const [, setTick] = useState(0);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const { startedAtMs, durationMs, direction } = transition;
 
   useEffect(() => {
-    const { startedAtMs, durationMs, direction } = transition;
-
-    const update = () => {
-      const elapsed = Date.now() - startedAtMs;
-      const raw = Math.min(1, Math.max(0, elapsed / durationMs));
-      setProgress(direction === 'out' ? 1 - raw : raw);
+    const endsAt = startedAtMs + durationMs;
+    const tick = () => {
+      setTick((t) => t + 1);
+      if (Date.now() >= endsAt && intervalRef.current) {
+        // Landed on the final value — nothing left to animate.
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
     };
-
-    update();
-    intervalRef.current = setInterval(update, FRAME_INTERVAL_MS);
-
+    intervalRef.current = setInterval(tick, FRAME_INTERVAL_MS);
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
+        intervalRef.current = null;
       }
     };
-  }, [transition.startedAtMs, transition.durationMs, transition.direction]);
+  }, [startedAtMs, durationMs, direction]);
 
+  const progress = transitionProgress(transition, Date.now());
   const shaderId = transitionShaderId(transition.type);
   const shaderParams = buildShaderParams(transition.type, progress);
 

@@ -1958,24 +1958,28 @@ export function KbtMatchHud({
     hud.commentator?.casterPip ?? true,
   )}`;
   const lastRef = useRef({ key: swapKey, hud });
-  const [outgoing, setOutgoing] = useState<{
+  const [outgoingState, setOutgoing] = useState<{
     hud: KbtHudState;
     style: KbtViewTransitionStyle;
     startedAtMs: number;
   } | null>(null);
 
-  // No dep array: the ref must track every ~10 Hz snapshot so the outgoing
-  // copy freezes the last frame that actually aired, not a stale one.
-  useEffect(() => {
-    if (lastRef.current.key !== swapKey) {
-      setOutgoing({
-        hud: lastRef.current.hud,
-        style: hud.viewTransitionStyle ?? 'fade',
-        startedAtMs: Date.now(),
-      });
-    }
-    lastRef.current = { key: swapKey, hud };
-  });
+  // The swap is detected in the render body, not in an effect: smelter-core
+  // ships every commit before effects run, so an effect-started crossfade
+  // aired the new chrome unwrapped (full opacity) for one frame. A render-
+  // phase setState re-renders before the commit, and `outgoing` below is
+  // already the new value for this pass. The ref tracks every ~10 Hz snapshot
+  // so the outgoing copy freezes the last frame that actually aired.
+  let outgoing = outgoingState;
+  if (lastRef.current.key !== swapKey) {
+    outgoing = {
+      hud: lastRef.current.hud,
+      style: hud.viewTransitionStyle ?? 'fade',
+      startedAtMs: Date.now(),
+    };
+    setOutgoing(outgoing);
+  }
+  lastRef.current = { key: swapKey, hud };
 
   useEffect(() => {
     if (!outgoing) return;

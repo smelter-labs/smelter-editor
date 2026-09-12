@@ -184,8 +184,28 @@ const ASSETS = {
     320,
     pipFrame(BAD, CHALK, 'COURT CAM', lostWindow('COURT')),
   ],
-  // The release still on the score scene (same anchor as the PiP).
+  // The release still (moderator queue art; no longer drawn on air).
   'still-frame': [496, 320, pipFrame(ELECTRIC, ASPHALT, 'THE RELEASE')],
+
+  // ── REPLAY window, output pos: (312, 162) ────────────────────────────
+  // Frame around the 1280×720 clip at (8, 42) — transparent, the clip input
+  // is drawn underneath. Header chip baked; stripe slot 8–24 × 42–762
+  // transparent (runtime team colour). Runtime text: points 1050,8 90×30
+  // BSD black 24 electric R · name 1145,8 140×30 BSD 800 24 R.
+  'replay-frame': [
+    1296,
+    764,
+    `
+    <div style="position:absolute;left:0;top:0;width:1296px;height:42px;background:${PLATE};${cut(28)}">
+      <div class="tag" style="position:absolute;left:8px;top:8px;background:${ELECTRIC};color:${ASPHALT};gap:10px">
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${ASPHALT}"></span>REPLAY
+      </div>
+      <div class="mono" style="position:absolute;left:150px;top:8px;height:26px;display:flex;align-items:center;font-size:12px;letter-spacing:.22em;color:${DIM2}">SLOW MOTION · HOOP CAM</div>
+    </div>
+    <div style="position:absolute;left:0;top:42px;width:8px;height:722px;background:${PLATE}"></div>
+    <div style="position:absolute;left:1288px;top:42px;width:8px;height:722px;background:${PLATE}"></div>
+    <div style="position:absolute;left:0;top:762px;width:1296px;height:2px;background:${PLATE}"></div>`,
+  ],
 
   // ── Shot toast, output pos: left 70, top 150 ─────────────────────────
   // Block 0–64 = team colour (runtime). Runtime text: points 84,12 70×40

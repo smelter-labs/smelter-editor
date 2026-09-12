@@ -1,5 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Image, Rescaler, Text, View } from '@swmansion/smelter';
+import {
+  Image,
+  InputStream,
+  Rescaler,
+  Text,
+  View,
+  useInputStreams,
+} from '@swmansion/smelter';
 import type { Api } from '@swmansion/smelter';
 
 type TextWeight = Api.TextWeight;
@@ -278,8 +285,9 @@ function ScoreBug({ hud, k }: { hud: BbHudState; k: number }) {
   );
   const a = hud.teams.A;
   const b = hud.teams.B;
+  // The scoring team's number lights up while the SCORE! banner is on.
   const scoring =
-    hud.stage.scene === 'score' && hud.lastShot && !hud.lastShot.pending
+    hud.lastShot?.showBanner && !hud.lastShot.pending
       ? hud.lastShot.team
       : null;
   const mainFs = face.main.length > 5 ? 22 : 30;
@@ -378,52 +386,11 @@ function PipFrame({ hud, k }: { hud: BbHudState; k: number }) {
   );
 }
 
-/** "+2 TEAM" toast under the score bug (outside the featured score scene). */
-function ShotToast({ hud, k }: { hud: BbHudState; k: number }) {
-  const shot = hud.lastShot;
-  if (!shot || !shot.showBanner) return null;
-  return (
-    <Group x={70} y={150} w={460} h={64} k={k}>
-      {shot.pending ? (
-        <Art id='bb-toast-refcall' x={0} y={0} w={460} h={64} k={k} />
-      ) : (
-        <>
-          <Art id='bb-toast-plate' x={0} y={0} w={460} h={64} k={k} />
-          <Block x={0} y={0} w={64} h={64} k={k} color={shot.color} />
-        </>
-      )}
-      <Label
-        x={84}
-        y={12}
-        w={70}
-        text={`+${shot.points}`}
-        fs={40}
-        k={k}
-        weight={BLACK}
-        color={ELECTRIC}
-        centerIn={40}
-      />
-      {!shot.pending ? (
-        <Label
-          x={168}
-          y={15}
-          w={200}
-          text={(shot.teamName ?? '').toUpperCase()}
-          fs={34}
-          k={k}
-          centerIn={36}
-        />
-      ) : null}
-    </Group>
-  );
-}
-
 /** Makes waiting for the moderator ("AWAITING REF · n"). */
 function PendingPill({ hud, k }: { hud: BbHudState; k: number }) {
   if (hud.pendingCount <= 0) return null;
-  const y = hud.lastShot?.showBanner && hud.stage.scene !== 'score' ? 230 : 150;
   return (
-    <Group x={70} y={y} w={270} h={54} k={k}>
+    <Group x={70} y={150} w={270} h={54} k={k}>
       <Art id='bb-pending-pill' x={0} y={0} w={270} h={54} k={k} />
       <Label
         x={214}
@@ -440,12 +407,13 @@ function PendingPill({ hud, k }: { hud: BbHudState; k: number }) {
   );
 }
 
-/** Full-frame SCORE! card over the featured hoop cam + the release still. */
+/**
+ * SCORE! card over the live picture, from the frame the ball drops on
+ * (`showBanner` rides the HUD hold) until the REPLAY window takes over.
+ */
 function ScoreBanner({ hud, k }: { hud: BbHudState; k: number }) {
   const shot = hud.lastShot;
   if (!shot || !shot.showBanner) return null;
-  const pip = hud.stage.pip;
-  const still = pip ? pipFrameOrigin(pip.rect, k) : { x: 1368, y: 704 };
   return (
     <>
       <Group x={460} y={320} w={1000} h={290} k={k}>
@@ -483,26 +451,124 @@ function ScoreBanner({ hud, k }: { hud: BbHudState; k: number }) {
           centerIn={60}
         />
       </Group>
-      {shot.frameImageId ? (
-        <>
-          <Art
-            id={shot.frameImageId}
-            x={still.x + 8}
-            y={still.y + 42}
-            w={480}
-            h={270}
-            k={k}
-          />
-          <Art
-            id='bb-still-frame'
-            x={still.x}
-            y={still.y}
-            w={496}
-            h={320}
-            k={k}
-          />
-        </>
+    </>
+  );
+}
+
+/** Window geometry (design px): a 1280×720 clip in a 1296×764 plate. */
+const REPLAY_PLATE = { x: 312, y: 162, w: 1296, h: 764 };
+const REPLAY_CLIP = { x: 320, y: 204, w: 1280, h: 720 };
+
+/**
+ * Instant replay: the live layout stays underneath, dimmed by a veil; the
+ * worker's slow-motion clip of the make plays in a framed window with the
+ * make's points + team in the header. The clip is a global engine input
+ * mounted by the controller (`stage.replay.inputId`); it is drawn only once
+ * the decoder delivers frames — until then the window shows its dark well,
+ * so nothing pops (same guard as CharacterClip / LiveCamTile).
+ */
+function ReplayWindow({
+  hud,
+  k,
+  resolution,
+}: {
+  hud: BbHudState;
+  k: number;
+  resolution: Resolution;
+}) {
+  const replay = hud.stage.replay;
+  const streams = useInputStreams();
+  if (!replay) return null;
+  const playing = streams[replay.inputId]?.videoState === 'playing';
+  const clipW = Math.round(REPLAY_CLIP.w * k);
+  const clipH = Math.round(REPLAY_CLIP.h * k);
+  return (
+    <>
+      {/* Veil over the whole live picture (chrome above it stays crisp). */}
+      <View
+        style={{
+          top: 0,
+          left: 0,
+          width: resolution.width,
+          height: resolution.height,
+          backgroundColor: '#141416B3',
+        }}
+      />
+      <Block
+        x={REPLAY_CLIP.x}
+        y={REPLAY_CLIP.y}
+        w={REPLAY_CLIP.w}
+        h={REPLAY_CLIP.h}
+        k={k}
+        color='#0E0E10'
+      />
+      {playing ? (
+        <View
+          style={{
+            top: Math.round(REPLAY_CLIP.y * k),
+            left: Math.round(REPLAY_CLIP.x * k),
+            width: clipW,
+            height: clipH,
+            overflow: 'hidden',
+          }}>
+          <Rescaler
+            style={{ width: clipW, height: clipH, rescaleMode: 'fill' }}>
+            {/* The clip has no audio track; nothing to mute. */}
+            <InputStream inputId={replay.inputId} />
+          </Rescaler>
+        </View>
       ) : null}
+      <Art
+        id='bb-replay-frame'
+        x={REPLAY_PLATE.x}
+        y={REPLAY_PLATE.y}
+        w={REPLAY_PLATE.w}
+        h={REPLAY_PLATE.h}
+        k={k}
+      />
+      {/* Team stripe down the left edge of the clip well. */}
+      <Block
+        x={REPLAY_CLIP.x}
+        y={REPLAY_CLIP.y}
+        w={16}
+        h={REPLAY_CLIP.h}
+        k={k}
+        color={replay.pending ? CHALK : replay.color}
+      />
+      <Group
+        x={REPLAY_PLATE.x}
+        y={REPLAY_PLATE.y}
+        w={REPLAY_PLATE.w}
+        h={42}
+        k={k}>
+        <Label
+          x={1050}
+          y={8}
+          w={90}
+          text={`+${replay.points}`}
+          fs={24}
+          k={k}
+          weight={BLACK}
+          align='right'
+          color={ELECTRIC}
+          centerIn={26}
+        />
+        <Label
+          x={1145}
+          y={8}
+          w={140}
+          text={
+            replay.pending
+              ? '· REF CALL'
+              : (replay.teamName ?? '').toUpperCase()
+          }
+          fs={24}
+          k={k}
+          align='right'
+          color={replay.pending ? ELECTRIC : CHALK}
+          centerIn={26}
+        />
+      </Group>
     </>
   );
 }
@@ -907,12 +973,14 @@ function SceneChrome({
 }) {
   const k = resolution.height / 1080;
   const scene = hud.stage.scene;
+  const replaying = scene === 'replay';
   const liveLike =
     scene === 'live' ||
-    scene === 'score' ||
+    replaying ||
     scene === 'hoop' ||
     scene === 'court' ||
     scene === 'split';
+  const scoreOn = !!hud.lastShot?.showBanner;
   return (
     <View
       style={{
@@ -924,12 +992,17 @@ function SceneChrome({
       }}>
       {scene === 'lobby' ? <LobbyScene hud={hud} k={k} /> : null}
       {scene === 'ended' ? <EndedScene hud={hud} k={k} /> : null}
+      {/* The replay veil + window go under the score bug / pills so those
+          stay readable, but over the PiP frame (dimmed with the video). */}
+      {replaying ? <PipFrame hud={hud} k={k} /> : null}
+      {replaying ? (
+        <ReplayWindow hud={hud} k={k} resolution={resolution} />
+      ) : null}
       {liveLike ? <ScoreBug hud={hud} k={k} /> : null}
-      {liveLike ? <PipFrame hud={hud} k={k} /> : null}
-      {liveLike && scene !== 'score' ? <ShotToast hud={hud} k={k} /> : null}
+      {liveLike && !replaying ? <PipFrame hud={hud} k={k} /> : null}
       {liveLike ? <PendingPill hud={hud} k={k} /> : null}
-      {scene === 'score' ? <ScoreBanner hud={hud} k={k} /> : null}
-      {(liveLike && scene !== 'score') || scene === 'caster' ? (
+      {liveLike && !replaying ? <ScoreBanner hud={hud} k={k} /> : null}
+      {(liveLike && !replaying && !scoreOn) || scene === 'caster' ? (
         <Banner hud={hud} k={k} />
       ) : null}
       {scene === 'caster' ? <CasterFullScene hud={hud} k={k} /> : null}
@@ -957,17 +1030,23 @@ export function BbMatchHud({
 }) {
   const swapKey = `${hud.stage.scene}|${hud.stage.pip?.role ?? ''}|${hud.stage.caster ? 1 : 0}`;
   const lastRef = useRef({ key: swapKey, hud });
-  const [outgoing, setOutgoing] = useState<{
+  const [outgoingState, setOutgoing] = useState<{
     hud: BbHudState;
     startedAtMs: number;
   } | null>(null);
 
-  useEffect(() => {
-    if (lastRef.current.key !== swapKey) {
-      setOutgoing({ hud: lastRef.current.hud, startedAtMs: Date.now() });
-    }
-    lastRef.current = { key: swapKey, hud };
-  });
+  // The swap is detected in the render body, not in an effect: smelter-core
+  // ships every commit before effects run, so an effect-started crossfade
+  // aired the new chrome unwrapped (full opacity) for one frame. A render-
+  // phase setState re-renders before the commit, and `outgoing` below is
+  // already the new value for this pass. The ref tracks every ~10 Hz snapshot
+  // so the outgoing copy freezes the last frame that actually aired.
+  let outgoing = outgoingState;
+  if (lastRef.current.key !== swapKey) {
+    outgoing = { hud: lastRef.current.hud, startedAtMs: Date.now() };
+    setOutgoing(outgoing);
+  }
+  lastRef.current = { key: swapKey, hud };
 
   useEffect(() => {
     if (!outgoing) return;

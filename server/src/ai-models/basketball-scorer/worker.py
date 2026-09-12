@@ -27,6 +27,8 @@ import logging
 import math
 import os
 import re
+import shutil
+import subprocess
 import sys
 import threading
 import time
@@ -47,11 +49,14 @@ from smelter import list_channels
 from smelter.aio import subscribe_video_channel
 
 from analysis import (
+    REPLAY_AFTER_S,
+    REPLAY_OUT_FPS,
     ShotDetector,
     analysis_interval_s,
     classify_team,
     hex_to_rgb,
     median_color,
+    replay_frame_plan,
     rim_crop_box,
     rim_from_params,
     torso_region,
@@ -99,13 +104,26 @@ DUMP_DIR = os.environ.get("BASKETBALL_DUMP_FRAMES", "")
 DUMP_EVERY = max(1, int(os.environ.get("BASKETBALL_DUMP_EVERY", "50")))
 DUMP_MAX = 200
 
-# ── Frame ring buffer (release lookup + stills) ──────────────────────────────
+# ── Frame ring buffer (release lookup + stills + instant replay) ─────────────
 FRAME_DIR = os.environ.get("BASKETBALL_FRAME_DIR", "")
-FRAME_MAX_W = 400
-FRAME_BUF_LEN = 100  # ≈5 s at 20 analysis fps
+# 640 px wide: the replay window on air is 1280×720, so the clip upscales 2×
+# (400 px looked soft). RGB: 160 × 640×360×3 ≈ 110 MB — one hoop cam only.
+FRAME_MAX_W = 640
+FRAME_BUF_LEN = 160  # ≥5 s at 30 analysis fps; the replay needs 4 s + slack
 FRAME_JPEG_QUALITY = 80
 FRAME_MATCH_TOL_S = 0.6
 FRAME_MAX_WRITES = 2000
+
+# ── Instant replay (clip cut from the ring buffer on Node's `replay` cmd) ────
+# Where clips land; Node registers them as engine inputs for the REPLAY
+# window and deletes them once the window closed.
+REPLAY_DIR = os.environ.get("BASKETBALL_REPLAY_DIR", "")
+# The make is reported before the post-make frames exist — wait this long
+# for the buffer to reach `t + REPLAY_AFTER_S` before cutting.
+REPLAY_WAIT_S = 1.5
+REPLAY_MIN_FRAMES = REPLAY_OUT_FPS  # < 1 s of clip is not a replay
+REPLAY_MAX_WRITES = 200
+REPLAY_ENCODE_TIMEOUT_S = 30
 
 
 def _flag(params: dict, key: str) -> bool:
@@ -125,6 +143,7 @@ class InputState:
     # colour from it and stills are cut from it when captureShotFrames is on.
     frame_buf: deque = field(default_factory=lambda: deque(maxlen=FRAME_BUF_LEN))
     frames_written: int = 0
+    replays_written: int = 0
     prev_ball_center: tuple[float, float] | None = None
     yolo_misses: int = 0
     ball_hits: int = 0
@@ -651,6 +670,111 @@ async def _attach_stills(input_id: str, state: InputState, events: list) -> None
                 event[key] = name
 
 
+# ── Instant replay ───────────────────────────────────────────────────────────
+
+
+def _encode_replay(path: str, frames: list, out_fps: int) -> bool:
+    """Pipe RGB frames (all the buffer's size) through ffmpeg into an H.264
+    mp4 at `out_fps`. Sync — run it in a thread."""
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        log.warning("Replay skipped: ffmpeg not on PATH")
+        return False
+    h, w = frames[0].shape[:2]
+    same = [f for f in frames if f.shape[:2] == (h, w)]
+    raw = b"".join(np.ascontiguousarray(f).tobytes() for f in same)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    cmd = [
+        ffmpeg,
+        "-loglevel", "error",
+        "-y",
+        "-f", "rawvideo",
+        "-pix_fmt", "rgb24",
+        "-s", f"{w}x{h}",
+        "-framerate", str(out_fps),
+        "-i", "-",
+        # yuv420p needs even dimensions.
+        "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2",
+        # ultrafast: the clip must be on air ~4 s after the make while YOLO
+        # keeps the CPU busy (veryfast measured 2.7 s for an 8 s clip).
+        "-c:v", "libx264",
+        "-preset", "ultrafast",
+        "-crf", "23",
+        "-pix_fmt", "yuv420p",
+        "-movflags", "+faststart",
+        path,
+    ]
+    try:
+        res = subprocess.run(cmd, input=raw, capture_output=True, timeout=REPLAY_ENCODE_TIMEOUT_S)
+    except (OSError, subprocess.TimeoutExpired) as err:
+        log.warning("Replay encode failed: %s", err)
+        return False
+    if res.returncode != 0:
+        log.warning("Replay encode failed (%d): %s", res.returncode, res.stderr.decode(errors="replace")[-400:])
+        return False
+    return True
+
+
+async def _dump_replay(input_id: str, state: InputState, shot_id: str, t: float | None) -> None:
+    """Cut the slow-motion clip around `t` (default: the newest buffered
+    frame) and queue a `replay_ready` event — or `replay_failed`, so Node
+    stops waiting for it."""
+    def fail(reason: str) -> None:
+        log.info("Replay for %s (%s) skipped: %s", input_id[-12:], shot_id, reason)
+        state.pending_events.append({"type": "replay_failed", "shotId": shot_id, "reason": reason})
+
+    if not REPLAY_DIR or cv2 is None:
+        fail("replay dir / cv2 unavailable")
+        return
+    if state.replays_written >= REPLAY_MAX_WRITES:
+        fail("write cap")
+        return
+    if t is None:
+        t = state.frame_buf[-1][0] if state.frame_buf else None
+    if t is None:
+        fail("empty buffer")
+        return
+    # The make is reported while the ball is still in the net — the frames
+    # after it arrive over the next second.
+    deadline = time.monotonic() + REPLAY_WAIT_S
+    while time.monotonic() < deadline:
+        if state.frame_buf and state.frame_buf[-1][0] >= t + REPLAY_AFTER_S:
+            break
+        await asyncio.sleep(0.05)
+    if active_inputs.get(input_id) is not state:
+        return  # unsubscribed / restarted meanwhile
+    plan, duration_ms = replay_frame_plan(list(state.frame_buf), t)
+    if len(plan) < REPLAY_MIN_FRAMES:
+        fail(f"buffer covers only {len(plan)} frames")
+        return
+    safe_input = re.sub(r"[^A-Za-z0-9_-]", "_", input_id)
+    safe_shot = re.sub(r"[^A-Za-z0-9_-]", "_", shot_id)
+    name = f"{safe_input}-{state.session}-{safe_shot}.mp4"
+    started = time.monotonic()
+    try:
+        ok = await asyncio.to_thread(_encode_replay, os.path.join(REPLAY_DIR, name), plan, REPLAY_OUT_FPS)
+    except Exception as err:  # noqa: BLE001
+        log.warning("Replay write failed for %s: %s", input_id, err)
+        ok = False
+    if not ok:
+        fail("encode failed")
+        return
+    state.replays_written += 1
+    log.info(
+        "Replay for %s (%s): %d frames, %d ms clip, encoded in %.0f ms",
+        input_id[-12:], shot_id, len(plan), duration_ms, (time.monotonic() - started) * 1000,
+    )
+    state.pending_events.append(
+        {
+            "type": "replay_ready",
+            "shotId": shot_id,
+            "file": name,
+            "durationMs": duration_ms,
+            "t": round(t, 3),
+        }
+    )
+
+
 # ── Node link ────────────────────────────────────────────────────────────────
 
 
@@ -887,6 +1011,7 @@ def pause_detector(input_id: str) -> None:
     state.pending_events = []
     state.frame_buf.clear()
     state.frames_written = 0
+    state.replays_written = 0
     state.prev_ball_center = None
     state.session = uuid.uuid4().hex[:12]
 
@@ -912,6 +1037,16 @@ async def handle_command(msg: dict) -> None:
             log.info("configure %s params=%s", input_id, params)
     elif cmd == "unsubscribe":
         stop_detector(input_id)
+    elif cmd == "replay":
+        # Instant replay for one ledger entry: `t` is the make's frame time
+        # (AI shots); without it the clip ends at the newest buffered frame
+        # (manual / ground-truth makes, which fire when the ball just dropped).
+        state = active_inputs.get(input_id)
+        shot_id = msg.get("shotId")
+        if state is not None and isinstance(shot_id, str):
+            t = msg.get("t")
+            t_val = float(t) if isinstance(t, (int, float)) else None
+            asyncio.create_task(_dump_replay(input_id, state, shot_id, t_val))
     elif cmd == "side_channel_ready":
         if input_id in active_inputs:
             active_inputs[input_id].side_channel_ready = True

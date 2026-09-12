@@ -221,6 +221,10 @@ export const BASKETBALL_SCORER_MANIFEST: ModelManifest = {
     // Where the worker writes make/release stills when captureShotFrames is
     // on; Node serves them back at GET /bb-shot-frames/:fileName.
     BASKETBALL_FRAME_DIR: path.join(DATA_DIR, 'bb-shot-frames'),
+    // Instant-replay clips cut from the worker's frame buffer on the `replay`
+    // command; Node registers them as engine inputs for the REPLAY window
+    // and removes them once it closed.
+    BASKETBALL_REPLAY_DIR: path.join(DATA_DIR, 'bb-replays'),
   },
   supportsBoxes: true,
   params: BASKETBALL_SCORER_PARAMS,

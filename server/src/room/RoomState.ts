@@ -51,7 +51,7 @@ import {
 import { PeopleTracker } from '../ai-models/people-counter/people-tracker';
 import { jitterBoxes } from '../ai-models/people-counter/box-jitter';
 import { CarTracker } from '../ai-models/car-ads/car-tracker';
-import { kettlebellSkeletonMode } from '../app/store';
+import { kbtParkRect, kettlebellSkeletonMode } from '../app/store';
 import type { CarAdDetection } from '../app/store';
 import { DuckHunterController } from '../duckHunter/DuckHunterController';
 import type { MatchCommand } from '../duckHunter/DuckHunterController';
@@ -344,6 +344,14 @@ export class RoomState {
     { timer: ReturnType<typeof setTimeout>; jpegPath: string }
   >();
 
+  /**
+   * Inputs a game controller owns (KBT/basketball cams and file clips). The
+   * controller lays them out itself, but a store flush can run between
+   * `connectInput` and its first `layoutTiles` — the unplaced-input
+   * auto-append in flushStoreUpdate would then air them FULLSCREEN for a
+   * frame. Ids listed here fall back to the off-stage park rect instead.
+   */
+  private parkUntilPlaced = new Set<string>();
   private storeUpdateScheduled = false;
   private lastStoreFlushTime = 0;
   private pendingStoreFlushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -621,8 +629,8 @@ export class RoomState {
 
     // Basketball Game: same deps shape as the kettlebell tournament. Every
     // basketball cam keeps the side channel (`ai: true`) so hoop, court and
-    // commentator share one 3 s delay — the predictive cut to the hoop cam
-    // and the held score bug both rely on it.
+    // commentator share one 3 s delay — the held score bug and the replay
+    // window timing both rely on it.
     this.basketball = new BasketballGameController(idPrefix, {
       broadcast: (event) => roomEventBus.broadcast(idPrefix, event),
       sendTo: (clientId, event) =>
@@ -710,29 +718,46 @@ export class RoomState {
           light: '#f4efe6ff',
           margin: 0,
         }),
-      // Shot stills follow the KBT rep-shot rule: the id embeds a filename
-      // hash (names are unique per make), null when the file is gone.
-      registerShotFrameImage: async (url) => {
-        const m = /^\/bb-shot-frames\/([A-Za-z0-9._-]+)$/.exec(url);
-        if (!m) return null;
-        const file = path.join(DATA_DIR, 'bb-shot-frames', m[1]);
-        if (!(await pathExists(file))) return null;
-        const hash = createHash('sha1').update(m[1]).digest('hex').slice(0, 10);
+      // Instant replay: the scorer worker cuts a clip from its frame buffer
+      // (data/bb-replays) and the controller mounts it as a GLOBAL engine
+      // input — not a room input, so it never enters the layout / mixer —
+      // for the REPLAY window drawn by the HUD chrome. `offsetMs` is the
+      // pipeline time the clip's first frame lands on (same rule as
+      // restartMp4Input), i.e. the window's opening moment.
+      requestReplay: (inputId, shotId, t) => {
+        void this.aiController
+          .requestBasketballReplay(inputId, shotId, t)
+          .catch((err) =>
+            console.warn(`[bb] replay request failed for ${inputId}`, err),
+          );
+      },
+      registerReplayClip: async (file, offsetMs) => {
+        if (!/^[A-Za-z0-9._-]+\.mp4$/.test(file)) return null;
+        const filePath = path.join(DATA_DIR, 'bb-replays', file);
+        if (!(await pathExists(filePath))) return null;
+        const hash = createHash('sha1').update(file).digest('hex').slice(0, 10);
         const safeRoom = idPrefix.replace(/[^a-zA-Z0-9_-]/g, '_');
-        const imageId = `bb-shot-${safeRoom}-${hash}`;
+        const inputId = `bb-replay-${safeRoom}-${hash}`;
         try {
-          await SmelterInstance.registerImage(imageId, {
-            serverPath: file,
-            assetType: 'jpeg',
+          await SmelterInstance.registerInput(inputId, {
+            type: 'mp4',
+            filePath,
+            loop: false,
+            offsetMs,
           });
-        } catch {
+        } catch (err) {
+          console.warn(`[bb] replay clip register failed: ${file}`, err);
           return null;
         }
-        return imageId;
+        return inputId;
       },
-      unregisterShotFrameImage: (imageId) => {
-        void SmelterInstance.unregisterImage(imageId).catch(() => {});
+      unregisterReplayClip: (inputId, file) => {
+        void SmelterInstance.unregisterInput(inputId).catch(() => {});
+        if (/^[A-Za-z0-9._-]+\.mp4$/.test(file)) {
+          void remove(path.join(DATA_DIR, 'bb-replays', file)).catch(() => {});
+        }
       },
+      getPipelineTimeMs: () => SmelterInstance.getPipelineTimeMs(),
     });
 
     let motionResultCount = 0;
@@ -1480,6 +1505,7 @@ export class RoomState {
 
   public async removeInput(inputId: string): Promise<void> {
     return this.mutex.runExclusive(async () => {
+      this.parkUntilPlaced.delete(inputId);
       await this.inputManager.removeInput(inputId);
 
       if (this.pruneInputFromLayers(inputId)) {
@@ -2102,6 +2128,8 @@ export class RoomState {
       source: { fileName },
     });
     if (!inputId) throw new Error('Failed to register local-mp4 input');
+    // Parked until the controller's first applyStage — never fullscreen.
+    this.parkUntilPlaced.add(inputId);
     await this.connectInput(inputId);
     // A missing file becomes a placeholder input (mp4AssetMissing) rather than
     // a registration error — detect it and surface a real failure.
@@ -2216,6 +2244,8 @@ export class RoomState {
       source: { fileName },
     });
     if (!inputId) throw new Error('Failed to register local-mp4 input');
+    // Parked until the controller's first applyStage — never fullscreen.
+    this.parkUntilPlaced.add(inputId);
     await this.connectInput(inputId);
     const input = this.inputManager
       .getInputs()
@@ -3335,6 +3365,8 @@ export class RoomState {
         : {}),
     });
     if (!inputId) throw new Error('WHIP input registration failed');
+    // Parked until the controller's first applyStage — never fullscreen.
+    this.parkUntilPlaced.add(inputId);
     const bearerToken = await this.connectInput(inputId);
     return {
       inputId,
@@ -3480,17 +3512,20 @@ export class RoomState {
         // dir may not exist — nothing to sweep
       }
 
-      // Same sweep for the basketball scorer's make/release stills.
-      try {
-        const frameDir = path.join(DATA_DIR, 'bb-shot-frames');
-        const safeRoom = this.idPrefix.replace(/[^a-zA-Z0-9_-]/g, '_');
-        for (const f of await readdir(frameDir)) {
-          if (f.startsWith(safeRoom)) {
-            await remove(path.join(frameDir, f)).catch(() => {});
+      // Same sweep for the basketball scorer's make/release stills and its
+      // instant-replay clips.
+      for (const dir of ['bb-shot-frames', 'bb-replays']) {
+        try {
+          const frameDir = path.join(DATA_DIR, dir);
+          const safeRoom = this.idPrefix.replace(/[^a-zA-Z0-9_-]/g, '_');
+          for (const f of await readdir(frameDir)) {
+            if (f.startsWith(safeRoom)) {
+              await remove(path.join(frameDir, f)).catch(() => {});
+            }
           }
+        } catch {
+          // dir may not exist — nothing to sweep
         }
-      } catch {
-        // dir may not exist — nothing to sweep
       }
 
       await this.motionController.stopAll();
@@ -3700,6 +3735,17 @@ export class RoomState {
               cropLeft: absoluteInput.cropLeft,
               cropRight: absoluteInput.cropRight,
               cropBottom: absoluteInput.cropBottom,
+            });
+            continue;
+          }
+
+          if (this.parkUntilPlaced.has(bi.inputId)) {
+            // Game-owned input the controller has not placed yet: keep it in
+            // the layer (decoder + side channel warm) but off-stage.
+            firstLayer.inputs.push({
+              inputId: bi.inputId,
+              ...kbtParkRect(this.output.resolution),
+              transitionDurationMs: 0,
             });
             continue;
           }

@@ -176,6 +176,40 @@ for (const m of xml.matchAll(
   }
 }
 
+// A free-throw event in the XML spans the foul and every free throw of the
+// sequence (`Timestamp` = the foul, `End-time` = the last throw), so its
+// `tMs` is not a make and its `Score` counts every made throw. Where the
+// footage was checked the made throws are re-timed here (media ms of the
+// ball dropping through the net; `xmlTMs` keeps the annotated time) and a
+// multi-point event becomes one 1-point event per made throw.
+const FREE_THROW_FIXES = {
+  20080409: {
+    2: [{ tMs: 588300, team: 'A', madeAtMs: [612000, 623300], timedFrom: 'cam6 offline trace (eval.py --mode trace), 2026-09-11' }],
+  },
+};
+for (const fix of FREE_THROW_FIXES[game]?.[quarter] ?? []) {
+  const i = events.findIndex(
+    (e) => e.kind === 'throw' && e.shotType === 'free' && e.team === fix.team && e.tMs === fix.tMs,
+  );
+  if (i < 0) {
+    console.warn(`free-throw fix ${fix.team}@${fix.tMs} ms: no matching event`);
+    continue;
+  }
+  const src = events[i];
+  events.splice(
+    i,
+    1,
+    ...fix.madeAtMs.map((t) => ({
+      ...src,
+      tMs: t,
+      made: true,
+      points: 1,
+      xmlTMs: src.tMs,
+      timedFrom: fix.timedFrom,
+    })),
+  );
+}
+
 events.sort((x, y) => x.tMs - y.tMs || x.kind.localeCompare(y.kind));
 
 const out = {

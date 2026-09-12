@@ -158,7 +158,7 @@ const VIEWS: { key: BbSceneName | 'auto'; label: string }[] = [
 ];
 
 function overrideFor(key: BbSceneName | 'auto'): BbViewOverride {
-  if (key === 'auto' || key === 'lobby' || key === 'ended' || key === 'score')
+  if (key === 'auto' || key === 'lobby' || key === 'ended' || key === 'replay')
     return { mode: 'auto' };
   return { mode: 'scene', scene: key };
 }

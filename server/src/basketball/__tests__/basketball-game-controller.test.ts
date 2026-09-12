@@ -21,7 +21,9 @@ function harness(opts?: { withLiveness?: boolean }) {
     [];
   const hudApplies: (BbHudState | null)[] = [];
   const qrCalls: string[] = [];
-  const frameRegisters: string[] = [];
+  const replayRequests: { inputId: string; shotId: string; t?: number }[] = [];
+  const replayClips: { file: string; offsetMs: number; inputId: string }[] = [];
+  const replayUnregisters: string[] = [];
   const connected = new Set<string>();
   const live = new Set<string>();
   // Playhead anchors of file cams (RoomState derives them from the engine).
@@ -73,11 +75,18 @@ function harness(opts?: { withLiveness?: boolean }) {
       qrCalls.push(url);
       return `bb-qr-${qrCalls.length}`;
     },
-    registerShotFrameImage: async (url) => {
-      frameRegisters.push(url);
-      return `img-${frameRegisters.length}`;
+    requestReplay: (inputId, shotId, t) => {
+      replayRequests.push({ inputId, shotId, ...(t != null ? { t } : {}) });
     },
-    unregisterShotFrameImage: () => {},
+    registerReplayClip: async (file, offsetMs) => {
+      const inputId = `bb-replay-${replayClips.length + 1}`;
+      replayClips.push({ file, offsetMs, inputId });
+      return inputId;
+    },
+    unregisterReplayClip: (inputId) => {
+      replayUnregisters.push(inputId);
+    },
+    getPipelineTimeMs: () => 100_000,
     getFileClock: (inputId) => fileClocks.get(inputId) ?? null,
     resyncFileCams: async () => {
       resyncs.push(Date.now());
@@ -92,7 +101,9 @@ function harness(opts?: { withLiveness?: boolean }) {
     layouts,
     hudApplies,
     qrCalls,
-    frameRegisters,
+    replayRequests,
+    replayClips,
+    replayUnregisters,
     connected,
     live,
     fileClocks,
@@ -586,9 +597,9 @@ describe('BasketballGameController — worker feed', () => {
       releaseFrameUrl: '/bb-shot-frames/r.jpg',
     });
     await vi.advanceTimersByTimeAsync(0);
-    expect(h.frameRegisters).toEqual([
-      '/bb-shot-frames/m.jpg',
-      '/bb-shot-frames/r.jpg',
+    // The instant replay is requested at the make's frame time.
+    expect(h.replayRequests).toEqual([
+      { inputId: hoopIn, shotId: made.shot.id, t: 12.5 },
     ]);
     const ball = sentBall(h);
     expect(ball).toMatchObject({
@@ -688,36 +699,142 @@ describe('BasketballGameController — stage + HUD', () => {
     h.controller.dispose();
   });
 
-  it('cuts to the hoop cam immediately on a make and holds the score for the delayed video', async () => {
+  it('holds the score for the delayed video, then opens the REPLAY window over the unchanged layout', async () => {
     const h = harness();
     const { hoopIn, courtIn } = await started(h);
     await vi.advanceTimersByTimeAsync(HOLD + 200); // let the start snapshot land
     expect(h.lastHud()?.stage.scene).toBe('live');
+    const layoutsBefore = h.layouts.length;
     h.controller.simulateShot('A', 0.9);
     await vi.advanceTimersByTimeAsync(0);
-    // Layout + stage flip now…
-    const cut = h.layouts[h.layouts.length - 1];
-    expect(cut.find((t) => t.inputId === hoopIn)).toMatchObject({
-      width: 1920,
-    });
-    expect(cut.find((t) => t.inputId === courtIn)?.width).toBe(480);
-    expect(h.lastHud()?.stage).toMatchObject({ scene: 'score', main: 'hoop' });
-    // …but the score bug still shows the pre-make score for HUD_HOLD_MS.
+    // No cut at detection: layout untouched, scene stays live…
+    expect(h.layouts.length).toBe(layoutsBefore);
+    expect(h.lastHud()?.stage.scene).toBe('live');
+    // …and the worker was asked for the clip.
+    const shotId = h.ofType('bb_shot')[0].shot.id;
+    expect(h.replayRequests).toEqual([{ inputId: hoopIn, shotId }]);
+    // The score bug still shows the pre-make score for HUD_HOLD_MS.
     expect(h.lastHud()?.teams.A.score).toBe(0);
-    await vi.advanceTimersByTimeAsync(HOLD + 100);
+    // Worker delivers the clip 600 ms later: it is mounted so its first frame
+    // lands 250 ms before the window opens (HOLD + replayDelayMs = 4.5 s).
+    await vi.advanceTimersByTimeAsync(600);
+    h.controller.onWorkerResult(hoopIn, {
+      session: 's1',
+      events: [
+        { type: 'replay_ready', shotId, file: 'clip.mp4', durationMs: 8000 },
+      ],
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.replayClips).toEqual([
+      {
+        file: 'clip.mp4',
+        offsetMs: 100_000 + 4500 - 600 - 250,
+        inputId: 'bb-replay-1',
+      },
+    ]);
+    await vi.advanceTimersByTimeAsync(HOLD - 600 + 100);
     expect(h.lastHud()?.teams.A.score).toBe(1);
     expect(h.lastHud()?.lastShot).toMatchObject({
       team: 'A',
       points: 1,
       showBanner: true,
     });
-    // After the linger the stage returns to the live layout.
-    await vi.advanceTimersByTimeAsync(2_600);
     expect(h.lastHud()?.stage.scene).toBe('live');
-    expect(
-      h.layouts[h.layouts.length - 1].find((t) => t.inputId === courtIn)?.width,
-    ).toBe(1920);
-    expect(h.lastState().scene).toBe('live');
+    // Window opens after the banner had its 1.5 s alone.
+    await vi.advanceTimersByTimeAsync(1_500);
+    expect(h.lastHud()?.stage).toMatchObject({
+      scene: 'replay',
+      main: 'court',
+      replay: { inputId: 'bb-replay-1', team: 'A', points: 1, pending: false },
+    });
+    expect(h.lastState().scene).toBe('replay');
+    // Still the live layout underneath (court full, hoop PiP).
+    const during = h.layouts[h.layouts.length - 1];
+    expect(during.find((t) => t.inputId === courtIn)?.width).toBe(1920);
+    expect(during.find((t) => t.inputId === hoopIn)?.width).toBe(480);
+    // Closes as the clip runs out (it started 250 ms before the window and
+    // the closing crossfade covers its last 350 ms: 8000 − 250 − 350); the
+    // input goes after the crossfade.
+    await vi.advanceTimersByTimeAsync(7_400);
+    expect(h.lastHud()?.stage.scene).toBe('live');
+    expect(h.lastHud()?.stage.replay).toBeNull();
+    expect(h.replayUnregisters).toEqual([]);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(h.replayUnregisters).toEqual(['bb-replay-1']);
+    h.controller.dispose();
+  });
+
+  it('drops the replay when the clip never arrives, and keeps it off when disabled', async () => {
+    const h = harness();
+    const { hoopIn } = await started(h);
+    await vi.advanceTimersByTimeAsync(HOLD + 200);
+    h.controller.simulateShot('A', 0.9);
+    await vi.advanceTimersByTimeAsync(HOLD + 1_500 + 2_000 + 100);
+    expect(h.replayRequests).toHaveLength(1);
+    expect(h.replayClips).toEqual([]);
+    expect(h.lastHud()?.stage.scene).toBe('live');
+    // A clip arriving after the grace is mounted and released right away.
+    const shotId = h.replayRequests[0].shotId;
+    h.controller.onWorkerResult(hoopIn, {
+      session: 's1',
+      events: [
+        { type: 'replay_ready', shotId, file: 'late.mp4', durationMs: 8000 },
+      ],
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.replayClips).toEqual([]);
+    expect(h.lastHud()?.stage.scene).toBe('live');
+    // Disabled: no request at all.
+    h.controller.setConfig({ replay: false });
+    h.controller.simulateShot('B', 0.9);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.replayRequests).toHaveLength(1);
+    h.controller.dispose();
+  });
+
+  it('a make during a replay replaces it', async () => {
+    const h = harness();
+    const { hoopIn } = await started(h);
+    await vi.advanceTimersByTimeAsync(HOLD + 200);
+    h.controller.simulateShot('A', 0.9);
+    await vi.advanceTimersByTimeAsync(0);
+    const first = h.replayRequests[0].shotId;
+    h.controller.onWorkerResult(hoopIn, {
+      session: 's1',
+      events: [
+        {
+          type: 'replay_ready',
+          shotId: first,
+          file: 'a.mp4',
+          durationMs: 8000,
+        },
+      ],
+    });
+    await vi.advanceTimersByTimeAsync(HOLD + 1_500 + 100);
+    expect(h.lastHud()?.stage.scene).toBe('replay');
+    h.controller.simulateShot('B', 0.9);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.lastHud()?.stage.scene).toBe('live');
+    expect(h.replayRequests).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(h.replayUnregisters).toEqual(['bb-replay-1']);
+    const second = h.replayRequests[1].shotId;
+    h.controller.onWorkerResult(hoopIn, {
+      session: 's1',
+      events: [
+        {
+          type: 'replay_ready',
+          shotId: second,
+          file: 'b.mp4',
+          durationMs: 6000,
+        },
+      ],
+    });
+    await vi.advanceTimersByTimeAsync(HOLD + 1_500);
+    expect(h.lastHud()?.stage).toMatchObject({
+      scene: 'replay',
+      replay: { inputId: 'bb-replay-2', team: 'B' },
+    });
     h.controller.dispose();
   });
 
@@ -755,17 +872,43 @@ describe('BasketballGameController — stage + HUD', () => {
     h.controller.dispose();
   });
 
-  it('shows the ended card only after the held final score landed', async () => {
+  it('shows the ended card only after the winning make played out (banner, then the replay)', async () => {
     const h = harness();
-    await started(h, { targetPoints: 1, scoreLingerMs: 1000 });
+    const { hoopIn } = await started(h, {
+      targetPoints: 1,
+      replayDelayMs: 1000,
+    });
     h.controller.simulateShot('B', 0.9);
     await vi.advanceTimersByTimeAsync(0);
     expect(h.lastMatch().phase).toBe('ended');
-    expect(h.lastHud()?.stage.scene).toBe('score');
+    expect(h.lastHud()?.stage.scene).toBe('live');
+    const shotId = h.replayRequests[0].shotId;
+    h.controller.onWorkerResult(hoopIn, {
+      session: 's1',
+      events: [
+        { type: 'replay_ready', shotId, file: 'win.mp4', durationMs: 4000 },
+      ],
+    });
+    // Banner lands with the score, the replay opens 1 s later…
     await vi.advanceTimersByTimeAsync(HOLD + 1_100);
+    expect(h.lastHud()?.stage.scene).toBe('replay');
+    expect(h.lastHud()?.teams.B.score).toBe(1);
+    // …and the final card waits for it to close.
+    await vi.advanceTimersByTimeAsync(4_000);
     expect(h.lastHud()?.stage.scene).toBe('ended');
     expect(h.lastHud()?.ended).toMatchObject({ winner: 'B' });
-    expect(h.lastHud()?.teams.B.score).toBe(1);
+    h.controller.dispose();
+  });
+
+  it('a game-ending make without a replay shows the ended card after the banner', async () => {
+    const h = harness();
+    await started(h, { targetPoints: 1, replay: false });
+    h.controller.simulateShot('B', 0.9);
+    await vi.advanceTimersByTimeAsync(HOLD + 100);
+    expect(h.lastHud()?.stage.scene).toBe('live');
+    expect(h.lastHud()?.lastShot?.showBanner).toBe(true);
+    await vi.advanceTimersByTimeAsync(3_500);
+    expect(h.lastHud()?.stage.scene).toBe('ended');
     h.controller.dispose();
   });
 

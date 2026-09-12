@@ -706,3 +706,49 @@ class ShotDetector:
                 if ball_in_hands(ball, person):
                     return {"t": t, "person": dict(person), "ball": dict(ball)}
         return None
+
+
+# ── Instant replay: which buffered frames make the clip ──────────────────────
+
+# Source seconds before / after the make in the replay clip.
+REPLAY_BEFORE_S = 3.0
+REPLAY_AFTER_S = 1.0
+# Playback slow-down (2 = half speed) and the clip's frame rate.
+REPLAY_SLOW = 2
+REPLAY_OUT_FPS = 30
+
+
+def replay_frame_plan(
+    frames: "list[tuple[float, Any]]",
+    t: float,
+    before: float = REPLAY_BEFORE_S,
+    after: float = REPLAY_AFTER_S,
+    slow: int = REPLAY_SLOW,
+    out_fps: int = REPLAY_OUT_FPS,
+) -> tuple[list, int]:
+    """Pick the buffered frames for a slow-motion clip around source time `t`.
+
+    `frames` are `(pts, payload)` in pts order (the worker's ring buffer).
+    Source time `t - before .. t + after` (clipped to what the buffer holds)
+    is sampled every `1 / (out_fps * slow)` seconds; each sample takes the
+    nearest buffered frame, so a 20 fps analysis feed becomes a 30 fps clip
+    that plays `slow`× slower (frames repeat, nothing is interpolated).
+    Returns the payloads in output order and the clip length in ms; empty
+    when the buffer does not cover the window at all."""
+    if not frames or out_fps <= 0 or slow <= 0:
+        return [], 0
+    pts = [p for p, _ in frames]
+    start = max(t - before, pts[0])
+    end = min(t + after, pts[-1])
+    if end <= start:
+        return [], 0
+    step = 1.0 / (out_fps * slow)
+    n = int(math.floor((end - start) / step + 1e-9)) + 1
+    out = []
+    j = 0
+    for i in range(n):
+        ts = start + i * step
+        while j + 1 < len(pts) and abs(pts[j + 1] - ts) <= abs(pts[j] - ts):
+            j += 1
+        out.append(frames[j][1])
+    return out, round(len(out) * 1000 / out_fps)

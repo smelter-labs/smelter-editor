@@ -3213,7 +3213,8 @@ const BbConfigSchema = Type.Object({
   arcPoints: Type.Optional(Type.Number()),
   autoAssignMinConf: Type.Optional(Type.Number()),
   shotFrames: Type.Optional(Type.Boolean()),
-  scoreLingerMs: Type.Optional(Type.Number()),
+  replay: Type.Optional(Type.Boolean()),
+  replayDelayMs: Type.Optional(Type.Number()),
   rim: Type.Optional(Type.Union([BbRimSchema, Type.Null()])),
   detector: Type.Optional(
     Type.Object({

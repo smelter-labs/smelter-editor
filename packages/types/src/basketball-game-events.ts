@@ -77,10 +77,14 @@ export type BbConfig = {
   /** AI team attribution at or above this confidence is auto-confirmed;
    * below it the make lands in the moderator's pending queue. */
   autoAssignMinConf: number;
-  /** Save make + release stills for the HUD / moderator queue. */
+  /** Save make + release stills for the moderator queue. */
   shotFrames: boolean;
-  /** How long the hoop cam stays featured after a make lands on air. */
-  scoreLingerMs: number;
+  /** Instant replay: after a make, the hoop cam's last seconds play back in
+   * slow motion in a REPLAY window over the live picture. */
+  replay: boolean;
+  /** How long the SCORE! banner shows alone before the REPLAY window opens
+   * (counted from the make landing on air). */
+  replayDelayMs: number;
   /** Calibrated rim ellipse; null until the hoop phone calibrates. */
   rim: BbRim | null;
   detector: BbDetectorConfig;
@@ -97,7 +101,8 @@ export type BbConfigPatch = {
   arcPoints?: number;
   autoAssignMinConf?: number;
   shotFrames?: boolean;
-  scoreLingerMs?: number;
+  replay?: boolean;
+  replayDelayMs?: number;
   rim?: BbRim | null;
   detector?: Partial<BbDetectorConfig>;
   perf?: Partial<BbPerfConfig>;
@@ -143,7 +148,8 @@ export const BB_DEFAULT_CONFIG: BbConfig = {
   arcPoints: 2,
   autoAssignMinConf: 0.6,
   shotFrames: true,
-  scoreLingerMs: 2500,
+  replay: true,
+  replayDelayMs: 1500,
   rim: null,
   detector: {
     ballDetector: "auto",
@@ -295,12 +301,13 @@ export type BbCommentator = {
 };
 
 /**
- * Broadcast scenes. lobby/live/score/ended derive from the match state;
+ * Broadcast scenes. lobby/live/replay/ended derive from the match state
+ * (replay = the instant-replay window over the live layout after a make);
  * hoop/court (one camera full-frame), caster (commentator full-frame) and
  * split (court + commentator) only come from the panel's view override.
  */
 export type BbSceneName =
-  "lobby" | "live" | "score" | "hoop" | "court" | "caster" | "split" | "ended";
+  "lobby" | "live" | "replay" | "hoop" | "court" | "caster" | "split" | "ended";
 
 export type BbViewOverride =
   | { mode: "auto" }

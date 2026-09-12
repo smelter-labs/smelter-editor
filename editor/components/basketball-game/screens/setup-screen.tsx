@@ -417,6 +417,19 @@ export function SetupScreen({
                   }
                 />
               </KvRow>
+              <KvRow label='REPLAY'>
+                <Segment
+                  height={22}
+                  fontSize={9}
+                  style={{ width: 90 }}
+                  options={[
+                    { value: 'on', label: 'ON' },
+                    { value: 'off', label: 'OFF' },
+                  ]}
+                  value={config.replay ? 'on' : 'off'}
+                  onChange={(v) => onConfig({ ...config, replay: v === 'on' })}
+                />
+              </KvRow>
               <KvRow label='PRESET'>
                 <Segment
                   height={22}

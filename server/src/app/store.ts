@@ -620,14 +620,15 @@ export type BbHudRect = { x: number; y: number; width: number; height: number };
 /**
  * Which broadcast scene the basketball chrome renders: 'lobby' = join QRs +
  * cam status over the court cam, 'live' = court full + hoop PiP + score bug,
- * 'score' = hoop full-frame featured for a make (+ SCORE banner once the held
- * data lands), 'hoop' / 'court' = one camera full-frame, 'caster' /
- * 'split' = commentator views (panel override), 'ended' = final card.
+ * 'replay' = the live layout dimmed under the REPLAY window (the make's
+ * slow-motion clip) once the SCORE! banner has landed, 'hoop' / 'court' =
+ * one camera full-frame, 'caster' / 'split' = commentator views (panel
+ * override), 'ended' = final card.
  */
 export type BbHudScene =
   | 'lobby'
   | 'live'
-  | 'score'
+  | 'replay'
   | 'hoop'
   | 'court'
   | 'caster'
@@ -648,6 +649,15 @@ export type BbHudStage = {
   caster: BbHudRect | null;
   /** Two tiles side by side (court + commentator). */
   split: boolean;
+  /** scene 'replay': the mounted clip input + the make it shows. */
+  replay: {
+    inputId: string;
+    team: 'A' | 'B' | null;
+    teamName: string | null;
+    color: string;
+    points: 1 | 2;
+    pending: boolean;
+  } | null;
 };
 
 export type BbHudTeam = { name: string; color: string; score: number };
@@ -672,8 +682,6 @@ export type BbHudState = {
     points: 1 | 2;
     pending: boolean;
     showBanner: boolean;
-    /** Registered engine image of the release still, once it landed. */
-    frameImageId: string | null;
   } | null;
   /** Makes awaiting a team in the moderator queue ("+1 ?" pill). */
   pendingCount: number;

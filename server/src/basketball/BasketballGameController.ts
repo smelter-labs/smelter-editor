@@ -87,7 +87,17 @@ export type BbWorkerEvent =
       result: 'made' | 'miss';
     }
   | { type: 'ball_found' }
-  | { type: 'ball_lost' };
+  | { type: 'ball_lost' }
+  /** Answers to the `replay` command (see BaseSidecar.requestReplay). */
+  | {
+      type: 'replay_ready';
+      shotId: string;
+      /** File name under data/bb-replays. */
+      file: string;
+      durationMs: number;
+      t?: number;
+    }
+  | { type: 'replay_failed'; shotId: string; reason?: string };
 
 /** The slice of the worker's per-frame result the controller reads. */
 export type BbWorkerResult = {
@@ -144,10 +154,21 @@ export type BbControllerDeps = {
   publishHud: (state: BbHudState | null) => void;
   /** Render `url` as a QR PNG and register it; resolves with the image id. */
   registerJoinQr: (url: string) => Promise<string>;
-  /** Register a saved shot still (`/bb-shot-frames/…`) as an engine image;
-   * resolves null when the file is gone. */
-  registerShotFrameImage: (url: string) => Promise<string | null>;
-  unregisterShotFrameImage: (imageId: string) => void;
+  /**
+   * Instant replay. `requestReplay` asks the scorer worker for a clip of the
+   * hoop cam around frame time `t` (its newest frame when omitted), tagged
+   * with the ledger id; the answer arrives as a `replay_ready` /
+   * `replay_failed` worker event. `registerReplayClip` mounts the delivered
+   * file as a global engine input whose first frame lands at pipeline time
+   * `offsetMs`; resolves null when the file is gone or the engine refused.
+   */
+  requestReplay: (inputId: string, shotId: string, t?: number) => void;
+  registerReplayClip: (
+    file: string,
+    offsetMs: number,
+  ) => Promise<string | null>;
+  unregisterReplayClip: (inputId: string, file: string) => void;
+  getPipelineTimeMs: () => number;
   /**
    * Playhead anchor of a local-mp4 input: at wall time `anchorWallMs` the clip
    * was (re)registered playing from `playFromMs`. Null when the input is not
@@ -264,6 +285,15 @@ const PARK_LEAD_MS = 50;
 const SHOT_GRACE_MS = 600;
 const BANNER_MS = 4000;
 const SCORE_BANNER_MS = 3500;
+/**
+ * Instant replay: the clip input is registered so its first frame lands this
+ * much before the window opens — the crossfade then shows video from its
+ * first frame instead of a dark plate.
+ */
+const REPLAY_CLIP_LEAD_MS = 250;
+/** The worker has this long past the planned opening to deliver the clip;
+ * after that the make is carried by the SCORE! banner alone. */
+const REPLAY_OPEN_GRACE_MS = 2000;
 const RECENT_SHOTS = 12;
 const BALL_EVENT_MIN_MS = 250;
 const BALL_STATE_BROADCAST_MIN_MS = 1000;
@@ -361,8 +391,27 @@ export class BasketballGameController {
     'hoop' | 'court' | 'commentator',
     string | null
   > = { hoop: null, court: null, commentator: null };
-  /** url → engine imageId for shot stills (freed at dispose). */
-  private readonly frameImageIds = new Map<string, string>();
+  /**
+   * Instant replay of the newest make: requested from the worker at ingest,
+   * opened `HUD_HOLD_MS + replayDelayMs` later (after the SCORE! banner
+   * landed on the delayed video), closed when the clip ran out. A newer make
+   * replaces it. `inputId` is set once the worker's clip is mounted.
+   */
+  private instantReplay: {
+    shotId: string;
+    file: string | null;
+    inputId: string | null;
+    durationMs: number;
+    openAt: number;
+    /** Wall time the clip's first frame is scheduled to land (set once the
+     * clip is mounted); its end is `clipStartAt + durationMs`. */
+    clipStartAt: number | null;
+    /** Set when the window opened; the scene stays 'replay' until then. */
+    closeAt: number | null;
+    /** The worker gave up (or the clip never arrived in time). */
+    dropped: boolean;
+  } | null = null;
+  private instantReplayTimer: ReturnType<typeof setTimeout> | null = null;
 
   // ── layout machinery (ported from the kettlebell tournament) ──
   private lastStagedInputIds = new Set<string>();
@@ -1104,7 +1153,9 @@ export class BasketballGameController {
     if (clocks.length === 0) return;
     // One request per pass: the restart moves every anchor, which changes
     // this signature; until then (or if the restart failed) stay quiet.
-    const sig = clocks.map((c) => BasketballGameController.clockSig(c)).join('|');
+    const sig = clocks
+      .map((c) => BasketballGameController.clockSig(c))
+      .join('|');
     if (sig === this.lastLoopResyncSig) return;
     const wrapping = clocks.some(
       ({ clock }) =>
@@ -1511,7 +1562,8 @@ export class BasketballGameController {
       arcPoints?: number;
       autoAssignMinConf?: number;
       shotFrames?: boolean;
-      scoreLingerMs?: number;
+      replay?: boolean;
+      replayDelayMs?: number;
       rim?: BbRim | null;
       detector?: Partial<BbConfig['detector']>;
       perf?: Partial<BbConfig['perf']>;
@@ -1578,11 +1630,14 @@ export class BasketballGameController {
       if (partial.shotFrames !== c.shotFrames) aiParamsChanged = true;
       c.shotFrames = partial.shotFrames;
     }
+    if (typeof partial.replay === 'boolean') {
+      c.replay = partial.replay;
+    }
     if (
-      typeof partial.scoreLingerMs === 'number' &&
-      Number.isFinite(partial.scoreLingerMs)
+      typeof partial.replayDelayMs === 'number' &&
+      Number.isFinite(partial.replayDelayMs)
     ) {
-      c.scoreLingerMs = clamp(Math.round(partial.scoreLingerMs), 0, 10_000);
+      c.replayDelayMs = clamp(Math.round(partial.replayDelayMs), 0, 5_000);
     }
     if (partial.rim !== undefined) {
       const rim = partial.rim === null ? null : this.parseRim(partial.rim);
@@ -1806,6 +1861,7 @@ export class BasketballGameController {
     this.attemptSeq = 0;
     this.lastShot = null;
     this.banner = null;
+    this.closeInstantReplay();
     this.recompute();
   }
 
@@ -2072,8 +2128,7 @@ export class BasketballGameController {
     this.shots.push(shot);
     this.afterLedgerChange(now);
     this.lastShot = { shot, at: now };
-    if (shot.frameUrl) void this.armFrameImage(shot.frameUrl);
-    if (shot.releaseFrameUrl) void this.armFrameImage(shot.releaseFrameUrl);
+    this.scheduleInstantReplay(shot, now);
     this.deps.broadcast({
       type: 'bb_shot',
       roomId: this.roomId,
@@ -2081,9 +2136,9 @@ export class BasketballGameController {
       shot: { ...shot },
       scores: this.scores(),
     });
-    // Predictive cut: the layout flips to the hoop cam NOW (the ball is still
-    // in the air on the delayed video); the score/banner ride the 3 s hold.
-    this.syncScene();
+    // No cut at detection: the layout stays put, the score + SCORE! banner
+    // ride the 3 s hold onto the frames where the ball drops, and the REPLAY
+    // window opens after the banner (scheduleInstantReplay).
     this.publishHud();
     this.checkEnd(now);
     this.broadcastState();
@@ -2232,13 +2287,174 @@ export class BasketballGameController {
     });
   }
 
-  private async armFrameImage(url: string): Promise<void> {
-    if (this.frameImageIds.has(url)) return;
-    const id = await this.deps.registerShotFrameImage(url).catch(() => null);
-    if (this.disposed || !id) return;
-    this.frameImageIds.set(url, id);
-    // Re-publish so the still lands with (or right after) the banner.
-    this.publishHud();
+  // ── Instant replay ────────────────────────────────────────────────────────
+
+  /**
+   * Ask the worker for the clip and plan the window: it opens once the make
+   * has landed on air and the SCORE! banner had `replayDelayMs` alone. A make
+   * during a running replay replaces it (the old clip is dropped at once).
+   */
+  private scheduleInstantReplay(shot: BbShotEvent, now: number): void {
+    this.closeInstantReplay();
+    const hoop = this.cams.get('hoop');
+    if (!this.config.replay || !hoop?.inputId) return;
+    const openAt = now + HUD_HOLD_MS + this.config.replayDelayMs;
+    this.instantReplay = {
+      shotId: shot.id,
+      file: null,
+      inputId: null,
+      durationMs: 0,
+      openAt,
+      clipStartAt: null,
+      closeAt: null,
+      dropped: false,
+    };
+    this.deps.requestReplay(hoop.inputId, shot.id, shot.sourceT);
+    this.armInstantReplayTimer(openAt - now);
+  }
+
+  /** Worker delivered (or gave up on) the clip for `shotId`. */
+  private onReplayEvent(
+    ev: Extract<BbWorkerEvent, { type: 'replay_ready' | 'replay_failed' }>,
+  ): void {
+    const r = this.instantReplay;
+    if (!r || r.shotId !== ev.shotId || r.inputId || r.dropped) return;
+    if (ev.type === 'replay_failed') {
+      this.dropInstantReplay(`worker: ${ev.reason ?? 'failed'}`);
+      return;
+    }
+    if (!(ev.durationMs > 0)) {
+      this.dropInstantReplay('empty clip');
+      return;
+    }
+    r.file = ev.file;
+    r.durationMs = ev.durationMs;
+    // First frame lands just before the window opens (or now, when late).
+    const now = this.now();
+    const startIn = Math.max(0, r.openAt - REPLAY_CLIP_LEAD_MS - now);
+    const offsetMs = this.deps.getPipelineTimeMs() + startIn;
+    r.clipStartAt = now + startIn;
+    void this.deps
+      .registerReplayClip(ev.file, offsetMs)
+      .then((inputId) => {
+        if (this.disposed) {
+          if (inputId) this.deps.unregisterReplayClip(inputId, ev.file);
+          return;
+        }
+        if (this.instantReplay !== r || r.dropped) {
+          if (inputId) this.deps.unregisterReplayClip(inputId, ev.file);
+          return;
+        }
+        if (!inputId) {
+          this.dropInstantReplay('register failed');
+          return;
+        }
+        r.inputId = inputId;
+        const at = this.now();
+        if (at >= r.openAt) this.openInstantReplay(at);
+      })
+      .catch((err) => {
+        console.error('[bb] replay clip register failed', err);
+        this.dropInstantReplay('register failed');
+      });
+  }
+
+  private armInstantReplayTimer(delayMs: number): void {
+    if (this.instantReplayTimer) clearTimeout(this.instantReplayTimer);
+    this.instantReplayTimer = setTimeout(
+      () => {
+        this.instantReplayTimer = null;
+        this.tickInstantReplay();
+      },
+      Math.max(0, delayMs),
+    );
+  }
+
+  /** Open / give up / close on schedule. */
+  private tickInstantReplay(): void {
+    if (this.disposed) return;
+    const r = this.instantReplay;
+    if (!r || r.dropped) return;
+    const now = this.now();
+    if (r.closeAt != null) {
+      if (now >= r.closeAt) this.closeInstantReplay();
+      else this.armInstantReplayTimer(r.closeAt - now);
+      return;
+    }
+    if (r.inputId) {
+      if (now >= r.openAt) this.openInstantReplay(now);
+      else this.armInstantReplayTimer(r.openAt - now);
+      return;
+    }
+    // Clip not here yet: wait out the grace, then let it go.
+    if (now >= r.openAt + REPLAY_OPEN_GRACE_MS) {
+      this.dropInstantReplay('clip never arrived');
+      return;
+    }
+    this.armInstantReplayTimer(r.openAt + REPLAY_OPEN_GRACE_MS - now);
+  }
+
+  private openInstantReplay(now: number): void {
+    const r = this.instantReplay;
+    if (!r || !r.inputId || r.closeAt != null) return;
+    // Start the closing crossfade while the last frames are still up: a
+    // finished mp4 input renders nothing, and a dark well before the fade
+    // reads as a glitch (the clip began REPLAY_CLIP_LEAD_MS before us).
+    const clipEndAt = (r.clipStartAt ?? now) + r.durationMs;
+    r.closeAt = Math.max(
+      now + KBT_VIEW_TRANSITION_MS,
+      clipEndAt - KBT_VIEW_TRANSITION_MS,
+    );
+    this.armInstantReplayTimer(r.closeAt - now);
+    this.syncScene(now);
+  }
+
+  /** Window closes (scene leaves 'replay'); the clip input goes after the
+   * crossfade so the outgoing chrome still has frames to fade out. */
+  private closeInstantReplay(): void {
+    const r = this.instantReplay;
+    if (!r) return;
+    this.instantReplay = null;
+    if (this.instantReplayTimer) {
+      clearTimeout(this.instantReplayTimer);
+      this.instantReplayTimer = null;
+    }
+    const { inputId, file } = r;
+    if (inputId && file) {
+      setTimeout(
+        () => this.deps.unregisterReplayClip(inputId, file),
+        KBT_VIEW_TRANSITION_MS + 100,
+      );
+    }
+    if (!this.disposed) this.syncScene();
+  }
+
+  private dropInstantReplay(reason: string): void {
+    const r = this.instantReplay;
+    if (!r) return;
+    console.log(`[bb] instant replay dropped (${reason})`);
+    r.dropped = true;
+    if (this.instantReplayTimer) {
+      clearTimeout(this.instantReplayTimer);
+      this.instantReplayTimer = null;
+    }
+    if (r.inputId && r.file) this.deps.unregisterReplayClip(r.inputId, r.file);
+    r.inputId = null;
+    if (!this.disposed) this.syncScene();
+  }
+
+  /** The REPLAY window is on air (or still due) for the newest make. */
+  private instantReplayOpen(now: number): boolean {
+    const r = this.instantReplay;
+    return !!r && !r.dropped && r.closeAt != null && now < r.closeAt;
+  }
+
+  /** Still waiting for the clip, or the window is open. */
+  private instantReplayPending(now: number): boolean {
+    const r = this.instantReplay;
+    if (!r || r.dropped) return false;
+    if (r.closeAt != null) return now < r.closeAt;
+    return now < r.openAt + REPLAY_OPEN_GRACE_MS;
   }
 
   // ── Worker feed ───────────────────────────────────────────────────────────
@@ -2287,6 +2503,10 @@ export class BasketballGameController {
     }
     for (const ev of data.events ?? []) {
       if (!ev || typeof ev !== 'object') continue;
+      if (ev.type === 'replay_ready' || ev.type === 'replay_failed') {
+        if (typeof ev.shotId === 'string') this.onReplayEvent(ev);
+        continue;
+      }
       if (ev.type === 'shot_made') {
         if (typeof ev.index !== 'number' || ev.index <= this.lastMadeIndex)
           continue;
@@ -2397,16 +2617,24 @@ export class BasketballGameController {
     const forced = this.overrideScene();
     if (forced) return forced;
     if (this.phase === 'lobby') return 'lobby';
-    const scoreWindow = HUD_HOLD_MS + this.config.scoreLingerMs;
     if (this.phase === 'ended' && this.endedAt != null) {
-      const delay = this.endedByShot ? scoreWindow : HUD_HOLD_MS;
-      if (now - this.endedAt >= delay) return 'ended';
+      // A game-ending make plays out in full (banner, then the replay) before
+      // the final card; the buzzer only waits for the held score to land.
+      const delay = this.endedByShot
+        ? HUD_HOLD_MS + SCORE_BANNER_MS
+        : HUD_HOLD_MS;
+      if (
+        now - this.endedAt >= delay &&
+        !(this.endedByShot && this.instantReplayPending(now))
+      ) {
+        return 'ended';
+      }
     }
-    if (this.lastShot && now - this.lastShot.at < scoreWindow) return 'score';
+    if (this.instantReplayOpen(now)) return 'replay';
     return 'live';
   }
 
-  /** Re-derive the scene and restage when it moved (the predictive cut). */
+  /** Re-derive the scene and restage when it moved. */
   private syncScene(now = this.now()): void {
     const scene = this.computeScene(now);
     if (scene === this.stagedScene) return;
@@ -2436,23 +2664,35 @@ export class BasketballGameController {
       pip: null,
       caster: null,
       split: false,
+      replay: null,
     };
     const roleOf = (inputId: string): 'hoop' | 'court' | 'commentator' =>
       inputId === hoop ? 'hoop' : inputId === court ? 'court' : 'commentator';
     const place = (inputId: string, rect: typeof full) =>
       tiles.push({ inputId, ...rect });
 
+    const replay = this.instantReplay;
+    if (scene === 'replay' && replay?.inputId) {
+      // The window shows the newest make as the ledger has it NOW (a
+      // moderator may have assigned the team since the AI reported it).
+      const shot = this.shots.find((s) => s.id === replay.shotId) ?? null;
+      const team = shot?.team ?? null;
+      stage.replay = {
+        inputId: replay.inputId,
+        team,
+        teamName: team ? this.config.teams[team].name : null,
+        color: team ? this.config.teams[team].color : '#f4efe6',
+        points: shot?.points ?? 1,
+        pending: shot?.status === 'pending',
+      };
+    }
+
     switch (scene) {
-      case 'score':
       case 'hoop': {
         const main = hoop ?? court;
         if (main) {
           place(main, full);
           stage.main = roleOf(main);
-        }
-        if (scene === 'score' && main === hoop && court) {
-          place(court, pipRect);
-          stage.pip = { role: 'court', rect: pipRect };
         }
         break;
       }
@@ -2489,7 +2729,8 @@ export class BasketballGameController {
         // No commentator input after all — fall through to the live layout.
       }
       default: {
-        // lobby / live / ended (and split without a caster)
+        // lobby / live / replay / ended (and split without a caster): the
+        // replay window is chrome over the unchanged live layout — no cut.
         const main = court ?? hoop;
         if (main) {
           place(main, full);
@@ -2898,14 +3139,6 @@ export class BasketballGameController {
             pending: shot.shot.status === 'pending',
             showBanner:
               shot.shot.status !== 'voided' && now - shot.at <= SCORE_BANNER_MS,
-            frameImageId:
-              (shot.shot.releaseFrameUrl
-                ? this.frameImageIds.get(shot.shot.releaseFrameUrl)
-                : undefined) ??
-              (shot.shot.frameUrl
-                ? this.frameImageIds.get(shot.shot.frameUrl)
-                : undefined) ??
-              null,
           }
         : null,
       pendingCount: this.shots.filter((s) => s.status === 'pending').length,
@@ -3015,10 +3248,18 @@ export class BasketballGameController {
       clearTimeout(this.parkTimer);
       this.parkTimer = null;
     }
-    for (const imageId of this.frameImageIds.values()) {
-      this.deps.unregisterShotFrameImage(imageId);
+    // The replay clip is a global engine input — ours to unregister.
+    if (this.instantReplayTimer) {
+      clearTimeout(this.instantReplayTimer);
+      this.instantReplayTimer = null;
     }
-    this.frameImageIds.clear();
+    if (this.instantReplay?.inputId && this.instantReplay.file) {
+      this.deps.unregisterReplayClip(
+        this.instantReplay.inputId,
+        this.instantReplay.file,
+      );
+    }
+    this.instantReplay = null;
     // Room teardown removes inputs itself; just drop our references.
     for (const cam of this.cams.values()) cam.inputId = null;
     this.cams.clear();

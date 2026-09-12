@@ -31,6 +31,8 @@ export type BbUiConfig = {
   arcPoints: 1 | 2;
   autoAssignMinConf: number;
   shotFrames: boolean;
+  /** Instant replay window after a make. */
+  replay: boolean;
   detector: BbDetectorConfig;
   /** Broadcast output size — applied at room creation, fixed afterwards. */
   resolution: ResolutionPreset;
@@ -98,6 +100,7 @@ export const DEFAULT_BB_UI_CONFIG: BbUiConfig = {
   arcPoints: 2,
   autoAssignMinConf: 0.6,
   shotFrames: true,
+  replay: true,
   detector: { ...BB_DEFAULT_CONFIG.detector },
   resolution: '1080p',
   perf: { ...BB_DEFAULT_CONFIG.perf },
@@ -117,6 +120,7 @@ export function serverConfigToUi(
     arcPoints: cfg.arcPoints,
     autoAssignMinConf: cfg.autoAssignMinConf,
     shotFrames: cfg.shotFrames,
+    replay: cfg.replay,
     detector: sanitizeBbDetector(cfg.detector),
     resolution,
     perf: sanitizeBbPerf(cfg.perf),
@@ -133,6 +137,7 @@ export function uiConfigToPatch(cfg: BbUiConfig) {
     arcPoints: cfg.arcPoints,
     autoAssignMinConf: cfg.autoAssignMinConf,
     shotFrames: cfg.shotFrames,
+    replay: cfg.replay,
     detector: cfg.detector,
     perf: cfg.perf,
   };

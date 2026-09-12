@@ -66,6 +66,7 @@ function loadConfig(): BbUiConfig {
           : d.autoAssignMinConf,
       shotFrames:
         typeof p.shotFrames === 'boolean' ? p.shotFrames : d.shotFrames,
+      replay: typeof p.replay === 'boolean' ? p.replay : d.replay,
       detector: sanitizeBbDetector(p.detector),
       resolution:
         p.resolution && p.resolution in RESOLUTION_PRESETS
