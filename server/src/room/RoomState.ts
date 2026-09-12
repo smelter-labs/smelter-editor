@@ -1,6 +1,13 @@
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
-import { ensureDir, pathExists, readdir, remove, writeFile } from 'fs-extra';
+import {
+  ensureDir,
+  pathExists,
+  readdir,
+  readFile,
+  remove,
+  writeFile,
+} from 'fs-extra';
 import QRCode from 'qrcode';
 import { Mutex } from 'async-mutex';
 import { SmelterInstance, type SmelterOutput } from '../smelter';
@@ -44,7 +51,7 @@ import {
 import { PeopleTracker } from '../ai-models/people-counter/people-tracker';
 import { jitterBoxes } from '../ai-models/people-counter/box-jitter';
 import { CarTracker } from '../ai-models/car-ads/car-tracker';
-import { kettlebellSkeletonMode } from '../app/store';
+import { kbtParkRect, kettlebellSkeletonMode } from '../app/store';
 import type { CarAdDetection } from '../app/store';
 import { DuckHunterController } from '../duckHunter/DuckHunterController';
 import type { MatchCommand } from '../duckHunter/DuckHunterController';
@@ -70,6 +77,23 @@ import {
   type KbtMatchCommand,
   type KbtMatchError,
 } from '../kettlebell/KettlebellTournamentController';
+import {
+  BasketballGameController,
+  type BbMatchCommand,
+  type BbMatchError,
+  type BbWorkerResult,
+} from '../basketball/BasketballGameController';
+import { BASKETBALL_SCORER_ID } from '../ai-models/basketball-scorer/manifest';
+import type {
+  BbCamRole,
+  BbConfig,
+  BbMatchEvent,
+  BbShotEvent,
+  BbReplayState,
+  BbRim,
+  BbStateEvent,
+  BbTeamId,
+} from '@smelter-editor/types';
 import type {
   KbtConfig,
   KbtExerciseKey,
@@ -94,6 +118,11 @@ import { AudioController } from '../audio/AudioController';
 import type { AudioStoreState } from '../audio/audioStore';
 import type { StoreApi } from 'zustand';
 import { DATA_DIR } from '../dataDir';
+import {
+  parseBbGroundTruth,
+  selectReplayShots,
+  type ReplaySelectOptions,
+} from '../basketball/groundTruth';
 import type {
   PendingWhipInputData,
   RoomInputState,
@@ -287,6 +316,7 @@ export class RoomState {
   private readonly kettlebellController: KettlebellCoachController;
   /** Kettlebell Tournament (phone cameras + coach reps → heats + scores). */
   private readonly kbTournament: KettlebellTournamentController;
+  private readonly basketball: BasketballGameController;
 
   /**
    * Per-input wall-clock of the last SCHEDULED kettlebell overlay apply. The
@@ -314,6 +344,14 @@ export class RoomState {
     { timer: ReturnType<typeof setTimeout>; jpegPath: string }
   >();
 
+  /**
+   * Inputs a game controller owns (KBT/basketball cams and file clips). The
+   * controller lays them out itself, but a store flush can run between
+   * `connectInput` and its first `layoutTiles` — the unplaced-input
+   * auto-append in flushStoreUpdate would then air them FULLSCREEN for a
+   * frame. Ids listed here fall back to the off-stage park rect instead.
+   */
+  private parkUntilPlaced = new Set<string>();
   private storeUpdateScheduled = false;
   private lastStoreFlushTime = 0;
   private pendingStoreFlushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -481,35 +519,8 @@ export class RoomState {
       // registered here get the video side channel the coach model needs, and
       // the standard `${roomId}::whip::${uuid}` id stays inside the 103-char
       // unix-socket path budget.
-      registerPlayerCam: async (name, dims, opts) => {
-        const inputId = await this.addNewInput({
-          type: 'whip',
-          username: `[camera] ${name}`,
-          // Cams that will never run the coach (commentator) skip the
-          // side channel and its 3 s buffering delay.
-          noSideChannel: opts?.ai === false,
-          // Real track dimensions from the phone: the registration path
-          // honors exact dims (updateInput's bare-orientation heuristic
-          // would clobber them, so orientation always travels WITH dims).
-          ...(dims
-            ? {
-                nativeWidth: dims.width,
-                nativeHeight: dims.height,
-                orientation:
-                  dims.height > dims.width
-                    ? ('vertical' as const)
-                    : ('horizontal' as const),
-              }
-            : {}),
-        });
-        if (!inputId) throw new Error('WHIP input registration failed');
-        const bearerToken = await this.connectInput(inputId);
-        return {
-          inputId,
-          whipUrl: `${config.whipBaseUrl}/${inputId}`,
-          bearerToken,
-        };
-      },
+      registerPlayerCam: (name, dims, opts) =>
+        this.registerGameWhipCam(name, dims, opts),
       removeInput: (inputId) => this.removeInput(inputId),
       setKettlebellCoach: (inputId, enabled, params) =>
         this.setAIModelEnabled(
@@ -614,6 +625,139 @@ export class RoomState {
       unregisterRepShotImage: (imageId) => {
         void SmelterInstance.unregisterImage(imageId).catch(() => {});
       },
+    });
+
+    // Basketball Game: same deps shape as the kettlebell tournament. Every
+    // basketball cam keeps the side channel (`ai: true`) so hoop, court and
+    // commentator share one 3 s delay — the held score bug and the replay
+    // window timing both rely on it.
+    this.basketball = new BasketballGameController(idPrefix, {
+      broadcast: (event) => roomEventBus.broadcast(idPrefix, event),
+      sendTo: (clientId, event) =>
+        roomEventBus.sendTo(idPrefix, clientId, event),
+      hasActiveRecording: () => this.recordingController.hasActiveRecording(),
+      registerGameCam: (name, dims, opts) =>
+        this.registerGameWhipCam(name, dims, opts),
+      removeInput: (inputId) => this.removeInput(inputId),
+      setBasketballScorer: (inputId, enabled, params) =>
+        this.setAIModelEnabled(
+          inputId,
+          BASKETBALL_SCORER_ID,
+          enabled,
+          undefined,
+          false,
+          params,
+        ),
+      setAnimTickMs: (ms) => this.output.store.getState().setAnimTickMs(ms),
+      layoutTiles: (tiles) =>
+        this.updateLayers([
+          {
+            id: 'bb-stage',
+            inputs: tiles.map((t) => ({
+              inputId: t.inputId,
+              x: t.x,
+              y: t.y,
+              width: t.width,
+              height: t.height,
+              transitionDurationMs: t.transitionDurationMs,
+              transitionEasing: t.transitionEasing,
+            })),
+          },
+        ]),
+      runInputTransition: (inputId, transition) =>
+        this.inputManager.updateInput(inputId, {
+          activeTransition: transition,
+        }),
+      isInputConnected: (inputId) =>
+        this.inputManager
+          .getInputs()
+          .some((i) => i.inputId === inputId && i.status === 'connected'),
+      isInputLive: (inputId) => this.inputManager.isWhipInputLive(inputId),
+      getResolution: () => this.output.store.getState().resolution,
+      // Playhead of a file cam: pipeline-relative registration time mapped
+      // back to wall clock (media time = playFromMs + elapsed since then).
+      getFileClock: (inputId) => {
+        const input = this.inputManager
+          .getInputs()
+          .find((i) => i.inputId === inputId);
+        const start = SmelterInstance.getStartTime();
+        if (
+          !input ||
+          input.type !== 'local-mp4' ||
+          input.status !== 'connected' ||
+          start == null ||
+          input.registeredAtPipelineMs == null
+        ) {
+          return null;
+        }
+        return {
+          anchorWallMs: start + input.registeredAtPipelineMs,
+          playFromMs: input.playFromMs ?? 0,
+          durationMs: input.mp4DurationMs ?? null,
+          delayMs:
+            (input.registeredSideChannelDelayMs ?? 0) > 0
+              ? (input.registeredSideChannelDelayMs ?? 0) +
+                RoomState.FILE_CAM_DELAY_TRIM_MS
+              : 0,
+        };
+      },
+      // Looping clips: the engine re-anchors a track at every wrap and a
+      // side-channel input then lags by its delay (and stalls after the
+      // second wrap), so the controller asks for a joint restart at the end
+      // of each pass.
+      resyncFileCams: async () => {
+        await this.syncBbFileCams(0);
+      },
+      publishHud: (state) => this.output.store.getState().setBbGame(state),
+      registerJoinQr: (url) =>
+        this.registerJoinQrImage(url, {
+          dir: 'bb-qr',
+          imagePrefix: 'bb-qr',
+          // Drawn on the lobby panel's chalk-coloured QR wells.
+          dark: '#0b0b0cff',
+          light: '#f4efe6ff',
+          margin: 0,
+        }),
+      // Instant replay: the scorer worker cuts a clip from its frame buffer
+      // (data/bb-replays) and the controller mounts it as a GLOBAL engine
+      // input — not a room input, so it never enters the layout / mixer —
+      // for the REPLAY window drawn by the HUD chrome. `offsetMs` is the
+      // pipeline time the clip's first frame lands on (same rule as
+      // restartMp4Input), i.e. the window's opening moment.
+      requestReplay: (inputId, shotId, t) => {
+        void this.aiController
+          .requestBasketballReplay(inputId, shotId, t)
+          .catch((err) =>
+            console.warn(`[bb] replay request failed for ${inputId}`, err),
+          );
+      },
+      registerReplayClip: async (file, offsetMs) => {
+        if (!/^[A-Za-z0-9._-]+\.mp4$/.test(file)) return null;
+        const filePath = path.join(DATA_DIR, 'bb-replays', file);
+        if (!(await pathExists(filePath))) return null;
+        const hash = createHash('sha1').update(file).digest('hex').slice(0, 10);
+        const safeRoom = idPrefix.replace(/[^a-zA-Z0-9_-]/g, '_');
+        const inputId = `bb-replay-${safeRoom}-${hash}`;
+        try {
+          await SmelterInstance.registerInput(inputId, {
+            type: 'mp4',
+            filePath,
+            loop: false,
+            offsetMs,
+          });
+        } catch (err) {
+          console.warn(`[bb] replay clip register failed: ${file}`, err);
+          return null;
+        }
+        return inputId;
+      },
+      unregisterReplayClip: (inputId, file) => {
+        void SmelterInstance.unregisterInput(inputId).catch(() => {});
+        if (/^[A-Za-z0-9._-]+\.mp4$/.test(file)) {
+          void remove(path.join(DATA_DIR, 'bb-replays', file)).catch(() => {});
+        }
+      },
+      getPipelineTimeMs: () => SmelterInstance.getPipelineTimeMs(),
     });
 
     let motionResultCount = 0;
@@ -1100,6 +1244,18 @@ export class RoomState {
       KETTLEBELL_COACH_ID,
       onKettlebell,
     );
+
+    // Basketball scorer: events go to the game controller immediately (it
+    // owns the predictive cut + the held HUD); no per-input overlay in v1.
+    void this.aiController.wireSidecarListeners(
+      BASKETBALL_SCORER_ID,
+      (event) => {
+        this.basketball.onWorkerResult(
+          event.inputId,
+          event.data as BbWorkerResult,
+        );
+      },
+    );
   }
 
   public async init(): Promise<void> {
@@ -1198,6 +1354,7 @@ export class RoomState {
     );
     // On failure the throw above skips this — state didn't change.
     this.kbTournament.notifyRecordingChanged();
+    this.basketball.notifyRecordingChanged();
     return result;
   }
 
@@ -1206,6 +1363,7 @@ export class RoomState {
       this.recordingController.stopRecording(),
     );
     this.kbTournament.notifyRecordingChanged();
+    this.basketball.notifyRecordingChanged();
     return result;
   }
 
@@ -1347,6 +1505,7 @@ export class RoomState {
 
   public async removeInput(inputId: string): Promise<void> {
     return this.mutex.runExclusive(async () => {
+      this.parkUntilPlaced.delete(inputId);
       await this.inputManager.removeInput(inputId);
 
       if (this.pruneInputFromLayers(inputId)) {
@@ -1716,6 +1875,7 @@ export class RoomState {
     if (removed.length > 0) {
       this.kbTournament.onInputsRemoved(removed);
       this.duckHunter.onInputsRemoved(removed);
+      this.basketball.onInputsRemoved(removed);
     }
   }
 
@@ -1968,6 +2128,8 @@ export class RoomState {
       source: { fileName },
     });
     if (!inputId) throw new Error('Failed to register local-mp4 input');
+    // Parked until the controller's first applyStage — never fullscreen.
+    this.parkUntilPlaced.add(inputId);
     await this.connectInput(inputId);
     // A missing file becomes a placeholder input (mp4AssetMissing) rather than
     // a registration error — detect it and surface a real failure.
@@ -2001,6 +2163,262 @@ export class RoomState {
     verdict: 'correct' | 'incorrect',
   ): boolean {
     return this.kbTournament.simulateRep(clientId, exercise, verdict);
+  }
+
+  // ── Basketball Game (thin delegates, like the kettlebell tournament) ──
+
+  public handleBbMessage(clientId: string, raw: unknown): void {
+    this.basketball.handleMessage(clientId, raw);
+  }
+
+  public handleBbDisconnect(clientId: string): void {
+    this.basketball.handleDisconnect(clientId);
+  }
+
+  public controlBbMatch(cmd: BbMatchCommand): {
+    state: BbStateEvent;
+    match: BbMatchEvent;
+    error?: BbMatchError;
+  } {
+    return this.basketball.controlMatch(cmd);
+  }
+
+  public getBbState(): { state: BbStateEvent; match: BbMatchEvent } {
+    return {
+      state: this.basketball.stateSnapshot(),
+      match: this.basketball.getMatchSnapshot(),
+    };
+  }
+
+  public setBbConfig(
+    cfg: Parameters<BasketballGameController['setConfig']>[0],
+  ): BbConfig {
+    const config = this.basketball.setConfig(cfg);
+    this.recordingOptions = {
+      preset: config.perf.recordingPreset,
+      resolutionScale: config.perf.recordingScale,
+    };
+    return config;
+  }
+
+  /** REST mirror of the moderator's ledger edits (arcade host page + e2e). */
+  public editBbShot(cmd: {
+    op: 'resolve' | 'add' | 'undo';
+    shotId?: string;
+    team?: BbTeamId | null;
+    points?: 1 | 2;
+    voided?: boolean;
+  }): BbShotEvent | null {
+    switch (cmd.op) {
+      case 'resolve':
+        return cmd.shotId
+          ? this.basketball.resolveShot({
+              shotId: cmd.shotId,
+              team: cmd.team,
+              points: cmd.points,
+              voided: cmd.voided,
+            })
+          : null;
+      case 'add':
+        return cmd.team
+          ? this.basketball.addManualShot(cmd.team, cmd.points ?? 1)
+          : null;
+      case 'undo':
+        return this.basketball.undoShot(cmd.shotId);
+    }
+  }
+
+  /**
+   * Register a looping local-mp4 (from data/mp4s) as a camera role. The mp4
+   * input gets the same video side channel a WHIP cam would, so the scorer
+   * sees real decoded frames — no phone needed. Arming the scorer on the
+   * hoop clip re-registers it (side channel), which restarts that clip a
+   * beat later — `syncBbFileCams` re-aligns hoop and court afterwards.
+   */
+  public async attachBbMp4Cam(
+    role: BbCamRole,
+    fileName: string,
+  ): Promise<{ inputId: string }> {
+    const inputId = await this.addNewInput({
+      type: 'local-mp4',
+      source: { fileName },
+    });
+    if (!inputId) throw new Error('Failed to register local-mp4 input');
+    // Parked until the controller's first applyStage — never fullscreen.
+    this.parkUntilPlaced.add(inputId);
+    await this.connectInput(inputId);
+    const input = this.inputManager
+      .getInputs()
+      .find((i) => i.inputId === inputId);
+    if (
+      !input ||
+      input.type !== 'local-mp4' ||
+      input.mp4AssetMissing ||
+      input.status !== 'connected'
+    ) {
+      await this.removeInput(inputId).catch(() => {});
+      throw new Error(`MP4 not found under data/mp4s: ${fileName}`);
+    }
+    const dims =
+      input.mp4VideoWidth && input.mp4VideoHeight
+        ? { width: input.mp4VideoWidth, height: input.mp4VideoHeight }
+        : undefined;
+    this.basketball.attachExternalCam(role, inputId, dims, fileName);
+    if (role === 'hoop') {
+      // A clip can carry its rim calibration next to it — no phone needed.
+      const rim = await this.readBbClipRim(fileName);
+      if (rim) this.basketball.setConfig({ rim });
+    }
+    return { inputId };
+  }
+
+  /**
+   * Rim ellipse stored next to a clip: `<clip>.rim.json` (`{cx, cy, rx, ry}`,
+   * written by scripts/bb-clip-window.mjs) or the `rim` of an
+   * `<clip>.apidis.json` sidecar (scripts/apidis-prep.mjs). Null when absent
+   * or malformed.
+   */
+  private async readBbClipRim(fileName: string): Promise<BbRim | null> {
+    const base = path.join(DATA_DIR, 'mp4s', fileName.replace(/\.mp4$/i, ''));
+    for (const [file, pick] of [
+      [`${base}.rim.json`, (j: Record<string, unknown>) => j],
+      [
+        `${base}.apidis.json`,
+        (j: Record<string, unknown>) => j.rim as Record<string, unknown>,
+      ],
+    ] as const) {
+      if (!(await pathExists(file))) continue;
+      try {
+        const raw = pick(JSON.parse(await readFile(file, 'utf8')));
+        const rim = {
+          cx: Number(raw?.cx),
+          cy: Number(raw?.cy),
+          rx: Number(raw?.rx),
+          ry: Number(raw?.ry),
+        };
+        if (Object.values(rim).every((v) => Number.isFinite(v))) return rim;
+      } catch {
+        // fall through to the next candidate
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Restart every file-backed basketball cam from `playFromMs` (looping) so
+   * synchronized clips line up again. One critical section: the restarts
+   * run back to back, so both offsets come from (nearly) the same pipeline
+   * time; and because the scorer arming for the hoop clip queues on the same
+   * mutex, a sync issued right after an attach lands after that reconnect.
+   * Returns the inputs that restarted; a cam that is not connected (yet) is
+   * skipped, not fatal.
+   */
+  /**
+   * On-air lag of a side-channel clip beyond its delayMs (see
+   * syncBbFileCams); also added to the clip clock's delay so the replay and
+   * HUD timing see the delay the viewers actually get.
+   */
+  private static readonly FILE_CAM_DELAY_TRIM_MS = 240;
+
+  public async syncBbFileCams(playFromMs = 0): Promise<string[]> {
+    return this.mutex.runExclusive(async () => {
+      const restarted: string[] = [];
+      for (const { role, inputId } of this.basketball.fileCamInputIds()) {
+        try {
+          // Align what goes ON AIR, not the decoders: the hoop clip carries
+          // the scorer's side channel, which delays its picture by delayMs
+          // so the AI sees frames ahead of the viewers, while the court clip
+          // has no delay. Starting the delayed clip that much further into
+          // the file makes both show media `playFromMs` at the same moment
+          // (and the AI sees the hoop delayMs ahead — as with WHIP cams).
+          const input = this.inputManager
+            .getInputs()
+            .find((i) => i.inputId === inputId);
+          const delayMs =
+            (input &&
+              computeSideChannelConfig(
+                input.aiModels ?? {},
+                input.transcription,
+              )?.delayMs) ??
+            0;
+          const durationMs =
+            input?.type === 'local-mp4' ? (input.mp4DurationMs ?? 0) : 0;
+          // A side-channel input lands on air a beat later than delayMs
+          // says (its track anchors after the receiver pre-fills the delay
+          // buffer): measured with scripts/bb-sync-probe.mjs as a constant
+          // ~240 ms, so it starts that much further in as well.
+          const trimMs = delayMs > 0 ? RoomState.FILE_CAM_DELAY_TRIM_MS : 0;
+          let from = Math.max(0, playFromMs + delayMs + trimMs);
+          if (durationMs > 0 && from >= durationMs) {
+            // Shorter than the side-channel delay (or a seek near the tail):
+            // the delayed clip cannot run ahead — it will lag by the remainder.
+            console.warn(
+              `[bb] clip sync: ${role} cam needs to start ${from} ms in but the clip is ${durationMs} ms long — starting at ${from % durationMs} ms (out of sync by ${durationMs - delayMs} ms)`,
+            );
+            from %= durationMs;
+          }
+          await this.inputManager.restartMp4Input(inputId, from, true);
+          restarted.push(inputId);
+        } catch (err) {
+          console.warn(
+            `[bb] clip sync skipped ${role} cam ${inputId}: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        }
+      }
+      return restarted;
+    });
+  }
+
+  /** Dev-only (BB_SIM=1): fabricate an AI make for UI work sans model. */
+  public simulateBbShot(
+    team: BbTeamId | null,
+    confidence: number,
+    points: 1 | 2,
+  ): BbShotEvent | null {
+    return this.basketball.simulateShot(team, confidence, points);
+  }
+
+  /**
+   * Replay a ground-truth events file (data/mp4s/<fileName>, the shape
+   * scripts/apidis-events.mjs writes) on the file cams: throws fire at their
+   * clip media time instead of coming from the model.
+   */
+  public async loadBbReplay(
+    fileName: string,
+    opts: Omit<ReplaySelectOptions, 'arcPoints'> & { loop: boolean },
+  ): Promise<BbReplayState> {
+    const file = path.join(DATA_DIR, 'mp4s', fileName);
+    if (!(await pathExists(file))) {
+      throw new Error(`events file not found under data/mp4s: ${fileName}`);
+    }
+    let json: unknown;
+    try {
+      json = JSON.parse(await readFile(file, 'utf8'));
+    } catch (err) {
+      throw new Error(
+        `events.json: not valid JSON (${err instanceof Error ? err.message : String(err)})`,
+      );
+    }
+    const gt = parseBbGroundTruth(json);
+    const arcPoints = this.basketball.stateSnapshot().config.arcPoints;
+    const shots = selectReplayShots(gt, { ...opts, arcPoints });
+    if (shots.length === 0) {
+      throw new Error(
+        `events.json has no throws for basket "${opts.basket}" (${gt.throws.length} throws total)`,
+      );
+    }
+    return this.basketball.loadReplay({
+      fileName,
+      shots,
+      basket: opts.basket,
+      loop: opts.loop,
+    });
+  }
+
+  public unloadBbReplay(): void {
+    this.basketball.unloadReplay();
   }
 
   /**
@@ -2915,6 +3333,49 @@ export class RoomState {
   }
 
   /**
+   * Register a game's phone camera as a WHIP input through InputManager (NOT
+   * DuckHunter's raw registerInput): inputs registered here get the heartbeat
+   * monitor, the stale sweep, `onInputsRemoved`, and — unless `ai: false` —
+   * the video side channel a model needs, at the cost of the input's 3 s
+   * buffering delay. Shared by the kettlebell tournament and basketball game.
+   */
+  private async registerGameWhipCam(
+    name: string,
+    dims?: { width: number; height: number },
+    opts?: { ai?: boolean },
+  ): Promise<{ inputId: string; whipUrl: string; bearerToken: string }> {
+    const inputId = await this.addNewInput({
+      type: 'whip',
+      username: `[camera] ${name}`,
+      // Cams that will never run a model skip the side channel and its 3 s
+      // buffering delay.
+      noSideChannel: opts?.ai === false,
+      // Real track dimensions from the phone: the registration path honors
+      // exact dims (updateInput's bare-orientation heuristic would clobber
+      // them, so orientation always travels WITH dims).
+      ...(dims
+        ? {
+            nativeWidth: dims.width,
+            nativeHeight: dims.height,
+            orientation:
+              dims.height > dims.width
+                ? ('vertical' as const)
+                : ('horizontal' as const),
+          }
+        : {}),
+    });
+    if (!inputId) throw new Error('WHIP input registration failed');
+    // Parked until the controller's first applyStage — never fullscreen.
+    this.parkUntilPlaced.add(inputId);
+    const bearerToken = await this.connectInput(inputId);
+    return {
+      inputId,
+      whipUrl: `${config.whipBaseUrl}/${inputId}`,
+      bearerToken,
+    };
+  }
+
+  /**
    * Lobby-scene QR: render `url` to a PNG under the data dir and register it
    * with the engine. The image id carries a content hash — registered images
    * are immutable per id, so a changed URL must mint a fresh id for the HUD to
@@ -3006,6 +3467,7 @@ export class RoomState {
       this.pausedAttachedInputVolumes.clear();
       this.duckHunter.dispose();
       this.kbTournament.dispose();
+      this.basketball.dispose();
 
       if (this.pendingStoreFlushTimer) {
         clearTimeout(this.pendingStoreFlushTimer);
@@ -3048,6 +3510,22 @@ export class RoomState {
         }
       } catch {
         // dir may not exist — nothing to sweep
+      }
+
+      // Same sweep for the basketball scorer's make/release stills and its
+      // instant-replay clips.
+      for (const dir of ['bb-shot-frames', 'bb-replays']) {
+        try {
+          const frameDir = path.join(DATA_DIR, dir);
+          const safeRoom = this.idPrefix.replace(/[^a-zA-Z0-9_-]/g, '_');
+          for (const f of await readdir(frameDir)) {
+            if (f.startsWith(safeRoom)) {
+              await remove(path.join(frameDir, f)).catch(() => {});
+            }
+          }
+        } catch {
+          // dir may not exist — nothing to sweep
+        }
       }
 
       await this.motionController.stopAll();
@@ -3257,6 +3735,17 @@ export class RoomState {
               cropLeft: absoluteInput.cropLeft,
               cropRight: absoluteInput.cropRight,
               cropBottom: absoluteInput.cropBottom,
+            });
+            continue;
+          }
+
+          if (this.parkUntilPlaced.has(bi.inputId)) {
+            // Game-owned input the controller has not placed yet: keep it in
+            // the layer (decoder + side channel warm) but off-stage.
+            firstLayer.inputs.push({
+              inputId: bi.inputId,
+              ...kbtParkRect(this.output.resolution),
+              transitionDurationMs: 0,
             });
             continue;
           }

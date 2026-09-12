@@ -4,6 +4,7 @@ import { PEOPLE_COUNTER_MANIFESTS } from './people-counter/manifest';
 import { BUILDING_DETECTOR_MANIFEST } from './building-detector/manifest';
 import { CAR_ADS_MANIFESTS } from './car-ads/manifest';
 import { KETTLEBELL_COACH_MANIFEST } from './kettlebell-coach/manifest';
+import { BASKETBALL_SCORER_MANIFEST } from './basketball-scorer/manifest';
 
 export function registerAIModels(): void {
   ModelRegistry.register(MOTION_MANIFEST);
@@ -15,6 +16,7 @@ export function registerAIModels(): void {
     ModelRegistry.register(manifest);
   }
   ModelRegistry.register(KETTLEBELL_COACH_MANIFEST);
+  ModelRegistry.register(BASKETBALL_SCORER_MANIFEST);
 }
 
 export {
@@ -42,6 +44,11 @@ export {
   KETTLEBELL_COACH_ID,
   isKettlebellCoachModel,
 } from './kettlebell-coach/manifest';
+export {
+  BASKETBALL_SCORER_MANIFEST,
+  BASKETBALL_SCORER_ID,
+  isBasketballScorerModel,
+} from './basketball-scorer/manifest';
 export { ModelRegistry } from './registry';
 export {
   computeSideChannelConfig,

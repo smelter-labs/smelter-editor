@@ -14,6 +14,11 @@ import { ensureCarAdsSidecarStarted } from './car-ads/car-ads-sidecar';
 import { isCarAdsModel } from './car-ads/manifest';
 import { ensureKettlebellCoachSidecarStarted } from './kettlebell-coach/kettlebell-coach-sidecar';
 import { isKettlebellCoachModel } from './kettlebell-coach/manifest';
+import { ensureBasketballScorerSidecarStarted } from './basketball-scorer/basketball-scorer-sidecar';
+import {
+  BASKETBALL_SCORER_ID,
+  isBasketballScorerModel,
+} from './basketball-scorer/manifest';
 
 export type ResultListener = (event: ModelResultEvent) => void;
 
@@ -224,6 +229,20 @@ export class RoomAIController {
     sidecar.addInput(input.inputId, this.workerParams(input, modelId));
   }
 
+  /**
+   * Basketball scorer: cut an instant-replay clip of `inputId` around frame
+   * time `t` for ledger entry `shotId` (see BaseSidecar.requestReplay).
+   * Resolves false when the worker is not running / connected.
+   */
+  async requestBasketballReplay(
+    inputId: string,
+    shotId: string,
+    t?: number,
+  ): Promise<boolean> {
+    const sidecar = await this.getSidecarForModel(BASKETBALL_SCORER_ID);
+    return sidecar.requestReplay(inputId, shotId, t);
+  }
+
   /** Push updated model params to the running worker without re-subscribing. */
   async configureModelOnInput(
     input: RoomInputState,
@@ -248,6 +267,9 @@ export class RoomAIController {
     }
     if (isKettlebellCoachModel(modelId)) {
       return ensureKettlebellCoachSidecarStarted();
+    }
+    if (isBasketballScorerModel(modelId)) {
+      return ensureBasketballScorerSidecarStarted();
     }
 
     let sidecar = globalSidecars.get(modelId);

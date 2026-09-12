@@ -113,9 +113,11 @@ export async function getTwitchSuggestions(): Promise<InputSuggestions> {
   }
 }
 
-export async function getMP4Suggestions(): Promise<MP4Suggestions> {
+export async function getMP4Suggestions(options?: {
+  refresh?: boolean;
+}): Promise<MP4Suggestions> {
   try {
-    return (await getClient()).getMP4Suggestions();
+    return (await getClient()).getMP4Suggestions(options);
   } catch (err) {
     if (isServerUnavailableError(err)) {
       return { mp4s: [] };
@@ -641,6 +643,73 @@ export async function getKbtState(roomId: string): Promise<{
   match: import('@smelter-editor/types').KbtMatchEvent;
 }> {
   return (await getClient()).getKbtState(roomId);
+}
+
+export async function setBbConfig(
+  roomId: string,
+  config: import('@smelter-editor/types').BbConfigPatch,
+): Promise<import('@smelter-editor/types').BbConfig> {
+  return (await getClient()).setBbConfig(roomId, config);
+}
+
+export async function controlBbMatch(
+  roomId: string,
+  cmd: {
+    action: import('@smelter-editor/types').BbMatchAction;
+    role?: import('@smelter-editor/types').BbCamRole;
+  },
+): Promise<{
+  state: import('@smelter-editor/types').BbStateEvent;
+  match: import('@smelter-editor/types').BbMatchEvent;
+  error?: { code: string; message: string };
+}> {
+  return (await getClient()).controlBbMatch(roomId, cmd);
+}
+
+export async function getBbState(roomId: string): Promise<{
+  state: import('@smelter-editor/types').BbStateEvent;
+  match: import('@smelter-editor/types').BbMatchEvent;
+}> {
+  return (await getClient()).getBbState(roomId);
+}
+
+export async function editBbShot(
+  roomId: string,
+  cmd: import('@smelter-editor/types').BbShotEdit,
+): Promise<{
+  shot: import('@smelter-editor/types').BbShotEvent | null;
+  state: import('@smelter-editor/types').BbStateEvent;
+  match: import('@smelter-editor/types').BbMatchEvent;
+}> {
+  return (await getClient()).editBbShot(roomId, cmd);
+}
+
+export async function attachBbMp4Cam(
+  roomId: string,
+  role: import('@smelter-editor/types').BbCamRole,
+  fileName: string,
+): Promise<{ inputId: string }> {
+  return (await getClient()).attachBbMp4Cam(roomId, role, fileName);
+}
+
+export async function syncBbFileCams(
+  roomId: string,
+  playFromMs = 0,
+): Promise<{ inputIds: string[] }> {
+  return (await getClient()).syncBbFileCams(roomId, playFromMs);
+}
+
+export async function setBbReplay(
+  roomId: string,
+  request: import('@smelter-editor/types').BbReplayRequest,
+): Promise<{
+  replay: import('@smelter-editor/types').BbReplayState | null;
+}> {
+  return (await getClient()).setBbReplay(roomId, request);
+}
+
+export async function getBbEventsSuggestions(): Promise<{ files: string[] }> {
+  return (await getClient()).getBbEventsSuggestions();
 }
 
 export async function setHaunterConfig(

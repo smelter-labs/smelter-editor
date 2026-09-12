@@ -79,6 +79,7 @@ export type RoomStore = {
   kettlebell: Record<string, KettlebellOverlayState>;
   shooter: ShooterOverlay | null;
   kbTournament: KbtHudState | null;
+  bbGame: BbHudState | null;
   updateState: (state: RoomStoreState & { layers: Layer[] }) => void;
   setOutputShaders: (shaders: ShaderConfig[]) => void;
   setInputFrozenImage: (inputId: string, imageId: string | null) => void;
@@ -94,6 +95,7 @@ export type RoomStore = {
   ) => void;
   setShooter: (shooter: ShooterOverlay | null) => void;
   setKbTournament: (state: KbtHudState | null) => void;
+  setBbGame: (state: BbHudState | null) => void;
   /** Interval (ms) for the JS-driven overlay animation tickers (skeleton rig,
    * rep floaters, milestone shake). Scene pushes are throttled to 30 ms by the
    * reconciler anyway, so values below ~30 buy nothing visually. */
@@ -611,6 +613,140 @@ export type KbtHudState = {
   viewTransitionStyle?: KbtViewTransitionStyle;
 };
 
+// ── Basketball Game ("Blacktop") HUD ──────────────────────────────────────
+
+export type BbHudRect = { x: number; y: number; width: number; height: number };
+
+/**
+ * Which broadcast scene the basketball chrome renders: 'lobby' = join QRs +
+ * cam status over the court cam, 'live' = court full + hoop PiP + score bug,
+ * 'replay' = the live layout dimmed under the REPLAY window (the make's
+ * slow-motion clip) once the SCORE! banner has landed, 'hoop' / 'court' =
+ * one camera full-frame, 'caster' / 'split' = commentator views (panel
+ * override), 'ended' = final card.
+ */
+export type BbHudScene =
+  | 'lobby'
+  | 'live'
+  | 'replay'
+  | 'hoop'
+  | 'court'
+  | 'caster'
+  | 'split'
+  | 'ended';
+
+/**
+ * The part of the HUD that follows the layout IMMEDIATELY (the compositor
+ * applies layout cuts to the delayed video at once): which input is main,
+ * where the PiP and the caster cam sit. Everything else in BbHudState is held
+ * ~3 s so scores/clock/banners land on the frames they belong to.
+ */
+export type BbHudStage = {
+  scene: BbHudScene;
+  main: 'hoop' | 'court' | 'commentator' | null;
+  pip: { role: 'hoop' | 'court'; rect: BbHudRect } | null;
+  /** Commentator lower-third cam rect when visible. */
+  caster: BbHudRect | null;
+  /** Two tiles side by side (court + commentator). */
+  split: boolean;
+  /** scene 'replay': the mounted clip input + the make it shows. */
+  replay: {
+    inputId: string;
+    team: 'A' | 'B' | null;
+    teamName: string | null;
+    color: string;
+    points: 1 | 2;
+    pending: boolean;
+  } | null;
+};
+
+export type BbHudTeam = { name: string; color: string; score: number };
+
+/** Basketball Game overlay state burned into the broadcast. */
+export type BbHudState = {
+  stage: BbHudStage;
+  teams: Record<'A' | 'B', BbHudTeam>;
+  /** Snapshot-computed clock (see KbtHudMatch for why not endsAt vs now). */
+  clock: {
+    phase: 'lobby' | 'live' | 'paused' | 'overtime' | 'ended';
+    period: 'reg' | 'ot';
+    remainingMs: number;
+    running: boolean;
+  };
+  /** Newest ledger entry; `showBanner` is snapshot-relative (a make older
+   * than the banner window at snapshot time draws nothing). */
+  lastShot: {
+    team: 'A' | 'B' | null;
+    teamName: string | null;
+    color: string;
+    points: 1 | 2;
+    pending: boolean;
+    showBanner: boolean;
+  } | null;
+  /** Makes awaiting a team in the moderator queue ("+1 ?" pill). */
+  pendingCount: number;
+  cams: Record<
+    'hoop' | 'court',
+    { inputId: string | null; live: boolean; name?: string | null }
+  >;
+  /** Overtime target (the OT clock tag reads "FIRST TO +n"). */
+  otWinPoints?: number;
+  lobby: {
+    qr: Record<
+      'hoop' | 'court' | 'commentator',
+      { imageId: string | null; label: string | null }
+    >;
+    cams: {
+      role: 'hoop' | 'court';
+      name: string;
+      joined: boolean;
+      live: boolean;
+      calibrated: boolean;
+    }[];
+    commentatorName: string | null;
+    targetPoints: number;
+    durationMs: number;
+  } | null;
+  ended: {
+    winner: 'A' | 'B' | null;
+    teams: Record<
+      'A' | 'B',
+      { score: number; makes: number; attempts: number; twos: number }
+    >;
+    leadChanges: number;
+    otPlayed: boolean;
+  } | null;
+  commentator: {
+    name: string;
+    camConnected: boolean;
+    inputId: string | null;
+    casterPip: boolean;
+  } | null;
+  banner: {
+    kind: 'lead_change' | 'overtime' | 'final' | 'hype';
+    text: string;
+    color: string;
+    at: number;
+  } | null;
+};
+
+/** Hoop/court picture-in-picture rect: 480×270 at 1080p, bottom-right. */
+export function bbPipRect(resolution: {
+  width: number;
+  height: number;
+}): BbHudRect {
+  const k = resolution.height / 1080;
+  const w = Math.round(480 * k);
+  const h = Math.round(270 * k);
+  const m = Math.round(56 * k);
+  return {
+    x: resolution.width - m - w,
+    y: resolution.height - m - h,
+    width: w,
+    height: h,
+  };
+}
+
 /** One player's stat block for spotlight / head-to-head overlays. */
 export type KbtStatSide = {
   name: string;
@@ -733,6 +869,7 @@ export function createRoomStore(
     kettlebell: {},
     shooter: null,
     kbTournament: null,
+    bbGame: null,
     updateState: (incoming) => {
       const {
         inputs,
@@ -867,6 +1004,20 @@ export function createRoomStore(
       }
       set(() => ({ kbTournament }));
     },
+    setBbGame: (bbGame: BbHudState | null) => {
+      // Same rationale as setKbTournament: held snapshots arrive at up to
+      // 10 Hz and most are pixel-identical.
+      const prev = get().bbGame;
+      if (
+        prev === bbGame ||
+        (prev != null &&
+          bbGame != null &&
+          JSON.stringify(prev) === JSON.stringify(bbGame))
+      ) {
+        return;
+      }
+      set(() => ({ bbGame }));
+    },
     animTickMs: 16,
     setAnimTickMs: (ms: number) => {
       set(() => ({ animTickMs: Math.max(16, Math.round(ms)) }));
@@ -938,6 +1089,12 @@ export function useViewport() {
 export function useKbTournament() {
   const store = useContext(StoreContext);
   return useStore(store, (state) => state.kbTournament);
+}
+
+/** Basketball Game burned-in HUD state (null while the game is not staged). */
+export function useBbGame() {
+  const store = useContext(StoreContext);
+  return useStore(store, (state) => state.bbGame);
 }
 
 /** Isolates the shooter overlay subscription (same rationale as KBT's). */

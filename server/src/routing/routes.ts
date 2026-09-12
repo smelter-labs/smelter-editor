@@ -52,6 +52,10 @@ import { duckHunterTopScores } from '../duckHunter/topScores';
 import { DATA_DIR } from '../dataDir';
 import { ModelRegistry, registerAIModels } from '../ai-models';
 import { uploadRoutes, sanitizeFolderPath } from '../core/routes/uploadRoutes';
+import {
+  sanitizeBbEventsFileName,
+  sanitizeBbMp4FileName,
+} from '../basketball/mp4CamFileName';
 
 registerAIModels();
 import {
@@ -59,6 +63,7 @@ import {
   type Resolution,
   type ResolutionPreset,
 } from '../types';
+import type { RoomState } from '../room/RoomState';
 
 const execFileAsync = promisify(execFile);
 const THUMBNAILS_DIR = path.join(DATA_DIR, 'thumbnails', 'mp4');
@@ -76,6 +81,39 @@ function logWsDebug(phase: string, details: Record<string, unknown>): void {
   if (!isWsDebugEnabled) return;
   console.warn(`[ws][${phase}]`, details);
 }
+
+/**
+ * Per-game room-socket dispatch. A message whose `type` starts with a game's
+ * prefix goes to that game's controller (phones + arcade page + panels all
+ * share the room WS); the matching disconnect delegate runs on socket close so
+ * the game can grace-period the participant. Adding an arcade game is one
+ * entry here. (`pong_` is handled separately — it predates this table and
+ * carries the low-latency shader channel.)
+ */
+const GAME_WS_HANDLERS: ReadonlyArray<{
+  prefix: string;
+  handle: (room: RoomState, clientId: string, msg: unknown) => void;
+  disconnect: (room: RoomState, clientId: string) => void;
+}> = [
+  {
+    // Ghost Shooter / Duck Hunter control messages from phone gyroscope controllers.
+    prefix: 'shoot_',
+    handle: (room, clientId, msg) => room.handleShooterMessage(clientId, msg),
+    disconnect: (room, clientId) => room.handleShooterDisconnect(clientId),
+  },
+  {
+    // Kettlebell Tournament messages from player phones + the arcade page.
+    prefix: 'kbt_',
+    handle: (room, clientId, msg) => room.handleKbtMessage(clientId, msg),
+    disconnect: (room, clientId) => room.handleKbtDisconnect(clientId),
+  },
+  {
+    // Basketball Game messages from camera phones, the moderator panel + the arcade page.
+    prefix: 'bb_',
+    handle: (room, clientId, msg) => room.handleBbMessage(clientId, msg),
+    disconnect: (room, clientId) => room.handleBbDisconnect(clientId),
+  },
+];
 
 function summarizeSyncPayload(payload: unknown): unknown {
   if (
@@ -401,9 +439,20 @@ routes.setErrorHandler((err: unknown, req, res) => {
   });
 });
 
-routes.get('/suggestions/mp4s', async (_req, res) => {
-  res.status(200).send({ mp4s: mp4SuggestionsMonitor.mp4Files });
-});
+// `?refresh=1` rescans data/mp4s first — the monitor only scans at startup
+// and after uploads, so clips copied in by hand would otherwise stay hidden.
+routes.get<{ Querystring: { refresh?: string } }>(
+  '/suggestions/mp4s',
+  {
+    schema: {
+      querystring: Type.Object({ refresh: Type.Optional(Type.String()) }),
+    },
+  },
+  async (req, res) => {
+    if (req.query.refresh === '1') mp4SuggestionsMonitor.refresh();
+    res.status(200).send({ mp4s: mp4SuggestionsMonitor.mp4Files });
+  },
+);
 
 routes.get<{ Querystring: { folder?: string } }>(
   '/suggestions/mp4s/browse',
@@ -1256,15 +1305,12 @@ routes.after(() => {
       socket.on('close', (code: any, reason: unknown) => {
         clearInterval(heartbeat);
         handlePongClientDisconnect(roomId, clientId);
-        try {
-          state.getRoom(roomId).handleShooterDisconnect(clientId);
-        } catch {
-          // Room no longer exists — ignore.
-        }
-        try {
-          state.getRoom(roomId).handleKbtDisconnect(clientId);
-        } catch {
-          // Room no longer exists — ignore.
+        for (const game of GAME_WS_HANDLERS) {
+          try {
+            game.disconnect(state.getRoom(roomId), clientId);
+          } catch {
+            // Room no longer exists — ignore.
+          }
         }
         logWsDebug('closed', {
           roomId,
@@ -1323,33 +1369,25 @@ routes.after(() => {
           handlePongClientMessage(roomId, clientId, parsed);
           return;
         }
-        // Ghost Shooter control messages from phone gyroscope controllers.
+        // Arcade game messages (phones, arcade pages, moderator panels) —
+        // routed by type prefix, see GAME_WS_HANDLERS.
         if (
           parsed &&
           typeof parsed === 'object' &&
-          typeof (parsed as { type?: unknown }).type === 'string' &&
-          (parsed as { type: string }).type.startsWith('shoot_')
+          typeof (parsed as { type?: unknown }).type === 'string'
         ) {
-          try {
-            state.getRoom(roomId).handleShooterMessage(clientId, parsed);
-          } catch {
-            // Room no longer exists — ignore.
+          const msgType = (parsed as { type: string }).type;
+          const game = GAME_WS_HANDLERS.find((g) =>
+            msgType.startsWith(g.prefix),
+          );
+          if (game) {
+            try {
+              game.handle(state.getRoom(roomId), clientId, parsed);
+            } catch {
+              // Room no longer exists — ignore.
+            }
+            return;
           }
-          return;
-        }
-        // Kettlebell Tournament messages from player phones + the arcade page.
-        if (
-          parsed &&
-          typeof parsed === 'object' &&
-          typeof (parsed as { type?: unknown }).type === 'string' &&
-          (parsed as { type: string }).type.startsWith('kbt_')
-        ) {
-          try {
-            state.getRoom(roomId).handleKbtMessage(clientId, parsed);
-          } catch {
-            // Room no longer exists — ignore.
-          }
-          return;
         }
         if (
           !parsed ||
@@ -3146,6 +3184,395 @@ routes.post<RoomIdParams & { Body: Static<typeof KbtMp4CamSchema> }>(
     }
   },
 );
+
+// ── Basketball Game ─────────────────────────────────────────────
+
+const BbTeamConfigSchema = Type.Object({
+  name: Type.Optional(Type.String({ maxLength: 32 })),
+  color: Type.Optional(Type.String({ maxLength: 16 })),
+});
+
+const BbRimSchema = Type.Object({
+  cx: Type.Number(),
+  cy: Type.Number(),
+  rx: Type.Number(),
+  ry: Type.Number(),
+});
+
+const BbConfigSchema = Type.Object({
+  teams: Type.Optional(
+    Type.Object({
+      A: Type.Optional(BbTeamConfigSchema),
+      B: Type.Optional(BbTeamConfigSchema),
+    }),
+  ),
+  teamSize: Type.Optional(Type.Number()),
+  targetPoints: Type.Optional(Type.Number()),
+  durationMs: Type.Optional(Type.Number()),
+  otWinPoints: Type.Optional(Type.Number()),
+  arcPoints: Type.Optional(Type.Number()),
+  autoAssignMinConf: Type.Optional(Type.Number()),
+  shotFrames: Type.Optional(Type.Boolean()),
+  replay: Type.Optional(Type.Boolean()),
+  replayDelayMs: Type.Optional(Type.Number()),
+  rim: Type.Optional(Type.Union([BbRimSchema, Type.Null()])),
+  detector: Type.Optional(
+    Type.Object({
+      ballDetector: Type.Optional(
+        Type.Union([
+          Type.Literal('auto'),
+          Type.Literal('yolo'),
+          Type.Literal('hsv'),
+        ]),
+      ),
+      yoloWeights: Type.Optional(
+        Type.Union([
+          Type.Literal('auto'),
+          Type.Literal('yolo11n.pt'),
+          Type.Literal('yolo11s.pt'),
+          Type.Literal('yolo11m.pt'),
+          Type.Literal('bb-ball.pt'),
+        ]),
+      ),
+      imgsz: Type.Optional(Type.Number()),
+      ballConf: Type.Optional(Type.Number()),
+      analysisFps: Type.Optional(Type.Number()),
+    }),
+  ),
+  perf: Type.Optional(
+    Type.Object({
+      animTickHz: Type.Optional(
+        Type.Union([Type.Literal(60), Type.Literal(30), Type.Literal(15)]),
+      ),
+      hudPublishHz: Type.Optional(
+        Type.Union([Type.Literal(10), Type.Literal(5), Type.Literal(2)]),
+      ),
+      recordingPreset: Type.Optional(
+        Type.Union([
+          Type.Literal('ultrafast'),
+          Type.Literal('superfast'),
+          Type.Literal('veryfast'),
+          Type.Literal('fast'),
+          Type.Literal('medium'),
+        ]),
+      ),
+      recordingScale: Type.Optional(
+        Type.Union([Type.Literal(1), Type.Literal(0.75), Type.Literal(0.5)]),
+      ),
+    }),
+  ),
+  /** Phone join URLs per role — the server renders them as the lobby QRs. */
+  joinUrls: Type.Optional(
+    Type.Object({
+      hoop: Type.Optional(Type.String({ maxLength: 2048 })),
+      court: Type.Optional(Type.String({ maxLength: 2048 })),
+      commentator: Type.Optional(Type.String({ maxLength: 2048 })),
+    }),
+  ),
+  joinLabel: Type.Optional(Type.String({ maxLength: 64 })),
+});
+
+routes.post<RoomIdParams & { Body: Static<typeof BbConfigSchema> }>(
+  '/room/:roomId/basketball-game/config',
+  { schema: { params: RoomIdParamsSchema, body: BbConfigSchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    console.log('[request] Set Basketball Game config', {
+      roomId,
+      targetPoints: req.body.targetPoints,
+      durationMs: req.body.durationMs,
+      rim: req.body.rim,
+    });
+    const room = state.getRoom(roomId);
+    const config = room.setBbConfig(req.body);
+    res.status(200).send({ status: 'ok', config });
+  },
+);
+
+const BbMatchSchema = Type.Object({
+  action: Type.Union([
+    Type.Literal('lobby'),
+    Type.Literal('start'),
+    Type.Literal('pause'),
+    Type.Literal('resume'),
+    Type.Literal('end'),
+    Type.Literal('start_overtime'),
+    Type.Literal('reset'),
+    Type.Literal('kick_cam'),
+    Type.Literal('kick_commentator'),
+  ]),
+  /** Target camera for kick_cam. */
+  role: Type.Optional(
+    Type.Union([Type.Literal('hoop'), Type.Literal('court')]),
+  ),
+});
+
+routes.post<RoomIdParams & { Body: Static<typeof BbMatchSchema> }>(
+  '/room/:roomId/basketball-game/match',
+  { schema: { params: RoomIdParamsSchema, body: BbMatchSchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    console.log('[request] Basketball Game match', {
+      roomId,
+      action: req.body.action,
+      role: req.body.role,
+    });
+    const room = state.getRoom(roomId);
+    const { error, ...result } = room.controlBbMatch({
+      action: req.body.action,
+      role: req.body.role,
+    });
+    res
+      .status(200)
+      .send({ status: error ? 'rejected' : 'ok', ...result, error });
+  },
+);
+
+routes.get<RoomIdParams>(
+  '/room/:roomId/basketball-game/state',
+  { schema: { params: RoomIdParamsSchema } },
+  async (req, res) => {
+    const room = state.getRoom(req.params.roomId);
+    res.status(200).send({ status: 'ok', ...room.getBbState() });
+  },
+);
+
+// Ledger edits from the arcade host (the panel uses the WS twin).
+const BbShotEditSchema = Type.Object({
+  op: Type.Union([
+    Type.Literal('resolve'),
+    Type.Literal('add'),
+    Type.Literal('undo'),
+  ]),
+  shotId: Type.Optional(Type.String()),
+  team: Type.Optional(
+    Type.Union([Type.Literal('A'), Type.Literal('B'), Type.Null()]),
+  ),
+  points: Type.Optional(Type.Union([Type.Literal(1), Type.Literal(2)])),
+  voided: Type.Optional(Type.Boolean()),
+});
+
+routes.post<RoomIdParams & { Body: Static<typeof BbShotEditSchema> }>(
+  '/room/:roomId/basketball-game/shot',
+  { schema: { params: RoomIdParamsSchema, body: BbShotEditSchema } },
+  async (req, res) => {
+    const room = state.getRoom(req.params.roomId);
+    const shot = room.editBbShot(req.body);
+    res
+      .status(200)
+      .send({ status: shot ? 'ok' : 'rejected', shot, ...room.getBbState() });
+  },
+);
+
+// Serve make/release stills written by the basketball-scorer worker.
+routes.get<{ Params: { fileName: string } }>(
+  '/bb-shot-frames/:fileName',
+  { schema: { params: Type.Object({ fileName: Type.String() }) } },
+  async (req, res) => {
+    const decoded = decodeURIComponent(req.params.fileName);
+    if (
+      decoded.includes('..') ||
+      decoded.includes('/') ||
+      decoded.includes('\\') ||
+      !decoded.endsWith('.jpg')
+    ) {
+      return res.status(400).send({ error: 'Invalid file name' });
+    }
+    const filePath = path.join(DATA_DIR, 'bb-shot-frames', decoded);
+    if (!(await pathExists(filePath))) {
+      return res.status(404).send({ error: 'Frame not found' });
+    }
+    try {
+      const data = await readFile(filePath);
+      res.header('Content-Type', 'image/jpeg');
+      res.header('Cache-Control', 'public, max-age=31536000, immutable');
+      res.send(data);
+    } catch (err) {
+      console.error('Failed to read basketball shot frame', { filePath, err });
+      res.status(500).send({ error: 'Failed to read frame' });
+    }
+  },
+);
+
+// Dev-only make injector (BB_SIM=1): drive the ledger/HUD without the model.
+const BbSimulateShotSchema = Type.Object({
+  team: Type.Union([Type.Literal('A'), Type.Literal('B'), Type.Null()]),
+  confidence: Type.Optional(Type.Number()),
+  points: Type.Optional(Type.Union([Type.Literal(1), Type.Literal(2)])),
+});
+
+routes.post<RoomIdParams & { Body: Static<typeof BbSimulateShotSchema> }>(
+  '/room/:roomId/basketball-game/simulate-shot',
+  { schema: { params: RoomIdParamsSchema, body: BbSimulateShotSchema } },
+  async (req, res) => {
+    if (process.env.BB_SIM !== '1') {
+      return res.status(404).send({ status: 'error', message: 'Not found' });
+    }
+    const room = state.getRoom(req.params.roomId);
+    const shot = room.simulateBbShot(
+      req.body.team,
+      req.body.confidence ?? 0.9,
+      req.body.points ?? 1,
+    );
+    res.status(200).send({ status: shot ? 'ok' : 'ignored', shot });
+  },
+);
+
+// File camera: attach a looping local-mp4 from data/mp4s as the hoop or
+// court camera — real decoded frames reach the scorer, no phone needed.
+// `fileName` is relative to data/mp4s (sub-folders allowed).
+const BbMp4CamSchema = Type.Object({
+  role: Type.Union([Type.Literal('hoop'), Type.Literal('court')]),
+  fileName: Type.String(),
+});
+
+routes.post<RoomIdParams & { Body: Static<typeof BbMp4CamSchema> }>(
+  '/room/:roomId/basketball-game/mp4-cam',
+  { schema: { params: RoomIdParamsSchema, body: BbMp4CamSchema } },
+  async (req, res) => {
+    const fileName = sanitizeBbMp4FileName(req.body.fileName);
+    if (!fileName) {
+      return res.status(400).send({
+        status: 'error',
+        message: 'fileName must be an .mp4 path relative to data/mp4s',
+      });
+    }
+    const room = state.getRoom(req.params.roomId);
+    try {
+      const { inputId } = await room.attachBbMp4Cam(req.body.role, fileName);
+      res.status(200).send({ status: 'ok', inputId });
+    } catch (err) {
+      res.status(400).send({
+        status: 'error',
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  },
+);
+
+// Restart every file camera from the same playhead (looping) so synchronized
+// hoop/court clips line up again — needed after the hoop clip is re-registered
+// for the scorer's side channel, or whenever the operator wants a clean loop.
+const BbMp4CamSyncSchema = Type.Object({
+  playFromMs: Type.Optional(Type.Number({ minimum: 0 })),
+});
+
+routes.post<RoomIdParams & { Body: Static<typeof BbMp4CamSyncSchema> }>(
+  '/room/:roomId/basketball-game/mp4-cam/sync',
+  { schema: { params: RoomIdParamsSchema, body: BbMp4CamSyncSchema } },
+  async (req, res) => {
+    const room = state.getRoom(req.params.roomId);
+    try {
+      const inputIds = await room.syncBbFileCams(req.body.playFromMs ?? 0);
+      res.status(200).send({ status: 'ok', inputIds });
+    } catch (err) {
+      res.status(400).send({
+        status: 'error',
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  },
+);
+
+// Replay from ground truth: throws from an events.json (data/mp4s) fire at
+// their clip media time on the file cams, instead of coming from the model.
+const BbReplaySchema = Type.Object({
+  action: Type.Optional(
+    Type.Union([Type.Literal('load'), Type.Literal('off')]),
+  ),
+  fileName: Type.Optional(Type.String({ maxLength: 512 })),
+  basket: Type.Optional(
+    Type.Union([
+      Type.Literal('left'),
+      Type.Literal('right'),
+      Type.Literal('both'),
+    ]),
+  ),
+  loop: Type.Optional(Type.Boolean()),
+  pointsMap: Type.Optional(
+    Type.Object({
+      '1': Type.Optional(Type.Union([Type.Literal(1), Type.Literal(2)])),
+      '2': Type.Optional(Type.Union([Type.Literal(1), Type.Literal(2)])),
+      '3': Type.Optional(Type.Union([Type.Literal(1), Type.Literal(2)])),
+    }),
+  ),
+  teamMap: Type.Optional(
+    Type.Object({
+      A: Type.Optional(Type.Union([Type.Literal('A'), Type.Literal('B')])),
+      B: Type.Optional(Type.Union([Type.Literal('A'), Type.Literal('B')])),
+    }),
+  ),
+});
+
+routes.post<RoomIdParams & { Body: Static<typeof BbReplaySchema> }>(
+  '/room/:roomId/basketball-game/replay',
+  { schema: { params: RoomIdParamsSchema, body: BbReplaySchema } },
+  async (req, res) => {
+    const room = state.getRoom(req.params.roomId);
+    if (req.body.action === 'off') {
+      room.unloadBbReplay();
+      return res.status(200).send({ status: 'ok', replay: null });
+    }
+    const fileName = sanitizeBbEventsFileName(req.body.fileName ?? '');
+    if (!fileName) {
+      return res.status(400).send({
+        status: 'error',
+        message: 'fileName must be an events .json path relative to data/mp4s',
+      });
+    }
+    try {
+      const replay = await room.loadBbReplay(fileName, {
+        basket: req.body.basket ?? 'both',
+        loop: req.body.loop ?? true,
+        ...(req.body.pointsMap ? { pointsMap: req.body.pointsMap } : {}),
+        ...(req.body.teamMap ? { teamMap: req.body.teamMap } : {}),
+      });
+      res.status(200).send({ status: 'ok', replay });
+    } catch (err) {
+      res.status(400).send({
+        status: 'error',
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  },
+);
+
+routes.delete<RoomIdParams>(
+  '/room/:roomId/basketball-game/replay',
+  { schema: { params: RoomIdParamsSchema } },
+  async (req, res) => {
+    state.getRoom(req.params.roomId).unloadBbReplay();
+    res.status(200).send({ status: 'ok', replay: null });
+  },
+);
+
+// Ground-truth files next to the clips: every `*.json` whose name is
+// `events.json` or ends in `.events.json`, up to the upload folder depth.
+routes.get('/suggestions/bb-events', async (_req, res) => {
+  const root = path.join(DATA_DIR, 'mp4s');
+  const files: string[] = [];
+  const walk = async (rel: string, depth: number): Promise<void> => {
+    const dir = path.join(root, rel);
+    let entries: import('node:fs').Dirent[];
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (e.name.startsWith('.')) continue;
+      const relPath = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) {
+        if (depth < 3) await walk(relPath, depth + 1);
+      } else if (/(^|\.)events\.json$/i.test(e.name)) {
+        files.push(relPath);
+      }
+    }
+  };
+  await walk('', 0);
+  files.sort();
+  res.status(200).send({ files });
+});
 
 // ── Haunting ghosts ────────────────────────────────────────────
 

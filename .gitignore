@@ -59,6 +59,7 @@ server/src/ai-models/building-detector/.venv/
 server/src/ai-models/car-ads/*.pt
 server/src/ai-models/kettlebell-coach/.venv/
 server/src/ai-models/kettlebell-coach/*.pt
+server/src/ai-models/basketball-scorer/*.pt
 packages/types/dist/
 packages/types/node_modules/
 server/screenshots/
@@ -72,3 +73,4 @@ server/.smelter-bin/
 workshop/__pycache__/
 *.pyc
 weights/clip/
+docs/

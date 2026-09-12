@@ -3,7 +3,16 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Camera, Crosshair, Dumbbell, Eye, Home, Mic } from 'lucide-react';
+import {
+  Camera,
+  Crosshair,
+  Dumbbell,
+  Eye,
+  Home,
+  Mic,
+  Target,
+  Video,
+} from 'lucide-react';
 
 import type { RoomState } from '@/lib/types';
 import { getRoomInfo } from '@/app/actions/actions';
@@ -90,6 +99,20 @@ export default function MobileJoinPage() {
   const handleLift = () => {
     if (!roomId) return;
     router.push(`/mobile/${encodeURIComponent(roomId as string)}/lift`);
+  };
+
+  const handleBasketballCam = (role: 'hoop' | 'court') => {
+    if (!roomId) return;
+    router.push(
+      `/mobile/${encodeURIComponent(roomId as string)}/bb-cam?role=${role}`,
+    );
+  };
+
+  const handleBasketballCommentate = () => {
+    if (!roomId) return;
+    router.push(
+      `/mobile/${encodeURIComponent(roomId as string)}/bb-commentate`,
+    );
   };
 
   if (loading) {
@@ -197,6 +220,54 @@ export default function MobileJoinPage() {
                 </div>
                 <div className='text-sm text-neutral-400'>
                   Join the tournament booth — your voice goes on air.
+                </div>
+              </div>
+            </button>
+
+            <button
+              onClick={() => handleBasketballCam('hoop')}
+              className='group flex items-center gap-4 p-5 border border-neutral-800 rounded-lg bg-neutral-900/40 hover:border-[#00f3ff] hover:bg-neutral-900/60 transition-colors cursor-pointer text-left'>
+              <div className='shrink-0 w-12 h-12 rounded-full bg-neutral-800 flex items-center justify-center group-hover:bg-[#00f3ff]/10'>
+                <Target className='w-6 h-6 text-[#00f3ff]' />
+              </div>
+              <div className='flex-1 min-w-0'>
+                <div className='text-lg font-semibold'>
+                  Basketball · Hoop Cam
+                </div>
+                <div className='text-sm text-neutral-400'>
+                  Fixed on the rim — the AI referee counts the makes.
+                </div>
+              </div>
+            </button>
+
+            <button
+              onClick={() => handleBasketballCam('court')}
+              className='group flex items-center gap-4 p-5 border border-neutral-800 rounded-lg bg-neutral-900/40 hover:border-[#00f3ff] hover:bg-neutral-900/60 transition-colors cursor-pointer text-left'>
+              <div className='shrink-0 w-12 h-12 rounded-full bg-neutral-800 flex items-center justify-center group-hover:bg-[#00f3ff]/10'>
+                <Video className='w-6 h-6 text-[#00f3ff]' />
+              </div>
+              <div className='flex-1 min-w-0'>
+                <div className='text-lg font-semibold'>
+                  Basketball · Court Cam
+                </div>
+                <div className='text-sm text-neutral-400'>
+                  Wide on the court — the broadcast picture.
+                </div>
+              </div>
+            </button>
+
+            <button
+              onClick={handleBasketballCommentate}
+              className='group flex items-center gap-4 p-5 border border-neutral-800 rounded-lg bg-neutral-900/40 hover:border-[#00f3ff] hover:bg-neutral-900/60 transition-colors cursor-pointer text-left'>
+              <div className='shrink-0 w-12 h-12 rounded-full bg-neutral-800 flex items-center justify-center group-hover:bg-[#00f3ff]/10'>
+                <Mic className='w-6 h-6 text-[#00f3ff]' />
+              </div>
+              <div className='flex-1 min-w-0'>
+                <div className='text-lg font-semibold'>
+                  Basketball · Commentator
+                </div>
+                <div className='text-sm text-neutral-400'>
+                  Call the game — your voice goes on air with the cameras.
                 </div>
               </div>
             </button>

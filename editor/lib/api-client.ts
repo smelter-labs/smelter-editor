@@ -33,6 +33,16 @@ import type {
   KbtMatchEvent,
   KbtPerfConfig,
   KbtStateEvent,
+  BbCamRole,
+  BbConfig,
+  BbConfigPatch,
+  BbMatchAction,
+  BbMatchEvent,
+  BbReplayRequest,
+  BbReplayState,
+  BbShotEdit,
+  BbShotEvent,
+  BbStateEvent,
 } from '@smelter-editor/types';
 import { createStorageClient, type StorageClient } from './storage-client';
 
@@ -62,7 +72,8 @@ interface SmelterApiClient {
   getRoomRecordings(roomId: string): Promise<RecordingInfo[]>;
 
   getTwitchSuggestions(): Promise<InputSuggestions>;
-  getMP4Suggestions(): Promise<MP4Suggestions>;
+  /** `refresh` rescans data/mp4s first (clips copied in by hand). */
+  getMP4Suggestions(options?: { refresh?: boolean }): Promise<MP4Suggestions>;
   getKickSuggestions(): Promise<KickSuggestions>;
   getPictureSuggestions(): Promise<PictureSuggestions>;
   getAudioSuggestions(): Promise<AudioSuggestions>;
@@ -246,6 +257,50 @@ interface SmelterApiClient {
     roomId: string,
   ): Promise<{ state: KbtStateEvent; match: KbtMatchEvent }>;
 
+  setBbConfig(roomId: string, config: BbConfigPatch): Promise<BbConfig>;
+  controlBbMatch(
+    roomId: string,
+    cmd: { action: BbMatchAction; role?: BbCamRole },
+  ): Promise<{
+    state: BbStateEvent;
+    match: BbMatchEvent;
+    /** Present when the server refused the action (status 'rejected'). */
+    error?: { code: string; message: string };
+  }>;
+  getBbState(
+    roomId: string,
+  ): Promise<{ state: BbStateEvent; match: BbMatchEvent }>;
+  /** Ledger edit (resolve / add / undo) from the host page. */
+  editBbShot(
+    roomId: string,
+    cmd: BbShotEdit,
+  ): Promise<{
+    shot: BbShotEvent | null;
+    state: BbStateEvent;
+    match: BbMatchEvent;
+  }>;
+  /** Use a looping mp4 from data/mp4s as the hoop / court camera. */
+  attachBbMp4Cam(
+    roomId: string,
+    role: BbCamRole,
+    fileName: string,
+  ): Promise<{ inputId: string }>;
+  /** Restart every file camera from `playFromMs` so the clips line up. */
+  syncBbFileCams(
+    roomId: string,
+    playFromMs?: number,
+  ): Promise<{ inputIds: string[] }>;
+  /**
+   * Replay the throws of a ground-truth events file (data/mp4s) on the file
+   * cams instead of the model; `{action: 'off'}` unloads it.
+   */
+  setBbReplay(
+    roomId: string,
+    request: BbReplayRequest,
+  ): Promise<{ replay: BbReplayState | null }>;
+  /** Ground-truth event files (`events.json` / `*.events.json`) under data/mp4s. */
+  getBbEventsSuggestions(): Promise<{ files: string[] }>;
+
   setHaunterConfig(
     roomId: string,
     config: {
@@ -414,8 +469,11 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       return await req('get', '/suggestions/twitch');
     },
 
-    async getMP4Suggestions() {
-      return await req('get', '/suggestions/mp4s');
+    async getMP4Suggestions(options) {
+      return await req(
+        'get',
+        options?.refresh ? '/suggestions/mp4s?refresh=1' : '/suggestions/mp4s',
+      );
     },
 
     async getKickSuggestions() {
@@ -718,6 +776,84 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
         state: data.state as KbtStateEvent,
         match: data.match as KbtMatchEvent,
       };
+    },
+
+    async setBbConfig(roomId, config) {
+      const data = await req(
+        'post',
+        `/room/${enc(roomId)}/basketball-game/config`,
+        config,
+      );
+      return data.config as BbConfig;
+    },
+
+    async controlBbMatch(roomId, cmd) {
+      const data = await req(
+        'post',
+        `/room/${enc(roomId)}/basketball-game/match`,
+        cmd,
+      );
+      return {
+        state: data.state as BbStateEvent,
+        match: data.match as BbMatchEvent,
+        error: data.error as { code: string; message: string } | undefined,
+      };
+    },
+
+    async getBbState(roomId) {
+      const data = await req(
+        'get',
+        `/room/${enc(roomId)}/basketball-game/state`,
+      );
+      return {
+        state: data.state as BbStateEvent,
+        match: data.match as BbMatchEvent,
+      };
+    },
+
+    async editBbShot(roomId, cmd) {
+      const data = await req(
+        'post',
+        `/room/${enc(roomId)}/basketball-game/shot`,
+        cmd,
+      );
+      return {
+        shot: (data.shot ?? null) as BbShotEvent | null,
+        state: data.state as BbStateEvent,
+        match: data.match as BbMatchEvent,
+      };
+    },
+
+    async attachBbMp4Cam(roomId, role, fileName) {
+      const data = await req(
+        'post',
+        `/room/${enc(roomId)}/basketball-game/mp4-cam`,
+        { role, fileName },
+      );
+      return { inputId: data.inputId as string };
+    },
+
+    async syncBbFileCams(roomId, playFromMs) {
+      const data = await req(
+        'post',
+        `/room/${enc(roomId)}/basketball-game/mp4-cam/sync`,
+        { playFromMs: playFromMs ?? 0 },
+      );
+      return { inputIds: (data.inputIds ?? []) as string[] };
+    },
+
+    async setBbReplay(roomId, request) {
+      const data = await req(
+        'post',
+        `/room/${enc(roomId)}/basketball-game/replay`,
+        request,
+      );
+      return { replay: (data.replay ?? null) as BbReplayState | null };
+    },
+
+    async getBbEventsSuggestions() {
+      const data = await req('get', '/suggestions/bb-events');
+      return { files: (data.files ?? []) as string[] };
     },
 
     async setHaunterConfig(roomId, config) {

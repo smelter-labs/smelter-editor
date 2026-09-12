@@ -1,0 +1,5 @@
+smelter-sdk
+opencv-python-headless
+numpy
+websockets
+ultralytics>=8.3.0

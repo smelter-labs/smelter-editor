@@ -2,7 +2,30 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CommentatorRig } from './use-commentator-rig';
-import type { PanelSocket } from './use-panel-socket';
+
+/** The slice of the rig recovery drives — any game's rig satisfies it. */
+export type CamRecoveryRig = Pick<
+  CommentatorRig,
+  | 'live'
+  | 'publishing'
+  | 'hasActivePc'
+  | 'hasLiveTrack'
+  | 'enableCamera'
+  | 'markPublishing'
+  | 'closePublish'
+  | 'setOnPublishDead'
+>;
+
+/**
+ * The slice of a panel socket recovery reads: connection state, the cam
+ * re-request, and the server's own view of the commentator camera (any game's
+ * state snapshot that exposes `commentator.camConnected` fits).
+ */
+export type CamRecoverySocket = {
+  connected: boolean;
+  requestCam: () => void;
+  state?: { commentator?: { camConnected?: boolean } | null } | null;
+};
 
 const REPUBLISH_MAX_MS = 8000;
 /** How long the server must keep reporting the cam down — while the rig
@@ -29,8 +52,8 @@ export type CamRecovery = {
  * the caster until a page refresh.
  */
 export function useCamRecovery(
-  rig: CommentatorRig,
-  socket: PanelSocket,
+  rig: CamRecoveryRig,
+  socket: CamRecoverySocket,
 ): CamRecovery {
   const [restoring, setRestoring] = useState(false);
   const wantsCamRef = useRef(false);

@@ -129,6 +129,9 @@ RUN cd "$AI_MODELS_DIR/kettlebell-coach" && \
     "from ultralytics import YOLO, YOLOWorld; YOLO('yolo11n-pose.pt'); YOLOWorld('yolov8s-worldv2.pt').set_classes(['kettlebell'])" && \
   cd "$AI_MODELS_DIR/people-counter" && \
   "$AI_MODELS_DIR/people-counter/.venv/bin/python3" -c \
-    "from ultralytics import YOLO; YOLO('yolov8n.pt'); YOLO('yolov8s.pt')"
+    "from ultralytics import YOLO; YOLO('yolov8n.pt'); YOLO('yolov8s.pt')" && \
+  cd "$AI_MODELS_DIR/basketball-scorer" && \
+  "$AI_MODELS_DIR/people-counter/.venv/bin/python3" -c \
+    "from ultralytics import YOLO; YOLO('yolo11n.pt'); YOLO('yolo11s.pt')"
 
 ENTRYPOINT ["/home/smelter/demo/entrypoint.sh"]

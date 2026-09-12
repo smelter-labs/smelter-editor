@@ -1,13 +1,23 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { KbtCamOfferEvent } from '@smelter-editor/types';
 import { startPublish } from '@/components/control-panel/whip-input/utils/whip-publisher';
 import { useWhipHeartbeat } from '@/components/control-panel/whip-input/hooks/use-whip-heartbeat';
 import { resolveMediaUrl } from '@/lib/server-url';
 import { usePreviewSet } from '../phone/use-preview';
 import { useMicLevel } from '../phone/use-mic-level';
 import { usePublishWatchdog } from '../phone/use-publish-watchdog';
+
+/**
+ * The server's camera offer, structurally: every game's `*_cam_offer` event
+ * (kbt_cam_offer, bb_cam_offer) carries these three fields, so the rig is
+ * game-agnostic.
+ */
+export type CamOffer = {
+  inputId: string;
+  whipUrl: string;
+  bearerToken: string;
+};
 
 export type CommentatorRig = {
   camOn: boolean;
@@ -34,8 +44,8 @@ export type CommentatorRig = {
   toggleMute: () => void;
   /** Real track dimensions for the cam request (aspect-true server tile). */
   getCamDims: () => { width: number; height: number } | null;
-  /** Wire into the socket's kbt_cam_offer. */
-  handleCamOffer: (ev: KbtCamOfferEvent) => void;
+  /** Wire into the socket's cam offer event (kbt_cam_offer / bb_cam_offer). */
+  handleCamOffer: (ev: CamOffer) => void;
   /** The panel asked for a cam slot — show CONNECTING until publish lands. */
   markPublishing: () => void;
   hasStream: () => boolean;
@@ -192,7 +202,7 @@ export function useCommentatorRig(roomId: string): CommentatorRig {
     return s?.width && s?.height ? { width: s.width, height: s.height } : null;
   }, []);
 
-  const handleCamOffer = useCallback((ev: KbtCamOfferEvent) => {
+  const handleCamOffer = useCallback((ev: CamOffer) => {
     if (!camStreamRef.current) return;
     camPcRef.current?.close();
     camPcRef.current = null;

@@ -1272,17 +1272,12 @@ export class InputManager {
         );
       }
 
-      let offsetMs = SmelterInstance.getPipelineTimeMs() - normalizedPlayFromMs;
-      if (offsetMs < 0) {
-        logTimelineEvent(
-          this.idPrefix,
-          `[mp4-restart] clamp-offset "${name}" requestedOffsetMs=${offsetMs} clampedOffsetMs=0`,
-        );
-        offsetMs = 0;
-      }
+      // A real seek: the engine starts decoding at `seekMs` (first frame
+      // gets pts 0) and, without an offset, anchors the track to the moment
+      // its first frame arrives — i.e. "now". A looping clip restarts at 0.
       logTimelineEvent(
         this.idPrefix,
-        `[mp4-restart] register "${name}" loop=${loop} offsetMs=${offsetMs}`,
+        `[mp4-restart] register "${name}" loop=${loop} seekMs=${normalizedPlayFromMs}`,
       );
       // Keep the side channel across the restart — without it the AI workers'
       // sockets disappear and the overlay hold uses a stale delay.
@@ -1294,7 +1289,7 @@ export class InputManager {
         type: 'mp4',
         filePath: input.mp4FilePath,
         loop,
-        offsetMs,
+        seekMs: normalizedPlayFromMs,
         ...(sideChannel ? { sideChannel } : {}),
       });
       logTimelineEvent(

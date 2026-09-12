@@ -46,9 +46,13 @@ type OutgoingMessage = {
     | 'configure'
     | 'side_channel_ready'
     | 'side_channel_stopped'
+    | 'replay'
     | 'shutdown';
   inputId?: string;
   params?: Record<string, number | string>;
+  /** `replay`: ledger entry the clip belongs to, and its frame time. */
+  shotId?: string;
+  t?: number;
 };
 
 export abstract class BaseSidecar extends EventEmitter {
@@ -129,6 +133,22 @@ export abstract class BaseSidecar extends EventEmitter {
   notifySideChannelStopped(inputId: string): void {
     this.readyInputIds.delete(inputId);
     this.sendToPython({ cmd: 'side_channel_stopped', inputId });
+  }
+
+  /**
+   * Ask the worker for an instant-replay clip of `inputId` around frame time
+   * `t` (the newest buffered frame when omitted), tagged with `shotId`. The
+   * worker answers with a `replay_ready` / `replay_failed` event on its
+   * result stream. Only the basketball scorer implements it; others ignore
+   * the command. Returns false when the worker is not connected.
+   */
+  requestReplay(inputId: string, shotId: string, t?: number): boolean {
+    return this.sendToPython({
+      cmd: 'replay',
+      inputId,
+      shotId,
+      ...(t != null ? { t } : {}),
+    });
   }
 
   async shutdown(): Promise<void> {
@@ -355,9 +375,7 @@ export abstract class BaseSidecar extends EventEmitter {
 
     const pythonBin = this.getPythonPath();
     const socketDir = process.env.SMELTER_SIDE_CHANNEL_SOCKET_DIR ?? '';
-    console.log(
-      `[ai:${this.manifest.id}] spawning python=${pythonBin}`,
-    );
+    console.log(`[ai:${this.manifest.id}] spawning python=${pythonBin}`);
 
     this.pythonProcess = spawn(pythonBin, ['-u', this.manifest.pythonScript], {
       stdio: 'inherit',
