@@ -708,6 +708,8 @@ export class RoomState {
       resyncFileCams: async () => {
         await this.syncBbFileCams(0);
       },
+      // Ultra AI: the plays annotated next to a file clip.
+      loadClipEvents: (clipFileName) => this.readBbClipEvents(clipFileName),
       publishHud: (state) => this.output.store.getState().setBbGame(state),
       registerJoinQr: (url) =>
         this.registerJoinQrImage(url, {
@@ -2300,6 +2302,35 @@ export class RoomState {
       } catch {
         // fall through to the next candidate
       }
+    }
+    return null;
+  }
+
+  /**
+   * Events sidecar of a clip for Ultra AI: `<clip>.events.json`, then
+   * `events.json` in the clip's folder (both written by
+   * scripts/bb-clip-window.mjs). Null when there is none; a malformed file
+   * throws (the controller reports it).
+   */
+  private async readBbClipEvents(
+    fileName: string,
+  ): Promise<{ fileName: string; json: unknown } | null> {
+    const base = fileName.replace(/\.mp4$/i, '');
+    const dir = fileName.includes('/')
+      ? fileName.slice(0, fileName.lastIndexOf('/') + 1)
+      : '';
+    for (const rel of [`${base}.events.json`, `${dir}events.json`]) {
+      const file = path.join(DATA_DIR, 'mp4s', rel);
+      if (!(await pathExists(file))) continue;
+      let json: unknown;
+      try {
+        json = JSON.parse(await readFile(file, 'utf8'));
+      } catch (err) {
+        throw new Error(
+          `${rel}: not valid JSON (${err instanceof Error ? err.message : String(err)})`,
+        );
+      }
+      return { fileName: rel, json };
     }
     return null;
   }

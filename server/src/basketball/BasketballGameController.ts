@@ -19,6 +19,7 @@ import type {
   BbStateEvent,
   BbTeamId,
   BbTeamStats,
+  BbUltraAiStatus,
   BbViewOverride,
   RoomEvent,
 } from '@smelter-editor/types';
@@ -37,7 +38,12 @@ import {
   kbtParkRect,
 } from '../app/store';
 import { clamp } from '../core/mathUtils';
-import type { ReplayShot } from './groundTruth';
+import {
+  parseBbGroundTruth,
+  selectUltraShots,
+  ultraConfidence,
+  type ReplayShot,
+} from './groundTruth';
 import { BbAiLog, reasonText, type CandidateEndEvent } from './aiLog';
 
 /** Command from the arcade page's match endpoint (and the panel over WS). */
@@ -192,6 +198,14 @@ export type BbControllerDeps = {
    * side-channel input then falls behind by its delay.
    */
   resyncFileCams?: () => Promise<void>;
+  /**
+   * Ultra AI: the events sidecar next to a file clip (`<clip>.events.json`,
+   * then `events.json` in its folder), parsed JSON + its data/mp4s-relative
+   * path; null when the clip has none.
+   */
+  loadClipEvents?: (
+    clipFileName: string,
+  ) => Promise<{ fileName: string; json: unknown } | null>;
   now?: () => number;
 };
 
@@ -247,6 +261,8 @@ type ReplayRun = {
   fileName: string;
   basket: BbReplayBasket;
   loop: boolean;
+  /** Loaded by Ultra AI: shots land as model calls (`source: 'ai'`). */
+  ultra: boolean;
   shots: ReplayShot[];
   /** Next shot to fire. */
   cursor: number;
@@ -503,6 +519,21 @@ export class BasketballGameController {
   /** Clock signature of the file-cam pass a loop resync was issued for. */
   private lastLoopResyncSig: string | null = null;
 
+  // ── Ultra AI (annotated plays instead of the model) ──
+  private ultraAi = false;
+  /** A sidecar read is in flight (one at a time). */
+  private ultraLoading = false;
+  /** Clip whose sidecar was missing / empty — no retry until it changes. */
+  private ultraFailedFor: string | null = null;
+  /** Parsed plays of `clip`, kept while the clip clock is not ready yet. */
+  private ultraPrepared: {
+    clip: string;
+    fileName: string;
+    shots: ReplayShot[];
+    basket: BbReplayBasket;
+  } | null = null;
+  private ultraNoClipHinted = false;
+
   private timer: ReturnType<typeof setInterval> | null = null;
   private lastCamPoll = 0;
   private disposed = false;
@@ -595,6 +626,9 @@ export class BasketballGameController {
         break;
       case 'bb_commentator_ai_overlay':
         this.setAiOverlay(clientId, msg.enabled);
+        break;
+      case 'bb_commentator_ultra_ai':
+        this.setUltraAi(clientId, msg.enabled);
         break;
       case 'bb_commentator_caster_pip':
         this.setCasterPip(clientId, msg.enabled);
@@ -945,6 +979,13 @@ export class BasketballGameController {
     cam.inputId = inputId;
     cam.camConnected = false; // flips true on the next tick poll
     if (role === 'hoop') this.armHoopAi();
+    if (this.ultraAi && this.ultraPrepared?.clip !== this.fileCamClip()) {
+      // The driving clip changed: drop its plays, the tick re-arms (a court
+      // clip next to an armed hoop clip changes nothing).
+      this.ultraFailedFor = null;
+      this.ultraPrepared = null;
+      if (this.replay?.ultra) this.unloadReplay();
+    }
     void this.restage();
     this.ensureRunning();
     this.broadcastState();
@@ -1012,6 +1053,7 @@ export class BasketballGameController {
     shots: ReplayShot[];
     basket: BbReplayBasket;
     loop: boolean;
+    ultra?: boolean;
   }): BbReplayState {
     if (!this.fileClock()) {
       throw new Error(
@@ -1023,6 +1065,7 @@ export class BasketballGameController {
       fileName: opts.fileName,
       basket: opts.basket,
       loop: opts.loop,
+      ultra: opts.ultra ?? false,
       shots: [...opts.shots].sort((a, b) => a.tMs - b.tMs),
       cursor: 0,
       loopIndex: 0,
@@ -1053,6 +1096,7 @@ export class BasketballGameController {
     return {
       fileName: r.fileName,
       active: true,
+      ultra: r.ultra,
       basket: r.basket,
       loop: r.loop,
       total: r.shots.length,
@@ -1178,6 +1222,10 @@ export class BasketballGameController {
     }
     r.fired++;
     this.scheduleReplay();
+    if (r.ultra) {
+      this.fireUltraShot(shot, now);
+      return;
+    }
     if (shot.made) {
       this.ingestShot({
         source: 'replay',
@@ -1190,6 +1238,58 @@ export class BasketballGameController {
     } else {
       this.ingestMiss(shot.team, now);
     }
+  }
+
+  /**
+   * Ultra AI: an annotated play lands exactly like a model call — a make as
+   * `source: 'ai'` with `evidence: 'ultra'` and a per-play confidence, the
+   * same AI LOG lines the worker path writes, a miss as an attempt.
+   */
+  private fireUltraShot(shot: ReplayShot, now: number): void {
+    const evidence = 'ultra';
+    if (!shot.made) {
+      this.aiLog.push(
+        {
+          kind: 'attempt',
+          tone: 'amber',
+          label: 'ATTEMPT',
+          text: `miss · ${shot.team ? `team ${shot.team}` : 'nobody'} · FG% only`,
+        },
+        now,
+      );
+      this.ingestMiss(shot.team, now);
+      this.flushAiLog();
+      return;
+    }
+    const aiConfidence = ultraConfidence(shot.tMs, shot.team);
+    const ingested = this.ingestShot({
+      source: 'ai',
+      aiTeam: shot.team,
+      aiConfidence,
+      points: shot.points,
+      mediaMs: shot.tMs,
+      evidence,
+    });
+    const detail = reasonText(evidence);
+    this.aiVerdict = {
+      text: `MAKE ${evidence}`,
+      detail,
+      tone: 'good',
+      at: now,
+    };
+    this.logMake(
+      {
+        shot: ingested,
+        inMatch: true,
+        weak: false,
+        aiTeam: shot.team,
+        aiConfidence,
+        evidence,
+        detail,
+      },
+      now,
+    );
+    this.flushAiLog();
   }
 
   /** Tick: follow clock changes (attach / sync / kick) and keep the panel countdown fresh. */
@@ -1591,6 +1691,178 @@ export class BasketballGameController {
     this.flushAiLog();
     this.deps.broadcast(this.stateSnapshot());
     this.publishHud();
+  }
+
+  // ── Ultra AI ──────────────────────────────────────────────────────────────
+
+  /**
+   * Moderator: score from the plays annotated next to the attached file clip
+   * instead of the live model. The plays load as an `ultra` replay run (same
+   * scheduler as the ground-truth replay) and land as model calls; the model
+   * keeps tracking the ball and its own shot calls are superseded.
+   */
+  setUltraAi(clientId: string, raw: unknown): void {
+    if (!this.requireCommentator(clientId, 'toggle Ultra AI')) return;
+    if (typeof raw !== 'boolean') {
+      this.sendError(clientId, 'invalid_view', 'Invalid Ultra AI toggle.');
+      return;
+    }
+    if (this.ultraAi === raw) return;
+    this.ultraAi = raw;
+    this.ultraFailedFor = null;
+    this.ultraPrepared = null;
+    this.ultraNoClipHinted = false;
+    this.aiLog.push(
+      {
+        kind: 'ai',
+        tone: 'chalk',
+        label: 'ULTRA AI',
+        text: raw ? 'on' : 'off',
+      },
+      this.now(),
+    );
+    if (raw) {
+      this.engaged = true;
+      void this.armUltraAi(clientId);
+    } else if (this.replay?.ultra) {
+      this.unloadReplay();
+    }
+    this.flushAiLog();
+    this.deps.broadcast(this.stateSnapshot());
+    this.ensureRunning();
+  }
+
+  /** The file clip Ultra AI follows: the hoop file cam, else the court's. */
+  private fileCamClip(): string | null {
+    for (const role of ['hoop', 'court'] as const) {
+      const cam = this.cams.get(role);
+      if (cam && cam.source === 'file' && cam.fileName) return cam.fileName;
+    }
+    return null;
+  }
+
+  ultraStatus(): BbUltraAiStatus {
+    if (!this.ultraAi) return 'off';
+    if (this.replay?.ultra) return 'armed';
+    const clip = this.fileCamClip();
+    if (!clip) return 'no_clip';
+    if (this.ultraFailedFor === clip) return 'no_events';
+    return 'loading';
+  }
+
+  /**
+   * Load the attached clip's plays (once per clip) and arm them on the file
+   * clock. Called from the toggle and retried from the tick: right after USE
+   * FILE the hoop input is re-registered for the scorer, so its clock can be
+   * missing for a beat — the parsed plays wait in `ultraPrepared`.
+   */
+  private async armUltraAi(clientId?: string): Promise<void> {
+    if (
+      !this.ultraAi ||
+      this.ultraLoading ||
+      this.disposed ||
+      this.replay?.ultra
+    )
+      return;
+    const clip = this.fileCamClip();
+    if (!clip) {
+      if (!this.ultraNoClipHinted) {
+        this.ultraNoClipHinted = true;
+        this.aiLog.push(
+          {
+            kind: 'ai',
+            tone: 'amber',
+            label: 'ULTRA AI',
+            text: 'waiting for a file cam · USE FILE',
+          },
+          this.now(),
+        );
+        this.flushAiLog();
+      }
+      return;
+    }
+    if (this.ultraFailedFor === clip) return;
+    if (this.ultraPrepared?.clip !== clip) {
+      this.ultraPrepared = null;
+      this.ultraLoading = true;
+      this.broadcastState();
+      let failure: string | null = null;
+      try {
+        const found = await this.deps.loadClipEvents?.(clip);
+        if (!found) {
+          failure = `no annotated plays next to ${clip}`;
+        } else {
+          const gt = parseBbGroundTruth(found.json);
+          const { shots, basket } = selectUltraShots(
+            gt,
+            clip,
+            this.config.arcPoints,
+          );
+          if (shots.length === 0) {
+            failure = `no plays in ${found.fileName}`;
+          } else {
+            this.ultraPrepared = {
+              clip,
+              fileName: found.fileName,
+              shots,
+              basket,
+            };
+          }
+        }
+      } catch (err) {
+        failure = err instanceof Error ? err.message : String(err);
+      } finally {
+        this.ultraLoading = false;
+      }
+      if (this.disposed) return;
+      if (failure || !this.ultraPrepared) {
+        this.ultraFailedFor = clip;
+        this.aiLog.push(
+          {
+            kind: 'ai',
+            tone: 'amber',
+            label: 'ULTRA AI',
+            text: `${failure ?? 'no plays'} · live model in charge`,
+          },
+          this.now(),
+        );
+        this.flushAiLog();
+        if (clientId) {
+          this.sendError(
+            clientId,
+            'bad_action',
+            `Ultra AI: no annotated plays for ${clip} — the live model scores.`,
+          );
+        }
+        this.broadcastState();
+        return;
+      }
+    }
+    if (!this.ultraAi || this.replay?.ultra) return;
+    if (!this.fileClock()) {
+      // Clip clock not ready yet (input re-registering): the tick retries.
+      this.broadcastState();
+      return;
+    }
+    const p = this.ultraPrepared;
+    if (!p) return;
+    this.loadReplay({
+      fileName: p.fileName,
+      shots: p.shots,
+      basket: p.basket,
+      loop: true,
+      ultra: true,
+    });
+    this.aiLog.push(
+      {
+        kind: 'ai',
+        tone: 'good',
+        label: 'ULTRA AI',
+        text: `armed · ${p.shots.length} plays · ${p.basket} basket`,
+      },
+      this.now(),
+    );
+    this.flushAiLog();
   }
 
   setCasterPip(clientId: string, raw: unknown): void {
@@ -2746,14 +3018,19 @@ export class BasketballGameController {
           .filter(Boolean)
           .join(' · ');
         const t = typeof ev.t === 'number' ? { t: ev.t } : {};
-        // Ground-truth replay owns the ledger; the model only tracks the ball.
+        // Ground-truth replay / Ultra AI owns the ledger; the model only
+        // tracks the ball.
         if (this.replay) {
           this.aiLog.push(
             {
               kind: 'make',
               tone: 'dim',
               label: 'MAKE',
-              text: `${evidence} · ${guess} · ignored (ground-truth replay)`,
+              text: `${evidence} · ${guess} · ${
+                this.replay.ultra
+                  ? 'superseded (ultra ai)'
+                  : 'ignored (ground-truth replay)'
+              }`,
               ...(detail ? { detail } : {}),
               ...t,
             },
@@ -2783,22 +3060,14 @@ export class BasketballGameController {
             ? { releaseFrameUrl: `/bb-shot-frames/${ev.releaseFrameFile}` }
             : {}),
         });
-        const pending = shot?.status === 'pending';
-        const why = !inMatch
-          ? 'warm-up · not in ledger'
-          : pending
-            ? weak
-              ? 'weak evidence · ref call'
-              : aiTeam
-                ? 'below auto-assign confidence · ref call'
-                : 'no jersey seen · ref call'
-            : `+${shot?.points ?? 1} ${aiTeam ?? ''} · in ledger`;
-        this.aiLog.push(
+        this.logMake(
           {
-            kind: !inMatch ? 'make' : pending ? 'refcall' : 'make',
-            tone: !inMatch ? 'chalk' : pending ? 'electric' : 'good',
-            label: !inMatch ? 'MAKE' : pending ? 'REF CALL' : 'LEDGER',
-            text: `${evidence} · ${guess} · ${why}`,
+            shot,
+            inMatch,
+            weak,
+            aiTeam,
+            aiConfidence,
+            evidence,
             ...(detail ? { detail } : {}),
             ...t,
           },
@@ -2843,6 +3112,44 @@ export class BasketballGameController {
         this.publishHud();
       }
     }
+  }
+
+  /** The AI LOG line of a model make (also written for Ultra AI plays). */
+  private logMake(
+    m: {
+      shot: BbShotEvent | null;
+      inMatch: boolean;
+      weak: boolean;
+      aiTeam: BbTeamId | null;
+      aiConfidence: number;
+      evidence: string;
+      detail?: string;
+      t?: number;
+    },
+    now: number,
+  ): void {
+    const guess = `AI ${m.aiTeam ?? '?'} ${Math.round(m.aiConfidence * 100)}%`;
+    const pending = m.shot?.status === 'pending';
+    const why = !m.inMatch
+      ? 'warm-up · not in ledger'
+      : pending
+        ? m.weak
+          ? 'weak evidence · ref call'
+          : m.aiTeam
+            ? 'below auto-assign confidence · ref call'
+            : 'no jersey seen · ref call'
+        : `+${m.shot?.points ?? 1} ${m.aiTeam ?? ''} · in ledger`;
+    this.aiLog.push(
+      {
+        kind: !m.inMatch ? 'make' : pending ? 'refcall' : 'make',
+        tone: !m.inMatch ? 'chalk' : pending ? 'electric' : 'good',
+        label: !m.inMatch ? 'MAKE' : pending ? 'REF CALL' : 'LEDGER',
+        text: `${m.evidence} · ${guess} · ${why}`,
+        ...(m.detail ? { detail: m.detail } : {}),
+        ...(m.t != null ? { t: m.t } : {}),
+      },
+      now,
+    );
   }
 
   /** A missed attempt (AI or replay): FG% material, never in the ledger. */
@@ -3224,6 +3531,9 @@ export class BasketballGameController {
     this.pollCameras(now);
     this.checkFileCamLoop(now);
     this.checkReplayClock(now);
+    if (this.ultraAi && !this.replay && !this.ultraLoading) {
+      void this.armUltraAi();
+    }
     this.syncScene(now);
     if (this.phase !== 'lobby') {
       if (now - this.lastMatchBroadcastAt >= MATCH_BROADCAST_MS) {
@@ -3351,6 +3661,7 @@ export class BasketballGameController {
       scene: this.stagedScene,
       viewOverride: { ...this.viewOverride },
       aiOverlay: this.aiOverlay,
+      ultraAi: this.ultraStatus(),
       casterPip: this.casterPip,
       pipFx: { ...this.pipFx },
       pending: [...this.shots]

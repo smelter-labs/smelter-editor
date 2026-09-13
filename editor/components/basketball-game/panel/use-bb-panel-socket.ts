@@ -87,6 +87,8 @@ export type BbPanelSocket = {
   setCasterPip: (enabled: boolean) => void;
   /** Burn the scorer AI's debug overlay into the program (moderator). */
   setAiOverlay: (enabled: boolean) => void;
+  /** Ultra AI: score from the clip's annotated plays instead of the model. */
+  setUltraAi: (enabled: boolean) => void;
   setPipFx: (mode: BbPipFxMode, color: string) => void;
   setTeamColor: (team: BbTeamId, color: string) => void;
   retry: () => void;
@@ -315,6 +317,11 @@ export function useBbPanelSocket(
       sendJson({ type: 'bb_commentator_ai_overlay', enabled }),
     [sendJson],
   );
+  const setUltraAi = useCallback(
+    (enabled: boolean) =>
+      sendJson({ type: 'bb_commentator_ultra_ai', enabled }),
+    [sendJson],
+  );
   const setPipFx = useCallback(
     (mode: BbPipFxMode, color: string) =>
       sendJson({ type: 'bb_commentator_pip_fx', mode, color }),
@@ -352,6 +359,7 @@ export function useBbPanelSocket(
     undoShot,
     setCasterPip,
     setAiOverlay,
+    setUltraAi,
     setPipFx,
     setTeamColor,
     retry,

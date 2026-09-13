@@ -47,7 +47,12 @@ import {
   camSourceLabel,
   useMp4Library,
 } from '../file-cam-picker';
-import { ReplayControl, useBbEventsLibrary } from '../replay-control';
+import { replayClip } from '../replay-helpers';
+import {
+  ultraAiChipLabel,
+  ultraAiChipTitle,
+  ultraAiChipTone,
+} from '../ultra-ai-helpers';
 import { aiLogTime, aiLogToneKey, aiStatus } from '../ai-log-helpers';
 import { formatClock, remainingNow } from '../use-bb-feed';
 import type { BbPanelSocket } from './use-bb-panel-socket';
@@ -218,7 +223,6 @@ export function PanelScreen({
 }) {
   const rec = useKbtRecording(roomId, socket.state?.isRecording ?? false);
   const library = useMp4Library();
-  const events = useBbEventsLibrary();
   const [, forceTick] = useState(0);
   useEffect(() => {
     const t = window.setInterval(() => forceTick((n) => n + 1), 250);
@@ -974,18 +978,7 @@ export function PanelScreen({
         dense
         roomId={roomId}
         cams={state?.cams}
-        onReload={() => {
-          library.reload();
-          events.reload();
-        }}
-      />
-      <ReplayControl
-        dense
-        roomId={roomId}
-        cams={state?.cams}
-        replay={state?.replay}
-        files={events.files}
-        loading={events.loading}
+        onReload={() => library.reload()}
       />
       <BbRecordingPlate rec={rec} />
     </BbPlate>
@@ -1028,6 +1021,8 @@ export function PanelScreen({
   const aiArmed = !!hoopCam?.joined && !!hoopCam.calibrated;
   const aiState = aiStatus(socket.ball, socket.ballAt, Date.now(), aiArmed);
   const overlayOn = !!state?.aiOverlay;
+  const ultra = state?.ultraAi ?? 'off';
+  const ultraHasClip = !!replayClip(state?.cams);
   const aiLogPlate = (
     <BbPlate
       cutPx={12}
@@ -1040,6 +1035,14 @@ export function PanelScreen({
             <StatusPill tone={aiState.tone} size={9}>
               {aiState.text}
             </StatusPill>
+            <Chip
+              dense
+              tone={ultraAiChipTone(ultra)}
+              active={ultra !== 'off'}
+              label={ultraAiChipLabel(ultra)}
+              title={ultraAiChipTitle(ultra, ultraHasClip)}
+              onClick={() => socket.setUltraAi(ultra === 'off')}
+            />
             <Chip
               dense
               tone='electric'

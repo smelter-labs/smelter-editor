@@ -29,6 +29,9 @@ function harness(opts?: { withLiveness?: boolean }) {
   // Playhead anchors of file cams (RoomState derives them from the engine).
   const fileClocks = new Map<string, BbFileClock>();
   const resyncs: number[] = [];
+  // Ultra AI: events sidecars keyed by clip (RoomState reads them from disk).
+  const clipEvents = new Map<string, unknown>();
+  const clipEventReads: string[] = [];
   let camSeq = 0;
 
   const controller = new BasketballGameController(ROOM, {
@@ -91,6 +94,13 @@ function harness(opts?: { withLiveness?: boolean }) {
     resyncFileCams: async () => {
       resyncs.push(Date.now());
     },
+    loadClipEvents: async (clip) => {
+      clipEventReads.push(clip);
+      const json = clipEvents.get(clip);
+      return json === undefined
+        ? null
+        : { fileName: clip.replace(/\.mp4$/i, '.events.json'), json };
+    },
   });
 
   return {
@@ -108,6 +118,8 @@ function harness(opts?: { withLiveness?: boolean }) {
     live,
     fileClocks,
     resyncs,
+    clipEvents,
+    clipEventReads,
     ofType<T extends RoomEvent['type']>(type: T) {
       return events.filter((e) => e.type === type) as Extract<
         RoomEvent,
@@ -1246,6 +1258,7 @@ describe('BasketballGameController — ground-truth replay', () => {
     expect(r).toMatchObject({
       fileName: 'apidis/q2/events.json',
       active: true,
+      ultra: false,
       basket: 'left',
       total: 2,
       fired: 0,
@@ -1387,6 +1400,254 @@ describe('BasketballGameController — ground-truth replay', () => {
       loop: false,
     });
     expect(r.nextFireInMs).toBe(10_000 - HOLD + REPLAY_LAG);
+    h.controller.dispose();
+  });
+});
+
+// ── Ultra AI ─────────────────────────────────────────────────────────────────
+
+const TICK = 100;
+
+/** A demo clip's events sidecar: two left-basket plays, one on the right. */
+const ULTRA_GT = {
+  baskets: { left: { cams: [7, 5, 1, 2] }, right: { cams: [3, 6, 4] } },
+  events: [
+    {
+      tMs: 10_000,
+      kind: 'throw',
+      made: true,
+      points: 2,
+      team: 'A',
+      shotType: 'layup',
+      basket: 'left',
+    },
+    {
+      tMs: 20_000,
+      kind: 'throw',
+      made: false,
+      points: 0,
+      team: 'B',
+      shotType: 'three',
+      basket: 'left',
+    },
+    {
+      tMs: 25_000,
+      kind: 'throw',
+      made: true,
+      points: 2,
+      team: 'B',
+      shotType: 'layup',
+      basket: 'right',
+    },
+    { tMs: 30_000, kind: 'rebound', team: 'B' },
+  ],
+};
+
+function ultraLog(h: H) {
+  return h.ofType('bb_ai_log').flatMap((e) => e.entries);
+}
+
+function ultraOn(h: H, enabled = true) {
+  h.controller.handleMessage('mod', {
+    type: 'bb_commentator_ultra_ai',
+    enabled,
+  });
+}
+
+describe('BasketballGameController — Ultra AI', () => {
+  it('is moderator-gated, waits for a file cam, then arms with the basket the clip shows', async () => {
+    const h = harness();
+    h.controller.handleMessage('stranger', {
+      type: 'bb_commentator_ultra_ai',
+      enabled: true,
+    });
+    expect(h.errorsFor('stranger').map((e) => e.code)).toEqual([
+      'not_commentator',
+    ]);
+    h.controller.handleMessage('mod', {
+      type: 'bb_commentator_join',
+      name: 'MOD',
+    });
+    expect(h.lastState().ultraAi).toBe('off');
+    ultraOn(h);
+    await vi.advanceTimersByTimeAsync(TICK * 3);
+    expect(h.lastState().ultraAi).toBe('no_clip');
+    expect(h.lastState().replay).toBeNull();
+    expect(
+      ultraLog(h).filter((e) => e.text === 'waiting for a file cam · USE FILE'),
+    ).toHaveLength(1);
+    expect(h.clipEventReads).toEqual([]);
+    // USE FILE → the tick reads the sidecar and arms on the clip clock.
+    h.clipEvents.set('apidis/q2/cam7.mp4', ULTRA_GT);
+    fileRig(h);
+    await vi.advanceTimersByTimeAsync(TICK + 10);
+    expect(h.lastState().ultraAi).toBe('armed');
+    expect(h.lastState().replay).toMatchObject({
+      fileName: 'apidis/q2/cam7.events.json',
+      ultra: true,
+      basket: 'left',
+      loop: true,
+      total: 2,
+      nextEventTMs: 10_000,
+    });
+    expect(ultraLog(h)).toContainEqual(
+      expect.objectContaining({
+        label: 'ULTRA AI',
+        tone: 'good',
+        text: 'armed · 2 plays · left basket',
+      }),
+    );
+    expect(h.clipEventReads).toEqual(['apidis/q2/cam7.mp4']);
+    h.controller.dispose();
+  });
+
+  it('fires annotated plays as model calls and supersedes the live model', async () => {
+    const h = harness();
+    h.clipEvents.set('apidis/q2/cam7.mp4', ULTRA_GT);
+    const hoopIn = fileRig(h);
+    h.controller.handleMessage('mod', {
+      type: 'bb_commentator_join',
+      name: 'MOD',
+    });
+    h.controller.controlMatch({ action: 'start' });
+    ultraOn(h);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.lastState().ultraAi).toBe('armed');
+    await vi.advanceTimersByTimeAsync(10_000 + REPLAY_LAG - 1);
+    expect(h.ofType('bb_shot')).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(1);
+    const made = h.ofType('bb_shot');
+    expect(made).toHaveLength(1);
+    expect(made[0].kind).toBe('made');
+    expect(made[0].shot).toMatchObject({
+      source: 'ai',
+      evidence: 'ultra',
+      team: 'A',
+      aiTeam: 'A',
+      points: 1,
+      mediaMs: 10_000,
+      status: 'confirmed',
+    });
+    expect(made[0].shot.gtPoints).toBeUndefined();
+    const conf = made[0].shot.aiConfidence;
+    expect(conf).toBeGreaterThanOrEqual(0.9);
+    expect(conf).toBeLessThan(1);
+    expect(ultraLog(h)).toContainEqual(
+      expect.objectContaining({
+        label: 'LEDGER',
+        tone: 'good',
+        text: `ultra · AI A ${Math.round(conf * 100)}% · +1 A · in ledger`,
+        detail: 'ultra model call',
+      }),
+    );
+    expect(h.lastState().teams.A).toMatchObject({ score: 1, makes: 1 });
+    // The instant replay is requested like for any model make.
+    expect(h.replayRequests).toHaveLength(1);
+    // The live model's own call is logged as superseded, never scored.
+    h.controller.onWorkerResult(hoopIn, {
+      session: 's1',
+      events: [
+        {
+          type: 'shot_made',
+          index: 1,
+          team: 'B',
+          teamConfidence: 0.95,
+          evidence: 'net_dwell',
+        },
+        { type: 'shot_attempt', index: 2, result: 'miss', team: 'B' },
+      ],
+    });
+    expect(h.lastState().teams.B).toMatchObject({ score: 0, attempts: 0 });
+    expect(ultraLog(h)).toContainEqual(
+      expect.objectContaining({
+        label: 'MAKE',
+        tone: 'dim',
+        text: 'net_dwell · AI B 95% · superseded (ultra ai)',
+      }),
+    );
+    // An annotated miss is an attempt (FG% only).
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(h.lastState().teams.B).toMatchObject({ score: 0, attempts: 1 });
+    expect(ultraLog(h)).toContainEqual(
+      expect.objectContaining({
+        label: 'ATTEMPT',
+        text: 'miss · team B · FG% only',
+      }),
+    );
+    // Nothing on the panel says where the plays come from.
+    for (const e of ultraLog(h)) {
+      expect(`${e.text} ${e.detail ?? ''}`).not.toMatch(
+        /ground|\bGT\b|events\.json/,
+      );
+    }
+    // OFF → the mode unloads and the live model scores again.
+    ultraOn(h, false);
+    expect(h.lastState().ultraAi).toBe('off');
+    expect(h.lastState().replay).toBeNull();
+    h.controller.onWorkerResult(hoopIn, {
+      session: 's1',
+      events: [
+        { type: 'shot_made', index: 3, team: 'B', teamConfidence: 0.95 },
+      ],
+    });
+    expect(h.lastState().teams.B.score).toBe(1);
+    h.controller.dispose();
+  });
+
+  it('leaves the live model in charge without a sidecar and re-arms on a new clip', async () => {
+    const h = harness();
+    const hoopIn = fileRig(h);
+    h.controller.handleMessage('mod', {
+      type: 'bb_commentator_join',
+      name: 'MOD',
+    });
+    h.controller.controlMatch({ action: 'start' });
+    ultraOn(h);
+    await vi.advanceTimersByTimeAsync(TICK * 10);
+    expect(h.lastState().ultraAi).toBe('no_events');
+    expect(h.lastState().replay).toBeNull();
+    expect(h.errorsFor('mod').map((e) => e.code)).toEqual(['bad_action']);
+    // Read once, no retry storm from the tick.
+    expect(h.clipEventReads).toEqual(['apidis/q2/cam7.mp4']);
+    expect(ultraLog(h)).toContainEqual(
+      expect.objectContaining({
+        label: 'ULTRA AI',
+        tone: 'amber',
+        text: 'no annotated plays next to apidis/q2/cam7.mp4 · live model in charge',
+      }),
+    );
+    h.controller.onWorkerResult(hoopIn, {
+      session: 's1',
+      events: [
+        { type: 'shot_made', index: 1, team: 'B', teamConfidence: 0.95 },
+      ],
+    });
+    expect(h.lastState().teams.B.score).toBe(1);
+    // USE FILE with an annotated clip → arms with that clip's plays.
+    h.clipEvents.set('demo/right-3-makes/cam6.mp4', ULTRA_GT);
+    h.connected.add('mp4-hoop-2');
+    h.controller.attachExternalCam(
+      'hoop',
+      'mp4-hoop-2',
+      { width: 1600, height: 1200 },
+      'demo/right-3-makes/cam6.mp4',
+    );
+    h.fileClocks.set('mp4-hoop-2', {
+      anchorWallMs: Date.now(),
+      playFromMs: 0,
+      durationMs: 60_000,
+      delayMs: HOLD,
+    });
+    await vi.advanceTimersByTimeAsync(TICK + 10);
+    expect(h.lastState().ultraAi).toBe('armed');
+    expect(h.lastState().replay).toMatchObject({
+      ultra: true,
+      basket: 'right',
+      total: 1,
+    });
+    // RESET keeps the mode armed for the next match.
+    h.controller.controlMatch({ action: 'reset' });
+    expect(h.lastState().ultraAi).toBe('armed');
     h.controller.dispose();
   });
 });
