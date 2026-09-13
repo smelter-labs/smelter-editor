@@ -37,6 +37,11 @@ import { SelectablePreviewCard } from './asset-browser/selectable-preview-card';
 import { getEffectiveClientServerUrl } from '@/lib/server-url';
 import { useAppMode } from '@/components/app-mode/app-mode-context';
 import { CaptionsCheckbox } from './CaptionsCheckbox';
+import {
+  isHiddenName,
+  joinFolder,
+  relDirOfPath,
+} from './upload-folder-helpers';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -534,6 +539,56 @@ function detectMediaType(file: File): UploadMediaType | null {
   return null;
 }
 
+/** A file to upload, with the folder it sat in relative to what was dropped / picked. */
+type UploadCandidate = { file: File; relDir?: string };
+
+/**
+ * Files of a drop, walking dropped folders (the folder itself becomes
+ * `relDir`, so `demo/left-3-loop/` lands as that sub-folder of the current
+ * one). The entries must be taken from the DataTransfer synchronously, hence
+ * the split before the first await. Falls back to the flat file list where
+ * the entries API is missing.
+ */
+function readDroppedEntries(
+  dataTransfer: DataTransfer,
+): Promise<UploadCandidate[]> {
+  const entries = Array.from(dataTransfer.items ?? [])
+    .map((it) =>
+      typeof it.webkitGetAsEntry === 'function' ? it.webkitGetAsEntry() : null,
+    )
+    .filter((e): e is FileSystemEntry => !!e);
+  if (entries.length === 0) {
+    return Promise.resolve(
+      Array.from(dataTransfer.files ?? []).map((file) => ({ file })),
+    );
+  }
+  const out: UploadCandidate[] = [];
+  const walk = async (entry: FileSystemEntry, relDir: string) => {
+    if (isHiddenName(entry.name)) return;
+    if (entry.isFile) {
+      const file = await new Promise<File>((res, rej) =>
+        (entry as FileSystemFileEntry).file(res, rej),
+      );
+      out.push({ file, relDir });
+      return;
+    }
+    if (!entry.isDirectory) return;
+    const reader = (entry as FileSystemDirectoryEntry).createReader();
+    const dir = joinFolder(relDir, entry.name);
+    for (;;) {
+      const batch = await new Promise<FileSystemEntry[]>((res, rej) =>
+        reader.readEntries(res, rej),
+      );
+      if (batch.length === 0) break;
+      for (const child of batch) await walk(child, dir);
+    }
+  };
+  return (async () => {
+    for (const entry of entries) await walk(entry, '');
+    return out;
+  })();
+}
+
 function uploadJobStatusLabel(job: UploadJob): string {
   switch (job.status) {
     case 'queued':
@@ -866,18 +921,21 @@ export function AssetBrowserPanel({
   );
 
   const queueUploads = useCallback(
-    async (incomingFiles: File[]) => {
-      if (incomingFiles.length === 0) return;
+    async (incoming: UploadCandidate[]) => {
+      if (incoming.length === 0) return;
 
-      const preparedUploads = incomingFiles.map((file) => {
+      const preparedUploads = incoming.map(({ file, relDir }) => {
         const mediaType = detectMediaType(file);
+        // A dropped / picked folder is recreated under the current one
+        // (the server's upload route creates missing folders).
         return {
           id: uuidv4(),
           file,
           mediaType,
-          targetFolder: mediaType
-            ? resolveUploadFolder(mediaType)
-            : activeFolder,
+          targetFolder: joinFolder(
+            mediaType ? resolveUploadFolder(mediaType) : activeFolder,
+            relDir,
+          ),
         };
       });
 
@@ -1196,7 +1254,34 @@ export function AssetBrowserPanel({
       e.target.value = '';
       if (files.length === 0) return;
 
-      await queueUploads(files);
+      await queueUploads(files.map((file) => ({ file })));
+    },
+    [queueUploads],
+  );
+
+  // UPLOAD FOLDER: a directory picker (`webkitdirectory` is not in React's
+  // typings, so it is set on the element); every file keeps its folder via
+  // `webkitRelativePath`, which starts with the picked folder's name.
+  const folderInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    folderInputRef.current?.setAttribute('webkitdirectory', '');
+  }, [allowUpload]);
+  const handleUploadFolderClick = useCallback(() => {
+    folderInputRef.current?.click();
+  }, []);
+  const handleFolderSelected = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(e.target.files ?? []).filter(
+        (f) => !isHiddenName(f.name),
+      );
+      e.target.value = '';
+      if (files.length === 0) return;
+      await queueUploads(
+        files.map((file) => ({
+          file,
+          relDir: relDirOfPath(file.webkitRelativePath || ''),
+        })),
+      );
     },
     [queueUploads],
   );
@@ -1250,8 +1335,11 @@ export function AssetBrowserPanel({
       dragCounterRef.current = 0;
       setModalDragOver(false);
       if (!allowUpload) return;
-      const files = Array.from(e.dataTransfer.files ?? []);
-      if (files.length > 0) void queueUploads(files);
+      // Folders drop too: their files upload into a matching sub-folder.
+      const pending = readDroppedEntries(e.dataTransfer);
+      void pending.then((candidates) => {
+        if (candidates.length > 0) void queueUploads(candidates);
+      });
     },
     [allowUpload, queueUploads],
   );
@@ -1268,7 +1356,7 @@ export function AssetBrowserPanel({
       {modalDragOver && (
         <div className='absolute inset-0 z-50 flex items-center justify-center bg-black/60 border-2 border-dashed border-[#00f3ff] pointer-events-none'>
           <span className='font-mono text-sm text-[#00f3ff] tracking-widest uppercase'>
-            DROP FILES TO UPLOAD
+            DROP FILES OR FOLDERS TO UPLOAD
           </span>
         </div>
       )}
@@ -1300,12 +1388,25 @@ export function AssetBrowserPanel({
                   className='px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider bg-[#fe00fe]/20 text-[#fe00fe] hover:bg-[#fe00fe]/30 border border-[#fe00fe]/30 transition-colors cursor-pointer'>
                   {activeUploadCount > 0 ? 'UPLOADING...' : 'UPLOAD'}
                 </button>
+                <button
+                  onClick={handleUploadFolderClick}
+                  title='Upload a whole folder (recreated here with its files); dropping a folder onto the list does the same'
+                  className='px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider bg-[#fe00fe]/20 text-[#fe00fe] hover:bg-[#fe00fe]/30 border border-[#fe00fe]/30 transition-colors cursor-pointer'>
+                  UPLOAD FOLDER
+                </button>
                 <input
                   ref={fileInputRef}
                   type='file'
                   multiple
                   className='hidden'
                   onChange={handleFileSelected}
+                />
+                <input
+                  ref={folderInputRef}
+                  type='file'
+                  multiple
+                  className='hidden'
+                  onChange={handleFolderSelected}
                 />
               </>
             )}
@@ -1442,7 +1543,9 @@ export function AssetBrowserPanel({
                 }
                 onInputCreated={onInputCreated}
                 whipCtx={whipCtx}
-                onUploadFiles={queueUploads}
+                onUploadFiles={(files) =>
+                  queueUploads(files.map((file) => ({ file })))
+                }
                 uploadJobs={uploadJobs}
                 hasActiveUploads={activeUploadCount > 0}
                 currentMp4Folder={mp4Folder}
