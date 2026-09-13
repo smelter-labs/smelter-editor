@@ -1,5 +1,7 @@
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import {
   ensureDir,
   pathExists,
@@ -710,6 +712,9 @@ export class RoomState {
       },
       // Ultra AI: the plays annotated next to a file clip.
       loadClipEvents: (clipFileName) => this.readBbClipEvents(clipFileName),
+      // Instant replay of a file cam: cut from the mp4 on disk (no worker).
+      cutReplayClip: (clipFileName, mediaMs, shotId) =>
+        this.cutBbReplayClip(clipFileName, mediaMs, shotId),
       publishHud: (state) => this.output.store.getState().setBbGame(state),
       registerJoinQr: (url) =>
         this.registerJoinQrImage(url, {
@@ -2304,6 +2309,86 @@ export class RoomState {
       }
     }
     return null;
+  }
+
+  /** Instant replay window: this much footage before / after the make, at half speed. */
+  private static readonly REPLAY_BEFORE_S = 3;
+  private static readonly REPLAY_AFTER_S = 1;
+  private static readonly REPLAY_SLOW = 2;
+
+  /**
+   * Instant replay cut straight from a file cam's mp4 with ffmpeg: the
+   * seconds around `mediaMs` at half speed, 1280 px wide, 30 fps, into
+   * data/bb-replays (the worker's replay folder, same mount / cleanup path).
+   * Resolves the file name + clip length; null when ffmpeg fails.
+   */
+  private async cutBbReplayClip(
+    clipFileName: string,
+    mediaMs: number,
+    shotId: string,
+  ): Promise<{ file: string; durationMs: number } | null> {
+    const src = path.join(DATA_DIR, 'mp4s', clipFileName);
+    if (!(await pathExists(src))) return null;
+    let clipDurationMs: number | null = null;
+    for (const i of this.inputManager.getInputs()) {
+      if (
+        i.type === 'local-mp4' &&
+        path.resolve(i.mp4FilePath) === path.resolve(src) &&
+        (i.mp4DurationMs ?? 0) > 0
+      ) {
+        clipDurationMs = i.mp4DurationMs ?? null;
+        break;
+      }
+    }
+    const before = Math.min(RoomState.REPLAY_BEFORE_S, mediaMs / 1000);
+    const after =
+      clipDurationMs != null
+        ? Math.max(
+            0,
+            Math.min(
+              RoomState.REPLAY_AFTER_S,
+              (clipDurationMs - mediaMs) / 1000,
+            ),
+          )
+        : RoomState.REPLAY_AFTER_S;
+    const spanS = before + after;
+    if (spanS < 0.5) return null;
+    const outDir = path.join(DATA_DIR, 'bb-replays');
+    await ensureDir(outDir);
+    const file = `file-${shotId.replace(/[^A-Za-z0-9_-]/g, '')}.mp4`;
+    const out = path.join(outDir, file);
+    const t0 = Date.now();
+    await promisify(execFile)('ffmpeg', [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-ss',
+      (mediaMs / 1000 - before).toFixed(3),
+      '-t',
+      spanS.toFixed(3),
+      '-i',
+      src,
+      '-an',
+      '-vf',
+      `setpts=${RoomState.REPLAY_SLOW}*PTS,scale=1280:-2,fps=30`,
+      '-c:v',
+      'libx264',
+      '-preset',
+      'ultrafast',
+      '-crf',
+      '20',
+      '-pix_fmt',
+      'yuv420p',
+      '-movflags',
+      '+faststart',
+      '-y',
+      out,
+    ]);
+    const durationMs = Math.round(spanS * RoomState.REPLAY_SLOW * 1000);
+    console.log(
+      `[bb] replay cut from ${clipFileName} @ ${mediaMs} ms → ${file} (${durationMs} ms, ffmpeg ${Date.now() - t0} ms)`,
+    );
+    return { file, durationMs };
   }
 
   /**

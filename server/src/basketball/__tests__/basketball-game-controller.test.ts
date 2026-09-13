@@ -9,7 +9,7 @@ import {
 const ROOM = 'room-bb';
 const HOLD = 3000;
 
-function harness(opts?: { withLiveness?: boolean }) {
+function harness(opts?: { withLiveness?: boolean; withClipCut?: boolean }) {
   const events: RoomEvent[] = [];
   const sent: { clientId: string; event: RoomEvent }[] = [];
   const aiCalls: {
@@ -32,6 +32,8 @@ function harness(opts?: { withLiveness?: boolean }) {
   // Ultra AI: events sidecars keyed by clip (RoomState reads them from disk).
   const clipEvents = new Map<string, unknown>();
   const clipEventReads: string[] = [];
+  // Instant replay cut from a file cam's mp4 (RoomState runs ffmpeg).
+  const clipCuts: { clip: string; mediaMs: number; shotId: string }[] = [];
   let camSeq = 0;
 
   const controller = new BasketballGameController(ROOM, {
@@ -101,6 +103,19 @@ function harness(opts?: { withLiveness?: boolean }) {
         ? null
         : { fileName: clip.replace(/\.mp4$/i, '.events.json'), json };
     },
+    ...(opts?.withClipCut
+      ? {
+          cutReplayClip: async (
+            clip: string,
+            mediaMs: number,
+            shotId: string,
+          ) => {
+            clipCuts.push({ clip, mediaMs, shotId });
+            await new Promise((r) => setTimeout(r, 600));
+            return { file: `cut-${clipCuts.length}.mp4`, durationMs: 8000 };
+          },
+        }
+      : {}),
   });
 
   return {
@@ -120,6 +135,7 @@ function harness(opts?: { withLiveness?: boolean }) {
     resyncs,
     clipEvents,
     clipEventReads,
+    clipCuts,
     ofType<T extends RoomEvent['type']>(type: T) {
       return events.filter((e) => e.type === type) as Extract<
         RoomEvent,
@@ -1648,6 +1664,43 @@ describe('BasketballGameController — Ultra AI', () => {
     // RESET keeps the mode armed for the next match.
     h.controller.controlMatch({ action: 'reset' });
     expect(h.lastState().ultraAi).toBe('armed');
+    h.controller.dispose();
+  });
+
+  it('cuts the instant replay from the file clip itself and opens the window', async () => {
+    const h = harness({ withClipCut: true });
+    h.clipEvents.set('apidis/q2/cam7.mp4', ULTRA_GT);
+    fileRig(h);
+    h.controller.handleMessage('mod', {
+      type: 'bb_commentator_join',
+      name: 'MOD',
+    });
+    h.controller.controlMatch({ action: 'start' });
+    ultraOn(h);
+    await vi.advanceTimersByTimeAsync(10_000 + REPLAY_LAG);
+    const shotId = h.ofType('bb_shot')[0].shot.id;
+    // No worker involved: the clip comes from the mp4 at the play's time.
+    expect(h.replayRequests).toEqual([]);
+    expect(h.clipCuts).toEqual([
+      { clip: 'apidis/q2/cam7.mp4', mediaMs: 10_000, shotId },
+    ]);
+    await vi.advanceTimersByTimeAsync(600);
+    expect(h.replayClips).toEqual([
+      {
+        file: 'cut-1.mp4',
+        offsetMs: 100_000 + 4500 - 600 - 250,
+        inputId: 'bb-replay-1',
+      },
+    ]);
+    await vi.advanceTimersByTimeAsync(HOLD + 1_500 - 600 + 100);
+    expect(h.lastHud()?.stage).toMatchObject({
+      scene: 'replay',
+      replay: { inputId: 'bb-replay-1', team: 'A', points: 1 },
+    });
+    // The room config can switch the window off (panel REPLAY chip).
+    h.controller.setConfig({ replay: false });
+    await vi.advanceTimersByTimeAsync(10_000);
+    h.controller.controlMatch({ action: 'start' });
     h.controller.dispose();
   });
 });

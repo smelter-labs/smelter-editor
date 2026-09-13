@@ -206,6 +206,17 @@ export type BbControllerDeps = {
   loadClipEvents?: (
     clipFileName: string,
   ) => Promise<{ fileName: string; json: unknown } | null>;
+  /**
+   * Instant replay cut straight from a file cam's mp4 (no worker needed):
+   * `mediaMs − 3 s … + 1 s` of `clipFileName` at half speed into
+   * data/bb-replays, answered like the worker's `replay_ready` (file name
+   * under that folder + clip length). Null / throw when the cut failed.
+   */
+  cutReplayClip?: (
+    clipFileName: string,
+    mediaMs: number,
+    shotId: string,
+  ) => Promise<{ file: string; durationMs: number } | null>;
   now?: () => number;
 };
 
@@ -2722,7 +2733,38 @@ export class BasketballGameController {
       closeAt: null,
       dropped: false,
     };
-    this.deps.requestReplay(hoop.inputId, shot.id, shot.sourceT);
+    // A file cam has the footage on disk and the make's media time: cut the
+    // clip from the mp4 itself (exact window, full resolution, works with
+    // the model off — Ultra AI / ground truth included). Phones go through
+    // the worker's frame buffer.
+    const cut = this.deps.cutReplayClip;
+    if (
+      hoop.source === 'file' &&
+      hoop.fileName &&
+      shot.mediaMs != null &&
+      cut
+    ) {
+      const shotId = shot.id;
+      void cut(hoop.fileName, shot.mediaMs, shotId)
+        .then((clip) => {
+          if (this.disposed) return;
+          this.onReplayEvent(
+            clip
+              ? { type: 'replay_ready', shotId, ...clip }
+              : { type: 'replay_failed', shotId, reason: 'file cut failed' },
+          );
+        })
+        .catch((err) => {
+          if (this.disposed) return;
+          this.onReplayEvent({
+            type: 'replay_failed',
+            shotId,
+            reason: err instanceof Error ? err.message : String(err),
+          });
+        });
+    } else {
+      this.deps.requestReplay(hoop.inputId, shot.id, shot.sourceT);
+    }
     this.armInstantReplayTimer(openAt - now);
   }
 
