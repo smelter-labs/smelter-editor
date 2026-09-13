@@ -519,13 +519,15 @@ async function deleteAsset(
   }
 }
 
-const MP4_ACCEPT = '.mp4,video/mp4';
+// `.json` = a clip sidecar (`<clip>.events.json`, `<clip>.rim.json`,
+// `events.json`) stored next to its mp4 for the basketball file cams.
+const MP4_ACCEPT = '.mp4,video/mp4,.json,application/json';
 const AUDIO_ACCEPT = '.wav,.mp3,audio/wav,audio/mpeg';
 const PICTURE_ACCEPT = '.jpg,.jpeg,.png,.gif,.svg,.webp,image/*';
 
 function detectMediaType(file: File): UploadMediaType | null {
   const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
-  if (ext === 'mp4') return 'mp4';
+  if (ext === 'mp4' || ext === 'json') return 'mp4';
   if (['wav', 'mp3'].includes(ext)) return 'audio';
   if (['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp'].includes(ext))
     return 'picture';
