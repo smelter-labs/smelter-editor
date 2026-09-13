@@ -87,3 +87,99 @@ export function clockFace(
       };
   }
 }
+
+// ── AI overlay geometry ─────────────────────────────────────────────────────
+// The scorer worker reports the ball box and the rim ellipse normalized to
+// the analysed frame; the hoop cam tile shows that frame cover-fitted
+// (rescaleMode 'fill'), so every overlay element goes through the same
+// transform as PeopleBoxes in inputs.tsx.
+
+export type Px = { x: number; y: number; w: number; h: number };
+type NormRect = { x: number; y: number; w: number; h: number };
+type Rim = { cx: number; cy: number; rx: number; ry: number };
+
+/** Zone constants mirrored from analysis.py (in rim x-radii). */
+export const AI_ZONE = {
+  aboveHalfWidth: 2.5,
+  aboveDepth: 5.0,
+  rimTolerance: 1.15,
+  netHalfWidth: 1.4,
+  netDepth: 2.0,
+} as const;
+
+/**
+ * Where the analysed frame lands inside `tile` when cover-fitted: the frame
+ * is scaled to cover the tile, overflow cropped, centred. Returned in the
+ * tile's own pixel space (may start before 0 / extend past the tile).
+ */
+export function coverTransform(
+  tile: { w: number; h: number },
+  frameAspect: number,
+): Px {
+  const aspect = frameAspect > 0 ? frameAspect : 16 / 9;
+  const scale = Math.max(tile.w / aspect, tile.h);
+  const w = aspect * scale;
+  const h = scale;
+  return { x: (tile.w - w) / 2, y: (tile.h - h) / 2, w, h };
+}
+
+/** A normalized rect of the frame → tile pixels. */
+export function normRectToPx(disp: Px, r: NormRect): Px {
+  return {
+    x: disp.x + r.x * disp.w,
+    y: disp.y + r.y * disp.h,
+    w: r.w * disp.w,
+    h: r.h * disp.h,
+  };
+}
+
+/** Bounding box of the rim ellipse (scaled by the detector's tolerance). */
+export function rimOverlayRect(
+  disp: Px,
+  rim: Rim,
+  tol = AI_ZONE.rimTolerance,
+): Px {
+  return normRectToPx(disp, {
+    x: rim.cx - rim.rx * tol,
+    y: rim.cy - rim.ry * tol,
+    w: 2 * rim.rx * tol,
+    h: 2 * rim.ry * tol,
+  });
+}
+
+/**
+ * The detector's 'above' and 'below' (net) bands around the rim; depths are
+ * in rim x-radii converted to frame y-units through the frame aspect.
+ */
+export function zoneBandRects(
+  disp: Px,
+  rim: Rim,
+  frameAspect: number,
+): { above: Px; net: Px } {
+  const rxy = rim.rx * frameAspect;
+  const above = normRectToPx(disp, {
+    x: rim.cx - AI_ZONE.aboveHalfWidth * rim.rx,
+    y: rim.cy - AI_ZONE.aboveDepth * rxy,
+    w: 2 * AI_ZONE.aboveHalfWidth * rim.rx,
+    h: AI_ZONE.aboveDepth * rxy,
+  });
+  const net = normRectToPx(disp, {
+    x: rim.cx - AI_ZONE.netHalfWidth * rim.rx,
+    y: rim.cy + rim.ry,
+    w: 2 * AI_ZONE.netHalfWidth * rim.rx,
+    h: AI_ZONE.netDepth * rxy,
+  });
+  return { above, net };
+}
+
+/** A square dot centred on the ball box, at least `minPx` wide. */
+export function ballDotRect(disp: Px, ball: NormRect, minPx: number): Px {
+  const b = normRectToPx(disp, ball);
+  const size = Math.max(minPx, b.w, b.h);
+  return {
+    x: b.x + b.w / 2 - size / 2,
+    y: b.y + b.h / 2 - size / 2,
+    w: size,
+    h: size,
+  };
+}

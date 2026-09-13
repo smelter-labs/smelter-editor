@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ballDotRect,
   clockFace,
+  coverTransform,
   monoWidth,
   pipFrameOrigin,
+  rimOverlayRect,
   tagChipRect,
+  zoneBandRects,
 } from '../../inputs/bbHudMetrics';
 
 const fmt = (ms: number) => {
@@ -66,5 +70,55 @@ describe('bbHudMetrics', () => {
       tag: '10:00',
       tagTone: 'outline',
     });
+  });
+});
+
+describe('bbHudMetrics — AI overlay geometry', () => {
+  const r = (p: { x: number; y: number; w: number; h: number }) => ({
+    x: Math.round(p.x),
+    y: Math.round(p.y),
+    w: Math.round(p.w),
+    h: Math.round(p.h),
+  });
+
+  it('cover-fits a 4:3 frame into a 16:9 tile with centred overflow', () => {
+    const disp = coverTransform({ w: 1920, h: 1080 }, 4 / 3);
+    expect(r(disp)).toEqual({ x: 0, y: -180, w: 1920, h: 1440 });
+    // same aspect → identity
+    expect(r(coverTransform({ w: 480, h: 270 }, 16 / 9))).toEqual({
+      x: 0,
+      y: 0,
+      w: 480,
+      h: 270,
+    });
+    // portrait phone in a landscape tile: height covers, width overflows
+    expect(r(coverTransform({ w: 480, h: 270 }, 9 / 16))).toEqual({
+      x: 0,
+      y: -292,
+      w: 480,
+      h: 853,
+    });
+    expect(coverTransform({ w: 100, h: 50 }, 0).w).toBe(100);
+  });
+
+  it('maps the demo hoop rim (cam7) into the PiP', () => {
+    const rim = { cx: 0.222, cy: 0.178, rx: 0.02, ry: 0.007 };
+    const disp = coverTransform({ w: 480, h: 270 }, 16 / 9);
+    expect(r(rimOverlayRect(disp, rim))).toEqual({ x: 96, y: 46, w: 22, h: 4 });
+    const bands = zoneBandRects(disp, rim, 16 / 9);
+    // above band: 2.5 rx wide either side, 5 rx (in y units) tall, ends on cy
+    expect(r(bands.above)).toEqual({ x: 83, y: 0, w: 48, h: 48 });
+    expect(bands.above.y + bands.above.h).toBeCloseTo(0.178 * 270, 5);
+    // net band hangs from the rim's lower edge
+    expect(r(bands.net)).toEqual({ x: 93, y: 50, w: 27, h: 19 });
+    expect(bands.net.y).toBeCloseTo((0.178 + 0.007) * 270, 5);
+  });
+
+  it('draws the ball as a centred square no smaller than minPx', () => {
+    const disp = coverTransform({ w: 480, h: 270 }, 16 / 9);
+    const tiny = ballDotRect(disp, { x: 0.5, y: 0.5, w: 0.005, h: 0.005 }, 8);
+    expect(r(tiny)).toEqual({ x: 237, y: 132, w: 8, h: 8 });
+    const big = ballDotRect(disp, { x: 0.1, y: 0.1, w: 0.1, h: 0.05 }, 8);
+    expect(r(big)).toEqual({ x: 48, y: 10, w: 48, h: 48 });
   });
 });

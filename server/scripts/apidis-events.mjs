@@ -184,7 +184,18 @@ for (const m of xml.matchAll(
 // multi-point event becomes one 1-point event per made throw.
 const FREE_THROW_FIXES = {
   20080409: {
-    2: [{ tMs: 588300, team: 'A', madeAtMs: [612000, 623300], timedFrom: 'cam6 offline trace (eval.py --mode trace), 2026-09-11' }],
+    2: [
+      { tMs: 588300, team: 'A', madeAtMs: [612000, 623300], timedFrom: 'cam6 offline trace (eval.py --mode trace), 2026-09-11' },
+      // B's two free throws: the first drops right at the annotated time, the
+      // second 23.6 s later (cam7 offline trace + the live pipeline both fire).
+      { tMs: 420650, team: 'B', madeAtMs: [420600, 444200], timedFrom: 'cam7 offline trace + live bench on demo/left-3-loop, 2026-09-12' },
+    ],
+    // A's 53.75 s event (Score 1) spans the foul and the series; the one made
+    // throw drops through 21 s later. A's 685.0 s event (Score 1) keeps its XML
+    // time — the cam7 trace reads all three attempts in that span as misses.
+    4: [
+      { tMs: 53750, team: 'A', madeAtMs: [74880], timedFrom: 'cam7 offline trace (eval.py --mode trace) + frame check, 2026-09-12' },
+    ],
   },
 };
 for (const fix of FREE_THROW_FIXES[game]?.[quarter] ?? []) {

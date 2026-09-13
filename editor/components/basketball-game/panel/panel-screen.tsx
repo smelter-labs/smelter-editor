@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import type {
+  BbPipFxMode,
   BbSceneName,
   BbShotEvent,
   BbTeamId,
@@ -25,6 +26,7 @@ import {
   Clock,
   ConfirmCard,
   Display,
+  JerseyGrid,
   LedgerRow,
   Meta,
   MicMeter,
@@ -46,6 +48,7 @@ import {
   useMp4Library,
 } from '../file-cam-picker';
 import { ReplayControl, useBbEventsLibrary } from '../replay-control';
+import { aiLogTime, aiLogToneKey, aiStatus } from '../ai-log-helpers';
 import { formatClock, remainingNow } from '../use-bb-feed';
 import type { BbPanelSocket } from './use-bb-panel-socket';
 
@@ -155,6 +158,21 @@ const VIEWS: { key: BbSceneName | 'auto'; label: string }[] = [
   { key: 'court', label: 'COURT CAM' },
   { key: 'caster', label: 'MY CAMERA' },
   { key: 'split', label: 'COURT + ME' },
+];
+
+/** Hoop-cam look: off, only while it is the inset, or on every hoop cut. */
+const HOOP_LOOK_MODES: { key: BbPipFxMode; label: string }[] = [
+  { key: 'off', label: 'OFF' },
+  { key: 'pip', label: 'PIP' },
+  { key: 'always', label: 'ALWAYS' },
+];
+
+/** Tint swatches for the hoop-cam grade — the Blacktop accents. */
+const BB_PIP_FX_COLORS: { id: string; label: string; color: string }[] = [
+  { id: 'electric', label: 'ELECTRIC', color: '#33e1ff' },
+  { id: 'ball', label: 'BALL', color: '#e8632a' },
+  { id: 'good', label: 'GREEN', color: '#2ee06a' },
+  { id: 'chalk', label: 'CHALK', color: '#f4efe6' },
 ];
 
 function overrideFor(key: BbSceneName | 'auto'): BbViewOverride {
@@ -615,6 +633,38 @@ export function PanelScreen({
     </BbPlate>
   );
 
+  // Hoop-cam look: OFF / only while it is the inset / on the fullscreen cut too,
+  // plus the tint colour the grade pulls toward.
+  const pipFx = state?.pipFx ?? null;
+  const pipFxColor = pipFx?.color ?? '#33e1ff';
+  const hoopLook = (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <Meta size={10} tracking={0.2}>
+          HOOP LOOK
+        </Meta>
+        {HOOP_LOOK_MODES.map((m) => (
+          <Chip
+            key={m.key}
+            dense
+            label={m.label}
+            active={pipFx?.mode === m.key}
+            disabled={!pipFx}
+            onClick={() => socket.setPipFx(m.key, pipFxColor)}
+          />
+        ))}
+      </div>
+      {pipFx && pipFx.mode !== 'off' ? (
+        <JerseyGrid
+          value={pipFxColor}
+          columns={5}
+          presets={BB_PIP_FX_COLORS}
+          onChange={(hex) => socket.setPipFx(pipFx.mode, hex)}
+        />
+      ) : null}
+    </div>
+  );
+
   const viewGrid = (
     <>
       <div
@@ -668,6 +718,7 @@ export function PanelScreen({
         onClick={() => socket.setCasterPip(!state?.casterPip)}
         style={{ alignSelf: 'flex-start' }}
       />
+      {hoopLook}
     </>
   );
 
@@ -972,6 +1023,116 @@ export function PanelScreen({
     </BbPlate>
   );
 
+  /* ── AI log: what the scorer sees and why it counts (or does not) ── */
+  const hoopCam = state?.cams.hoop;
+  const aiArmed = !!hoopCam?.joined && !!hoopCam.calibrated;
+  const aiState = aiStatus(socket.ball, socket.ballAt, Date.now(), aiArmed);
+  const overlayOn = !!state?.aiOverlay;
+  const aiLogPlate = (
+    <BbPlate
+      cutPx={12}
+      texture='lines'
+      style={{ ...PLATE, gap: 6, paddingBottom: 8 }}>
+      <PlateHead
+        size={22}
+        right={
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <StatusPill tone={aiState.tone} size={9}>
+              {aiState.text}
+            </StatusPill>
+            <Chip
+              dense
+              tone='electric'
+              active={overlayOn}
+              label={overlayOn ? 'OVERLAY · ON AIR' : 'OVERLAY · OFF'}
+              title='Burn the AI view (rim, zones, ball, state, verdict) into the program'
+              onClick={() => socket.setAiOverlay(!overlayOn)}
+            />
+          </div>
+        }
+        style={{ marginBottom: 2 }}>
+        AI LOG
+      </PlateHead>
+      {socket.aiLog.length === 0 ? (
+        <Meta size={10} tracking={0.16} style={{ padding: '8px 0' }}>
+          {aiArmed
+            ? 'watching the hoop — nothing seen yet'
+            : 'AI idle — join the hoop cam and calibrate the rim'}
+        </Meta>
+      ) : null}
+      <div
+        className='bb-scroll'
+        style={{
+          maxHeight: 340,
+          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+        }}>
+        {socket.aiLog.map((e) => (
+          <div
+            key={e.id}
+            className='bb-enter'
+            style={{
+              display: 'flex',
+              gap: 8,
+              alignItems: 'baseline',
+              padding: '5px 0',
+              borderTop: `1px solid ${BB.rule}`,
+            }}>
+            <Mono
+              size={10}
+              color={BB.dim}
+              style={{ flexShrink: 0, width: 44, textAlign: 'right' }}>
+              {aiLogTime(e.atMs, Date.now())}
+            </Mono>
+            <Mono
+              size={11}
+              weight={600}
+              tracking={0.08}
+              color={BB[aiLogToneKey(e.tone)]}
+              style={{ flexShrink: 0, width: 68 }}>
+              {e.label}
+            </Mono>
+            <div
+              style={{
+                minWidth: 0,
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 2,
+              }}>
+              <Mono
+                size={11}
+                color={BB.chalk}
+                uppercase={false}
+                style={{
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}>
+                {e.text}
+              </Mono>
+              {e.detail ? (
+                <Mono
+                  size={9}
+                  tracking={0.04}
+                  color={BB.dim}
+                  uppercase={false}
+                  style={{
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}>
+                  {e.detail}
+                </Mono>
+              ) : null}
+            </div>
+          </div>
+        ))}
+      </div>
+    </BbPlate>
+  );
+
   const header = (
     <div
       style={{
@@ -1013,6 +1174,7 @@ export function PanelScreen({
         {rigPlate}
         {camerasPlate}
         {ledgerPlate}
+        {aiLogPlate}
       </div>
     );
   }
@@ -1042,6 +1204,7 @@ export function PanelScreen({
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {programPlate}
           {ledgerPlate}
+          {aiLogPlate}
           {camerasPlate}
         </div>
       </div>

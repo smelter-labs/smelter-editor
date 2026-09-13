@@ -8,6 +8,8 @@ import { ArcadeStage } from '@/lib/arcade/stage';
 import { useArmed } from '@/lib/arcade/use-armed';
 import { colorsTooClose } from '@/lib/arcade/color';
 import {
+  BB_WEAK_EVIDENCE,
+  aiEvidenceLabel,
   cut,
   isLightColor,
   luminance,
@@ -1151,13 +1153,18 @@ export function NameField({
   );
 }
 
-/** Eight bibs + CUSTOM (native colour input). Values are `#rrggbb`. */
+/**
+ * Swatches + CUSTOM (native colour input). Values are `#rrggbb`. Defaults to
+ * the eight team bibs; pass `presets` for a different palette (e.g. the hoop
+ * cam tint).
+ */
 export function JerseyGrid({
   value,
   taken,
   onChange,
   columns = 9,
   gap = 8,
+  presets = BB_TEAM_COLOR_PRESETS,
 }: {
   value: string;
   /** The other team's colour — shown at .3 so it reads as taken. */
@@ -1165,9 +1172,10 @@ export function JerseyGrid({
   onChange: (hex: string) => void;
   columns?: number;
   gap?: number;
+  presets?: { id: string; label: string; color: string }[];
 }) {
   const v = value.toLowerCase();
-  const custom = !BB_TEAM_COLOR_PRESETS.some((p) => p.color === v);
+  const custom = !presets.some((p) => p.color === v);
   return (
     <div
       style={{
@@ -1175,7 +1183,7 @@ export function JerseyGrid({
         gridTemplateColumns: `repeat(${columns}, 1fr)`,
         gap,
       }}>
-      {BB_TEAM_COLOR_PRESETS.map((p) => {
+      {presets.map((p) => {
         const selected = p.color === v;
         const isTaken =
           taken != null && p.color === taken.toLowerCase() && !selected;
@@ -2114,7 +2122,7 @@ export function LedgerRow({
       : BB.rule2;
   const pts = Math.round((dense ? 22 : 26) * scale);
   const nm = Math.round((dense ? 20 : 24) * scale);
-  const meta = `${showIndex ? `#${shot.index} · ` : ''}${aiGuessLabel(shot)}${shot.period === 'ot' ? ' · OT' : ''}${voided ? ' · VOID' : pending ? ' · PENDING' : ''}`;
+  const meta = `${showIndex ? `#${shot.index} · ` : ''}${aiGuessLabel(shot)}${shot.source === 'ai' && shot.evidence ? ` · ${shot.evidence}` : ''}${shot.period === 'ot' ? ' · OT' : ''}${voided ? ' · VOID' : pending ? ' · PENDING' : ''}`;
   return (
     <div
       style={{
@@ -2407,6 +2415,23 @@ export function RefCallCard({
               </>
             )}
           </Mono>
+          {aiEvidenceLabel(shot) ? (
+            <Meta
+              size={Math.max(8, Math.round(9 * scale))}
+              tracking={0.08}
+              color={
+                shot.evidence && BB_WEAK_EVIDENCE.has(shot.evidence)
+                  ? BB.amber
+                  : BB.dim
+              }
+              style={{
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}>
+              {aiEvidenceLabel(shot)}
+            </Meta>
+          ) : null}
         </div>
         {right ? <div style={{ marginLeft: 'auto' }}>{right}</div> : null}
       </div>

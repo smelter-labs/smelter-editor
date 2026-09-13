@@ -12,6 +12,8 @@ import type {
   BbMatchEvent,
   BbPeriod,
   BbPhase,
+  BbPipFx,
+  BbPipFxMode,
   BbRim,
   BbShotEvent,
   BbStateEvent,
@@ -36,6 +38,7 @@ import {
 } from '../app/store';
 import { clamp } from '../core/mathUtils';
 import type { ReplayShot } from './groundTruth';
+import { BbAiLog, reasonText, type CandidateEndEvent } from './aiLog';
 
 /** Command from the arcade page's match endpoint (and the panel over WS). */
 export type BbMatchCommand = {
@@ -86,8 +89,12 @@ export type BbWorkerEvent =
       team?: 'A' | 'B' | null;
       result: 'made' | 'miss';
     }
-  | { type: 'ball_found' }
-  | { type: 'ball_lost' }
+  /**
+   * The state machine closed a shot candidate: why it was (evidence) or was
+   * not (reason) counted, with the measurements behind the call. Emitted
+   * after `shot_attempt` / `shot_made` of the same frame (AI log material).
+   */
+  | ({ type: 'candidate_end' } & Omit<CandidateEndEvent, 'type'>)
   /** Answers to the `replay` command (see BaseSidecar.requestReplay). */
   | {
       type: 'replay_ready';
@@ -107,6 +114,9 @@ export type BbWorkerResult = {
   state?: string;
   events?: BbWorkerEvent[];
   procMs?: number;
+  /** Analysed frame size (the ball box is normalized to it). */
+  frameW?: number;
+  frameH?: number;
 };
 
 /**
@@ -260,6 +270,8 @@ type ShotInput = {
   points?: 1 | 2;
   gtPoints?: 1 | 2 | 3;
   colorSample?: string | null;
+  evidence?: string;
+  aiReason?: string;
   sourceT?: number;
   /** Clip media time (ms); stamped from the hoop file clock when absent. */
   mediaMs?: number;
@@ -297,6 +309,12 @@ const REPLAY_OPEN_GRACE_MS = 2000;
 const RECENT_SHOTS = 12;
 const BALL_EVENT_MIN_MS = 250;
 const BALL_STATE_BROADCAST_MIN_MS = 1000;
+/** `bb_ball` is resent at least this often so panels can spot a stale feed. */
+const BALL_HEARTBEAT_MS = 1000;
+/** The AI overlay keeps the last verdict on screen this long. */
+const AI_VERDICT_MS = 4000;
+/** A worker frame older than this no longer draws a ball on the overlay. */
+const AI_FRAME_STALE_MS = 1000;
 const DURATION_MIN_MS = 30_000;
 const DURATION_MAX_MS = 1_800_000;
 /**
@@ -326,6 +344,11 @@ function isCamRole(v: unknown): v is BbCamRole {
 }
 
 /** Coarse clock for HUD snapshots so back-to-back publishes dedupe. */
+/** Whether an AI overlay snapshot draws anything (ball / candidate / verdict). */
+function aiHudHasContent(ai: NonNullable<BbHudState['ai']>): boolean {
+  return ai.ball != null || ai.state !== 'idle' || ai.verdict != null;
+}
+
 function quantizeClock(ms: number): number {
   return Math.ceil(ms / 500) * 500;
 }
@@ -380,6 +403,8 @@ export class BasketballGameController {
   // ── broadcast view ──
   private viewOverride: BbViewOverride = { mode: 'auto' };
   private casterPip = true;
+  /** Hoop-cam look; the electric accent at a tenth strength by default. */
+  private pipFx: BbPipFx = { mode: 'pip', color: '#33e1ff' };
   private stagedScene: BbHudScene = 'lobby';
   private lastStage: BbHudStage | null = null;
   private joinLabel: string | null = null;
@@ -446,6 +471,31 @@ export class BasketballGameController {
   private lastBallSig = '';
   private lastBallStateBroadcastAt = 0;
 
+  // ── AI log / overlay ──
+  private readonly aiLog = new BbAiLog();
+  private aiOverlay = false;
+  /** Newest worker frame (normalized coords), for the on-air AI overlay. */
+  private lastWorker: {
+    ball: { x: number; y: number; w: number; h: number } | null;
+    zone: 'above' | 'rim' | 'below' | 'none';
+    state: string;
+    src: string | null;
+    frameAspect: number;
+    at: number;
+  } | null = null;
+  private aiVerdict: {
+    text: string;
+    detail?: string;
+    tone: 'good' | 'amber' | 'dim';
+    at: number;
+  } | null = null;
+  /** The last closed candidate, so a make carries its measurements. */
+  private lastCandidate: { reason: string; detail?: string } | null = null;
+  /** Last "armed" log text, so re-arming with the same setup stays quiet. */
+  private lastArmedText: string | null = null;
+  /** Whether the last published HUD had AI overlay content to draw. */
+  private aiHudShown = false;
+
   // ── ground-truth replay ──
   private replay: ReplayRun | null = null;
   private replayTimer: ReturnType<typeof setTimeout> | null = null;
@@ -489,6 +539,7 @@ export class BasketballGameController {
       color?: unknown;
       override?: unknown;
       action?: unknown;
+      mode?: unknown;
       enabled?: unknown;
       shotId?: unknown;
       points?: unknown;
@@ -542,8 +593,14 @@ export class BasketballGameController {
       case 'bb_commentator_view':
         this.setViewOverride(clientId, msg.override);
         break;
+      case 'bb_commentator_ai_overlay':
+        this.setAiOverlay(clientId, msg.enabled);
+        break;
       case 'bb_commentator_caster_pip':
         this.setCasterPip(clientId, msg.enabled);
+        break;
+      case 'bb_commentator_pip_fx':
+        this.setPipFx(clientId, msg.mode, msg.color);
         break;
       case 'bb_commentator_match': {
         const action = msg.action;
@@ -647,6 +704,12 @@ export class BasketballGameController {
   spectate(clientId: string): void {
     this.deps.sendTo(clientId, this.stateSnapshot());
     this.deps.sendTo(clientId, this.getMatchSnapshot());
+    this.deps.sendTo(clientId, {
+      type: 'bb_ai_log',
+      roomId: this.roomId,
+      reset: true,
+      entries: this.aiLog.snapshot(),
+    });
   }
 
   // ── Cameras (hoop / court phones) ─────────────────────────────────────────
@@ -831,8 +894,7 @@ export class BasketballGameController {
     cam.camDownAt = null;
     cam.ballTracked = false;
     if (cam.role === 'hoop') {
-      this.workerSession = null;
-      this.ballZone = 'none';
+      this.onHoopAiGone();
       void this.deps.setBasketballScorer(inputId, false).catch(() => {});
     }
     void this.deps.removeInput(inputId).catch(() => {});
@@ -1188,11 +1250,45 @@ export class BasketballGameController {
     const hoop = this.cams.get('hoop');
     if (!hoop?.inputId) return;
     const inputId = hoop.inputId;
+    const d = this.config.detector;
+    const armed = `armed · ${d.ballDetector} · ${d.yoloWeights} · rim ${
+      this.config.rim ? 'set' : 'NOT SET'
+    }`;
+    if (armed !== this.lastArmedText) {
+      this.lastArmedText = armed;
+      this.aiLog.push(
+        { kind: 'ai', tone: 'chalk', label: 'AI', text: armed },
+        this.now(),
+      );
+      this.flushAiLog();
+    }
     void this.deps
       .setBasketballScorer(inputId, true, this.workerParams())
       .catch((err) =>
         console.error(`[bb] scorer enable failed for ${inputId}`, err),
       );
+  }
+
+  /** The hoop input went away: the AI feed with it. */
+  private onHoopAiGone(): void {
+    this.ballZone = 'none';
+    this.lastWorker = null;
+    this.lastArmedText = null;
+    this.aiLog.reset();
+    if (this.workerSession != null || this.aiHudShown) {
+      this.aiLog.push(
+        {
+          kind: 'ai',
+          tone: 'dim',
+          label: 'AI',
+          text: 'disarmed · hoop cam gone',
+        },
+        this.now(),
+      );
+      this.flushAiLog();
+    }
+    this.workerSession = null;
+    if (this.aiOverlay) this.publishHud();
   }
 
   /**
@@ -1474,6 +1570,29 @@ export class BasketballGameController {
     this.deps.broadcast(this.stateSnapshot());
   }
 
+  /** Moderator: burn the scorer AI's debug overlay into the program. */
+  setAiOverlay(clientId: string, raw: unknown): void {
+    if (!this.requireCommentator(clientId, 'toggle the AI overlay')) return;
+    if (typeof raw !== 'boolean') {
+      this.sendError(clientId, 'invalid_view', 'Invalid AI overlay toggle.');
+      return;
+    }
+    if (this.aiOverlay === raw) return;
+    this.aiOverlay = raw;
+    this.aiLog.push(
+      {
+        kind: 'ai',
+        tone: 'chalk',
+        label: 'OVERLAY',
+        text: raw ? 'on air' : 'off',
+      },
+      this.now(),
+    );
+    this.flushAiLog();
+    this.deps.broadcast(this.stateSnapshot());
+    this.publishHud();
+  }
+
   setCasterPip(clientId: string, raw: unknown): void {
     if (!this.requireCommentator(clientId, 'toggle the cam PiP')) return;
     if (typeof raw !== 'boolean') {
@@ -1482,6 +1601,26 @@ export class BasketballGameController {
     }
     if (this.casterPip === raw) return;
     this.casterPip = raw;
+    void this.restage();
+    this.deps.broadcast(this.stateSnapshot());
+  }
+
+  setPipFx(clientId: string, rawMode: unknown, rawColor: unknown): void {
+    if (!this.requireCommentator(clientId, 'set the hoop cam look')) return;
+    const modes: readonly BbPipFxMode[] = ['off', 'pip', 'always'];
+    if (
+      typeof rawMode !== 'string' ||
+      !(modes as readonly string[]).includes(rawMode) ||
+      typeof rawColor !== 'string' ||
+      !/^#[0-9a-f]{6}$/i.test(rawColor)
+    ) {
+      this.sendError(clientId, 'invalid_view', 'Invalid hoop cam look.');
+      return;
+    }
+    const mode = rawMode as BbPipFxMode;
+    const color = rawColor.toLowerCase();
+    if (this.pipFx.mode === mode && this.pipFx.color === color) return;
+    this.pipFx = { mode, color };
     void this.restage();
     this.deps.broadcast(this.stateSnapshot());
   }
@@ -1530,7 +1669,7 @@ export class BasketballGameController {
         cam.camConnected = false;
         cam.camDownAt = null;
         cam.ballTracked = false;
-        if (cam.role === 'hoop') this.ballZone = 'none';
+        if (cam.role === 'hoop') this.onHoopAiGone();
         changed = true;
       }
     }
@@ -2171,6 +2310,8 @@ export class BasketballGameController {
       aiTeam: input.aiTeam,
       aiConfidence: clamp(input.aiConfidence, 0, 1),
       colorSample: input.colorSample ?? null,
+      ...(input.evidence ? { evidence: input.evidence } : {}),
+      ...(input.aiReason ? { aiReason: input.aiReason } : {}),
       source: input.source,
       status,
       period: this.period,
@@ -2320,6 +2461,16 @@ export class BasketballGameController {
     const r = this.instantReplay;
     if (!r || r.shotId !== ev.shotId || r.inputId || r.dropped) return;
     if (ev.type === 'replay_failed') {
+      this.aiLog.push(
+        {
+          kind: 'replay',
+          tone: 'bad',
+          label: 'REPLAY',
+          text: `clip failed · ${ev.reason ?? 'worker error'}`,
+        },
+        this.now(),
+      );
+      this.flushAiLog();
       this.dropInstantReplay(`worker: ${ev.reason ?? 'failed'}`);
       return;
     }
@@ -2329,6 +2480,17 @@ export class BasketballGameController {
     }
     r.file = ev.file;
     r.durationMs = ev.durationMs;
+    this.aiLog.push(
+      {
+        kind: 'replay',
+        tone: 'chalk',
+        label: 'REPLAY',
+        text: `clip ready · ${(ev.durationMs / 1000).toFixed(1)} s`,
+        ...(typeof ev.t === 'number' ? { t: ev.t } : {}),
+      },
+      this.now(),
+    );
+    this.flushAiLog();
     // First frame lands just before the window opens (or now, when late).
     const now = this.now();
     const startIn = Math.max(0, r.openAt - REPLAY_CLIP_LEAD_MS - now);
@@ -2470,12 +2632,27 @@ export class BasketballGameController {
       data.session !== this.workerSession
     ) {
       // Worker restart / camera reconnect: event indices start over.
+      const restarted = this.workerSession != null;
       this.workerSession = data.session;
       this.lastMadeIndex = -1;
       this.lastAttemptIndex = -1;
+      this.aiLog.reset();
+      this.aiLog.push(
+        {
+          kind: 'session',
+          tone: restarted ? 'amber' : 'chalk',
+          label: 'SESSION',
+          text: restarted
+            ? 'worker restarted · shot indices reset'
+            : 'worker feed up',
+        },
+        now,
+      );
     }
     const tracked = data.ball != null;
     const zone = data.zone ?? 'none';
+    const state = typeof data.state === 'string' ? data.state : 'idle';
+    const src = data.ball?.src ?? null;
     if (tracked !== hoop.ballTracked) {
       hoop.ballTracked = tracked;
       if (now - this.lastBallStateBroadcastAt >= BALL_STATE_BROADCAST_MIN_MS) {
@@ -2484,25 +2661,70 @@ export class BasketballGameController {
       }
     }
     this.ballZone = zone;
-    if (hoop.clientId) {
-      const sig = `${tracked}:${zone}:${data.ball?.src ?? ''}`;
-      if (
-        sig !== this.lastBallSig &&
-        now - this.lastBallEventAt >= BALL_EVENT_MIN_MS
-      ) {
-        this.lastBallSig = sig;
-        this.lastBallEventAt = now;
-        this.deps.sendTo(hoop.clientId, {
-          type: 'bb_ball',
-          roomId: this.roomId,
-          tracked,
-          zone,
-          source: data.ball?.src ?? null,
-        });
-      }
+    this.lastWorker = {
+      ball: data.ball
+        ? { x: data.ball.x, y: data.ball.y, w: data.ball.w, h: data.ball.h }
+        : null,
+      zone,
+      state,
+      src,
+      frameAspect:
+        data.frameW && data.frameH
+          ? data.frameW / data.frameH
+          : this.camAspect(hoop),
+      at: now,
+    };
+    this.aiLog.onFrame({ state, zone, src, tracked }, now);
+    // Liveness for the hoop phone + the moderator panel: on change (debounced)
+    // and as a heartbeat, so a silent worker is visible as a stale feed.
+    const sig = `${tracked}:${zone}:${src ?? ''}:${state}`;
+    if (
+      (sig !== this.lastBallSig &&
+        now - this.lastBallEventAt >= BALL_EVENT_MIN_MS) ||
+      now - this.lastBallEventAt >= BALL_HEARTBEAT_MS
+    ) {
+      this.lastBallSig = sig;
+      this.lastBallEventAt = now;
+      this.deps.broadcast({
+        type: 'bb_ball',
+        roomId: this.roomId,
+        tracked,
+        zone,
+        source: src,
+        state,
+        ...(typeof data.procMs === 'number' ? { procMs: data.procMs } : {}),
+      });
     }
-    for (const ev of data.events ?? []) {
-      if (!ev || typeof ev !== 'object') continue;
+    const events = (data.events ?? []).filter(
+      (ev): ev is BbWorkerEvent => !!ev && typeof ev === 'object',
+    );
+    // The worker closes a candidate right after its shot_made / shot_attempt
+    // in the same batch: read the verdict first so the make carries it. A
+    // made candidate is logged once, by the shot_made branch below (with
+    // the game's decision); misses / drops are logged here.
+    for (const ev of events) {
+      if (ev.type !== 'candidate_end') continue;
+      if (typeof ev.reason !== 'string') continue;
+      const entry = ev.made
+        ? this.aiLog.candidateEntry(ev)
+        : this.aiLog.onCandidateEnd(ev, now);
+      this.lastCandidate = {
+        reason: ev.reason,
+        ...(entry.detail ? { detail: entry.detail } : {}),
+      };
+      this.aiVerdict = {
+        text: `${entry.label} ${ev.reason}`,
+        ...(entry.detail ? { detail: entry.detail } : {}),
+        tone:
+          entry.tone === 'good'
+            ? 'good'
+            : entry.tone === 'amber'
+              ? 'amber'
+              : 'dim',
+        at: now,
+      };
+    }
+    for (const ev of events) {
       if (ev.type === 'replay_ready' || ev.type === 'replay_failed') {
         if (typeof ev.shotId === 'string') this.onReplayEvent(ev);
         continue;
@@ -2511,20 +2733,48 @@ export class BasketballGameController {
         if (typeof ev.index !== 'number' || ev.index <= this.lastMadeIndex)
           continue;
         this.lastMadeIndex = ev.index;
+        const aiTeam = isTeamId(ev.team) ? ev.team : null;
+        const aiConfidence =
+          typeof ev.teamConfidence === 'number' ? ev.teamConfidence : 0;
+        const weak = BB_WEAK_EVIDENCE.has(ev.evidence ?? '');
+        const evidence = ev.evidence ?? this.lastCandidate?.reason ?? 'make';
+        const aiReason = this.lastCandidate?.detail;
+        const guess = `AI ${aiTeam ?? '?'} ${Math.round(aiConfidence * 100)}%`;
+        const jersey =
+          typeof ev.colorSample === 'string' ? `jersey ${ev.colorSample}` : '';
+        const detail = [reasonText(evidence), aiReason, jersey]
+          .filter(Boolean)
+          .join(' · ');
+        const t = typeof ev.t === 'number' ? { t: ev.t } : {};
         // Ground-truth replay owns the ledger; the model only tracks the ball.
-        if (this.replay) continue;
-        this.ingestShot({
+        if (this.replay) {
+          this.aiLog.push(
+            {
+              kind: 'make',
+              tone: 'dim',
+              label: 'MAKE',
+              text: `${evidence} · ${guess} · ignored (ground-truth replay)`,
+              ...(detail ? { detail } : {}),
+              ...t,
+            },
+            now,
+          );
+          continue;
+        }
+        const inMatch = this.matchAcceptsShots();
+        const shot = this.ingestShot({
           source: 'ai',
-          aiTeam: isTeamId(ev.team) ? ev.team : null,
-          aiConfidence:
-            typeof ev.teamConfidence === 'number' ? ev.teamConfidence : 0,
+          aiTeam,
+          aiConfidence,
           // A straight drop through the net with no slow-down / occlusion
           // could be a pass-by, a ball hidden from the rim to under the net
           // could have been dropped through by hand: both land in the ref's
           // queue, never auto-confirmed.
-          ...(BB_WEAK_EVIDENCE.has(ev.evidence ?? '') ? { weak: true } : {}),
+          ...(weak ? { weak: true } : {}),
           colorSample:
             typeof ev.colorSample === 'string' ? ev.colorSample : null,
+          evidence,
+          ...(aiReason ? { aiReason } : {}),
           ...(typeof ev.t === 'number' ? { sourceT: ev.t } : {}),
           ...(typeof ev.frameFile === 'string'
             ? { frameUrl: `/bb-shot-frames/${ev.frameFile}` }
@@ -2533,13 +2783,64 @@ export class BasketballGameController {
             ? { releaseFrameUrl: `/bb-shot-frames/${ev.releaseFrameFile}` }
             : {}),
         });
+        const pending = shot?.status === 'pending';
+        const why = !inMatch
+          ? 'warm-up · not in ledger'
+          : pending
+            ? weak
+              ? 'weak evidence · ref call'
+              : aiTeam
+                ? 'below auto-assign confidence · ref call'
+                : 'no jersey seen · ref call'
+            : `+${shot?.points ?? 1} ${aiTeam ?? ''} · in ledger`;
+        this.aiLog.push(
+          {
+            kind: !inMatch ? 'make' : pending ? 'refcall' : 'make',
+            tone: !inMatch ? 'chalk' : pending ? 'electric' : 'good',
+            label: !inMatch ? 'MAKE' : pending ? 'REF CALL' : 'LEDGER',
+            text: `${evidence} · ${guess} · ${why}`,
+            ...(detail ? { detail } : {}),
+            ...t,
+          },
+          now,
+        );
       } else if (ev.type === 'shot_attempt') {
         if (typeof ev.index !== 'number' || ev.index <= this.lastAttemptIndex)
           continue;
         this.lastAttemptIndex = ev.index;
         // Made attempts are represented by the ledger; only misses count here.
         if (ev.result === 'made' || this.replay) continue;
-        this.ingestMiss(isTeamId(ev.team) ? ev.team : null, now);
+        const team = isTeamId(ev.team) ? ev.team : null;
+        if (this.matchAcceptsShots()) {
+          this.aiLog.push(
+            {
+              kind: 'attempt',
+              tone: 'amber',
+              label: 'ATTEMPT',
+              text: `miss · ${team ? `team ${team}` : 'nobody'} · FG% only`,
+              ...(typeof ev.t === 'number' ? { t: ev.t } : {}),
+            },
+            now,
+          );
+        }
+        this.ingestMiss(team, now);
+      }
+    }
+    this.flushAiLog();
+    // The overlay follows the worker feed (also in the lobby, where tick()
+    // publishes no HUD): at most hudPublishHz, and once more when there is
+    // nothing left to draw so a stale ball never stays on screen.
+    if (this.aiOverlay) {
+      const show =
+        tracked ||
+        state !== 'idle' ||
+        (this.aiVerdict != null && now - this.aiVerdict.at <= AI_VERDICT_MS);
+      if (
+        (show || this.aiHudShown) &&
+        now - this.lastPeriodicHudAt >= this.hudMinIntervalMs
+      ) {
+        this.lastPeriodicHudAt = now;
+        this.publishHud();
       }
     }
   }
@@ -2665,6 +2966,7 @@ export class BasketballGameController {
       caster: null,
       split: false,
       replay: null,
+      pipFx: { ...this.pipFx },
     };
     const roleOf = (inputId: string): 'hoop' | 'court' | 'commentator' =>
       inputId === hoop ? 'hoop' : inputId === court ? 'court' : 'commentator';
@@ -2933,6 +3235,7 @@ export class BasketballGameController {
         this.publishHud();
       }
     }
+    this.flushAiLog();
     this.maybeStop();
   }
 
@@ -3047,7 +3350,9 @@ export class BasketballGameController {
         : null,
       scene: this.stagedScene,
       viewOverride: { ...this.viewOverride },
+      aiOverlay: this.aiOverlay,
       casterPip: this.casterPip,
+      pipFx: { ...this.pipFx },
       pending: [...this.shots]
         .filter((s) => s.status === 'pending')
         .reverse()
@@ -3205,7 +3510,9 @@ export class BasketballGameController {
           }
         : null,
       banner,
+      ai: this.aiOverlay ? this.buildAiHud(now) : null,
     };
+    this.aiHudShown = snapshot.ai != null && aiHudHasContent(snapshot.ai);
     if (immediate) {
       for (const t of this.hudTimers) clearTimeout(t);
       this.hudTimers.clear();
@@ -3214,6 +3521,53 @@ export class BasketballGameController {
     } else {
       this.applyHudHeld(snapshot);
     }
+  }
+
+  /** Broadcast the AI log entries queued since the last flush. */
+  private flushAiLog(): void {
+    if (this.disposed) return;
+    const entries = this.aiLog.drain();
+    if (entries.length === 0) return;
+    this.deps.broadcast({ type: 'bb_ai_log', roomId: this.roomId, entries });
+  }
+
+  /**
+   * The on-air AI overlay's data: the newest worker frame (quantized so idle
+   * snapshots stay byte-identical for the store's equality guard) and the
+   * last verdict while fresh — freshness is snapshot-relative, so the 3 s
+   * hold carries it onto the frames it describes.
+   */
+  private buildAiHud(now: number): NonNullable<BbHudState['ai']> {
+    const q = (v: number) => Math.round(v * 1000) / 1000;
+    const w = this.lastWorker;
+    const hoop = this.cams.get('hoop');
+    const rim = this.config.rim;
+    const live = w != null && now - w.at < AI_FRAME_STALE_MS;
+    const ball =
+      live && w.ball
+        ? { x: q(w.ball.x), y: q(w.ball.y), w: q(w.ball.w), h: q(w.ball.h) }
+        : null;
+    const v =
+      this.aiVerdict && now - this.aiVerdict.at <= AI_VERDICT_MS
+        ? this.aiVerdict
+        : null;
+    return {
+      rim: rim
+        ? { cx: q(rim.cx), cy: q(rim.cy), rx: q(rim.rx), ry: q(rim.ry) }
+        : null,
+      frameAspect: q(w?.frameAspect ?? (hoop ? this.camAspect(hoop) : 16 / 9)),
+      ball,
+      zone: ball ? w!.zone : 'none',
+      state: live ? w!.state : 'idle',
+      src: ball ? w!.src : null,
+      verdict: v
+        ? {
+            text: v.text,
+            tone: v.tone,
+            ...(v.detail ? { detail: v.detail } : {}),
+          }
+        : null,
+    };
   }
 
   private endedTeam(team: BbTeamId) {

@@ -1783,6 +1783,15 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
     shaderFile: 'chamfer-clip.wgsl',
   },
   {
+    id: 'bb-cam-look',
+    isActive: true,
+    isVisible: false,
+    name: 'Blacktop Cam Look',
+    description:
+      'Blacktop hoop-cam grade: luma-preserving colour tint, light contrast, soft vignette and faint scanlines, so the inset cam reads apart from the court view. Driven by BbCamLook.tsx.',
+    shaderFile: 'bb-cam-look.wgsl',
+  },
+  {
     id: 'haunted-city',
     isActive: true,
     isVisible: false,

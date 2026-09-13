@@ -19,6 +19,11 @@ train = ≤ val-from − gap; the benchmark uses ≥ 240 s, outside both.
   V=src/ai-models/people-counter/.venv/bin/python
   $V scripts/bb-ball/build_dataset.py --archive ~/…/pzpn/archive --cams 7,5,3,6,1 \
        --out data/bb-train/apidis --preview 20
+  # right-basket cameras only, denser (cam4 needs its .apidis.json from
+  # apidis-prep.mjs --cams 4 first); mixed into training via a list-form
+  # data.yaml next to the other exports (data/bb-train/apidis-mix2/data.yaml)
+  $V scripts/bb-ball/build_dataset.py --archive ~/…/pzpn/archive --cams 6,3,4 \
+       --out data/bb-train/apidis-right --ball-stride 1 --full-stride 2 --preview 20
 
 Writes images/{train,val}/cam7_f001234_rim.jpg + labels/…txt, data.yaml,
 meta.jsonl (one line per image: crop origin/scale + ground truth in source px)

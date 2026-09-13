@@ -651,6 +651,16 @@ describe('BasketballGameController — weak make evidence', () => {
       aiTeam: 'B',
       aiConfidence: 0.95,
       status: 'pending',
+      evidence: 'net_pass',
+    });
+    const refCall = h
+      .ofType('bb_ai_log')
+      .flatMap((e) => e.entries)
+      .find((e) => e.label === 'REF CALL');
+    expect(refCall).toMatchObject({
+      kind: 'refcall',
+      tone: 'electric',
+      text: 'net_pass · AI B 95% · weak evidence · ref call',
     });
     h.controller.resolveShot({
       shotId: h.lastState().pending[0].id,
@@ -661,10 +671,230 @@ describe('BasketballGameController — weak make evidence', () => {
   });
 });
 
+/** Newest `bb_ball` — a room broadcast (hoop phone + moderator panel). */
 function sentBall(h: H) {
-  const found = [...h.sent].reverse().find((s) => s.event.type === 'bb_ball');
-  return found?.event.type === 'bb_ball' ? found.event : null;
+  const balls = h.ofType('bb_ball');
+  return balls.length ? balls[balls.length - 1] : null;
 }
+
+function aiLogLabels(h: H) {
+  return h.ofType('bb_ai_log').flatMap((e) => e.entries.map((x) => x.label));
+}
+
+describe('BasketballGameController — AI log + overlay', () => {
+  it('sends the log snapshot on spectate and streams state / verdict entries', async () => {
+    const h = harness();
+    const { hoopIn } = await started(h);
+    h.controller.spectate('viewer');
+    const snap = [...h.sent]
+      .reverse()
+      .find((s) => s.clientId === 'viewer' && s.event.type === 'bb_ai_log');
+    expect(snap?.event).toMatchObject({ type: 'bb_ai_log', reset: true });
+    // armed on start (rim calibrated by rigged())
+    expect(
+      snap?.event.type === 'bb_ai_log' ? snap.event.entries[0] : null,
+    ).toMatchObject({ label: 'AI', text: 'armed · auto · auto · rim set' });
+
+    h.controller.onWorkerResult(hoopIn, {
+      session: 's1',
+      ball: { x: 0.5, y: 0.2, w: 0.02, h: 0.03, src: 'yolo' },
+      zone: 'above',
+      state: 'flight',
+      procMs: 31.5,
+    });
+    await vi.advanceTimersByTimeAsync(300); // past the bb_ball debounce
+    h.controller.onWorkerResult(hoopIn, {
+      session: 's1',
+      ball: { x: 0.5, y: 0.3, w: 0.02, h: 0.03, src: 'yolo' },
+      zone: 'rim',
+      state: 'rim',
+    });
+    await vi.advanceTimersByTimeAsync(300);
+    h.controller.onWorkerResult(hoopIn, {
+      session: 's1',
+      ball: null,
+      zone: 'none',
+      state: 'idle',
+      events: [
+        { type: 'shot_attempt', index: 1, result: 'miss', team: null },
+        {
+          type: 'candidate_end',
+          t: 4.2,
+          made: false,
+          reason: 'rim_exit',
+          attempted: true,
+          metrics: { minDist: 0.4, netSamples: 0, touchedRim: true },
+        },
+      ],
+    });
+    // armed twice: at cam start (rim NOT SET) and again after calibration
+    expect(aiLogLabels(h)).toEqual([
+      'AI',
+      'AI',
+      'SESSION',
+      'RIM',
+      'MISS',
+      'ATTEMPT',
+    ]);
+    const miss = h
+      .ofType('bb_ai_log')
+      .flatMap((e) => e.entries)
+      .find((e) => e.label === 'MISS');
+    expect(miss).toMatchObject({
+      tone: 'amber',
+      t: 4.2,
+      text: 'rim_exit · left the rim without dropping',
+      detail: 'net 0/0 lost 0 · min 0.40rx · rim touched',
+    });
+    // bb_ball is a broadcast now, with the state machine + timing
+    expect(sentBall(h)).toMatchObject({
+      tracked: false,
+      zone: 'none',
+      state: 'idle',
+    });
+    expect(h.ofType('bb_ball')[0]).toMatchObject({
+      tracked: true,
+      state: 'flight',
+      procMs: 31.5,
+    });
+    h.controller.dispose();
+  });
+
+  it('carries the verdict measurements onto the make and its ledger entry', async () => {
+    const h = harness();
+    const { hoopIn } = await started(h);
+    h.controller.onWorkerResult(hoopIn, {
+      session: 's1',
+      events: [
+        { type: 'shot_attempt', index: 1, result: 'made', team: 'A' },
+        {
+          type: 'shot_made',
+          index: 1,
+          t: 9.4,
+          team: 'A',
+          teamConfidence: 0.9,
+          evidence: 'net_occluded',
+          colorSample: '#ff6a1f',
+        },
+        {
+          type: 'candidate_end',
+          t: 9.4,
+          made: true,
+          reason: 'net_occluded',
+          attempted: true,
+          metrics: { dwell: 0.12, netSamples: 3, netCentred: 1, netLost: 2 },
+        },
+      ],
+    });
+    expect(h.lastState().recent[0]).toMatchObject({
+      evidence: 'net_occluded',
+      aiReason: 'dwell 0.12s · net 3/1 lost 2',
+      status: 'confirmed',
+    });
+    const entries = h.ofType('bb_ai_log').flatMap((e) => e.entries);
+    expect(entries.map((e) => e.label)).toEqual([
+      'AI',
+      'AI',
+      'SESSION',
+      'LEDGER',
+    ]);
+    expect(entries[3]).toMatchObject({
+      tone: 'good',
+      text: 'net_occluded · AI A 90% · +1 A · in ledger',
+      detail:
+        'seen in the net, hidden by the mesh, out under it · dwell 0.12s · net 3/1 lost 2 · jersey #ff6a1f',
+    });
+    h.controller.dispose();
+  });
+
+  it('is moderator-gated and puts quantized AI data on the held HUD', async () => {
+    const h = harness();
+    const { hoopIn } = await started(h);
+    h.controller.handleMessage('stranger', {
+      type: 'bb_commentator_ai_overlay',
+      enabled: true,
+    });
+    expect(h.errorsFor('stranger').map((e) => e.code)).toEqual([
+      'not_commentator',
+    ]);
+    expect(h.lastState().aiOverlay).toBe(false);
+    h.controller.handleMessage('mod', {
+      type: 'bb_commentator_ai_overlay',
+      enabled: true,
+    });
+    expect(h.lastState().aiOverlay).toBe(true);
+    expect(aiLogLabels(h)).toContain('OVERLAY');
+    await vi.advanceTimersByTimeAsync(HOLD + 200);
+    h.controller.onWorkerResult(hoopIn, {
+      session: 's1',
+      ball: { x: 0.51234, y: 0.2, w: 0.02, h: 0.03, src: 'crop' },
+      zone: 'above',
+      state: 'flight',
+      frameW: 640,
+      frameH: 480,
+      events: [
+        {
+          type: 'candidate_end',
+          made: false,
+          reason: 'flight_away',
+          attempted: false,
+        },
+      ],
+    });
+    await vi.advanceTimersByTimeAsync(HOLD + 100);
+    expect(h.lastHud()?.ai).toMatchObject({
+      rim: { cx: 0.5, cy: 0.3, rx: 0.06, ry: 0.02 },
+      frameAspect: 1.333,
+      ball: { x: 0.512, y: 0.2, w: 0.02, h: 0.03 },
+      zone: 'above',
+      state: 'flight',
+      src: 'crop',
+      verdict: { text: 'DROP flight_away', tone: 'dim' },
+    });
+    // the verdict expires on the snapshot clock; an idle feed clears the ball
+    await vi.advanceTimersByTimeAsync(4_100);
+    h.controller.onWorkerResult(hoopIn, {
+      session: 's1',
+      ball: null,
+      zone: 'none',
+      state: 'idle',
+    });
+    await vi.advanceTimersByTimeAsync(HOLD + 100);
+    expect(h.lastHud()?.ai).toMatchObject({
+      ball: null,
+      state: 'idle',
+      verdict: null,
+    });
+    h.controller.handleMessage('mod', {
+      type: 'bb_commentator_ai_overlay',
+      enabled: false,
+    });
+    await vi.advanceTimersByTimeAsync(HOLD + 100);
+    expect(h.lastHud()?.ai).toBeNull();
+    h.controller.dispose();
+  });
+
+  it('publishes the overlay from the worker feed in the lobby', async () => {
+    const h = harness();
+    const { hoopIn } = await rigged(h);
+    h.controller.handleMessage('mod', {
+      type: 'bb_commentator_ai_overlay',
+      enabled: true,
+    });
+    await vi.advanceTimersByTimeAsync(HOLD + 200);
+    const before = h.hudApplies.length;
+    h.controller.onWorkerResult(hoopIn, {
+      session: 's1',
+      ball: { x: 0.5, y: 0.2, w: 0.02, h: 0.03, src: 'yolo' },
+      zone: 'above',
+      state: 'flight',
+    });
+    await vi.advanceTimersByTimeAsync(HOLD + 100);
+    expect(h.hudApplies.length).toBeGreaterThan(before);
+    expect(h.lastHud()?.ai?.ball).toEqual({ x: 0.5, y: 0.2, w: 0.02, h: 0.03 });
+    h.controller.dispose();
+  });
+});
 
 describe('BasketballGameController — stage + HUD', () => {
   it('lays out court full + hoop PiP live, parks the commentator when PiP is off', async () => {

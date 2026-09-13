@@ -14,10 +14,14 @@ import type { BbHudRect, BbHudState } from '../app/store';
 import { KBT_VIEW_TRANSITION_MS } from '../app/store';
 import { TransitionShaderWrapper } from './transitionWrapper';
 import {
+  ballDotRect,
   clockFace,
+  coverTransform,
   monoWidth,
   pipFrameOrigin,
+  rimOverlayRect,
   tagChipRect,
+  zoneBandRects,
 } from './bbHudMetrics';
 
 /**
@@ -382,6 +386,170 @@ function PipFrame({ hud, k }: { hud: BbHudState; k: number }) {
           centerIn={26}
         />
       ) : null}
+    </>
+  );
+}
+
+/**
+ * The scorer AI's debug overlay (moderator toggle) over the hoop cam tile:
+ * rim ellipse + the detector's above / net bands, the ball box coloured by
+ * zone, a state chip and the last verdict. Drawn only when there is
+ * something to show (a ball, a candidate in progress, a fresh verdict).
+ * Data rode the 3 s hold with the rest of the snapshot, so it lands on the
+ * frames it describes. Skipped when the hoop is not on screen (split) or is
+ * covered (replay).
+ */
+function AiOverlay({
+  hud,
+  k,
+  resolution,
+}: {
+  hud: BbHudState;
+  k: number;
+  resolution: Resolution;
+}) {
+  const ai = hud.ai;
+  if (!ai) return null;
+  const stage = hud.stage;
+  const tile: BbHudRect | null =
+    stage.pip?.role === 'hoop'
+      ? stage.pip.rect
+      : stage.main === 'hoop' && !stage.split
+        ? { x: 0, y: 0, width: resolution.width, height: resolution.height }
+        : null;
+  if (!tile) return null;
+  const show = ai.ball != null || ai.state !== 'idle' || ai.verdict != null;
+  if (!show) return null;
+  const disp = coverTransform(
+    { w: tile.width, h: tile.height },
+    ai.frameAspect,
+  );
+  const px = (r: { x: number; y: number; w: number; h: number }) => ({
+    top: Math.round(r.y),
+    left: Math.round(r.x),
+    width: Math.max(1, Math.round(r.w)),
+    height: Math.max(1, Math.round(r.h)),
+  });
+  const zoneColor =
+    ai.zone === 'above'
+      ? ELECTRIC
+      : ai.zone === 'rim'
+        ? AMBER
+        : ai.zone === 'below'
+          ? GOOD
+          : CHALK_85;
+  const line = Math.max(1, Math.round(2 * k));
+  const full = tile.width >= resolution.width;
+  const fs = full ? 22 : 12;
+  const chipW = full ? 520 : 300;
+  const rows: { text: string; color: string }[] = [
+    {
+      text: `AI · ${ai.state.toUpperCase()} · ${ai.zone.toUpperCase()} · ${
+        ai.src ?? '–'
+      }`,
+      color: ai.state === 'idle' ? DIM : zoneColor,
+    },
+  ];
+  if (ai.verdict) {
+    rows.push({
+      text: ai.verdict.text.toUpperCase(),
+      color:
+        ai.verdict.tone === 'good'
+          ? GOOD
+          : ai.verdict.tone === 'amber'
+            ? AMBER
+            : DIM,
+    });
+    if (ai.verdict.detail && full)
+      rows.push({ text: ai.verdict.detail, color: DIM });
+  }
+  const rowH = fs * 1.6;
+  const chipH = rowH * rows.length + 8;
+  // Keep the chip off the hoop: a rim in the upper half of the frame puts
+  // the chip at the bottom of the tile, and vice versa.
+  const chipTop = ai.rim && ai.rim.cy > 0.5 ? 12 : tile.height / k - chipH - 12;
+  return (
+    <>
+      <View
+        style={{
+          top: tile.y,
+          left: tile.x,
+          width: tile.width,
+          height: tile.height,
+          overflow: 'hidden',
+        }}>
+        {ai.rim ? (
+          <View
+            style={{
+              ...px(zoneBandRects(disp, ai.rim, ai.frameAspect).above),
+              borderWidth: line,
+              borderColor: `${ELECTRIC}66`,
+            }}
+          />
+        ) : null}
+        {ai.rim ? (
+          <View
+            style={{
+              ...px(zoneBandRects(disp, ai.rim, ai.frameAspect).net),
+              borderWidth: line,
+              borderColor: `${GOOD}66`,
+            }}
+          />
+        ) : null}
+        {ai.rim
+          ? (() => {
+              const r = px(rimOverlayRect(disp, ai.rim));
+              return (
+                <View
+                  style={{
+                    ...r,
+                    borderWidth: line,
+                    borderColor: AMBER,
+                    borderRadius: Math.round(r.height / 2),
+                  }}
+                />
+              );
+            })()
+          : null}
+        {ai.ball
+          ? (() => {
+              const r = px(ballDotRect(disp, ai.ball, 10 * k));
+              return (
+                <View
+                  style={{
+                    ...r,
+                    borderWidth: line,
+                    borderColor: zoneColor,
+                    borderRadius: Math.round(r.width / 2),
+                  }}
+                />
+              );
+            })()
+          : null}
+      </View>
+      <Group
+        x={tile.x / k + 12}
+        y={tile.y / k + chipTop}
+        w={chipW}
+        h={chipH}
+        k={k}>
+        <Block x={0} y={0} w={chipW} h={chipH} k={k} color='#141416B3' />
+        {rows.map((row, i) => (
+          <Label
+            key={i}
+            x={10}
+            y={4 + i * rowH}
+            w={chipW - 20}
+            text={row.text}
+            fs={fs}
+            k={k}
+            font={MONO}
+            weight='medium'
+            color={row.color}
+            centerIn={rowH}
+          />
+        ))}
+      </Group>
     </>
   );
 }
@@ -997,6 +1165,9 @@ function SceneChrome({
       {replaying ? <PipFrame hud={hud} k={k} /> : null}
       {replaying ? (
         <ReplayWindow hud={hud} k={k} resolution={resolution} />
+      ) : null}
+      {liveLike && !replaying ? (
+        <AiOverlay hud={hud} k={k} resolution={resolution} />
       ) : null}
       {liveLike ? <ScoreBug hud={hud} k={k} /> : null}
       {liveLike && !replaying ? <PipFrame hud={hud} k={k} /> : null}

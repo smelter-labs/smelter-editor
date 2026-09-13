@@ -938,7 +938,8 @@ async def _run_detector_loop(input_id: str) -> int:
                     detector.attempt_count,
                 )
             for ev in events:
-                _attribute(state, ev, params)
+                if ev.get("type") in ("shot_made", "shot_attempt"):
+                    _attribute(state, ev, params)
             if events and cv2 is not None and FRAME_DIR and _flag(params, "captureShotFrames"):
                 await _attach_stills(input_id, state, events)
             state.pending_events.extend(events)

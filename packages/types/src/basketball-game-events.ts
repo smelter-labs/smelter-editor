@@ -222,6 +222,13 @@ export type BbShotEvent = {
   aiConfidence: number;
   /** Sampled jersey colour behind the guess (`#rrggbb`). */
   colorSample?: string | null;
+  /**
+   * The worker's make evidence (`decel`, `net_dwell`, `exit_slow`,
+   * `net_occluded`, `lost_in_net`, weak: `net_pass`, `net_hidden`).
+   */
+  evidence?: string;
+  /** One-line summary of the measurements behind the verdict (AI log). */
+  aiReason?: string;
   /** 'replay' = fired from a ground-truth events file (no model). */
   source: "ai" | "manual" | "replay";
   /** source === 'replay': the annotated value (1 free throw, 2, 3). */
@@ -395,6 +402,27 @@ export type BbCommentatorCasterPipMessage = {
   type: "bb_commentator_caster_pip";
   enabled: boolean;
 };
+/**
+ * Look burned into the hoop cam so the inset reads apart from the court view.
+ * `pip` grades it only while it is the small window, `always` keeps the look
+ * on the fullscreen cut too.
+ */
+export type BbPipFxMode = "off" | "pip" | "always";
+export type BbPipFx = {
+  mode: BbPipFxMode;
+  /** Tint colour, `#rrggbb`. */
+  color: string;
+};
+export type BbCommentatorPipFxMessage = {
+  type: "bb_commentator_pip_fx";
+  mode: BbPipFxMode;
+  color: string;
+};
+/** Burn the scorer AI's debug overlay (rim, zones, ball, state) into the program. */
+export type BbCommentatorAiOverlayMessage = {
+  type: "bb_commentator_ai_overlay";
+  enabled: boolean;
+};
 
 // Ledger edits (moderator). Ignored unless the sender is the joined
 // commentator/moderator; the arcade host uses the REST mirror.
@@ -427,6 +455,8 @@ export type BbClientMessage =
   | BbCommentatorViewMessage
   | BbCommentatorMatchMessage
   | BbCommentatorCasterPipMessage
+  | BbCommentatorPipFxMessage
+  | BbCommentatorAiOverlayMessage
   | BbShotResolveMessage
   | BbShotAddMessage
   | BbShotUndoMessage;
@@ -446,6 +476,9 @@ export type BbStateEvent = {
   scene: BbSceneName;
   viewOverride: BbViewOverride;
   casterPip: boolean;
+  pipFx: BbPipFx;
+  /** Scorer AI debug overlay on air (moderator toggle). */
+  aiOverlay: boolean;
   /** Makes awaiting a team (newest first). */
   pending: BbShotEvent[];
   /** Newest ledger entries (any status), newest first, capped. */
@@ -568,7 +601,10 @@ export type BbShotChangeEvent = {
   scores: Record<BbTeamId, number>;
 };
 
-/** Hoop camera AI liveness for the phone's live HUD (debounced). */
+/**
+ * Hoop camera AI liveness (debounced, ≤4 Hz + a 1 Hz heartbeat). Broadcast:
+ * the hoop phone draws its live HUD from it, the moderator panel its AI status.
+ */
 export type BbBallEvent = {
   type: "bb_ball";
   roomId: string;
@@ -576,6 +612,50 @@ export type BbBallEvent = {
   zone: "above" | "rim" | "below" | "none";
   /** Worker detection source of the current ball box, for setup feedback. */
   source?: string | null;
+  /** Shot state machine: idle | flight | rim | net | cooldown. */
+  state?: string | null;
+  /** Worker processing time of the last analysed frame (ms). */
+  procMs?: number;
+};
+
+export type BbAiLogTone = "dim" | "chalk" | "electric" | "good" | "amber" | "bad";
+
+/** One line of the scorer AI's event log ("what it sees and why"). */
+export type BbAiLogEntry = {
+  /** Monotonic per room. */
+  id: number;
+  /** Server epoch ms. */
+  atMs: number;
+  /** Worker frame time (seconds), when the entry comes from a frame/event. */
+  t?: number;
+  kind:
+    | "state"
+    | "candidate"
+    | "make"
+    | "refcall"
+    | "attempt"
+    | "ball"
+    | "replay"
+    | "session"
+    | "ai";
+  tone: BbAiLogTone;
+  /** Short mono tag: FLIGHT, MAKE, MISS, DROP, REF CALL, BALL, AI … */
+  label: string;
+  /** One line. */
+  text: string;
+  /** Dim second line (measurements behind the verdict). */
+  detail?: string;
+};
+
+/**
+ * AI log feed. `reset: true` = full snapshot (newest first, capped) sent on
+ * `bb_spectate`; otherwise a per-tick batch, oldest first.
+ */
+export type BbAiLogEvent = {
+  type: "bb_ai_log";
+  roomId: string;
+  entries: BbAiLogEntry[];
+  reset?: boolean;
 };
 
 export type BbLeadChangeEvent = {
@@ -614,5 +694,6 @@ export type BbServerEvent =
   | BbMatchEvent
   | BbShotChangeEvent
   | BbBallEvent
+  | BbAiLogEvent
   | BbLeadChangeEvent
   | BbErrorEvent;

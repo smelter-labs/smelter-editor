@@ -89,12 +89,20 @@ const stencil = (text, size, extra = '') => `
     <span style="position:absolute;left:-10px;right:-10px;top:66%;height:${Math.max(3, Math.round(size * 0.04))}px;background:${PLATE}"></span>
   </span>`;
 
-/** A 496×320 PiP / still frame with a chip; the 480×270 window at (8, 42). */
+/**
+ * A 496×320 PiP / still frame with a chip; the 480×270 window at (8, 42).
+ * Border strips only (like `replay-frame`) — a plate spanning the whole frame
+ * would sit over the cam, and a `background:transparent` child does NOT punch
+ * a hole through its parent, so the window would come out opaque.
+ */
 const pipFrame = (chipBg, chipFg, label, windowHtml = '') => `
-  <div style="position:absolute;inset:0;background:${PLATE};${cut(16)}">
-    <div style="position:absolute;left:8px;top:42px;width:480px;height:270px;background:transparent">${windowHtml}</div>
+  <div style="position:absolute;left:0;top:0;width:496px;height:42px;background:${PLATE};${cut(16)}">
     <div class="tag" style="position:absolute;left:8px;top:8px;background:${chipBg};color:${chipFg}">${label}</div>
-  </div>`;
+  </div>
+  <div style="position:absolute;left:0;top:42px;width:8px;height:270px;background:${PLATE}"></div>
+  <div style="position:absolute;left:488px;top:42px;width:8px;height:270px;background:${PLATE}"></div>
+  <div style="position:absolute;left:0;top:312px;width:496px;height:8px;background:${PLATE}"></div>
+  <div style="position:absolute;left:8px;top:42px;width:480px;height:270px">${windowHtml}</div>`;
 
 const lostWindow = (role) => `
   <div style="position:absolute;inset:0;background:#0e0e10;background-image:repeating-linear-gradient(0deg,transparent 0 3px,rgba(244,239,230,.04) 3px 4px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px">

@@ -483,7 +483,7 @@ class ShotDetector:
                 self.flight_lost += 1
                 last_t = self.track.last_t()
                 if last_t is None or t - last_t > FLIGHT_LOST_S:
-                    events += self._finish(t, made=False)
+                    events += self._finish(t, made=False, reason="flight_lost")
             elif (
                 self.flight_lost >= 1
                 and self.last_above_t is not None
@@ -506,7 +506,7 @@ class ShotDetector:
             else:  # 'none' — flew away from the hoop
                 ref = self.last_above_t if self.last_above_t is not None else t
                 if t - ref > FLIGHT_AWAY_S:
-                    events += self._finish(t, made=False)
+                    events += self._finish(t, made=False, reason="flight_away")
             return events
 
         if self.state == "rim":
@@ -524,7 +524,7 @@ class ShotDetector:
                     self.last_above_t = t
             elif zone == "rim":
                 if t - self.rim_t > RIM_MAX_S:
-                    events += self._finish(t, made=False)
+                    events += self._finish(t, made=False, reason="rim_timeout")
             elif ball is None:
                 # Lost right after entering the ellipse: descending means it
                 # is probably inside the net mesh — keep watching from 'net'.
@@ -533,10 +533,10 @@ class ShotDetector:
                     self.lost_in_rim = True
                     self._enter_net(t, speed)
                 elif t - self.rim_t > self.net_zone_s:
-                    events += self._finish(t, made=False)
+                    events += self._finish(t, made=False, reason="rim_lost_up")
             else:  # 'none'
                 if t - self.rim_t > self.net_zone_s:
-                    events += self._finish(t, made=False)
+                    events += self._finish(t, made=False, reason="rim_exit")
             return events
 
         if self.state == "net":
@@ -567,7 +567,7 @@ class ShotDetector:
                     if self.net_samples >= 1 or self.lost_in_rim:
                         events += self._finish(t, made=True, evidence="lost_in_net")
                     else:
-                        events += self._finish(t, made=False)
+                        events += self._finish(t, made=False, reason="net_lost_empty")
             else:  # 'none': left the net band
                 assert cy is not None
                 below_bottom = cy > rim.net_bottom(self.aspect)
@@ -607,7 +607,17 @@ class ShotDetector:
                     )
                     events += self._finish(t, made=True, evidence=evidence)
                 else:
-                    events += self._finish(t, made=False)
+                    events += self._finish(
+                        t,
+                        made=False,
+                        reason="net_exit_no_evidence",
+                        extra={
+                            "belowBottom": below_bottom,
+                            "exitSlow": exit_slow,
+                            "occluded": occluded,
+                            "passed": passed,
+                        },
+                    )
             return events
 
         return events
@@ -651,14 +661,49 @@ class ShotDetector:
     def _last_velocity_before_loss(self) -> Optional[tuple[float, float]]:
         return self.track.velocity(self.aspect)
 
-    def _finish(self, t: float, made: bool, evidence: Optional[str] = None) -> list[dict]:
+    def _metrics(self, t: float) -> dict:
+        """The measurements behind a verdict, for the AI log (before reset)."""
+
+        def fin(v: Optional[float]) -> Optional[float]:
+            return round(v, 3) if v is not None and math.isfinite(v) else None
+
+        return {
+            "minDist": fin(self.min_dist),
+            "entrySpeed": fin(self.entry_speed),
+            "netMinSpeed": fin(self.net_min_speed),
+            "netSamples": self.net_samples,
+            "netCentred": self.net_centred,
+            "netLost": self.net_lost,
+            "dwell": fin(t - self.net_since) if self.net_since is not None else None,
+            "touchedRim": self.touched_rim,
+            "lostInRim": self.lost_in_rim,
+            "rimT": fin(self.rim_t),
+            "state": self.state,
+            "zone": self.zone,
+        }
+
+    def _finish(
+        self,
+        t: float,
+        made: bool,
+        evidence: Optional[str] = None,
+        reason: Optional[str] = None,
+        extra: Optional[dict] = None,
+    ) -> list[dict]:
+        """Close the current candidate. Always emits `candidate_end` (why the
+        ball was or was not counted); `shot_attempt` / `shot_made` as before."""
         events: list[dict] = []
+        metrics = self._metrics(t)
+        if extra:
+            metrics.update(extra)
         rim_t = self.rim_t if self.rim_t is not None else t
         release = self.find_release(rim_t)
         attempted = made or self.min_dist <= ATTEMPT_DIST
+        debounced = False
         if attempted and not made:
             if self.last_attempt_t is not None and t - self.last_attempt_t < ATTEMPT_DEBOUNCE_S:
                 attempted = False
+                debounced = True
         if attempted:
             self.attempt_count += 1
             self.last_attempt_t = t
@@ -688,6 +733,17 @@ class ShotDetector:
             self.cooldown_since = t
         else:
             self.state = "idle"
+        events.append(
+            {
+                "type": "candidate_end",
+                "t": round(t, 3),
+                "made": made,
+                "reason": (evidence if made else reason) or ("make" if made else "unknown"),
+                "attempted": attempted,
+                "debounced": debounced,
+                "metrics": metrics,
+            }
+        )
         self._reset_flight()
         return events
 

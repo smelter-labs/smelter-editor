@@ -14,6 +14,7 @@ import type {
   ViewportProperties,
 } from '../types';
 import type {
+  BbPipFx,
   KbtViewTransitionStyle,
   ShooterTopScoreEntry,
 } from '@smelter-editor/types';
@@ -647,6 +648,12 @@ export type BbHudStage = {
   pip: { role: 'hoop' | 'court'; rect: BbHudRect } | null;
   /** Commentator lower-third cam rect when visible. */
   caster: BbHudRect | null;
+  /**
+   * Hoop-cam look. Lives in `stage`, not beside it: the rest of BbHudState is
+   * held ~3 s to land on the frames it describes, while `stage` applies to the
+   * delayed video at once — and this grades that same video.
+   */
+  pipFx: BbPipFx;
   /** Two tiles side by side (court + commentator). */
   split: boolean;
   /** scene 'replay': the mounted clip input + the make it shows. */
@@ -727,6 +734,27 @@ export type BbHudState = {
     text: string;
     color: string;
     at: number;
+  } | null;
+  /**
+   * Scorer AI debug overlay (moderator toggle), drawn over the hoop cam
+   * tile: rim ellipse + zones, the ball box coloured by zone, the state
+   * machine's state and the last verdict. Coordinates are normalized to the
+   * analysed frame (`frameAspect`); the tile shows the frame cover-fitted.
+   * null while the overlay is off.
+   */
+  ai: {
+    rim: { cx: number; cy: number; rx: number; ry: number } | null;
+    frameAspect: number;
+    ball: { x: number; y: number; w: number; h: number } | null;
+    zone: 'above' | 'rim' | 'below' | 'none';
+    state: string;
+    /** Detector that produced the ball box: crop | yolo | hsv. */
+    src: string | null;
+    verdict: {
+      text: string;
+      detail?: string;
+      tone: 'good' | 'amber' | 'dim';
+    } | null;
   } | null;
 };
 

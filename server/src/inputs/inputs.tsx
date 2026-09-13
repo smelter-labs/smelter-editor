@@ -17,6 +17,7 @@ import { getInputRenderer } from './rendererRegistry';
 import { wrapWithShaders } from '../utils/shaderUtils';
 import { ScrollingText } from './scrollingText';
 import { TransitionShaderWrapper } from './transitionWrapper';
+import { BbCamLook } from './BbCamLook';
 import { HandsInput } from './HandsInput';
 import { PacmanBirdsInput } from './PacmanBirdsInput';
 import { HaunterGhostsInput } from './HaunterGhostsInput';
@@ -209,6 +210,24 @@ export function Input({ input }: { input: InputConfig }) {
     store,
     (state) => state.kbTournament?.countIncorrectReps !== false,
   );
+  // Blacktop: the hoop cam's own look, so the inset reads apart from the
+  // court view. `on` follows the stage; the mount follows the mode alone.
+  const bbCamLook = useStoreWithEqualityFn(
+    store,
+    (state) => {
+      const bb = state.bbGame;
+      if (!bb || bb.cams.hoop.inputId !== input.inputId) return null;
+      const fx = bb.stage.pipFx;
+      if (!fx || fx.mode === 'off') return null;
+      return {
+        color: fx.color,
+        on: fx.mode === 'always' || bb.stage.pip?.role === 'hoop',
+      };
+    },
+    (a, b) =>
+      a === b ||
+      (a != null && b != null && a.color === b.color && a.on === b.on),
+  );
 
   // The video/content element for the playing state. Extracted so Ghost City
   // can wrap it in the haunted-city shader without disturbing the overlays
@@ -320,6 +339,20 @@ export function Input({ input }: { input: InputConfig }) {
         resolution={{ width: contentWidth, height: contentHeight }}>
         {videoContent}
       </CarHueWrapper>
+    );
+  }
+
+  // Blacktop hoop cam: grade it apart from the court view. Sits under the
+  // kettlebell rig for the same reason Ghost City does — it is a picture
+  // treatment, not an overlay.
+  if (bbCamLook) {
+    videoContent = (
+      <BbCamLook
+        color={bbCamLook.color}
+        active={bbCamLook.on}
+        resolution={{ width: contentWidth, height: contentHeight }}>
+        {videoContent}
+      </BbCamLook>
     );
   }
 

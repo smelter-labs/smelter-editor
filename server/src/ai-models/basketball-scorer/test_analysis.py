@@ -172,6 +172,10 @@ def attempts(events):
     return [e for e in events if e["type"] == "shot_attempt"]
 
 
+def ends(events):
+    return [e for e in events if e["type"] == "candidate_end"]
+
+
 # ── zones ────────────────────────────────────────────────────────────────────
 check("zone: rim centre", zone_of(RIM.cx, RIM.cy, RIM, ASPECT) == "rim")
 check("zone: just above the rim", zone_of(RIM.cx, RIM.cy - 2 * RXY, RIM, ASPECT) == "above")
@@ -269,6 +273,29 @@ check("air ball hidden for a moment is still no make", len(makes(ev)) == 0, str(
 pts = rim_out(1.0)
 det, ev = run(pts, drop=set(range(len(pts) // 2, len(pts) // 2 + 4)))
 check("rim-out hidden for a moment is still no make", len(makes(ev)) == 0, str([(e["type"], e.get("evidence")) for e in ev]))
+
+# ── candidate_end: why the ball was or was not counted (AI log) ──────────────
+det, ev = run(swish(1.0))
+ce = ends(ev)
+check("swish → exactly one candidate_end, made", len(ce) == 1 and ce[0]["made"] and ce[0]["attempted"] and not ce[0]["debounced"], str(ce))
+check("candidate_end reason of a make is its evidence", ce and ce[0]["reason"] == makes(ev)[0]["evidence"], str(ce[0].get("reason") if ce else None))
+check("candidate_end carries the net measurements", ce and ce[0]["metrics"]["netSamples"] >= 1 and ce[0]["metrics"]["state"] == "net" and ce[0]["metrics"]["dwell"] is not None and ce[0]["metrics"]["entrySpeed"] is not None, str(ce[0]["metrics"] if ce else None))
+check("candidate_end comes after shot_made in the same batch", [e["type"] for e in ev if e["type"] in ("shot_made", "candidate_end")] == ["shot_made", "candidate_end"])
+det, ev = run(pass_by(1.0, dx=0.8))
+ce = ends(ev)
+check("pass-by off centre → miss: left the net band with no evidence", len(ce) == 1 and not ce[0]["made"] and ce[0]["reason"] == "net_exit_no_evidence" and ce[0]["attempted"], str(ce))
+check("net-exit miss reports the four rejected evidences", ce and ce[0]["metrics"]["belowBottom"] is True and ce[0]["metrics"]["occluded"] is False and ce[0]["metrics"]["passed"] is False and ce[0]["metrics"]["exitSlow"] is False, str(ce[0]["metrics"] if ce else None))
+det, ev = run(rim_out(1.0))
+ce = ends(ev)
+check("rim-out → miss: flew away after touching the rim", len(ce) == 1 and ce[0]["reason"] == "flight_away" and ce[0]["metrics"]["touchedRim"] is True, str(ce))
+det, ev = run(air_ball(1.0))
+ce = ends(ev)
+check("air ball → miss: flew away, never touched the rim", len(ce) == 1 and ce[0]["reason"] in ("flight_away", "flight_lost") and ce[0]["metrics"]["touchedRim"] is False, str(ce))
+det, ev = run(pass_by(1.0, dx=0.8) + pass_by(1.8, dx=0.8))
+ce = ends(ev)
+check("second miss inside the attempt debounce is logged as debounced", len(ce) == 2 and len(attempts(ev)) == 1 and ce[1]["attempted"] is False and ce[1]["debounced"] is True, str([(e["attempted"], e["debounced"]) for e in ce]))
+det, ev = run(swish(1.0) + swish(6.0))
+check("two swishes → two candidate_end", len(ends(ev)) == 2 and all(e["made"] for e in ends(ev)))
 
 # ── fast ball skipping the rim sample ────────────────────────────────────────
 pts = swish(1.0, entry_v=3.0)

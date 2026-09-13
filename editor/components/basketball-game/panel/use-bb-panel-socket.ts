@@ -2,12 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
+  BbAiLogEntry,
+  BbBallEvent,
   BbCamOfferEvent,
   BbCamRole,
   BbMatchAction,
   BbMatchEvent,
   BbShotChangeEvent,
   BbStateEvent,
+  BbPipFxMode,
   BbTeamId,
   BbViewOverride,
   RoomEvent,
@@ -19,9 +22,12 @@ import {
   remoteOrigin,
   toWsUrl,
 } from '@/lib/server-url';
+import { mergeAiLog } from '../ai-log-helpers';
 
 const RECONNECT_MAX_MS = 8000;
 const TICKER_LEN = 12;
+/** AI log rows kept client-side (the server snapshot is capped the same). */
+const AI_LOG_LEN = 60;
 
 type ModeratorSession = { commentatorKey?: string; name?: string };
 
@@ -61,6 +67,11 @@ export type BbPanelSocket = {
   matchReceivedAt: number;
   /** Rolling ledger changes (newest first). */
   shots: BbShotChangeEvent[];
+  /** The scorer AI's event log (newest first, capped). */
+  aiLog: BbAiLogEntry[];
+  /** Last `bb_ball` (AI liveness) and when it arrived (Date.now()). */
+  ball: BbBallEvent | null;
+  ballAt: number;
   /** Join (or re-join) as the moderator; re-sent on every reconnect. */
   join: (name: string) => void;
   /** Ask for a WHIP cam slot (dims from the rig); re-armed on reconnect. */
@@ -74,6 +85,9 @@ export type BbPanelSocket = {
   addShot: (team: BbTeamId, points: 1 | 2) => void;
   undoShot: (shotId?: string) => void;
   setCasterPip: (enabled: boolean) => void;
+  /** Burn the scorer AI's debug overlay into the program (moderator). */
+  setAiOverlay: (enabled: boolean) => void;
+  setPipFx: (mode: BbPipFxMode, color: string) => void;
   setTeamColor: (team: BbTeamId, color: string) => void;
   retry: () => void;
 };
@@ -100,6 +114,9 @@ export function useBbPanelSocket(
   const [match, setMatch] = useState<BbMatchEvent | null>(null);
   const [matchReceivedAt, setMatchReceivedAt] = useState(0);
   const [shots, setShots] = useState<BbShotChangeEvent[]>([]);
+  const [aiLog, setAiLog] = useState<BbAiLogEntry[]>([]);
+  const [ball, setBall] = useState<BbBallEvent | null>(null);
+  const [ballAt, setBallAt] = useState(0);
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectDelayRef = useRef(1000);
@@ -145,6 +162,13 @@ export function useBbPanelSocket(
           break;
         case 'bb_shot':
           setShots((prev) => [event, ...prev].slice(0, TICKER_LEN));
+          break;
+        case 'bb_ai_log':
+          setAiLog((prev) => mergeAiLog(prev, event, AI_LOG_LEN));
+          break;
+        case 'bb_ball':
+          setBall(event);
+          setBallAt(Date.now());
           break;
         case 'bb_error':
           // Server-side refusals (add points in the lobby, a second panel
@@ -286,6 +310,16 @@ export function useBbPanelSocket(
       sendJson({ type: 'bb_commentator_caster_pip', enabled }),
     [sendJson],
   );
+  const setAiOverlay = useCallback(
+    (enabled: boolean) =>
+      sendJson({ type: 'bb_commentator_ai_overlay', enabled }),
+    [sendJson],
+  );
+  const setPipFx = useCallback(
+    (mode: BbPipFxMode, color: string) =>
+      sendJson({ type: 'bb_commentator_pip_fx', mode, color }),
+    [sendJson],
+  );
   const setTeamColor = useCallback(
     (team: BbTeamId, color: string) =>
       sendJson({ type: 'bb_team_color', team, color }),
@@ -306,6 +340,9 @@ export function useBbPanelSocket(
     match,
     matchReceivedAt,
     shots,
+    aiLog,
+    ball,
+    ballAt,
     join,
     requestCam,
     sendView,
@@ -314,6 +351,8 @@ export function useBbPanelSocket(
     addShot,
     undoShot,
     setCasterPip,
+    setAiOverlay,
+    setPipFx,
     setTeamColor,
     retry,
   };
