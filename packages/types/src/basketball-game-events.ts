@@ -224,7 +224,8 @@ export type BbShotEvent = {
   colorSample?: string | null;
   /**
    * The worker's make evidence (`decel`, `net_dwell`, `exit_slow`,
-   * `net_occluded`, `lost_in_net`, weak: `net_pass`, `net_hidden`).
+   * `net_occluded`, `lost_in_net`, weak: `net_pass`, `net_hidden`) —
+   * `ultra` when Ultra AI fired it from the clip's annotated plays.
    */
   evidence?: string;
   /** One-line summary of the measurements behind the verdict (AI log). */
@@ -423,6 +424,15 @@ export type BbCommentatorAiOverlayMessage = {
   type: "bb_commentator_ai_overlay";
   enabled: boolean;
 };
+/**
+ * Moderator: "Ultra AI" — score from the plays annotated next to the attached
+ * file clip (its events sidecar) instead of the live model. The model keeps
+ * tracking the ball; its shot calls are superseded while the mode is armed.
+ */
+export type BbCommentatorUltraAiMessage = {
+  type: "bb_commentator_ultra_ai";
+  enabled: boolean;
+};
 
 // Ledger edits (moderator). Ignored unless the sender is the joined
 // commentator/moderator; the arcade host uses the REST mirror.
@@ -457,6 +467,7 @@ export type BbClientMessage =
   | BbCommentatorCasterPipMessage
   | BbCommentatorPipFxMessage
   | BbCommentatorAiOverlayMessage
+  | BbCommentatorUltraAiMessage
   | BbShotResolveMessage
   | BbShotAddMessage
   | BbShotUndoMessage;
@@ -479,6 +490,8 @@ export type BbStateEvent = {
   pipFx: BbPipFx;
   /** Scorer AI debug overlay on air (moderator toggle). */
   aiOverlay: boolean;
+  /** Ultra AI (annotated plays instead of the model) — see BbUltraAiStatus. */
+  ultraAi: BbUltraAiStatus;
   /** Makes awaiting a team (newest first). */
   pending: BbShotEvent[];
   /** Newest ledger entries (any status), newest first, capped. */
@@ -495,6 +508,19 @@ export type BbStateEvent = {
 export type BbReplayBasket = "left" | "right" | "both";
 
 /**
+ * Ultra AI status: `off`; `no_clip` = on, waiting for a file cam (USE FILE);
+ * `loading` = clip attached, sidecar being read / clip clock not ready yet;
+ * `armed` = the clip's plays are loaded and fire at their clip time;
+ * `no_events` = the clip has no events sidecar — the live model scores.
+ */
+export type BbUltraAiStatus =
+  | "off"
+  | "no_clip"
+  | "loading"
+  | "armed"
+  | "no_events";
+
+/**
  * Replay from a ground-truth events file: makes/misses fire at their clip
  * media time (anchored to the file cams' playhead) instead of the model.
  */
@@ -502,6 +528,8 @@ export type BbReplayState = {
   /** Path relative to data/mp4s. */
   fileName: string;
   active: boolean;
+  /** Loaded by Ultra AI (shots land as `source: 'ai'`), not the REST GROUND TRUTH. */
+  ultra: boolean;
   basket: BbReplayBasket;
   loop: boolean;
   /** Throws selected from the file (made + missed). */

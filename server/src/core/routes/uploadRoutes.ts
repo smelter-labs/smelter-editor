@@ -16,6 +16,8 @@ import { roomEventBus } from '../roomEventBus';
 const execFileAsync = promisify(execFile);
 
 const MP4_EXTS = new Set(['.mp4']);
+/** Clip sidecars accepted next to an mp4 (events / rim JSON). */
+const MP4_SIDECAR_EXTS = new Set(['.json']);
 const AUDIO_EXTS = new Set(['.wav', '.mp3']);
 const PICTURE_EXTS = new Set([
   '.jpg',
@@ -209,14 +211,19 @@ export const uploadRoutes: FastifyPluginCallback = (routes, _opts, done) => {
       });
 
       const fileName = sanitizeFileName(data.filename);
-      if (!fileName || !isAllowedExt(fileName, MP4_EXTS)) {
+      // `.json` = a clip sidecar (`<clip>.events.json` / `<clip>.rim.json`,
+      // `events.json`) uploaded next to its mp4 for the basketball game's
+      // file cams (Ultra AI, rim calibration).
+      const sidecar = !!fileName && isAllowedExt(fileName, MP4_SIDECAR_EXTS);
+      if (!fileName || (!isAllowedExt(fileName, MP4_EXTS) && !sidecar)) {
         await data.toBuffer();
         console.warn('[upload/mp4] rejected invalid file', {
           fileName: data.filename,
         });
-        return res
-          .status(400)
-          .send({ error: 'Invalid file. Only .mp4 files are accepted.' });
+        return res.status(400).send({
+          error:
+            'Invalid file. Only .mp4 files (and .json sidecars) are accepted.',
+        });
       }
 
       let folder = '';
@@ -241,6 +248,22 @@ export const uploadRoutes: FastifyPluginCallback = (routes, _opts, done) => {
       const filePath = path.join(targetDir, fileName);
       await pipeline(data.file, fs.createWriteStream(filePath));
       const stats = await fs.stat(filePath);
+      if (sidecar) {
+        // A sidecar must at least be JSON — a broken file would only
+        // surface later as "no annotated plays" in the panel.
+        try {
+          JSON.parse(await fs.readFile(filePath, 'utf8'));
+        } catch (err) {
+          await fs.remove(filePath).catch(() => {});
+          console.warn('[upload/mp4] rejected sidecar (not JSON)', {
+            fileName,
+            ...getErrorDetails(err),
+          });
+          return res
+            .status(400)
+            .send({ error: `${fileName} is not valid JSON.` });
+        }
+      }
 
       console.log('[upload/mp4] file stored', {
         fileName,

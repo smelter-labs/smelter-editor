@@ -58,6 +58,7 @@ const REASON_TEXT: Record<string, string> = {
   lost_in_net: 'vanished inside the net',
   net_pass: 'straight down the net, no slow-down (weak)',
   net_hidden: 'hidden from the rim to under the net (weak)',
+  ultra: 'ultra model call',
   // rejections
   flight_lost: 'lost in flight',
   flight_away: 'flew past the hoop',

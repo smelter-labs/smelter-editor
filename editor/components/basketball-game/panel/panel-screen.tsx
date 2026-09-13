@@ -14,6 +14,7 @@ import {
   sampleVideoColorAt,
 } from '@/lib/arcade/color-sample';
 import { resolveMediaUrl } from '@/lib/server-url';
+import { setBbConfig } from '@/app/actions/actions';
 import type { CommentatorRig } from '@/components/kettlebell-tournament/panel/use-commentator-rig';
 import type { CamRecovery } from '@/components/kettlebell-tournament/panel/use-cam-recovery';
 import { useKbtRecording } from '@/components/kettlebell-tournament/use-kbt-recording';
@@ -47,7 +48,12 @@ import {
   camSourceLabel,
   useMp4Library,
 } from '../file-cam-picker';
-import { ReplayControl, useBbEventsLibrary } from '../replay-control';
+import { replayClip } from '../replay-helpers';
+import {
+  ultraAiChipLabel,
+  ultraAiChipTitle,
+  ultraAiChipTone,
+} from '../ultra-ai-helpers';
 import { aiLogTime, aiLogToneKey, aiStatus } from '../ai-log-helpers';
 import { formatClock, remainingNow } from '../use-bb-feed';
 import type { BbPanelSocket } from './use-bb-panel-socket';
@@ -218,7 +224,20 @@ export function PanelScreen({
 }) {
   const rec = useKbtRecording(roomId, socket.state?.isRecording ?? false);
   const library = useMp4Library();
-  const events = useBbEventsLibrary();
+  // Instant replay on/off lives in the room config (host SETUP → REPLAY too).
+  const replayOn = socket.state?.config.replay ?? true;
+  const [replayBusy, setReplayBusy] = useState(false);
+  const toggleReplay = async () => {
+    if (!socket.state || replayBusy) return;
+    setReplayBusy(true);
+    try {
+      await setBbConfig(roomId, { replay: !socket.state.config.replay });
+    } catch (err) {
+      console.warn('[bb] replay toggle failed', err);
+    } finally {
+      setReplayBusy(false);
+    }
+  };
   const [, forceTick] = useState(0);
   useEffect(() => {
     const t = window.setInterval(() => forceTick((n) => n + 1), 250);
@@ -711,13 +730,21 @@ export function PanelScreen({
           );
         })}
       </div>
-      <Chip
-        label={state?.casterPip ? 'MY CAM PIP · ON' : 'MY CAM PIP · OFF'}
-        active={!!state?.casterPip}
-        disabled={!casterReady}
-        onClick={() => socket.setCasterPip(!state?.casterPip)}
-        style={{ alignSelf: 'flex-start' }}
-      />
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        <Chip
+          label={state?.casterPip ? 'MY CAM PIP · ON' : 'MY CAM PIP · OFF'}
+          active={!!state?.casterPip}
+          disabled={!casterReady}
+          onClick={() => socket.setCasterPip(!state?.casterPip)}
+        />
+        <Chip
+          label={replayOn ? 'REPLAY · ON' : 'REPLAY · OFF'}
+          active={replayOn}
+          disabled={!state || replayBusy}
+          title='Instant replay window after every make (slow-motion clip of the hoop cam)'
+          onClick={() => void toggleReplay()}
+        />
+      </div>
       {hoopLook}
     </>
   );
@@ -974,18 +1001,7 @@ export function PanelScreen({
         dense
         roomId={roomId}
         cams={state?.cams}
-        onReload={() => {
-          library.reload();
-          events.reload();
-        }}
-      />
-      <ReplayControl
-        dense
-        roomId={roomId}
-        cams={state?.cams}
-        replay={state?.replay}
-        files={events.files}
-        loading={events.loading}
+        onReload={() => library.reload()}
       />
       <BbRecordingPlate rec={rec} />
     </BbPlate>
@@ -1028,6 +1044,8 @@ export function PanelScreen({
   const aiArmed = !!hoopCam?.joined && !!hoopCam.calibrated;
   const aiState = aiStatus(socket.ball, socket.ballAt, Date.now(), aiArmed);
   const overlayOn = !!state?.aiOverlay;
+  const ultra = state?.ultraAi ?? 'off';
+  const ultraHasClip = !!replayClip(state?.cams);
   const aiLogPlate = (
     <BbPlate
       cutPx={12}
@@ -1040,6 +1058,14 @@ export function PanelScreen({
             <StatusPill tone={aiState.tone} size={9}>
               {aiState.text}
             </StatusPill>
+            <Chip
+              dense
+              tone={ultraAiChipTone(ultra)}
+              active={ultra !== 'off'}
+              label={ultraAiChipLabel(ultra)}
+              title={ultraAiChipTitle(ultra, ultraHasClip)}
+              onClick={() => socket.setUltraAi(ultra === 'off')}
+            />
             <Chip
               dense
               tone='electric'

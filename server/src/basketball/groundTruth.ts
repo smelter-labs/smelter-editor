@@ -26,6 +26,8 @@ export type BbGroundTruth = {
   throws: BbGtThrow[];
   /** Non-throw events in the file (rebounds, fouls, …), just counted. */
   otherEvents: number;
+  /** Camera numbers that see each basket (`baskets.<side>.cams`), when listed. */
+  basketCams: Record<BbGtBasket, number[]>;
 };
 
 /** What the replay scheduler fires: already mapped onto the 3x3 ledger. */
@@ -51,7 +53,8 @@ export function parseBbGroundTruth(json: unknown): BbGroundTruth {
   const throws: BbGtThrow[] = [];
   let otherEvents = 0;
   json.events.forEach((raw, i) => {
-    if (!isRecord(raw)) throw new Error(`events.json: event #${i} is not an object`);
+    if (!isRecord(raw))
+      throw new Error(`events.json: event #${i} is not an object`);
     if (raw.kind !== 'throw') {
       otherEvents++;
       return;
@@ -63,7 +66,9 @@ export function parseBbGroundTruth(json: unknown): BbGroundTruth {
     const pointsRaw = Number(raw.points ?? 0);
     const points = ([0, 1, 2, 3] as const).find((p) => p === pointsRaw);
     if (points == null) {
-      throw new Error(`events.json: throw #${i} has points ${String(raw.points)}`);
+      throw new Error(
+        `events.json: throw #${i} has points ${String(raw.points)}`,
+      );
     }
     const made = raw.made == null ? points > 0 : Boolean(raw.made);
     const basket =
@@ -80,7 +85,75 @@ export function parseBbGroundTruth(json: unknown): BbGroundTruth {
   });
   throws.sort((a, b) => a.tMs - b.tMs);
   const t0 = Number(json.t0Utc);
-  return { t0Utc: Number.isFinite(t0) ? t0 : null, throws, otherEvents };
+  const basketCams: Record<BbGtBasket, number[]> = { left: [], right: [] };
+  if (isRecord(json.baskets)) {
+    for (const side of ['left', 'right'] as const) {
+      const entry = json.baskets[side];
+      const cams = isRecord(entry) ? entry.cams : undefined;
+      if (Array.isArray(cams)) {
+        basketCams[side] = cams
+          .map((c) => Number(c))
+          .filter((c) => Number.isInteger(c));
+      }
+    }
+  }
+  return {
+    t0Utc: Number.isFinite(t0) ? t0 : null,
+    throws,
+    otherEvents,
+    basketCams,
+  };
+}
+
+/**
+ * Which basket a clip shows, for the Ultra AI basket filter: the `cam<N>`
+ * number of the clip against the file's `baskets.<side>.cams`, else a
+ * `left` / `right` token in the clip's folder name, else both baskets.
+ */
+export function deriveClipBasket(
+  gt: Pick<BbGroundTruth, 'basketCams'>,
+  clipFileName: string,
+): BbReplayBasket {
+  const cam = /(?:^|\/)cam(\d+)\.mp4$/i.exec(clipFileName);
+  if (cam) {
+    const n = Number(cam[1]);
+    if (gt.basketCams.left.includes(n)) return 'left';
+    if (gt.basketCams.right.includes(n)) return 'right';
+  }
+  const dir = clipFileName.includes('/')
+    ? clipFileName.slice(0, clipFileName.lastIndexOf('/'))
+    : '';
+  const hint = /(?:^|[\/_-])(left|right)(?=$|[\/_-])/i.exec(dir);
+  if (hint) return hint[1].toLowerCase() as BbGtBasket;
+  return 'both';
+}
+
+/**
+ * Ultra AI: the plays of a clip's events file for the basket the clip shows;
+ * falls back to every basket when the derived side has no throws.
+ */
+export function selectUltraShots(
+  gt: BbGroundTruth,
+  clipFileName: string,
+  arcPoints: 1 | 2,
+): { shots: ReplayShot[]; basket: BbReplayBasket } {
+  let basket = deriveClipBasket(gt, clipFileName);
+  let shots = selectReplayShots(gt, { basket, arcPoints });
+  if (shots.length === 0 && basket !== 'both') {
+    basket = 'both';
+    shots = selectReplayShots(gt, { basket, arcPoints });
+  }
+  return { shots, basket };
+}
+
+/**
+ * The "model confidence" an Ultra AI make reports: deterministic per play
+ * (stable across clip loops), 0.90–0.99 for an annotated team, 0.5 when the
+ * file names nobody (→ REF CALL, like a weak live guess).
+ */
+export function ultraConfidence(tMs: number, team: BbTeamId | null): number {
+  if (!team) return 0.5;
+  return 0.9 + (Math.floor(tMs / 50) % 10) / 100;
 }
 
 export type ReplaySelectOptions = {
@@ -104,7 +177,8 @@ export function selectReplayShots(
 ): ReplayShot[] {
   const out: ReplayShot[] = [];
   for (const t of gt.throws) {
-    if (opts.basket !== 'both' && t.basket && t.basket !== opts.basket) continue;
+    if (opts.basket !== 'both' && t.basket && t.basket !== opts.basket)
+      continue;
     // Misses carry 0 annotated points; take the value from the shot type.
     const gtPoints: 1 | 2 | 3 =
       t.points !== 0
@@ -115,8 +189,7 @@ export function selectReplayShots(
             ? 1
             : 2;
     const mapped = opts.pointsMap?.[String(gtPoints) as '1' | '2' | '3'];
-    const points: 1 | 2 =
-      mapped ?? (gtPoints === 3 ? opts.arcPoints : 1);
+    const points: 1 | 2 = mapped ?? (gtPoints === 3 ? opts.arcPoints : 1);
     const team = t.team ? (opts.teamMap?.[t.team] ?? t.team) : null;
     out.push({
       tMs: t.tMs,
