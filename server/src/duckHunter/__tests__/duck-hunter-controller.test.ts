@@ -736,6 +736,47 @@ describe('armed lobby / opening screen', () => {
     h.controller.dispose();
   });
 
+  it('an arm that lands after START leaves the live round alone', async () => {
+    const h = harness();
+    h.sceneState.peopleBoxes['stage'] = ghostTarget();
+    h.joinPlayer('c1', 'Bob');
+    h.controller.controlMatch({ action: 'lobby', mode: 'time' });
+    // The host page's openLobby chain (stage swap → config → arm) is still
+    // in flight when an eager START lands; the trailing arm must not cancel
+    // the countdown it races.
+    h.controller.controlMatch({
+      action: 'start',
+      mode: 'time',
+      durationMs: 30_000,
+    });
+    const snap = h.controller.controlMatch({
+      action: 'lobby',
+      mode: 'points',
+      targetScore: 25,
+    });
+    expect(snap.phase).toBe('countdown');
+    expect(snap.mode).toBe('time');
+    expect(h.lastOverlay()!.lobbyArmed).toBe(false);
+    expect(h.lastOverlay()!.match?.phase).toBe('countdown');
+
+    await vi.advanceTimersByTimeAsync(3100); // playing
+    expect(
+      h.controller.controlMatch({ action: 'lobby', mode: 'time' }).phase,
+    ).toBe('playing');
+    expect(h.controller.getMatchSnapshot().phase).toBe('playing');
+
+    // Once the round is over (END ROUND), the arm works as before: the
+    // finished match clears and the opening screen comes back.
+    h.controller.controlMatch({ action: 'stop' });
+    expect(h.controller.getMatchSnapshot().phase).toBe('ended');
+    expect(
+      h.controller.controlMatch({ action: 'lobby', mode: 'time' }).phase,
+    ).toBe('lobby');
+    expect(h.lastOverlay()!.lobbyArmed).toBe(true);
+    expect(h.lastOverlay()!.match).toBeNull();
+    h.controller.dispose();
+  });
+
   it('clamps the staged round like a start does', () => {
     const h = harness();
     h.controller.controlMatch({ action: 'lobby', mode: 'time', durationMs: 5 });

@@ -9,6 +9,7 @@ import type {
 import { ArcadeStage, R5, monoFont } from './retro-kit';
 import {
   stageKey,
+  stageMatchesInput,
   useDuckHunterRoom,
   type DuckHunterSliderConfig,
   type StageRef,
@@ -136,8 +137,19 @@ export function DuckHunterArcade({
       setScreen('game');
     } else if (phase === 'ended' && screen === 'game') {
       setScreen('results');
+    } else if (phase === 'lobby' && screen === 'game') {
+      // The round vanished under the game screen (a second host tab or the
+      // dashboard panel re-armed the lobby): follow the server instead of
+      // sitting on a WHEP view of the opening screen where END ROUND has no
+      // match to end.
+      setScreen('lobby');
     }
   }, [phase, screen]);
+
+  // Track whether the room's stage input matches the chosen stage (by
+  // stageKey), so coming back from the results screen with a different pick
+  // swaps the video.
+  const roomStageKeyRef = useRef<string | null>(null);
 
   // After a refresh re-attached to a running room, land on the screen the
   // match phase dictates (once — EXIT TO TITLE must not be fought over).
@@ -146,13 +158,20 @@ export function DuckHunterArcade({
     if (restoreHandledRef.current || !room.restored) return;
     if (!phase) return; // wait for the spectate snapshot
     restoreHandledRef.current = true;
+    // A restored page has no memory of the stage it picked; if the room's
+    // stage is the one it would pick anyway, say so, or the next PLAY AGAIN
+    // swaps the stage for an identical file — re-warming the bird model and
+    // stretching the lobby chain the START button now waits for.
+    if (stageMatchesInput(stage, room.restoredStage)) {
+      roomStageKeyRef.current = stageKey(stage);
+    }
     if (phase === 'lobby') setScreen('lobby');
     else if (phase === 'countdown' || phase === 'playing') setScreen('game');
     else if (phase === 'ended') setScreen('results');
     // 'idle' = nothing to rejoin (e.g. a dashboard-panel reset): the title,
     // explicitly, so a URL-mounted arcade leaves its blank boot screen.
     else setScreen('title');
-  }, [room.restored, phase]);
+  }, [room.restored, room.restoredStage, phase, stage]);
 
   // A URL-bound room that cannot be joined must not leave the blank boot
   // screen up. Gone → back to the plain arcade entry (its stash may still
@@ -167,11 +186,6 @@ export function DuckHunterArcade({
     }
   }, [initialRoomId, room.roomStatus, roomGone, screen, router]);
 
-  // Track whether the room's stage input matches the chosen stage (by
-  // stageKey), so coming back from the results screen with a different pick
-  // swaps the video.
-  const roomStageKeyRef = useRef<string | null>(null);
-
   // The staged round, in wire shape. Sent on the lobby arm as well as the
   // start: the broadcast's opening screen announces it before a match exists.
   const matchConfig = useMemo<ShooterMatchConfig>(
@@ -183,22 +197,31 @@ export function DuckHunterArcade({
     [setup],
   );
 
+  // True while openLobby's chain (stage swap → config push → arm) is in
+  // flight. The lobby screen mounts before the chain runs, so without this
+  // its START button would go by the previous round's stale feed state.
+  const [lobbyBusy, setLobbyBusy] = useState(false);
   const openLobby = async () => {
     setScreen('lobby');
-    if (!room.roomId) {
-      // createRoom arms the 'lobby' phase itself (the fresh roomId hasn't
-      // committed to state yet).
-      await room.createRoom(stage, sliders, matchConfig);
-      roomStageKeyRef.current = stageKey(stage);
-    } else {
-      if (roomStageKeyRef.current !== stageKey(stage)) {
-        await room.changeStage(stage);
+    setLobbyBusy(true);
+    try {
+      if (!room.roomId) {
+        // createRoom arms the 'lobby' phase itself (the fresh roomId hasn't
+        // committed to state yet).
+        await room.createRoom(stage, sliders, matchConfig);
         roomStageKeyRef.current = stageKey(stage);
+      } else {
+        if (roomStageKeyRef.current !== stageKey(stage)) {
+          await room.changeStage(stage);
+          roomStageKeyRef.current = stageKey(stage);
+        }
+        await room.pushConfig(sliders);
+        // Clears a finished match and tells waiting phones to keep holding on
+        // the briefing (attract-mode ducks are not open range).
+        await room.armLobby(matchConfig);
       }
-      await room.pushConfig(sliders);
-      // Clears a finished match and tells waiting phones to keep holding on
-      // the briefing (attract-mode ducks are not open range).
-      await room.armLobby(matchConfig);
+    } finally {
+      setLobbyBusy(false);
     }
   };
 
@@ -257,6 +280,7 @@ export function DuckHunterArcade({
           stage={stage}
           room={room}
           feed={feed}
+          busy={lobbyBusy}
           onStart={() => void room.startMatch(matchConfig)}
           onBack={() => setScreen('config')}
         />

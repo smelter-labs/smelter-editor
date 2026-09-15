@@ -282,6 +282,20 @@ await api('POST', `/room/${roomId}/duck-hunter/match`, {
 });
 match = await getMatch();
 check('countdown running', match.phase === 'countdown', JSON.stringify(match));
+// The arcade page arms the lobby at the tail of an async chain; a START that
+// beat it used to be cancelled by the trailing arm (host stuck on the game
+// screen with the opening screen on air). A live round must survive an arm.
+await api('POST', `/room/${roomId}/duck-hunter/match`, {
+  action: 'lobby',
+  mode: 'time',
+  durationMs: 30_000,
+});
+match = await getMatch();
+check(
+  'a lobby arm cannot cancel a live round (START-before-arm race)',
+  match.phase === 'countdown',
+  JSON.stringify(match),
+);
 await sleep(3400);
 match = await getMatch();
 check('playing after countdown', match.phase === 'playing');

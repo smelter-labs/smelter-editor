@@ -92,6 +92,7 @@ export function Lobby({
   stage,
   room,
   feed,
+  busy = false,
   onStart,
   onBack,
 }: {
@@ -100,6 +101,8 @@ export function Lobby({
   stage: StageRef;
   room: DuckHunterRoom;
   feed: ShooterFeed;
+  /** openLobby's stage swap / config push / arm is still in flight. */
+  busy?: boolean;
   onStart: () => void;
   onBack: () => void;
 }) {
@@ -146,7 +149,16 @@ export function Lobby({
     return () => window.clearTimeout(timer);
   }, [shootUrl, base, roomId]);
 
-  const ready = feed.targetActive && !room.creating && !!room.roomId;
+  // START waits for the server's own word that the lobby is armed (the feed's
+  // 'lobby' snapshot) and for openLobby's chain to finish. Both used to be
+  // skipped: the button lit up on the previous round's stale targetActive the
+  // instant this screen mounted, so an eager START (a double ENTER out of
+  // GAME OVER) raced the arm still in flight — and the arm then wiped the
+  // fresh countdown, stranding the host on the game screen with the opening
+  // screen on air and END ROUND doing nothing.
+  const armed = feed.match?.phase === 'lobby';
+  const ready =
+    armed && !busy && feed.targetActive && !room.creating && !!room.roomId;
   const canStart = ready && feed.players.length > 0;
   // The roster and the hunter catalog are the same scarce thing (one character
   // each), so a full lobby means the QR has nothing left to sell.
@@ -169,13 +181,15 @@ export function Lobby({
     ? `SETUP FAILED: ${room.error}`
     : room.creating || !room.roomId
       ? 'BUILDING THE MARSH…'
-      : !feed.targetActive
-        ? 'SPINNING UP DUCKS…'
-        : feed.players.length === 0
-          ? 'WAITING FOR HUNTERS'
-          : full
-            ? 'FULL — READY'
-            : 'READY';
+      : busy || !armed
+        ? 'OPENING THE LOBBY…'
+        : !feed.targetActive
+          ? 'SPINNING UP DUCKS…'
+          : feed.players.length === 0
+            ? 'WAITING FOR HUNTERS'
+            : full
+              ? 'FULL — READY'
+              : 'READY';
 
   return (
     <RetroFrame
