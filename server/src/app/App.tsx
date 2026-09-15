@@ -14,10 +14,12 @@ import {
   useKbTournament,
   useShooterOverlay,
   useBbGame,
+  useFbGame,
 } from './store';
 import { Input } from '../inputs/inputs';
 import { KbtMatchHud } from '../inputs/KbtHud';
 import { BbMatchHud } from '../inputs/BbHud';
+import { FbMatchHud } from '../inputs/FbHud';
 import { ShooterLobbyScene } from '../inputs/ShooterLobbyScene';
 import { ShooterResultsScene } from '../inputs/ShooterResultsScene';
 import { wrapWithShaders } from '../utils/shaderUtils';
@@ -401,6 +403,9 @@ function OutputScene() {
       {/* Basketball game chrome (score bug, PiP frames, SCORE banner, lobby
           and final cards) — same slot pattern, one game on air at a time. */}
       <BbHudSlot resolution={resolution} />
+      {/* Football game chrome (score bug, event banners, minimap, replay
+          window, lobby and final cards) — same slot pattern. */}
+      <FbHudSlot resolution={resolution} />
       {/* Duck-hunter GAME OVER scene — full-frame retro results over the
           ended match (the in-tile HUD hides itself for that phase). */}
       <ShooterHudSlot resolution={resolution} />
@@ -449,8 +454,22 @@ function BbHudSlot({
   const bbGame = useBbGame();
   const shooter = useShooterOverlay();
   const kbTournament = useKbTournament();
-  if (!bbGame || shooter || kbTournament) return null;
+  const fbGame = useFbGame();
+  if (!bbGame || shooter || kbTournament || fbGame) return null;
   return <BbMatchHud hud={bbGame} resolution={resolution} />;
+}
+
+/** Football game ("Touchline") HUD slot — same one-game-on-air rule. */
+function FbHudSlot({
+  resolution,
+}: {
+  resolution: { width: number; height: number };
+}) {
+  const fbGame = useFbGame();
+  const shooter = useShooterOverlay();
+  const kbTournament = useKbTournament();
+  if (!fbGame || shooter || kbTournament) return null;
+  return <FbMatchHud hud={fbGame} resolution={resolution} />;
 }
 
 /** Same subscription isolation for the duck-hunter full-frame scenes (~30 Hz).

@@ -12,6 +12,7 @@ export const CHROMELESS_PREFIXES = [
   '/room-preview',
   '/duck-hunter',
   '/basketball-game',
+  '/football-game',
 ];
 
 export function isChromelessRoute(pathname: string): boolean {

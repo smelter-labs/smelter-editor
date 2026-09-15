@@ -1,0 +1,159 @@
+{
+  "_comment": "Alfheim 2013-11-28 stitched panorama (4450x2000). `camera` is a tilted-cylinder model fitted 2026-09-15 on 14 hand-read pitch landmarks (residuals mostly < 40 px): pitch metres (X 0..105 = left goal line -> right goal line IN THE PANORAMA, Y 0..68 = far touchline -> near touchline) -> panorama px via projectPitch() in scripts/lib/alfheim.mjs / server telemetry. `zxy` maps the ZXY sensor frame onto that pitch frame (X = zx, Y = 68 - zy) and gives the sensor clock's lead over the video clock (+4.0 s, from the ball-to-nearest-Tromso-player sweep). `px` holds derived reference polygons for humans; consumers derive their own from `camera`.",
+  "pano": {
+    "w": 4450,
+    "h": 2000
+  },
+  "pitch": {
+    "length": 105,
+    "width": 68
+  },
+  "camera": {
+    "model": "tilted-cylinder",
+    "cx": 56.6025,
+    "d": 7.506,
+    "hc": 9.3208,
+    "f": 1593.9699,
+    "x0": 2239.0293,
+    "y0": 1068.1905,
+    "tilt": 0.4357
+  },
+  "zxy": {
+    "flipX": false,
+    "flipY": true,
+    "offsetMs": 4000
+  },
+  "anchors": "see scratch fit_camera.py ANCHORS (corners, centre spot, halfway ends, left penalty box corners, right penalty box near side line, centre circle extremes)",
+  "px": {
+    "corners": {
+      "nearLeft": [
+        34,
+        1214
+      ],
+      "farLeft": [
+        1181,
+        662
+      ],
+      "farRight": [
+        3178,
+        639
+      ],
+      "nearRight": [
+        4395,
+        1238
+      ]
+    },
+    "centreSpot": [
+      2082,
+      722
+    ],
+    "goalCentreL": [
+      745,
+      862
+    ],
+    "goalCentreR": [
+      3612,
+      842
+    ],
+    "goalPostsL": [
+      [
+        804,
+        834
+      ],
+      [
+        682,
+        893
+      ]
+    ],
+    "goalPostsR": [
+      [
+        3551,
+        812
+      ],
+      [
+        3677,
+        874
+      ]
+    ],
+    "boxL": [
+      [
+        1031,
+        728
+      ],
+      [
+        1298,
+        679
+      ],
+      [
+        574,
+        1049
+      ],
+      [
+        358,
+        1054
+      ]
+    ],
+    "boxR": [
+      [
+        3323,
+        704
+      ],
+      [
+        3020,
+        655
+      ],
+      [
+        3737,
+        1045
+      ],
+      [
+        4028,
+        1051
+      ]
+    ],
+    "goalAreaL": [
+      [
+        886,
+        795
+      ],
+      [
+        967,
+        780
+      ],
+      [
+        655,
+        932
+      ],
+      [
+        582,
+        942
+      ]
+    ],
+    "goalAreaR": [
+      [
+        3467,
+        772
+      ],
+      [
+        3372,
+        755
+      ],
+      [
+        3691,
+        915
+      ],
+      [
+        3783,
+        927
+      ]
+    ],
+    "penaltySpotL": [
+      913,
+      834
+    ],
+    "penaltySpotR": [
+      3407,
+      810
+    ]
+  }
+}

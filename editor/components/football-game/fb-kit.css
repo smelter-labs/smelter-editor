@@ -1,0 +1,270 @@
+/* Touchline kit — CSS side (docs/design/touchline): hard edges everywhere,
+ * electric focus ring, stamp-in for SCORE! / TEST MAKE, the button reset.
+ * Mirrors the structure of the kettlebell kit's CSS so behaviour parity is
+ * easy to check; the two never load on the same page. */
+
+@keyframes fb-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.fb-pulse {
+  animation: fb-pulse 1.6s ease-in-out infinite;
+}
+
+/* Buttons that want pressing: a gentle brightness breath, never a dim. */
+@keyframes fb-breathe {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.18);
+  }
+}
+
+.fb-breathe {
+  animation: fb-breathe 1.6s ease-in-out infinite;
+}
+
+@keyframes fb-blink {
+  0%,
+  54% {
+    opacity: 1;
+  }
+  55%,
+  100% {
+    opacity: 0.25;
+  }
+}
+
+.fb-blink {
+  animation: fb-blink 1.2s steps(1, end) infinite;
+}
+
+/* Screen entry: quick fade + settle. */
+@keyframes fb-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fb-enter {
+  animation: fb-enter 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Stamp: scale 1.6 → .96 → 1, alpha 0 → 1 in 120 ms, 2-frame shake at 180.
+   SCORE! and TEST MAKE only — never on data. */
+@keyframes fb-stamp {
+  0% {
+    opacity: 0;
+    transform: scale(1.6) rotate(-6deg);
+  }
+  40% {
+    opacity: 0.8;
+    transform: scale(1.15) rotate(-3deg);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(0.96) rotate(-2deg) translate(3px, -3px);
+  }
+  70% {
+    transform: scale(0.96) rotate(-2deg) translate(-3px, 3px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(-2deg);
+  }
+}
+
+.fb-stamp {
+  animation: fb-stamp 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Indeterminate progress sweep. */
+@keyframes fb-sweep-bar {
+  from {
+    left: -45%;
+  }
+  to {
+    left: 100%;
+  }
+}
+
+.fb-sweep-bar {
+  animation: fb-sweep-bar 1.2s linear infinite;
+}
+
+.fb-btn {
+  cursor: pointer;
+  border: none;
+  background: none;
+  padding: 0;
+  text-align: center;
+  position: relative;
+  touch-action: manipulation;
+  transition:
+    filter 0.15s ease,
+    opacity 0.15s ease,
+    transform 0.1s ease,
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+/* Hover wash in the text colour, so it reads on every variant. */
+.fb-btn:not([data-variant='solid'])::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  pointer-events: none;
+}
+
+@media (hover: hover) {
+  .fb-btn:not([data-variant='solid']):hover:not(:disabled):not(
+      [data-locked]
+    )::after {
+    opacity: 0.08;
+  }
+
+  .fb-btn[data-variant='solid']:hover:not(:disabled):not([data-locked]) {
+    filter: brightness(1.08);
+  }
+}
+
+.fb-btn:active:not(:disabled):not([data-locked]):not(.fb-strip) {
+  transform: translateY(1px);
+}
+
+.fb-btn:not([data-variant='solid']):active:not(:disabled):not(
+    [data-locked]
+  )::after {
+  opacity: 0.16;
+}
+
+.fb-btn[data-variant='solid']:active:not(:disabled) {
+  filter: brightness(0.9);
+}
+
+.fb-btn:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.fb-btn[data-locked] {
+  cursor: default;
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+/* Keyboard focus: electric ring (outside the clip, on the button itself). */
+.fb-btn:focus-visible,
+.fb-input:focus-visible {
+  outline: 2px solid #22d3ee;
+  outline-offset: 2px;
+}
+
+.fb-input {
+  border-radius: 0;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.fb-input::placeholder {
+  color: rgba(232, 228, 218, 0.3);
+}
+
+@media (hover: hover) {
+  .fb-input:hover:not(:focus) {
+    border-color: rgba(232, 228, 218, 0.45) !important;
+  }
+}
+
+.fb-input:focus {
+  border-color: #22d3ee !important;
+  border-width: 2px !important;
+  outline: none;
+}
+
+/* Electric underline sweep — the chip hover signature. */
+.fb-sweep::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: #22d3ee;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (hover: hover) {
+  .fb-sweep:hover:not(:disabled)::before {
+    transform: scaleX(1);
+  }
+}
+
+.fb-sweep:focus-visible::before {
+  transform: scaleX(1);
+}
+
+/* Danger disarm countdown: amber bar drains over the arm window. */
+@keyframes fb-disarm {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+.fb-disarm-bar {
+  height: 2px;
+  background: #ffd21f;
+  transform-origin: left;
+  animation: fb-disarm var(--fb-disarm-ms, 5000ms) linear forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fb-pulse,
+  .fb-blink,
+  .fb-enter,
+  .fb-stamp,
+  .fb-sweep-bar,
+  .fb-disarm-bar {
+    animation: none;
+  }
+
+  .fb-sweep::before,
+  .fb-btn,
+  .fb-btn::after,
+  .fb-input {
+    transition: none;
+  }
+}
+
+/* Scrollable region inside the scaled Stage: keep the scroll, hide the bar. */
+.fb-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.fb-scroll::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}

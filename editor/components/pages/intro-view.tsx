@@ -46,6 +46,7 @@ import {
   Dumbbell,
   Gamepad2,
   Volleyball,
+  Goal,
 } from 'lucide-react';
 import RecordingsList from '@/components/recordings-list';
 import { toast } from 'sonner';
@@ -108,11 +109,16 @@ function getBasePath(pathname: string): string {
  * bound to a live room (the landing page opens the latter for rooms the
  * server reports as running that game).
  */
-type ActiveGame = 'duck-hunter' | 'kettlebell-tournament' | 'basketball-game';
+type ActiveGame =
+  | 'duck-hunter'
+  | 'kettlebell-tournament'
+  | 'basketball-game'
+  | 'football-game';
 const ACTIVE_GAMES: ActiveGame[] = [
   'duck-hunter',
   'kettlebell-tournament',
   'basketball-game',
+  'football-game',
 ];
 const GAME_META: Record<
   ActiveGame,
@@ -140,6 +146,12 @@ const GAME_META: Record<
     badge: 'Blacktop',
     badgeClass: 'bg-sky-500/15 text-sky-400',
     icon: Volleyball,
+  },
+  'football-game': {
+    label: 'Football',
+    badge: 'Touchline',
+    badgeClass: 'bg-emerald-500/15 text-emerald-400',
+    icon: Goal,
   },
 };
 

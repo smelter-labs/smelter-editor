@@ -86,6 +86,21 @@ import {
   type BbWorkerResult,
 } from '../basketball/BasketballGameController';
 import { BASKETBALL_SCORER_ID } from '../ai-models/basketball-scorer/manifest';
+import {
+  FootballGameController,
+  type FbMatchCommand,
+  type FbMatchError,
+} from '../football/FootballGameController';
+import type {
+  FbCamRole,
+  FbConfig,
+  FbEventEntry,
+  FbEventKind,
+  FbMatchEvent,
+  FbSide,
+  FbStateEvent,
+  FbTeamId,
+} from '@smelter-editor/types';
 import type {
   BbCamRole,
   BbConfig,
@@ -319,6 +334,8 @@ export class RoomState {
   /** Kettlebell Tournament (phone cameras + coach reps → heats + scores). */
   private readonly kbTournament: KettlebellTournamentController;
   private readonly basketball: BasketballGameController;
+  /** Football Game ("Touchline"): dataset file cams + virtual director + AI events. */
+  private readonly football: FootballGameController;
 
   /**
    * Per-input wall-clock of the last SCHEDULED kettlebell overlay apply. The
@@ -678,31 +695,7 @@ export class RoomState {
       getResolution: () => this.output.store.getState().resolution,
       // Playhead of a file cam: pipeline-relative registration time mapped
       // back to wall clock (media time = playFromMs + elapsed since then).
-      getFileClock: (inputId) => {
-        const input = this.inputManager
-          .getInputs()
-          .find((i) => i.inputId === inputId);
-        const start = SmelterInstance.getStartTime();
-        if (
-          !input ||
-          input.type !== 'local-mp4' ||
-          input.status !== 'connected' ||
-          start == null ||
-          input.registeredAtPipelineMs == null
-        ) {
-          return null;
-        }
-        return {
-          anchorWallMs: start + input.registeredAtPipelineMs,
-          playFromMs: input.playFromMs ?? 0,
-          durationMs: input.mp4DurationMs ?? null,
-          delayMs:
-            (input.registeredSideChannelDelayMs ?? 0) > 0
-              ? (input.registeredSideChannelDelayMs ?? 0) +
-                RoomState.FILE_CAM_DELAY_TRIM_MS
-              : 0,
-        };
-      },
+      getFileClock: (inputId) => this.fileClockOf(inputId),
       // Looping clips: the engine re-anchors a track at every wrap and a
       // side-channel input then lags by its delay (and stalls after the
       // second wrap), so the controller asks for a joint restart at the end
@@ -762,6 +755,87 @@ export class RoomState {
         void SmelterInstance.unregisterInput(inputId).catch(() => {});
         if (/^[A-Za-z0-9._-]+\.mp4$/.test(file)) {
           void remove(path.join(DATA_DIR, 'bb-replays', file)).catch(() => {});
+        }
+      },
+      getPipelineTimeMs: () => SmelterInstance.getPipelineTimeMs(),
+    });
+
+    // Football Game ("Touchline"): file cams only, so no WHIP / worker deps;
+    // the same file-clock, replay-clip and layout seams as basketball, plus
+    // the clip telemetry sidecars (ball track, player positions, zones).
+    this.football = new FootballGameController(idPrefix, {
+      broadcast: (event) => roomEventBus.broadcast(idPrefix, event),
+      sendTo: (clientId, event) =>
+        roomEventBus.sendTo(idPrefix, clientId, event),
+      hasActiveRecording: () => this.recordingController.hasActiveRecording(),
+      removeInput: (inputId) => this.removeInput(inputId),
+      setAnimTickMs: (ms) => this.output.store.getState().setAnimTickMs(ms),
+      layoutTiles: (tiles) =>
+        this.updateLayers([
+          {
+            id: 'fb-stage',
+            inputs: tiles.map((t) => ({
+              inputId: t.inputId,
+              x: t.x,
+              y: t.y,
+              width: t.width,
+              height: t.height,
+              transitionDurationMs: t.transitionDurationMs,
+              transitionEasing: t.transitionEasing,
+            })),
+          },
+        ]),
+      runInputTransition: (inputId, transition) =>
+        this.inputManager.updateInput(inputId, {
+          activeTransition: transition,
+        }),
+      isInputConnected: (inputId) =>
+        this.inputManager
+          .getInputs()
+          .some((i) => i.inputId === inputId && i.status === 'connected'),
+      getResolution: () => this.output.store.getState().resolution,
+      getFileClock: (inputId) => this.fileClockOf(inputId),
+      resyncFileCams: async () => {
+        await this.syncFbFileCams(0);
+      },
+      loadClipEvents: (clipFileName) => this.readBbClipEvents(clipFileName),
+      loadClipTelemetry: (clipFileName) =>
+        this.readFbClipTelemetry(clipFileName),
+      cutReplayClip: (clipFileName, mediaMs, eventId, crop) =>
+        this.cutReplayClipFrom(clipFileName, mediaMs, 'fb-replays', eventId, crop),
+      publishHud: (state) => this.output.store.getState().setFbGame(state),
+      registerJoinQr: (url) =>
+        this.registerJoinQrImage(url, {
+          dir: 'fb-qr',
+          imagePrefix: 'fb-qr',
+          dark: '#0b1220ff',
+          light: '#f4f1e8ff',
+          margin: 0,
+        }),
+      registerReplayClip: async (file, offsetMs) => {
+        if (!/^[A-Za-z0-9._-]+\.mp4$/.test(file)) return null;
+        const filePath = path.join(DATA_DIR, 'fb-replays', file);
+        if (!(await pathExists(filePath))) return null;
+        const hash = createHash('sha1').update(file).digest('hex').slice(0, 10);
+        const safeRoom = idPrefix.replace(/[^a-zA-Z0-9_-]/g, '_');
+        const inputId = `fb-replay-${safeRoom}-${hash}`;
+        try {
+          await SmelterInstance.registerInput(inputId, {
+            type: 'mp4',
+            filePath,
+            loop: false,
+            offsetMs,
+          });
+        } catch (err) {
+          console.warn(`[fb] replay clip register failed: ${file}`, err);
+          return null;
+        }
+        return inputId;
+      },
+      unregisterReplayClip: (inputId, file) => {
+        void SmelterInstance.unregisterInput(inputId).catch(() => {});
+        if (/^[A-Za-z0-9._-]+\.mp4$/.test(file)) {
+          void remove(path.join(DATA_DIR, 'fb-replays', file)).catch(() => {});
         }
       },
       getPipelineTimeMs: () => SmelterInstance.getPipelineTimeMs(),
@@ -1362,6 +1436,7 @@ export class RoomState {
     // On failure the throw above skips this — state didn't change.
     this.kbTournament.notifyRecordingChanged();
     this.basketball.notifyRecordingChanged();
+    this.football.notifyRecordingChanged();
     return result;
   }
 
@@ -1371,6 +1446,7 @@ export class RoomState {
     );
     this.kbTournament.notifyRecordingChanged();
     this.basketball.notifyRecordingChanged();
+    this.football.notifyRecordingChanged();
     return result;
   }
 
@@ -1893,6 +1969,7 @@ export class RoomState {
       this.kbTournament.onInputsRemoved(removed);
       this.duckHunter.onInputsRemoved(removed);
       this.basketball.onInputsRemoved(removed);
+      this.football.onInputsRemoved(removed);
     }
   }
 
@@ -2274,6 +2351,43 @@ export class RoomState {
     return null;
   }
 
+  /**
+   * Playhead anchor of a local-mp4 input (shared by the basketball and
+   * football controllers): at wall time `anchorWallMs` the clip was
+   * (re)registered playing from `playFromMs`; `delayMs` is the side-channel
+   * delay viewers see (plus the measured trim), 0 without a model.
+   */
+  private fileClockOf(inputId: string): {
+    anchorWallMs: number;
+    playFromMs: number;
+    durationMs: number | null;
+    delayMs: number;
+  } | null {
+    const input = this.inputManager
+      .getInputs()
+      .find((i) => i.inputId === inputId);
+    const start = SmelterInstance.getStartTime();
+    if (
+      !input ||
+      input.type !== 'local-mp4' ||
+      input.status !== 'connected' ||
+      start == null ||
+      input.registeredAtPipelineMs == null
+    ) {
+      return null;
+    }
+    return {
+      anchorWallMs: start + input.registeredAtPipelineMs,
+      playFromMs: input.playFromMs ?? 0,
+      durationMs: input.mp4DurationMs ?? null,
+      delayMs:
+        (input.registeredSideChannelDelayMs ?? 0) > 0
+          ? (input.registeredSideChannelDelayMs ?? 0) +
+            RoomState.FILE_CAM_DELAY_TRIM_MS
+          : 0,
+    };
+  }
+
   /** Instant replay window: this much footage before / after the make, at half speed. */
   private static readonly REPLAY_BEFORE_S = 3;
   private static readonly REPLAY_AFTER_S = 1;
@@ -2289,6 +2403,20 @@ export class RoomState {
     clipFileName: string,
     mediaMs: number,
     shotId: string,
+  ): Promise<{ file: string; durationMs: number } | null> {
+    return this.cutReplayClipFrom(clipFileName, mediaMs, 'bb-replays', shotId);
+  }
+
+  /**
+   * The cut itself, shared by both games: `crop` (source px) bakes the
+   * football director's window into a panorama replay.
+   */
+  private async cutReplayClipFrom(
+    clipFileName: string,
+    mediaMs: number,
+    outDirName: 'bb-replays' | 'fb-replays',
+    shotId: string,
+    crop?: { x: number; y: number; w: number; h: number },
   ): Promise<{ file: string; durationMs: number } | null> {
     const src = path.join(DATA_DIR, 'mp4s', clipFileName);
     if (!(await pathExists(src))) return null;
@@ -2316,11 +2444,15 @@ export class RoomState {
         : RoomState.REPLAY_AFTER_S;
     const spanS = before + after;
     if (spanS < 0.5) return null;
-    const outDir = path.join(DATA_DIR, 'bb-replays');
+    const outDir = path.join(DATA_DIR, outDirName);
     await ensureDir(outDir);
     const file = `file-${shotId.replace(/[^A-Za-z0-9_-]/g, '')}.mp4`;
     const out = path.join(outDir, file);
     const t0 = Date.now();
+    const cropFilter =
+      crop && crop.w > 16 && crop.h > 16
+        ? `crop=${Math.round(crop.w)}:${Math.round(crop.h)}:${Math.max(0, Math.round(crop.x))}:${Math.max(0, Math.round(crop.y))},`
+        : '';
     await promisify(execFile)('ffmpeg', [
       '-hide_banner',
       '-loglevel',
@@ -2333,7 +2465,7 @@ export class RoomState {
       src,
       '-an',
       '-vf',
-      `setpts=${RoomState.REPLAY_SLOW}*PTS,scale=1280:-2,fps=30`,
+      `${cropFilter}setpts=${RoomState.REPLAY_SLOW}*PTS,scale=1280:-2,fps=30`,
       '-c:v',
       'libx264',
       '-preset',
@@ -2349,9 +2481,177 @@ export class RoomState {
     ]);
     const durationMs = Math.round(spanS * RoomState.REPLAY_SLOW * 1000);
     console.log(
-      `[bb] replay cut from ${clipFileName} @ ${mediaMs} ms → ${file} (${durationMs} ms, ffmpeg ${Date.now() - t0} ms)`,
+      `[${outDirName === 'fb-replays' ? 'fb' : 'bb'}] replay cut from ${clipFileName} @ ${mediaMs} ms → ${file} (${durationMs} ms${crop ? `, crop ${Math.round(crop.w)}×${Math.round(crop.h)}` : ''}, ffmpeg ${Date.now() - t0} ms)`,
     );
     return { file, durationMs };
+  }
+
+  // ── Football Game (thin delegates, like the basketball game) ──
+
+  public handleFbMessage(clientId: string, raw: unknown): void {
+    this.football.handleMessage(clientId, raw);
+  }
+
+  public handleFbDisconnect(clientId: string): void {
+    this.football.handleDisconnect(clientId);
+  }
+
+  public controlFbMatch(cmd: FbMatchCommand): {
+    state: FbStateEvent;
+    match: FbMatchEvent;
+    error?: FbMatchError;
+  } {
+    return this.football.controlMatch(cmd);
+  }
+
+  /** True once somebody used the football game in this room. */
+  public isFbEngaged(): boolean {
+    return this.football.isEngaged();
+  }
+
+  public getFbState(): { state: FbStateEvent; match: FbMatchEvent } {
+    return {
+      state: this.football.stateSnapshot(),
+      match: this.football.getMatchSnapshot(),
+    };
+  }
+
+  public setFbConfig(
+    cfg: Parameters<FootballGameController['setConfig']>[0],
+  ): FbConfig {
+    const config = this.football.setConfig(cfg);
+    this.recordingOptions = {
+      preset: config.perf.recordingPreset,
+      resolutionScale: config.perf.recordingScale,
+    };
+    return config;
+  }
+
+  /** REST mirror of the moderator's ledger edits (arcade host page + e2e). */
+  public editFbEvent(cmd: {
+    op: 'resolve' | 'add' | 'undo';
+    eventId?: string;
+    team?: FbTeamId | null;
+    kind?: FbEventKind;
+    voided?: boolean;
+  }): FbEventEntry | null {
+    switch (cmd.op) {
+      case 'resolve':
+        return cmd.eventId
+          ? this.football.resolveEvent({
+              eventId: cmd.eventId,
+              team: cmd.team,
+              kind: cmd.kind,
+              voided: cmd.voided,
+            })
+          : null;
+      case 'add':
+        return cmd.team && cmd.kind
+          ? this.football.addManualEvent(cmd.team, cmd.kind)
+          : null;
+      case 'undo':
+        return this.football.undoEvent(cmd.eventId);
+    }
+  }
+
+  /** Dev-only (FB_SIM=1): fabricate an AI event for UI work sans telemetry. */
+  public simulateFbEvent(
+    kind: FbEventKind,
+    team: FbTeamId | null,
+    side?: FbSide,
+    confidence?: number,
+  ): FbEventEntry | null {
+    return this.football.simulateEvent(kind, team, side, confidence);
+  }
+
+  public setFbAiEvents(enabled: boolean): void {
+    this.football.setAiEventsEnabled(enabled);
+  }
+
+  /**
+   * Register a looping local-mp4 (from data/mp4s) as a football camera role.
+   * No side channel: the picture airs live and the clip's telemetry sidecars
+   * drive the director and the events.
+   */
+  public async attachFbMp4Cam(
+    role: FbCamRole,
+    fileName: string,
+  ): Promise<{ inputId: string }> {
+    const inputId = await this.addNewInput({
+      type: 'local-mp4',
+      source: { fileName },
+    });
+    if (!inputId) throw new Error('Failed to register local-mp4 input');
+    this.parkUntilPlaced.add(inputId);
+    await this.connectInput(inputId);
+    const input = this.inputManager
+      .getInputs()
+      .find((i) => i.inputId === inputId);
+    if (
+      !input ||
+      input.type !== 'local-mp4' ||
+      input.mp4AssetMissing ||
+      input.status !== 'connected'
+    ) {
+      await this.removeInput(inputId).catch(() => {});
+      throw new Error(`MP4 not found under data/mp4s: ${fileName}`);
+    }
+    const dims =
+      input.mp4VideoWidth && input.mp4VideoHeight
+        ? { width: input.mp4VideoWidth, height: input.mp4VideoHeight }
+        : undefined;
+    this.football.attachExternalCam(role, inputId, dims, fileName);
+    return { inputId };
+  }
+
+  /**
+   * Telemetry sidecars next to a football clip (scripts/alfheim-*.mjs):
+   * `<clip>.alfheim.json`, and `zxy.json` / `ball.json` / `zones.json` in
+   * the clip's folder. Missing files are simply absent; a malformed one is
+   * reported by the controller.
+   */
+  private async readFbClipTelemetry(fileName: string): Promise<{
+    meta?: unknown;
+    zxy?: unknown;
+    ball?: unknown;
+    zones?: unknown;
+  } | null> {
+    const base = fileName.replace(/\.mp4$/i, '');
+    const dir = fileName.includes('/')
+      ? fileName.slice(0, fileName.lastIndexOf('/') + 1)
+      : '';
+    const readJson = async (rel: string): Promise<unknown> => {
+      const file = path.join(DATA_DIR, 'mp4s', rel);
+      if (!(await pathExists(file))) return undefined;
+      try {
+        return JSON.parse(await readFile(file, 'utf8'));
+      } catch (err) {
+        console.warn(
+          `[fb] ${rel}: not valid JSON (${err instanceof Error ? err.message : String(err)})`,
+        );
+        return undefined;
+      }
+    };
+    const [meta, zxy, ball, zones] = await Promise.all([
+      readJson(`${base}.alfheim.json`),
+      readJson(`${dir}zxy.json`),
+      readJson(`${dir}ball.json`),
+      readJson(`${dir}zones.json`),
+    ]);
+    if (meta === undefined && zxy === undefined && ball === undefined && zones === undefined) {
+      return null;
+    }
+    return {
+      ...(meta !== undefined ? { meta } : {}),
+      ...(zxy !== undefined ? { zxy } : {}),
+      ...(ball !== undefined ? { ball } : {}),
+      ...(zones !== undefined ? { zones } : {}),
+    };
+  }
+
+  /** Restart every football file cam from `playFromMs` (see syncBbFileCams). */
+  public async syncFbFileCams(playFromMs = 0): Promise<string[]> {
+    return this.syncGameFileCams(this.football.fileCamInputIds(), 'fb', playFromMs);
   }
 
   /**
@@ -2400,9 +2700,17 @@ export class RoomState {
   private static readonly FILE_CAM_DELAY_TRIM_MS = 240;
 
   public async syncBbFileCams(playFromMs = 0): Promise<string[]> {
+    return this.syncGameFileCams(this.basketball.fileCamInputIds(), 'bb', playFromMs);
+  }
+
+  private async syncGameFileCams(
+    cams: { role: string; inputId: string }[],
+    tag: 'bb' | 'fb',
+    playFromMs: number,
+  ): Promise<string[]> {
     return this.mutex.runExclusive(async () => {
       const restarted: string[] = [];
-      for (const { role, inputId } of this.basketball.fileCamInputIds()) {
+      for (const { role, inputId } of cams) {
         try {
           // Align what goes ON AIR, not the decoders: the hoop clip carries
           // the scorer's side channel, which delays its picture by delayMs
@@ -2432,7 +2740,7 @@ export class RoomState {
             // Shorter than the side-channel delay (or a seek near the tail):
             // the delayed clip cannot run ahead — it will lag by the remainder.
             console.warn(
-              `[bb] clip sync: ${role} cam needs to start ${from} ms in but the clip is ${durationMs} ms long — starting at ${from % durationMs} ms (out of sync by ${durationMs - delayMs} ms)`,
+              `[${tag}] clip sync: ${role} cam needs to start ${from} ms in but the clip is ${durationMs} ms long — starting at ${from % durationMs} ms (out of sync by ${durationMs - delayMs} ms)`,
             );
             from %= durationMs;
           }
@@ -2440,7 +2748,7 @@ export class RoomState {
           restarted.push(inputId);
         } catch (err) {
           console.warn(
-            `[bb] clip sync skipped ${role} cam ${inputId}: ${
+            `[${tag}] clip sync skipped ${role} cam ${inputId}: ${
               err instanceof Error ? err.message : String(err)
             }`,
           );
@@ -3547,6 +3855,7 @@ export class RoomState {
       this.duckHunter.dispose();
       this.kbTournament.dispose();
       this.basketball.dispose();
+      this.football.dispose();
 
       if (this.pendingStoreFlushTimer) {
         clearTimeout(this.pendingStoreFlushTimer);
@@ -3591,9 +3900,9 @@ export class RoomState {
         // dir may not exist — nothing to sweep
       }
 
-      // Same sweep for the basketball scorer's make/release stills and its
-      // instant-replay clips.
-      for (const dir of ['bb-shot-frames', 'bb-replays']) {
+      // Same sweep for the basketball scorer's make/release stills and the
+      // instant-replay clips of both games.
+      for (const dir of ['bb-shot-frames', 'bb-replays', 'fb-replays']) {
         try {
           const frameDir = path.join(DATA_DIR, dir);
           const safeRoom = this.idPrefix.replace(/[^a-zA-Z0-9_-]/g, '_');
