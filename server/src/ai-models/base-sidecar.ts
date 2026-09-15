@@ -172,9 +172,24 @@ export abstract class BaseSidecar extends EventEmitter {
     return true;
   }
 
-  private replayReadyInputs(): void {
-    for (const inputId of this.readyInputIds) {
-      this.sendToPython({ cmd: 'side_channel_ready', inputId });
+  /**
+   * Re-send the full subscribe state to the worker: every tracked input's
+   * `subscribe` (with params), then `side_channel_ready` for the ones whose
+   * socket is up. Readiness alone is not enough — a model enabled while
+   * python was still spawning had its `subscribe` sent into the void
+   * (wsSent=false), and the worker ignores `side_channel_ready` for an input
+   * it has never seen. Both commands are idempotent on the worker side.
+   */
+  private replaySubscriptions(): void {
+    for (const inputId of this.trackedInputs) {
+      this.sendToPython({
+        cmd: 'subscribe',
+        inputId,
+        params: this.trackedParams.get(inputId),
+      });
+      if (this.readyInputIds.has(inputId)) {
+        this.sendToPython({ cmd: 'side_channel_ready', inputId });
+      }
     }
   }
 
@@ -193,7 +208,7 @@ export abstract class BaseSidecar extends EventEmitter {
       }
       this.ws = ws;
       console.log(`[ai:${this.manifest.id}] python connected`);
-      this.replayReadyInputs();
+      this.replaySubscriptions();
 
       ws.on('message', (raw) => this.handleMessage(raw.toString()));
       ws.on('close', () => {
@@ -228,16 +243,7 @@ export abstract class BaseSidecar extends EventEmitter {
     }
     if (parsed.type === 'ready') {
       this.restartAttempts = 0;
-      for (const inputId of this.trackedInputs) {
-        this.sendToPython({
-          cmd: 'subscribe',
-          inputId,
-          params: this.trackedParams.get(inputId),
-        });
-        if (this.readyInputIds.has(inputId)) {
-          this.sendToPython({ cmd: 'side_channel_ready', inputId });
-        }
-      }
+      this.replaySubscriptions();
       return;
     }
     if (

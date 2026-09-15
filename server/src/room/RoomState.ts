@@ -1515,6 +1515,16 @@ export class RoomState {
       this.parkUntilPlaced.delete(inputId);
       await this.inputManager.removeInput(inputId);
 
+      // No further results arrive for a removed input, so its overlay can
+      // only be cleared from here — otherwise the last boxes stay frozen in
+      // the store as a ghost entry. Duck Hunter aims at the FIRST ghost
+      // entry, so a swapped-out stage would leave the game shooting at a
+      // dead input forever. Drop the boxes and the trackers behind them.
+      this.peopleTrackers.delete(inputId);
+      this.birdTrackers.delete(`yolo:${inputId}`);
+      this.birdTrackers.delete(`marker:${inputId}`);
+      this.output.store.getState().setPeopleBoxes(inputId, null);
+
       if (this.pruneInputFromLayers(inputId)) {
         this.updateStoreWithState();
       }
@@ -1956,72 +1966,15 @@ export class RoomState {
     }
   }
 
-  /** Drive the arcade match (start/stop/reset) from the /duck-hunter page. */
-  public async controlDuckHunterMatch(
-    cmd: MatchCommand,
-  ): Promise<ShooterMatchEvent> {
-    if (cmd.action === 'start') {
-      // Fresh stage before the countdown: an mp4 restarts from zero (a full
-      // clip's worth of runway before the loop seam), a stream re-buffers at
-      // the live edge. Never throws — a broken stage must not block the round.
-      await this.reloadDuckHunterStageInputs();
-    }
-    return this.duckHunter.controlMatch(cmd);
-  }
-
   /**
-   * Reload the arcade stage input(s) — the ones running the birds model —
-   * ahead of a match start. mp4 → restart at 0 with loop; HLS/Twitch/Kick →
-   * disconnect+connect; WHIP and everything else is left alone (re-registering
-   * WHIP kills the push stream). Failures are logged and swallowed so a dead
-   * stage can never block the countdown.
+   * Drive the arcade match (start/stop/reset) from the /duck-hunter page.
+   * The stage is deliberately NOT reloaded on start: re-registering the
+   * input tears down the birds model's side channel mid-countdown, and the
+   * lobby's attract-mode ducks are already flying on a live stage. The
+   * controller starts a fresh flock itself (see its 'start' case).
    */
-  private async reloadDuckHunterStageInputs(): Promise<void> {
-    const RELOAD_TIMEOUT_MS = 8_000;
-    const stages = this.getInputs().filter(
-      (input) =>
-        input.status === 'connected' &&
-        input.aiModels?.[PEOPLE_COUNTER_YOLO_BIRDS_ID]?.enabled,
-    );
-    for (const input of stages) {
-      let reload: Promise<void>;
-      if (input.type === 'local-mp4' && !input.mp4AssetMissing) {
-        reload = this.mutex.runExclusive(() =>
-          this.inputManager.restartMp4Input(input.inputId, 0, true),
-        );
-      } else if (
-        input.type === 'hls' ||
-        input.type === 'twitch-channel' ||
-        input.type === 'kick-channel'
-      ) {
-        reload = this.mutex.runExclusive(() =>
-          this.inputManager.reloadStreamInput(input.inputId),
-        );
-      } else {
-        continue;
-      }
-      try {
-        await Promise.race([
-          reload,
-          new Promise<never>((_, reject) =>
-            setTimeout(
-              () =>
-                reject(
-                  new Error(
-                    `stage reload timed out after ${RELOAD_TIMEOUT_MS}ms`,
-                  ),
-                ),
-              RELOAD_TIMEOUT_MS,
-            ),
-          ),
-        ]);
-      } catch (err) {
-        console.error(
-          `[duck-hunter] stage reload failed inputId=${input.inputId} type=${input.type}`,
-          err,
-        );
-      }
-    }
+  public controlDuckHunterMatch(cmd: MatchCommand): ShooterMatchEvent {
+    return this.duckHunter.controlMatch(cmd);
   }
 
   /** Current arcade match snapshot (page-reload recovery). */

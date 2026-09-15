@@ -136,6 +136,18 @@ export class RoomAIController {
     }
   }
 
+  /**
+   * The input is gone for good (removed, not a reconnectable disconnect):
+   * unsubscribe the workers AND forget the model tracking. A worker's
+   * detector task never gives up on its own (it slow-retries until it is
+   * unsubscribed), so without this it would poll forever for a side-channel
+   * socket that will never come back.
+   */
+  async onInputRemoved(inputId: string): Promise<void> {
+    await this.onInputDisconnected(inputId);
+    this.inputModels.delete(inputId);
+  }
+
   async onInputDisconnected(inputId: string): Promise<void> {
     const models = this.inputModels.get(inputId);
     if (!models) return;

@@ -78,6 +78,7 @@ const mocks = vi.hoisted(() => {
     aiController: {
       onInputConnected: fn().mockResolvedValue(undefined),
       onInputDisconnected: fn().mockResolvedValue(undefined),
+      onInputRemoved: fn().mockResolvedValue(undefined),
       onSideChannelReady: fn(),
       getEnabledModels: fn().mockReturnValue([]),
     },

@@ -969,6 +969,36 @@ describe('ducks', () => {
     h.controller.dispose();
   });
 
+  it('a fresh start re-hatches ids that flew off during the previous round', async () => {
+    const h = harness();
+    // A stable stage: the detector keeps reporting the same bird id for the
+    // whole session (the stage is not reloaded between rounds).
+    h.sceneState.peopleBoxes['stage'] = {
+      ...birdTarget(1),
+      duckPauseMs: 0,
+      duckFlySpeed: 10, // clears the frame in ~100 ms
+    };
+    h.controller.controlMatch({ action: 'start', mode: 'time' });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(h.lastOverlay()!.ducks.length).toBe(1);
+    // Aura lead, then the duck flies straight off — and stays suppressed for
+    // as long as the id is still being detected.
+    await vi.advanceTimersByTimeAsync(DEFAULT_DUCK_AURA_LEAD_MS + 1000);
+    expect(h.lastOverlay()!.ducks).toEqual([]);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(h.lastOverlay()!.ducks).toEqual([]);
+
+    h.controller.controlMatch({ action: 'stop' });
+    await vi.advanceTimersByTimeAsync(6000); // ended linger elapses
+    expect(h.lastOverlay()!.ducks).toEqual([]);
+
+    // Next round: the same id may hatch again.
+    h.controller.controlMatch({ action: 'start', mode: 'time' });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(h.lastOverlay()!.ducks.length).toBe(1);
+    h.controller.dispose();
+  });
+
   it('cannot be shot while the aura is still telegraphing it', async () => {
     const h = harness();
     h.sceneState.peopleBoxes['stage'] = {

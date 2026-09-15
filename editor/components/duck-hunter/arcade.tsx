@@ -226,6 +226,8 @@ export function DuckHunterArcade() {
       {screen === 'lobby' ? (
         <Lobby
           setup={setup}
+          sliders={sliders}
+          stage={stage}
           room={room}
           feed={feed}
           onStart={() => void room.startMatch(matchConfig)}

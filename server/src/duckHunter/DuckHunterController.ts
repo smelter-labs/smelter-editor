@@ -738,6 +738,14 @@ export class DuckHunterController {
         this.dogs = [];
         this.lastDogTauntAt = 0;
         this.lobbyArmed = false;
+        // Fresh flock for a fresh round: every bird currently tracked may
+        // hatch again. The stage keeps playing across matches (no reload on
+        // start), so ids that flew off (departed) or were shot (deadGhosts)
+        // stay suppressed for as long as the detector keeps seeing them —
+        // on a stable stage a second match would otherwise start duckless.
+        this.ducks.clear();
+        this.departed.clear();
+        this.deadGhosts.clear();
         this.ensureRunning();
         break;
       }
