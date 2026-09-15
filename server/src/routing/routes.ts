@@ -1459,6 +1459,21 @@ routes.after(() => {
   });
 });
 
+/**
+ * Which arcade game a room is running, for the landing page's room list.
+ * Rooms carry no stored type — the game is emergent from controller state:
+ * an armed/running duck-hunter match, or any host activity in the KBT or
+ * basketball controllers (every room owns one of each, idle by default).
+ */
+function activeGameOf(
+  room: RoomState,
+): 'duck-hunter' | 'kettlebell-tournament' | 'basketball-game' | null {
+  if (room.getDuckHunterMatch().phase !== 'idle') return 'duck-hunter';
+  if (room.isKbtEngaged()) return 'kettlebell-tournament';
+  if (room.isBbEngaged()) return 'basketball-game';
+  return null;
+}
+
 routes.get('/rooms', async (_req, res) => {
   // const adminKey = _req.headers['x-admin-key'];
   // if (!adminKey || adminKey !== 'super-secret-hardcode-admin-key') {
@@ -1496,6 +1511,7 @@ routes.get('/rooms', async (_req, res) => {
         outputShaders: snapshot.outputShaders,
         isRecording: room.hasActiveRecording(),
         audioAnalysisEnabled: room.isAudioAnalysisEnabled(),
+        activeGame: activeGameOf(room),
         viewportTop: snapshot.viewportTop,
         viewportLeft: snapshot.viewportLeft,
         viewportWidth: snapshot.viewportWidth,

@@ -555,6 +555,11 @@ export class BasketballGameController {
    */
   private engaged = false;
 
+  /** True once somebody used this game in the room (see `engaged`). */
+  isEngaged(): boolean {
+    return this.engaged;
+  }
+
   constructor(
     private readonly roomId: string,
     private readonly deps: BbControllerDeps,

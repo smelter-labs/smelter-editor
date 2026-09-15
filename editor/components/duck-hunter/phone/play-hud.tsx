@@ -647,7 +647,11 @@ export function ControlsRow({
         flexDirection: landscape ? 'row' : 'column',
         alignItems: 'stretch',
         gap: landscape ? 8 : 10,
-        padding: '10px 12px calc(env(safe-area-inset-bottom, 0px) + 12px)',
+        // Landscape has almost no height: every px saved here goes to the
+        // gun panel above, which drops readouts when starved.
+        padding: landscape
+          ? '6px 12px calc(env(safe-area-inset-bottom, 0px) + 6px)'
+          : '10px 12px calc(env(safe-area-inset-bottom, 0px) + 12px)',
         background: R5.bgDeep,
       }}>
       {landscape ? (

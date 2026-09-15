@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import type {
   ShooterMatchConfig,
   ShooterMatchMode,
@@ -83,8 +84,19 @@ function loadSliders(): DuckHunterSliderConfig {
 }
 
 /** The /duck-hunter screen machine. */
-export function DuckHunterArcade() {
-  const [screen, setScreen] = useState<Screen>('title');
+export function DuckHunterArcade({
+  initialRoomId,
+}: {
+  /** Room from the URL (/duck-hunter/[roomId]): rehydrate instead of title. */
+  initialRoomId?: string;
+} = {}) {
+  const router = useRouter();
+  // null = booting: a URL-bound room is being checked, and the screen is
+  // picked from the match phase once the feed's snapshot lands — no title
+  // flash in between.
+  const [screen, setScreen] = useState<Screen | null>(
+    initialRoomId ? null : 'title',
+  );
   const [setup, setSetup] = useState<MatchSetup>({
     mode: 'time',
     durationMs: 60_000,
@@ -96,7 +108,7 @@ export function DuckHunterArcade() {
 
   const [roomGone, setRoomGone] = useState(false);
 
-  const room = useDuckHunterRoom();
+  const room = useDuckHunterRoom(initialRoomId);
   // The room vanished under us (deleted/GC'd): the feed stops retrying, so
   // show the operator what happened instead of a silently frozen lobby.
   const onRoomGone = useCallback(() => setRoomGone(true), []);
@@ -137,8 +149,23 @@ export function DuckHunterArcade() {
     if (phase === 'lobby') setScreen('lobby');
     else if (phase === 'countdown' || phase === 'playing') setScreen('game');
     else if (phase === 'ended') setScreen('results');
-    // 'idle' stays on the title — nothing to rejoin.
+    // 'idle' = nothing to rejoin (e.g. a dashboard-panel reset): the title,
+    // explicitly, so a URL-mounted arcade leaves its blank boot screen.
+    else setScreen('title');
   }, [room.restored, phase]);
+
+  // A URL-bound room that cannot be joined must not leave the blank boot
+  // screen up. Gone → back to the plain arcade entry (its stash may still
+  // know a live room); server unreachable, or the feed lost the room before
+  // a snapshot arrived → the title, with the banner saying why.
+  useEffect(() => {
+    if (!initialRoomId) return;
+    if (room.roomStatus === 'gone') {
+      router.replace('/duck-hunter');
+    } else if (screen === null && (room.roomStatus === 'error' || roomGone)) {
+      setScreen('title');
+    }
+  }, [initialRoomId, room.roomStatus, roomGone, screen, router]);
 
   // Track whether the room's stage input matches the chosen stage (by
   // stageKey), so coming back from the results screen with a different pick

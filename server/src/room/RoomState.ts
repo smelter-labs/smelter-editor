@@ -2005,6 +2005,11 @@ export class RoomState {
     return this.kbTournament.controlMatch(cmd);
   }
 
+  /** True once any KBT host action ran in this room (see controller note). */
+  public isKbtEngaged(): boolean {
+    return this.kbTournament.isEngaged();
+  }
+
   public getKbtState(): { state: KbtStateEvent; match: KbtMatchEvent } {
     return {
       state: this.kbTournament.stateSnapshot(),
@@ -2141,6 +2146,11 @@ export class RoomState {
     error?: BbMatchError;
   } {
     return this.basketball.controlMatch(cmd);
+  }
+
+  /** True once somebody used the basketball game in this room. */
+  public isBbEngaged(): boolean {
+    return this.basketball.isEngaged();
   }
 
   public getBbState(): { state: BbStateEvent; match: BbMatchEvent } {

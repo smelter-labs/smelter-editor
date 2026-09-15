@@ -28,10 +28,13 @@ export function NameStep({
   return (
     <div
       style={{
-        flex: 1,
+        // Auto margins centre the step when there is room and collapse to 0
+        // on overflow; `flex:1` + justifyContent:center would push the top
+        // out of reach in the shell's scroll container (short landscape
+        // viewports).
+        margin: 'auto 0',
         display: 'flex',
         flexDirection: 'column',
-        justifyContent: 'center',
         gap: 16,
       }}>
       <label style={{ display: 'block' }}>

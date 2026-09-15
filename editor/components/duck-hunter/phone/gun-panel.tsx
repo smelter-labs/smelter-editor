@@ -179,7 +179,12 @@ export function GunPanel(props: GunPanelProps) {
   // Whatever is left goes to the standings table, which measures itself and
   // drops rows to fit (the stage is overflow-hidden AND touch-none — nothing
   // scrolls, so anything that doesn't fit is simply gone).
-  const showCombo = compact || innerH >= COMBO_MIN_H;
+  // Landscape (compact) is short: the combo strip earns its row only when
+  // the third column is not already fighting the table for pixels.
+  const COMPACT_COMBO_MIN_H = 110;
+  const showCombo = compact
+    ? innerH >= COMPACT_COMBO_MIN_H
+    : innerH >= COMBO_MIN_H;
   const fixedH =
     PAD * 2 +
     H_LEDS +
@@ -190,7 +195,10 @@ export function GunPanel(props: GunPanelProps) {
     (showCombo ? H_COMBO + GAP : 0) +
     H_HINT +
     GAP;
-  const tableH = compact ? innerH : innerH - fixedH - GAP;
+  // Compact: the table shares its own column with just the combo strip.
+  const tableH = compact
+    ? innerH - PAD * 2 - (showCombo ? H_COMBO + GAP : 0)
+    : innerH - fixedH - GAP;
 
   const leds = (
     <div
@@ -290,18 +298,25 @@ export function GunPanel(props: GunPanelProps) {
             }}>
             <BlueprintBackdrop />
             {compact ? (
+              // Landscape has width to spare and no height at all, so the
+              // stack spreads over three columns instead of two tall ones
+              // (which clipped their tails — the stage never scrolls). The
+              // third column only exists when it has something to show.
               <>
                 <div style={COLUMN}>
                   {leds}
                   {magazine}
-                  <div style={{ flex: 1, minHeight: 0 }} />
-                  {combo}
                 </div>
                 <div style={COLUMN}>
                   {clock}
                   {scoreBlock}
-                  {hunters}
                 </div>
+                {combo || hunters ? (
+                  <div style={COLUMN}>
+                    {combo}
+                    {hunters}
+                  </div>
+                ) : null}
               </>
             ) : (
               <>
@@ -705,7 +720,9 @@ function Hunters({
     1,
     Math.floor((maxHeight - (compact ? 12 : 14) - ROW_H) / ROW_H),
   );
-  const limit = compact ? Math.min(3, rows) : rows;
+  // The compact table has a landscape column to itself, so the height
+  // budget alone decides how many rows fit.
+  const limit = rows;
   const shown = ranked.slice(0, limit);
   const hidden = ranked.length - shown.length;
 

@@ -356,6 +356,14 @@ export class KettlebellTournamentController {
   private heats: HeatState[] = [];
   private currentHeatIndex: number | null = null;
   private phase: KbtTournamentPhase = 'roster';
+  /**
+   * Every room owns a controller, so the phase alone cannot tell a KBT room
+   * from a plain editor room ('roster' is the initial phase everywhere).
+   * Set by the first host control action (the arcade sends 'roster' right
+   * after creating its room) and never cleared — a tournament reset keeps
+   * the room a KBT arena until the room dies.
+   */
+  private engaged = false;
   private config: KbtConfig = structuredClone(KBT_DEFAULT_CONFIG);
   private colorSeq = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -1958,6 +1966,11 @@ export class KettlebellTournamentController {
     return structuredClone(this.config);
   }
 
+  /** True once any host control action ran — the room is a KBT arena. */
+  isEngaged(): boolean {
+    return this.engaged;
+  }
+
   controlMatch(cmd: KbtMatchCommand): {
     state: KbtStateEvent;
     match: KbtMatchEvent;
@@ -1974,6 +1987,7 @@ export class KettlebellTournamentController {
       this.viewOverride = { mode: 'auto' };
       this.commentatorOverlay = null;
     }
+    this.engaged = true;
     let error: KbtMatchError | undefined;
     switch (cmd.action) {
       case 'roster':

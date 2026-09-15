@@ -43,6 +43,9 @@ import {
   X,
   Settings,
   Crosshair,
+  Dumbbell,
+  Gamepad2,
+  Volleyball,
 } from 'lucide-react';
 import RecordingsList from '@/components/recordings-list';
 import { toast } from 'sonner';
@@ -98,6 +101,47 @@ function getBasePath(pathname: string): string {
   if (path.startsWith('/')) path = path.slice(1);
   return path;
 }
+
+/**
+ * The arcade games with a standalone screen. Each value doubles as its
+ * route: `/<game>` is the arcade entry and `/<game>/<roomId>` the arcade
+ * bound to a live room (the landing page opens the latter for rooms the
+ * server reports as running that game).
+ */
+type ActiveGame = 'duck-hunter' | 'kettlebell-tournament' | 'basketball-game';
+const ACTIVE_GAMES: ActiveGame[] = [
+  'duck-hunter',
+  'kettlebell-tournament',
+  'basketball-game',
+];
+const GAME_META: Record<
+  ActiveGame,
+  {
+    label: string;
+    badge: string;
+    badgeClass: string;
+    icon: typeof Crosshair;
+  }
+> = {
+  'duck-hunter': {
+    label: 'Duck Hunter',
+    badge: 'Duck Hunter',
+    badgeClass: 'bg-[#ffde59]/15 text-[#ffde59]',
+    icon: Crosshair,
+  },
+  'kettlebell-tournament': {
+    label: 'Kettlebell Tournament',
+    badge: 'KBT',
+    badgeClass: 'bg-orange-500/15 text-orange-400',
+    icon: Dumbbell,
+  },
+  'basketball-game': {
+    label: 'Basketball',
+    badge: 'Blacktop',
+    badgeClass: 'bg-sky-500/15 text-sky-400',
+    icon: Volleyball,
+  },
+};
 
 export default function IntroView() {
   const router = useRouter();
@@ -173,6 +217,8 @@ export default function IntroView() {
     roomName?: { pl: string; en: string };
     createdAt?: number;
     isPublic?: boolean;
+    /** Which arcade game runs in this room (derived server-side). */
+    activeGame?: ActiveGame | null;
   };
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loadingRooms, setLoadingRooms] = useState(true);
@@ -848,6 +894,23 @@ export default function IntroView() {
                 open={showSettings}
                 onOpenChange={setShowSettings}
               />
+              <label className='text-xs text-neutral-400 text-left'>
+                Games
+              </label>
+              {ACTIVE_GAMES.map((game) => {
+                const Icon = GAME_META[game].icon;
+                return (
+                  <Button
+                    key={game}
+                    size='lg'
+                    variant='outline'
+                    className='w-full cursor-pointer'
+                    onClick={() => router.push(`/${game}`)}>
+                    <Icon className='w-4 h-4 mr-2' />
+                    {GAME_META[game].label}
+                  </Button>
+                );
+              })}
             </div>
           </div>
 
@@ -866,6 +929,12 @@ export default function IntroView() {
                             ? `${room.roomName.pl} / ${room.roomName.en}`
                             : room.roomId}
                         </span>
+                        {room.activeGame && (
+                          <span
+                            className={`text-[10px] uppercase px-1.5 py-0.5 ${GAME_META[room.activeGame].badgeClass}`}>
+                            {GAME_META[room.activeGame].badge}
+                          </span>
+                        )}
                         {room.createdAt && (
                           <span className='text-xs text-neutral-500'>
                             {new Date(room.createdAt).toLocaleTimeString()} ·{' '}
@@ -874,6 +943,20 @@ export default function IntroView() {
                         )}
                       </div>
                       <div className='flex w-full gap-1 sm:w-auto sm:ml-4 shrink-0'>
+                        {room.activeGame && (
+                          <Button
+                            size='sm'
+                            variant='secondary'
+                            className='cursor-pointer flex-1 sm:flex-none bg-green-500/15 text-green-400 hover:bg-green-500/25'
+                            title={`Open the ${GAME_META[room.activeGame].label} screen`}
+                            onClick={() =>
+                              router.push(
+                                `/${room.activeGame}/${encodeURIComponent(room.roomId)}`,
+                              )
+                            }>
+                            <Gamepad2 className='w-4 h-4' />
+                          </Button>
+                        )}
                         <Button
                           size='sm'
                           variant='default'
