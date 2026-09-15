@@ -33,6 +33,40 @@ export function stageLabel(s: StageRef): string {
   return s.kind === 'mp4' ? s.file : s.name;
 }
 
+/** What the arcade knows about the room's current stage input. */
+export type StageInputInfo = { type: string; title: string };
+
+/**
+ * Whether a room input is the stage `s` would create — by the server's own
+ * title recipe (InputManager: `[MP4] ${formatMp4Name(file)}` / `[HLS]
+ * ${host + last path segment}`), the only stage identity a room snapshot
+ * exposes. A miss just means "unknown", and the next lobby swaps the stage
+ * as before; a hit is what lets a refreshed page keep the stage it finds
+ * instead of tearing down (and re-warming the model on) an identical one.
+ */
+export function stageMatchesInput(
+  s: StageRef,
+  input: StageInputInfo | null | undefined,
+): boolean {
+  if (!input) return false;
+  if (s.kind === 'mp4') {
+    const name = s.file
+      .replace(/\.mp4$/i, '')
+      .split(/[_\- ]+/)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
+    return input.type === 'local-mp4' && input.title === `[MP4] ${name}`;
+  }
+  let label = s.url;
+  try {
+    const parsed = new URL(s.url);
+    label = parsed.hostname + parsed.pathname.split('/').pop();
+  } catch {
+    // keep raw url as label (same fallback as the server)
+  }
+  return input.type === 'hls' && input.title === `[HLS] ${label}`;
+}
+
 /** Register the stage as a room input; both endpoints answer {inputId}. */
 async function addStageInput(roomId: string, stage: StageRef) {
   return stage.kind === 'mp4'
@@ -116,6 +150,12 @@ export type DuckHunterRoom = {
   error: string | null;
   /** A page refresh re-attached to a still-running room (see the stash). */
   restored: boolean;
+  /**
+   * The stage input a restore found in the room (type + title), so the
+   * arcade can tell whether the stage it would pick is already on air.
+   * null until a restore lands / when the room has no stage.
+   */
+  restoredStage: StageInputInfo | null;
   roomStatus: DuckHunterRoomStatus;
   /** Create the arcade room: stage input (mp4/HLS) + duck sprites + config. */
   createRoom(
@@ -163,6 +203,9 @@ export function useDuckHunterRoom(initialRoomId?: string): DuckHunterRoom {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [restored, setRestored] = useState(false);
+  const [restoredStage, setRestoredStage] = useState<StageInputInfo | null>(
+    null,
+  );
   const [roomStatus, setRoomStatus] = useState<DuckHunterRoomStatus>(
     initialRoomId ? 'checking' : 'idle',
   );
@@ -198,6 +241,12 @@ export function useDuckHunterRoom(initialRoomId?: string): DuckHunterRoom {
           ? (stashed?.stageInputId ?? null)
           : (info.inputs[0]?.inputId ?? null);
         const whep = info.whepUrl ?? stashed?.whepUrl ?? null;
+        const stageInput = info.inputs.find((i) => i.inputId === inputId);
+        setRestoredStage(
+          stageInput
+            ? { type: stageInput.type, title: stageInput.title }
+            : null,
+        );
         setStageInputId(inputId);
         setWhepUrl(whep);
         setRoomId(target);
@@ -399,6 +448,7 @@ export function useDuckHunterRoom(initialRoomId?: string): DuckHunterRoom {
     setStageInputId(null);
     setError(null);
     setRestored(false);
+    setRestoredStage(null);
     setRoomStatus('idle');
     writeStash(null);
     window.history.replaceState(null, '', '/duck-hunter');
@@ -418,6 +468,7 @@ export function useDuckHunterRoom(initialRoomId?: string): DuckHunterRoom {
     creating,
     error,
     restored,
+    restoredStage,
     roomStatus,
     createRoom,
     changeStage,

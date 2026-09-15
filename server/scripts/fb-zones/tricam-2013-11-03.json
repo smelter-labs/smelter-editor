@@ -1,0 +1,12 @@
+{
+  "session": "tricam",
+  "match": "2013-11-03",
+  "pitch": { "length": 105, "width": 68 },
+  "zxy": { "flipX": false, "flipY": true, "offsetMs": 0 },
+  "notes": [
+    "Three fixed cameras (cam0 left, cam1 centre, cam2 right thirds) on the same stand as the 2013-11-28 panorama rig.",
+    "ZXY orientation checked on the 600 s stills: Tromsø tags at sensor X 22–44 are the players by the LEFT goal in cam0 → low sensor X = left of the picture (X = zx); high sensor y = far touchline (Y = 68 − zy), as in the panorama session.",
+    "No camera model: no ball track for this match, the cut rule only needs the tagged players' X.",
+    "The ZXY↔video clock offset was not measured for this date (no ball track to sweep); 0 assumed."
+  ]
+}

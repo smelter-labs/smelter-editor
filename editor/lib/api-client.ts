@@ -43,6 +43,14 @@ import type {
   BbShotEdit,
   BbShotEvent,
   BbStateEvent,
+  FbCamRole,
+  FbConfig,
+  FbConfigPatch,
+  FbEventEdit,
+  FbEventEntry,
+  FbMatchAction,
+  FbMatchEvent,
+  FbStateEvent,
 } from '@smelter-editor/types';
 import { createStorageClient, type StorageClient } from './storage-client';
 
@@ -300,6 +308,42 @@ interface SmelterApiClient {
   ): Promise<{ replay: BbReplayState | null }>;
   /** Ground-truth event files (`events.json` / `*.events.json`) under data/mp4s. */
   getBbEventsSuggestions(): Promise<{ files: string[] }>;
+
+  // Football Game ("Touchline")
+  setFbConfig(roomId: string, config: FbConfigPatch): Promise<FbConfig>;
+  controlFbMatch(
+    roomId: string,
+    cmd: { action: FbMatchAction; role?: FbCamRole },
+  ): Promise<{
+    state: FbStateEvent;
+    match: FbMatchEvent;
+    error?: { code: string; message: string };
+  }>;
+  getFbState(
+    roomId: string,
+  ): Promise<{ state: FbStateEvent; match: FbMatchEvent }>;
+  editFbEvent(
+    roomId: string,
+    cmd: FbEventEdit,
+  ): Promise<{
+    event: FbEventEntry | null;
+    state: FbStateEvent;
+    match: FbMatchEvent;
+  }>;
+  /** Use a looping mp4 from data/mp4s as the panorama or a fixed camera. */
+  attachFbMp4Cam(
+    roomId: string,
+    role: FbCamRole,
+    fileName: string,
+  ): Promise<{ inputId: string }>;
+  syncFbFileCams(
+    roomId: string,
+    playFromMs?: number,
+  ): Promise<{ inputIds: string[] }>;
+  setFbAiEvents(
+    roomId: string,
+    enabled: boolean,
+  ): Promise<{ state: FbStateEvent; match: FbMatchEvent }>;
 
   setHaunterConfig(
     roomId: string,
@@ -854,6 +898,79 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
     async getBbEventsSuggestions() {
       const data = await req('get', '/suggestions/bb-events');
       return { files: (data.files ?? []) as string[] };
+    },
+
+    async setFbConfig(roomId, config) {
+      const data = await req(
+        'post',
+        `/room/${enc(roomId)}/football-game/config`,
+        config,
+      );
+      return data.config as FbConfig;
+    },
+
+    async controlFbMatch(roomId, cmd) {
+      const data = await req(
+        'post',
+        `/room/${enc(roomId)}/football-game/match`,
+        cmd,
+      );
+      return {
+        state: data.state as FbStateEvent,
+        match: data.match as FbMatchEvent,
+        error: data.error as { code: string; message: string } | undefined,
+      };
+    },
+
+    async getFbState(roomId) {
+      const data = await req('get', `/room/${enc(roomId)}/football-game/state`);
+      return {
+        state: data.state as FbStateEvent,
+        match: data.match as FbMatchEvent,
+      };
+    },
+
+    async editFbEvent(roomId, cmd) {
+      const data = await req(
+        'post',
+        `/room/${enc(roomId)}/football-game/event`,
+        cmd,
+      );
+      return {
+        event: (data.event ?? null) as FbEventEntry | null,
+        state: data.state as FbStateEvent,
+        match: data.match as FbMatchEvent,
+      };
+    },
+
+    async attachFbMp4Cam(roomId, role, fileName) {
+      const data = await req(
+        'post',
+        `/room/${enc(roomId)}/football-game/mp4-cam`,
+        { role, fileName },
+      );
+      return { inputId: data.inputId as string };
+    },
+
+    async syncFbFileCams(roomId, playFromMs) {
+      const data = await req(
+        'post',
+        `/room/${enc(roomId)}/football-game/mp4-cam/sync`,
+        { playFromMs: playFromMs ?? 0 },
+      );
+      return { inputIds: (data.inputIds ?? []) as string[] };
+    },
+
+    async setFbAiEvents(roomId, enabled) {
+      const data = await req(
+        'post',
+        `/room/${enc(roomId)}/football-game/ai-events`,
+        { enabled },
+      );
+      return {
+        state: data.state as FbStateEvent,
+        match: data.match as FbMatchEvent,
+      };
     },
 
     async setHaunterConfig(roomId, config) {

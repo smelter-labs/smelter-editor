@@ -764,6 +764,19 @@ export class DuckHunterController {
         break;
       }
       case 'lobby': {
+        // Never on top of a live round. The arcade page arms the lobby at the
+        // tail of an async chain (stage swap → config push → arm), and a host
+        // who hit START before that tail landed used to have the fresh
+        // countdown wiped from under them: the output fell back to the
+        // opening screen, phones held on the briefing and END ROUND became a
+        // no-op (no match) — the "next game never starts" report. Aborting a
+        // round is 'stop'; an arm that races a start is simply ignored.
+        if (this.match && this.match.phase !== 'ended') {
+          console.warn(
+            `[duck-hunter] lobby arm ignored: a ${this.match.phase} round is live room=${this.roomId}`,
+          );
+          break;
+        }
         this.match = null;
         this.lobbyArmed = true;
         // Only overwrite when the caller actually staged a round: an older

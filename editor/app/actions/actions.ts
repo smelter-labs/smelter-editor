@@ -712,6 +712,72 @@ export async function getBbEventsSuggestions(): Promise<{ files: string[] }> {
   return (await getClient()).getBbEventsSuggestions();
 }
 
+// ── Football Game ("Touchline") ──
+
+export async function setFbConfig(
+  roomId: string,
+  config: import('@smelter-editor/types').FbConfigPatch,
+): Promise<import('@smelter-editor/types').FbConfig> {
+  return (await getClient()).setFbConfig(roomId, config);
+}
+
+export async function controlFbMatch(
+  roomId: string,
+  cmd: {
+    action: import('@smelter-editor/types').FbMatchAction;
+    role?: import('@smelter-editor/types').FbCamRole;
+  },
+): Promise<{
+  state: import('@smelter-editor/types').FbStateEvent;
+  match: import('@smelter-editor/types').FbMatchEvent;
+  error?: { code: string; message: string };
+}> {
+  return (await getClient()).controlFbMatch(roomId, cmd);
+}
+
+export async function getFbState(roomId: string): Promise<{
+  state: import('@smelter-editor/types').FbStateEvent;
+  match: import('@smelter-editor/types').FbMatchEvent;
+}> {
+  return (await getClient()).getFbState(roomId);
+}
+
+export async function editFbEvent(
+  roomId: string,
+  cmd: import('@smelter-editor/types').FbEventEdit,
+): Promise<{
+  event: import('@smelter-editor/types').FbEventEntry | null;
+  state: import('@smelter-editor/types').FbStateEvent;
+  match: import('@smelter-editor/types').FbMatchEvent;
+}> {
+  return (await getClient()).editFbEvent(roomId, cmd);
+}
+
+export async function attachFbMp4Cam(
+  roomId: string,
+  role: import('@smelter-editor/types').FbCamRole,
+  fileName: string,
+): Promise<{ inputId: string }> {
+  return (await getClient()).attachFbMp4Cam(roomId, role, fileName);
+}
+
+export async function syncFbFileCams(
+  roomId: string,
+  playFromMs = 0,
+): Promise<{ inputIds: string[] }> {
+  return (await getClient()).syncFbFileCams(roomId, playFromMs);
+}
+
+export async function setFbAiEvents(
+  roomId: string,
+  enabled: boolean,
+): Promise<{
+  state: import('@smelter-editor/types').FbStateEvent;
+  match: import('@smelter-editor/types').FbMatchEvent;
+}> {
+  return (await getClient()).setFbAiEvents(roomId, enabled);
+}
+
 export async function setHaunterConfig(
   roomId: string,
   config: {

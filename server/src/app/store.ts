@@ -81,6 +81,7 @@ export type RoomStore = {
   shooter: ShooterOverlay | null;
   kbTournament: KbtHudState | null;
   bbGame: BbHudState | null;
+  fbGame: FbHudState | null;
   updateState: (state: RoomStoreState & { layers: Layer[] }) => void;
   setOutputShaders: (shaders: ShaderConfig[]) => void;
   setInputFrozenImage: (inputId: string, imageId: string | null) => void;
@@ -97,6 +98,7 @@ export type RoomStore = {
   setShooter: (shooter: ShooterOverlay | null) => void;
   setKbTournament: (state: KbtHudState | null) => void;
   setBbGame: (state: BbHudState | null) => void;
+  setFbGame: (state: FbHudState | null) => void;
   /** Interval (ms) for the JS-driven overlay animation tickers (skeleton rig,
    * rep floaters, milestone shake). Scene pushes are throttled to 30 ms by the
    * reconciler anyway, so values below ~30 buy nothing visually. */
@@ -758,6 +760,124 @@ export type BbHudState = {
   } | null;
 };
 
+// ── Football Game ("Touchline") HUD ──────────────────────────────────────
+
+export type FbHudRect = { x: number; y: number; width: number; height: number };
+
+/**
+ * Which broadcast scene the football chrome renders: 'lobby' = file-cam
+ * status + panel QR over the picture, 'live' = the director's view + score
+ * bug (+ minimap), 'replay' = the live layout dimmed under the REPLAY window,
+ * 'ended' = the final card.
+ */
+export type FbHudScene = 'lobby' | 'live' | 'replay' | 'ended';
+
+/**
+ * The part of the HUD that follows the layout at once (which input is on
+ * air and what the director shows); the rest of FbHudState is held by the
+ * clip's side-channel delay (0 without a model).
+ */
+export type FbHudStage = {
+  scene: FbHudScene;
+  /** Input on air (the panorama, or the camera the director cut to). */
+  mainInputId: string | null;
+  session: 'pano' | 'tricam' | null;
+  view: string;
+  /** Panorama session: the crop in full-panorama px (for the panel/overlay). */
+  crop: FbHudRect | null;
+  /** scene 'replay': the mounted clip input + the play it shows. */
+  replay: {
+    inputId: string;
+    title: string;
+    team: 'A' | 'B' | null;
+    teamName: string | null;
+    color: string;
+    clock: string;
+  } | null;
+};
+
+export type FbHudTeam = { name: string; short: string; color: string; score: number };
+
+export type FbHudPlayer = {
+  tag: number;
+  /** Minimap pitch coordinates in metres (X 0..105, Y 0..68). */
+  x: number;
+  y: number;
+  /** km/h, 0.1 resolution. */
+  kmh: number;
+};
+
+/** Football Game overlay state burned into the broadcast. */
+export type FbHudState = {
+  stage: FbHudStage;
+  teams: Record<'A' | 'B', FbHudTeam>;
+  clock: {
+    phase: 'lobby' | 'live' | 'paused' | 'halftime' | 'ended';
+    period: 1 | 2;
+    /** Match clock (ms elapsed in the half, counts past halfMs). */
+    elapsedMs: number;
+    halfMs: number;
+    running: boolean;
+  };
+  /** Newest event; `showBanner` is snapshot-relative. */
+  lastEvent: {
+    kind: string;
+    title: string;
+    team: 'A' | 'B' | null;
+    teamName: string | null;
+    color: string;
+    pending: boolean;
+    detail: string | null;
+    showBanner: boolean;
+  } | null;
+  /** Goal candidates awaiting the moderator ("GOAL?" pill). */
+  pendingCount: number;
+  /** Tracking minimap (null when off / no telemetry). */
+  minimap: {
+    teamColor: string;
+    teamShort: string;
+    players: FbHudPlayer[];
+    ball: { x: number; y: number } | null;
+    /** Top sprinter chip: tag + km/h. */
+    sprint: { tag: number; kmh: number } | null;
+    top: { tag: number; kmh: number } | null;
+  } | null;
+  lobby: {
+    qr: { imageId: string | null; label: string | null };
+    cams: { role: string; fileName: string | null; live: boolean }[];
+    commentatorName: string | null;
+    halfMs: number;
+    telemetry: { zxy: boolean; ball: boolean; zones: boolean; events: boolean } | null;
+  } | null;
+  ended: {
+    winner: 'A' | 'B' | null;
+    teams: Record<
+      'A' | 'B',
+      { score: number; chances: number; shots: number; shotsOnTarget: number; corners: number }
+    >;
+    topSpeed: { tag: number; kmh: number } | null;
+    topDistance: { tag: number; meters: number } | null;
+  } | null;
+  banner: {
+    kind: 'lead_change' | 'half_time' | 'final' | 'kick_off';
+    text: string;
+    color: string;
+    at: number;
+  } | null;
+};
+
+/** Tracking minimap plate: 336×218 at 1080p, bottom-left. */
+export function fbMinimapRect(resolution: {
+  width: number;
+  height: number;
+}): FbHudRect {
+  const k = resolution.height / 1080;
+  const w = Math.round(336 * k);
+  const h = Math.round(218 * k);
+  const m = Math.round(56 * k);
+  return { x: m, y: resolution.height - m - h, width: w, height: h };
+}
+
 /** Hoop/court picture-in-picture rect: 480×270 at 1080p, bottom-right. */
 export function bbPipRect(resolution: {
   width: number;
@@ -898,6 +1018,7 @@ export function createRoomStore(
     shooter: null,
     kbTournament: null,
     bbGame: null,
+    fbGame: null,
     updateState: (incoming) => {
       const {
         inputs,
@@ -1046,6 +1167,18 @@ export function createRoomStore(
       }
       set(() => ({ bbGame }));
     },
+    setFbGame: (fbGame: FbHudState | null) => {
+      const prev = get().fbGame;
+      if (
+        prev === fbGame ||
+        (prev != null &&
+          fbGame != null &&
+          JSON.stringify(prev) === JSON.stringify(fbGame))
+      ) {
+        return;
+      }
+      set(() => ({ fbGame }));
+    },
     animTickMs: 16,
     setAnimTickMs: (ms: number) => {
       set(() => ({ animTickMs: Math.max(16, Math.round(ms)) }));
@@ -1123,6 +1256,12 @@ export function useKbTournament() {
 export function useBbGame() {
   const store = useContext(StoreContext);
   return useStore(store, (state) => state.bbGame);
+}
+
+/** Football Game ("Touchline") burned-in HUD state (null while not staged). */
+export function useFbGame() {
+  const store = useContext(StoreContext);
+  return useStore(store, (state) => state.fbGame);
 }
 
 /** Isolates the shooter overlay subscription (same rationale as KBT's). */

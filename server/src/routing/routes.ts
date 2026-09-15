@@ -113,6 +113,12 @@ const GAME_WS_HANDLERS: ReadonlyArray<{
     handle: (room, clientId, msg) => room.handleBbMessage(clientId, msg),
     disconnect: (room, clientId) => room.handleBbDisconnect(clientId),
   },
+  {
+    // Football Game messages from the moderator panel + the arcade page.
+    prefix: 'fb_',
+    handle: (room, clientId, msg) => room.handleFbMessage(clientId, msg),
+    disconnect: (room, clientId) => room.handleFbDisconnect(clientId),
+  },
 ];
 
 function summarizeSyncPayload(payload: unknown): unknown {
@@ -1467,10 +1473,16 @@ routes.after(() => {
  */
 function activeGameOf(
   room: RoomState,
-): 'duck-hunter' | 'kettlebell-tournament' | 'basketball-game' | null {
+):
+  | 'duck-hunter'
+  | 'kettlebell-tournament'
+  | 'basketball-game'
+  | 'football-game'
+  | null {
   if (room.getDuckHunterMatch().phase !== 'idle') return 'duck-hunter';
   if (room.isKbtEngaged()) return 'kettlebell-tournament';
   if (room.isBbEngaged()) return 'basketball-game';
+  if (room.isFbEngaged()) return 'football-game';
   return null;
 }
 
@@ -3589,6 +3601,280 @@ routes.get('/suggestions/bb-events', async (_req, res) => {
   files.sort();
   res.status(200).send({ files });
 });
+
+// ── Football Game ("Touchline") ─────────────────────────────────
+
+const FbTeamId = Type.Union([Type.Literal('A'), Type.Literal('B')]);
+const FbEventKindSchema = Type.Union([
+  Type.Literal('goal'),
+  Type.Literal('chance'),
+  Type.Literal('shot'),
+  Type.Literal('corner'),
+  Type.Literal('goal_kick'),
+  Type.Literal('sprint'),
+  Type.Literal('attack'),
+  Type.Literal('out'),
+]);
+const FbCamRoleSchema = Type.Union([
+  Type.Literal('pano'),
+  Type.Literal('left'),
+  Type.Literal('centre'),
+  Type.Literal('right'),
+]);
+
+const FbTeamConfigSchema = Type.Object({
+  name: Type.Optional(Type.String({ maxLength: 32 })),
+  short: Type.Optional(Type.String({ maxLength: 8 })),
+  color: Type.Optional(Type.String({ maxLength: 16 })),
+});
+
+const FbConfigSchema = Type.Object({
+  teams: Type.Optional(
+    Type.Object({
+      A: Type.Optional(FbTeamConfigSchema),
+      B: Type.Optional(FbTeamConfigSchema),
+    }),
+  ),
+  halfMs: Type.Optional(Type.Number()),
+  clockFromClip: Type.Optional(Type.Boolean()),
+  attacksLeft: Type.Optional(Type.Union([FbTeamId, Type.Null()])),
+  director: Type.Optional(
+    Type.Object({
+      zoom: Type.Optional(
+        Type.Union([
+          Type.Literal('tight'),
+          Type.Literal('normal'),
+          Type.Literal('wide'),
+        ]),
+      ),
+      smoothing: Type.Optional(
+        Type.Union([Type.Literal('snappy'), Type.Literal('smooth')]),
+      ),
+      switchStyle: Type.Optional(
+        Type.Union([Type.Literal('glide'), Type.Literal('cut')]),
+      ),
+      lookaheadMs: Type.Optional(Type.Number()),
+    }),
+  ),
+  ai: Type.Optional(
+    Type.Object({
+      events: Type.Optional(Type.Boolean()),
+      kinds: Type.Optional(Type.Array(FbEventKindSchema)),
+      replayOn: Type.Optional(Type.Array(FbEventKindSchema)),
+    }),
+  ),
+  replay: Type.Optional(Type.Boolean()),
+  replayDelayMs: Type.Optional(Type.Number()),
+  minimap: Type.Optional(Type.Boolean()),
+  perf: Type.Optional(
+    Type.Object({
+      animTickHz: Type.Optional(
+        Type.Union([Type.Literal(60), Type.Literal(30), Type.Literal(15)]),
+      ),
+      hudPublishHz: Type.Optional(
+        Type.Union([Type.Literal(10), Type.Literal(5), Type.Literal(2)]),
+      ),
+      recordingPreset: Type.Optional(
+        Type.Union([
+          Type.Literal('ultrafast'),
+          Type.Literal('superfast'),
+          Type.Literal('veryfast'),
+          Type.Literal('fast'),
+          Type.Literal('medium'),
+        ]),
+      ),
+      recordingScale: Type.Optional(
+        Type.Union([Type.Literal(1), Type.Literal(0.75), Type.Literal(0.5)]),
+      ),
+    }),
+  ),
+  joinUrls: Type.Optional(
+    Type.Object({
+      commentator: Type.Optional(Type.String({ maxLength: 2048 })),
+    }),
+  ),
+  joinLabel: Type.Optional(Type.String({ maxLength: 64 })),
+});
+
+routes.post<RoomIdParams & { Body: Static<typeof FbConfigSchema> }>(
+  '/room/:roomId/football-game/config',
+  { schema: { params: RoomIdParamsSchema, body: FbConfigSchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    console.log('[request] Set Football Game config', {
+      roomId,
+      halfMs: req.body.halfMs,
+      director: req.body.director,
+      ai: req.body.ai,
+    });
+    const room = state.getRoom(roomId);
+    const config = room.setFbConfig(req.body);
+    res.status(200).send({ status: 'ok', config });
+  },
+);
+
+const FbMatchSchema = Type.Object({
+  action: Type.Union([
+    Type.Literal('lobby'),
+    Type.Literal('start'),
+    Type.Literal('pause'),
+    Type.Literal('resume'),
+    Type.Literal('half_time'),
+    Type.Literal('second_half'),
+    Type.Literal('end'),
+    Type.Literal('reset'),
+    Type.Literal('kick_cam'),
+    Type.Literal('kick_commentator'),
+  ]),
+  role: Type.Optional(FbCamRoleSchema),
+});
+
+routes.post<RoomIdParams & { Body: Static<typeof FbMatchSchema> }>(
+  '/room/:roomId/football-game/match',
+  { schema: { params: RoomIdParamsSchema, body: FbMatchSchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    console.log('[request] Football Game match', {
+      roomId,
+      action: req.body.action,
+      role: req.body.role,
+    });
+    const room = state.getRoom(roomId);
+    const { error, ...result } = room.controlFbMatch({
+      action: req.body.action,
+      role: req.body.role,
+    });
+    res
+      .status(200)
+      .send({ status: error ? 'rejected' : 'ok', ...result, error });
+  },
+);
+
+routes.get<RoomIdParams>(
+  '/room/:roomId/football-game/state',
+  { schema: { params: RoomIdParamsSchema } },
+  async (req, res) => {
+    const room = state.getRoom(req.params.roomId);
+    res.status(200).send({ status: 'ok', ...room.getFbState() });
+  },
+);
+
+const FbEventEditSchema = Type.Object({
+  op: Type.Union([
+    Type.Literal('resolve'),
+    Type.Literal('add'),
+    Type.Literal('undo'),
+  ]),
+  eventId: Type.Optional(Type.String()),
+  team: Type.Optional(Type.Union([FbTeamId, Type.Null()])),
+  kind: Type.Optional(FbEventKindSchema),
+  voided: Type.Optional(Type.Boolean()),
+});
+
+routes.post<RoomIdParams & { Body: Static<typeof FbEventEditSchema> }>(
+  '/room/:roomId/football-game/event',
+  { schema: { params: RoomIdParamsSchema, body: FbEventEditSchema } },
+  async (req, res) => {
+    const room = state.getRoom(req.params.roomId);
+    const event = room.editFbEvent(req.body);
+    res
+      .status(200)
+      .send({ status: event ? 'ok' : 'rejected', event, ...room.getFbState() });
+  },
+);
+
+// Dev-only event injector (FB_SIM=1): drive the ledger/HUD without telemetry.
+const FbSimulateEventSchema = Type.Object({
+  kind: FbEventKindSchema,
+  team: Type.Optional(Type.Union([FbTeamId, Type.Null()])),
+  side: Type.Optional(
+    Type.Union([Type.Literal('left'), Type.Literal('right')]),
+  ),
+  confidence: Type.Optional(Type.Number()),
+});
+
+routes.post<RoomIdParams & { Body: Static<typeof FbSimulateEventSchema> }>(
+  '/room/:roomId/football-game/simulate-event',
+  { schema: { params: RoomIdParamsSchema, body: FbSimulateEventSchema } },
+  async (req, res) => {
+    if (process.env.FB_SIM !== '1') {
+      return res.status(404).send({ status: 'error', message: 'Not found' });
+    }
+    const room = state.getRoom(req.params.roomId);
+    const event = room.simulateFbEvent(
+      req.body.kind,
+      req.body.team ?? null,
+      req.body.side,
+      req.body.confidence,
+    );
+    res.status(200).send({ status: event ? 'ok' : 'ignored', event });
+  },
+);
+
+// File camera: attach a looping local-mp4 from data/mp4s as the panorama or
+// one of the three fixed cameras. `fileName` is relative to data/mp4s.
+const FbMp4CamSchema = Type.Object({
+  role: FbCamRoleSchema,
+  fileName: Type.String(),
+});
+
+routes.post<RoomIdParams & { Body: Static<typeof FbMp4CamSchema> }>(
+  '/room/:roomId/football-game/mp4-cam',
+  { schema: { params: RoomIdParamsSchema, body: FbMp4CamSchema } },
+  async (req, res) => {
+    const fileName = sanitizeBbMp4FileName(req.body.fileName);
+    if (!fileName) {
+      return res.status(400).send({
+        status: 'error',
+        message: 'fileName must be an .mp4 path relative to data/mp4s',
+      });
+    }
+    const room = state.getRoom(req.params.roomId);
+    try {
+      const { inputId } = await room.attachFbMp4Cam(req.body.role, fileName);
+      res.status(200).send({ status: 'ok', inputId });
+    } catch (err) {
+      res.status(400).send({
+        status: 'error',
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  },
+);
+
+const FbMp4CamSyncSchema = Type.Object({
+  playFromMs: Type.Optional(Type.Number({ minimum: 0 })),
+});
+
+routes.post<RoomIdParams & { Body: Static<typeof FbMp4CamSyncSchema> }>(
+  '/room/:roomId/football-game/mp4-cam/sync',
+  { schema: { params: RoomIdParamsSchema, body: FbMp4CamSyncSchema } },
+  async (req, res) => {
+    const room = state.getRoom(req.params.roomId);
+    try {
+      const inputIds = await room.syncFbFileCams(req.body.playFromMs ?? 0);
+      res.status(200).send({ status: 'ok', inputIds });
+    } catch (err) {
+      res.status(400).send({
+        status: 'error',
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  },
+);
+
+// AI EVENTS on/off (REST mirror of the panel chip).
+const FbAiEventsSchema = Type.Object({ enabled: Type.Boolean() });
+
+routes.post<RoomIdParams & { Body: Static<typeof FbAiEventsSchema> }>(
+  '/room/:roomId/football-game/ai-events',
+  { schema: { params: RoomIdParamsSchema, body: FbAiEventsSchema } },
+  async (req, res) => {
+    const room = state.getRoom(req.params.roomId);
+    room.setFbAiEvents(req.body.enabled);
+    res.status(200).send({ status: 'ok', ...room.getFbState() });
+  },
+);
 
 // ── Haunting ghosts ────────────────────────────────────────────
 
