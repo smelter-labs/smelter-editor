@@ -96,7 +96,7 @@ export function hitFlashEnvelope(elapsed: number): HitFlashEnvelope {
  */
 /** Telegraph default: how long the aura marks the bird before the duck
  * appears (operator override via the Duck Hunter panel — `duckAuraLeadMs`). */
-export const DEFAULT_DUCK_AURA_LEAD_MS = 1500;
+export const DEFAULT_DUCK_AURA_LEAD_MS = 200;
 /** Birth shockwave: how long the ring takes to reach full expansion. */
 export const AURA_PULSE_MS = 620;
 /** Fade-in of the steady lock-on ring, so a spawn doesn't snap on. */

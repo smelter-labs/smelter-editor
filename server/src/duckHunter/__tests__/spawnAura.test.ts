@@ -5,7 +5,6 @@ import {
   AURA_IN_MS,
   AURA_OUT_MS,
   AURA_PULSE_MS,
-  DEFAULT_DUCK_AURA_LEAD_MS,
   spawnAuraEnvelope,
 } from '../duckFlight';
 import type { AuraSlot } from '../../inputs/spawnAuraShader';
@@ -28,10 +27,12 @@ function wgslStructFields(): string[] {
 }
 
 const PAUSE = 700;
-const LEAD = DEFAULT_DUCK_AURA_LEAD_MS;
+/** A long telegraph so every stage (ease-in, shockwave, steady ring) has room
+ * to play out before the duck appears — independent of the tuned default. */
+const LEAD = 1500;
 const STAGES = ['glow', 'pulse', 'link'] as const;
 
-/** Envelope at the default aura lead, the way callers pass flight params. */
+/** Envelope at the test lead, the way callers pass flight params. */
 function env(age: number, sinceDeath: number | null, pauseMs = PAUSE) {
   return spawnAuraEnvelope(age, { auraLeadMs: LEAD, pauseMs }, sinceDeath);
 }

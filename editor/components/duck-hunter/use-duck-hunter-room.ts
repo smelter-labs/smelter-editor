@@ -254,7 +254,8 @@ export function useDuckHunterRoom(initialRoomId?: string): DuckHunterRoom {
         setRoomStatus('ok');
         writeStash({ roomId: target, whepUrl: whep, stageInputId: inputId });
         // A stash-only restore landed on plain /duck-hunter: bind the URL
-        // too, so the next refresh goes through the room route.
+        // too, so the next refresh goes through the room route. (Same
+        // layout-hosted-arcade contract as createRoom's rewrite below.)
         if (!fromUrl) window.history.replaceState(null, '', roomPath(target));
       })
       .catch(() => {
@@ -370,8 +371,10 @@ export function useDuckHunterRoom(initialRoomId?: string): DuckHunterRoom {
           stageInputId: inputId,
         });
         // Put the room in the URL so a refresh (or the landing page) can
-        // rejoin it — replaceState, not router.replace, so the arcade does
-        // not remount mid-session.
+        // rejoin it. replaceState leaves the router's tree on the old page
+        // until the next server action re-syncs it by swapping the page
+        // segment; the arcade survives that because it is mounted from the
+        // /duck-hunter layout, not the pages (which render null).
         window.history.replaceState(null, '', roomPath(created.roomId));
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Room setup failed');

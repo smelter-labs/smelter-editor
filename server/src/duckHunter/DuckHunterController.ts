@@ -64,6 +64,13 @@ export type DuckHunterDeps = {
   /** WHIP input is actually publishing (heartbeat-acked within the TTL). */
   isInputLive: (inputId: string) => boolean;
   /**
+   * The input still exists in the room. The target is picked from the
+   * store's ghost entries, and an entry can outlive its input (a result held
+   * by the side-channel delay lands after the stage was swapped out); such
+   * an entry is skipped, or the game would aim at a tile that never renders.
+   */
+  hasInput?: (inputId: string) => boolean;
+  /**
    * Record the finished round's winning score into the global TOP SCORES
    * table. Called only from the idempotent match end — exactly once per
    * round (clients never submit scores themselves).
@@ -1293,18 +1300,20 @@ export class DuckHunterController {
   // --- internals ---
 
   private getTargetInputId(): string | null {
-    const boxes = this.store.getState().peopleBoxes;
-    for (const [inputId, pb] of Object.entries(boxes)) {
-      if (pb.ghost) return inputId;
-    }
-    return null;
+    return this.getTargetPb()?.id ?? null;
   }
 
-  /** The current sprite target (ghost-enabled input) with its boxes, or null. */
+  /**
+   * The current sprite target (ghost-enabled input) with its boxes, or null.
+   * The first ghost entry whose input is still in the room wins — a stale
+   * entry for a removed stage must not shadow the live one.
+   */
   private getTargetPb(): { id: string; pb: PersonBoxes } | null {
     const boxes = this.store.getState().peopleBoxes;
     for (const [id, pb] of Object.entries(boxes)) {
-      if (pb.ghost) return { id, pb };
+      if (!pb.ghost) continue;
+      if (this.deps.hasInput && !this.deps.hasInput(id)) continue;
+      return { id, pb };
     }
     return null;
   }

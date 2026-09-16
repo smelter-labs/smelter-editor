@@ -1082,9 +1082,16 @@ export function createRoomStore(
     setPeopleBoxes: (inputId: string, boxes: PersonBoxes | null) => {
       set((state) => {
         const next = { ...state.peopleBoxes };
-        // Haunter mode keeps zero-box frames: the renderer must stay mounted
-        // so idle ghosts keep levitating while nobody is detected.
-        if (boxes && (boxes.boxes.length > 0 || boxes.sprite === 'haunter')) {
+        // Haunter and bird modes keep zero-box frames: the renderer must stay
+        // mounted so idle ghosts keep levitating while nobody is detected, and
+        // the duck-hunter target (in-tile HUD + ducks still flying off) must
+        // survive the seconds between bird detections.
+        if (
+          boxes &&
+          (boxes.boxes.length > 0 ||
+            boxes.sprite === 'haunter' ||
+            boxes.sprite === 'bird')
+        ) {
           next[inputId] = boxes;
         } else delete next[inputId];
         return { peopleBoxes: next };

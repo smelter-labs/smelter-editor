@@ -280,8 +280,12 @@ export function Input({ input }: { input: InputConfig }) {
       volume={input.volume}
     />
   ) : peopleBoxes?.ghost &&
-    // Haunters stay mounted with zero boxes so idle ghosts keep waiting.
-    (peopleBoxes.boxes.length || peopleBoxes.sprite === 'haunter') ? (
+    // Haunters stay mounted with zero boxes so idle ghosts keep waiting;
+    // birds too, so a duck still flying off (and the spawn-aura pass) does not
+    // blink out between detections.
+    (peopleBoxes.boxes.length ||
+      peopleBoxes.sprite === 'haunter' ||
+      peopleBoxes.sprite === 'bird') ? (
     peopleBoxes.sprite === 'bird' ? (
       <PacmanBirdsInput
         sourceInputId={input.inputId}

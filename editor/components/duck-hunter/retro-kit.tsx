@@ -111,6 +111,7 @@ export function PixelPanel({
   fill,
   cut = 10,
   glow = 0,
+  stretch = false,
   style,
   innerStyle,
   children,
@@ -120,12 +121,22 @@ export function PixelPanel({
   cut?: number;
   /** 0..1 outer glow strength around the bright line. */
   glow?: number;
+  /**
+   * Chain the outer box's height down to the inner layer (flex columns all
+   * the way), so a panel sized by its parent — a grid cell, a `flex: 1`
+   * slot — fills it instead of hugging its content.
+   */
+  stretch?: boolean;
   style?: React.CSSProperties;
   innerStyle?: React.CSSProperties;
   children?: React.ReactNode;
 }) {
   const lineW = 2;
   const gapW = 3;
+  const column: React.CSSProperties = stretch
+    ? { display: 'flex', flexDirection: 'column', minHeight: 0 }
+    : {};
+  const grow: React.CSSProperties = stretch ? { flex: 1, ...column } : {};
   return (
     <div
       style={{
@@ -134,6 +145,7 @@ export function PixelPanel({
           glow > 0
             ? `drop-shadow(0 0 10px rgba(${ACCENT_RGB[accent]}, ${0.65 * glow}))`
             : undefined,
+        ...column,
         ...style,
       }}>
       <div
@@ -141,18 +153,21 @@ export function PixelPanel({
           clipPath: chamfer(cut),
           background: ACCENT_LINE[accent],
           padding: lineW,
+          ...grow,
         }}>
         <div
           style={{
             clipPath: chamfer(cut - lineW),
             background: R5.edge,
             padding: gapW,
+            ...grow,
           }}>
           <div
             style={{
               clipPath: chamfer(cut - lineW - gapW),
               background: fill ?? R5.panel,
               position: 'relative',
+              ...(stretch ? { flex: 1, minHeight: 0 } : {}),
               ...innerStyle,
             }}>
             {children}

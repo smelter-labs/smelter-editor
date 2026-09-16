@@ -33,6 +33,8 @@ function harness(opts?: { manualCam?: boolean }) {
   const removed: string[] = [];
   const registered = new Set<string>();
   const live = new Set<string>();
+  /** Stage inputs removed from the room (their ghost entries may linger). */
+  const gone = new Set<string>();
   const pendingCams: (() => void)[] = [];
   const shooterSets: (ShooterOverlay | null)[] = [];
   /** Character-clip claims in order; `null` = an explicit unmount-everything. */
@@ -79,6 +81,7 @@ function harness(opts?: { manualCam?: boolean }) {
       live.delete(inputId);
     },
     isInputLive: (inputId) => live.has(inputId),
+    hasInput: (inputId) => !gone.has(inputId),
     recordTopScore: (entry) => {
       const full: ShooterTopScoreEntry = { initials: 'AAA', ...entry };
       topScores.push(full);
@@ -120,6 +123,7 @@ function harness(opts?: { manualCam?: boolean }) {
     pendingCams,
     sceneState,
     shooterSets,
+    gone,
     topScores,
     clipCalls,
     qrCalls,
@@ -704,6 +708,47 @@ describe('match lifecycle and the 30 Hz loop', () => {
     const snap = h.controller.getMatchSnapshot();
     expect(snap.topScores).toEqual([]);
     expect(snap.topScoreRank).toBeNull();
+    h.controller.dispose();
+  });
+});
+
+describe('target selection', () => {
+  it('skips a ghost entry whose input is gone from the room', async () => {
+    const h = harness();
+    // A stage swap: the old stage's boxes were still held by the side-channel
+    // delay when it was removed, so its ghost entry landed (first, by key
+    // order) after removeInput cleared the store. The new stage is live.
+    h.sceneState.peopleBoxes['dead-stage'] = ghostTarget();
+    h.sceneState.peopleBoxes['stage'] = ghostTarget();
+    h.gone.add('dead-stage');
+    h.joinPlayer('c1', 'Bob');
+    await vi.advanceTimersByTimeAsync(100);
+    expect(h.lastOverlay()!.targetInputId).toBe('stage');
+    const state = h.events.filter((e) => e.type === 'shooter_state').at(-1) as {
+      targetActive: boolean;
+    };
+    expect(state.targetActive).toBe(true);
+    // With only the stale entry left there is no target at all: free play
+    // with no target publishes no overlay (the same as before any boxes).
+    delete h.sceneState.peopleBoxes['stage'];
+    await vi.advanceTimersByTimeAsync(100);
+    expect(h.lastOverlay()).toBeNull();
+    h.controller.dispose();
+  });
+
+  it('a bird entry with no boxes still holds the target mid-round', async () => {
+    const h = harness();
+    // RoomState keeps publishing the bird entry between detections (zero
+    // boxes); the HUD (scoreboard, clock, crosshairs) hangs on that target.
+    h.sceneState.peopleBoxes['stage'] = { ...birdTarget(), boxes: [] };
+    h.joinPlayer('c1', 'Bob');
+    h.controller.controlMatch({ action: 'start', mode: 'time' });
+    await vi.advanceTimersByTimeAsync(3500);
+    const overlay = h.lastOverlay()!;
+    expect(overlay.match?.phase).toBe('playing');
+    expect(overlay.targetInputId).toBe('stage');
+    expect(overlay.ducks).toEqual([]);
+    expect(overlay.crosshairs.map((c) => c.clientId)).toEqual(['c1']);
     h.controller.dispose();
   });
 });

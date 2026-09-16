@@ -493,6 +493,7 @@ export class RoomState {
           bearerToken,
         };
       },
+      hasInput: (inputId) => this.hasInput(inputId),
       recordTopScore: (entry) => duckHunterTopScores.submit(entry),
       readTopScores: (variant) => duckHunterTopScores.snapshot(variant),
       registerJoinQr: (url) =>
@@ -862,6 +863,9 @@ export class RoomState {
       this.motionController.emitMotionScores();
     });
 
+    // Every overlay below is held for up to the side-channel delay (~3 s)
+    // before it reaches the store, so each applyOverlay re-checks that its
+    // input still exists at apply time — see hasInput().
     const onPeopleCount = (event: ModelResultEvent) => {
       const input = this.inputManager
         .getInputs()
@@ -897,6 +901,7 @@ export class RoomState {
       const holdMs = Math.max(0, outputDelayMs - procMs);
 
       const applyOverlay = () => {
+        if (!this.hasInput(event.inputId)) return;
         const store = this.output.store.getState();
         // The bird counter keeps its count editor-only — no 👥 badge on the
         // output (it would sit on top of the duck-hunt scene).
@@ -997,28 +1002,30 @@ export class RoomState {
                 now,
               );
             }
-            store.setPeopleBoxes(
-              event.inputId,
-              tracked.length > 0
+            // Published even with zero tracked boxes (like the haunter): the
+            // entry is what keeps the duck-hunter target — and with it the
+            // in-tile HUD (scoreboard, clock, crosshairs) and the duck
+            // renderer — mounted between detections. Birds come and go every
+            // few seconds on a stage clip, and dropping the entry with the
+            // last box made the whole HUD and any duck still flying off
+            // vanish for seconds at a time mid-round.
+            store.setPeopleBoxes(event.inputId, {
+              boxes: tracked,
+              frameW: data.frameW!,
+              frameH: data.frameH!,
+              ghost: sprite,
+              sprite: 'bird',
+              duckScale: this.duckScale,
+              duckAuraLeadMs: this.duckAuraLeadMs,
+              duckPauseMs: this.duckPauseMs,
+              duckFlySpeed: this.duckFlySpeed,
+              ...(marker
                 ? {
-                    boxes: tracked,
-                    frameW: data.frameW!,
-                    frameH: data.frameH!,
-                    ghost: sprite,
-                    sprite: 'bird',
-                    duckScale: this.duckScale,
-                    duckAuraLeadMs: this.duckAuraLeadMs,
-                    duckPauseMs: this.duckPauseMs,
-                    duckFlySpeed: this.duckFlySpeed,
-                    ...(marker
-                      ? {
-                          snap: true,
-                          borderWidth: Number(cfg?.params?.border ?? 10),
-                        }
-                      : {}),
+                    snap: true,
+                    borderWidth: Number(cfg?.params?.border ?? 10),
                   }
-                : null,
-            );
+                : {}),
+            });
           } else {
             this.birdTrackers.delete(trackerKey);
             store.setPeopleBoxes(event.inputId, null);
@@ -1060,6 +1067,7 @@ export class RoomState {
       const holdMs = Math.max(0, outputDelayMs - procMs);
 
       const applyOverlay = () => {
+        if (!this.hasInput(event.inputId)) return;
         const store = this.output.store.getState();
         const cfg = input.aiModels?.[BUILDING_DETECTOR_ID];
         const hasFrame =
@@ -1108,6 +1116,7 @@ export class RoomState {
       const holdMs = Math.max(0, outputDelayMs - procMs);
 
       const applyOverlay = () => {
+        if (!this.hasInput(event.inputId)) return;
         const store = this.output.store.getState();
         const cfg = input.aiModels?.[CAR_ADS_ID];
         const hasFrame =
@@ -1175,6 +1184,7 @@ export class RoomState {
       const holdMs = Math.max(0, outputDelayMs - procMs);
 
       const applyOverlay = () => {
+        if (!this.hasInput(event.inputId)) return;
         const store = this.output.store.getState();
         const cfg = input.aiModels?.[CAR_HUE_ID];
         const hasFrame =
@@ -1279,6 +1289,7 @@ export class RoomState {
       const holdMs = Math.max(0, outputDelayMs - procMs);
 
       const applyOverlay = () => {
+        if (!this.hasInput(event.inputId)) return;
         const store = this.output.store.getState();
         const cfg = input.aiModels?.[KETTLEBELL_COACH_ID];
         const hasFrame =
@@ -3253,7 +3264,17 @@ export class RoomState {
 
   // ── Captions ──────────────────────────────────────────────
 
-  /** True if this room owns the given input id (used to route transcripts). */
+  /**
+   * True if this room owns the given input id. Routes transcripts, and guards
+   * the held AI overlays: a result is applied up to the side-channel delay
+   * after it arrived, so an input removed in that window (a stage swap deletes
+   * the old stage right after adding the new one) would be resurrected by the
+   * late apply — removeInput() had already dropped its trackers and boxes, and
+   * no later result ever clears a re-added entry. Duck Hunter aims at the
+   * first ghost entry, so one stale entry left the game bound to a dead input
+   * (no ducks, no HUD on the live stage) until the server restarted. Checked
+   * at apply time and by the duck-hunter target pick.
+   */
   public hasInput(inputId: string): boolean {
     return this.getInputs().some((input) => input.inputId === inputId);
   }

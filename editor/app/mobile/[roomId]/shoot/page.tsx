@@ -211,7 +211,9 @@ export default function ShootControllerPage() {
     left: number;
     top: number;
   } | null>(null);
-  const [gyroMode, setGyroMode] = useState(true);
+  // Aiming is gyro-only: the finger-on-the-feed fallback is retired, so the
+  // mode never changes. Kept as a flag because the HUD still branches on it.
+  const gyroMode = true;
   const [gyroWarn, setGyroWarn] = useState<string | null>(null);
   const gyroLiveRef = useRef(false);
   const [wsDbg, setWsDbg] = useState<string>('');
@@ -1328,21 +1330,6 @@ export default function ShootControllerPage() {
     connectWs();
   }, [roomStatus, fetchRoom, connectWs]);
 
-  // Finger aiming needs a picture, and the picture is opt-in now — so the
-  // in-game mode chip stays hidden while the gyro is healthy, and comes back
-  // the moment the sensor lets the player down. The latch has to be STICKY:
-  // both the mode chip and the motion effect clear `gyroWarn`, so a bare
-  // `gyroWarn != null` would make the escape hatch disappear a second and a
-  // half after the player reached for it. `|| !gyroMode` covers "already on
-  // the finger, I need a way back".
-  const [fingerUnlocked, setFingerUnlocked] = useState(false);
-  useEffect(() => {
-    if (gyroWarn || perm === 'denied' || perm === 'unsupported') {
-      setFingerUnlocked(true);
-    }
-  }, [gyroWarn, perm]);
-  const showFingerOption = fingerUnlocked || !gyroMode;
-
   // Hunters held by somebody else. `scores` is the live roster from
   // `shooter_state`, which arrives on `shoot_spectate` — i.e. before this phone
   // has joined, which is exactly when the select screen needs it. Our own row
@@ -1434,21 +1421,19 @@ export default function ShootControllerPage() {
       setPerm(res);
       setGyroWarn(null);
       if (res === 'denied' || res === 'unsupported') {
-        setGyroMode(false);
-        // Aiming by touch without the picture would have the player firing at
-        // the gun panel's coordinates — so the feed comes on with the weapon.
-        setStreamOn(true);
+        // Gyro-only game, no touch fallback: say why aiming will not work and
+        // let the player through to the briefing (the in-game gyro banner
+        // keeps flagging it).
         showNotice(
           res === 'unsupported'
-            ? 'No motion sensors — touch aiming enabled.'
+            ? 'No motion sensors — this phone cannot aim.'
             : !window.isSecureContext
-              ? 'The gyroscope needs HTTPS — touch aiming enabled.'
-              : 'Motion access denied — touch aiming enabled. Use the GYRO chip in-game to retry.',
+              ? 'The gyroscope needs HTTPS — open the link over https to aim.'
+              : 'Motion access denied — allow motion in the browser settings to aim.',
         );
         setStep('ready');
         return;
       }
-      setGyroMode(true);
       setPractice(freshPractice());
       recenter();
       setStep('calibrate');
@@ -1887,7 +1872,6 @@ export default function ShootControllerPage() {
       />
       <ControlsRow
         gyroMode={gyroMode}
-        showModeToggle={showFingerOption}
         streamOn={streamOn}
         onToggleStream={() => {
           // OFF is always allowed; a second ON while the last one is still
@@ -1895,20 +1879,6 @@ export default function ShootControllerPage() {
           // RTCPeerConnection.
           if (streamOn) setStreamOn(false);
           else if (whepState !== 'linking') setStreamOn(true);
-        }}
-        onToggleMode={() => {
-          if (gyroMode) {
-            // Aiming by touch needs the picture to touch.
-            setStreamOn(true);
-            setGyroMode(false);
-            return;
-          }
-          // Request iOS motion permission from this user gesture.
-          void requestMotionPermission().then((res) => {
-            setPerm(res);
-            setGyroWarn(null);
-            setGyroMode(true);
-          });
         }}
         onRecenter={() => {
           recenter();

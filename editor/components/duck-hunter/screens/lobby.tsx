@@ -81,6 +81,30 @@ function defaultPublicBase(): string {
 }
 
 /**
+ * Whether a round may be started right now. START waits for the server's own
+ * word that the lobby is armed (the feed's 'lobby' snapshot) and for
+ * openLobby's chain to finish. Both used to be skipped: the button lit up on
+ * the previous round's stale targetActive the instant this screen mounted, so
+ * an eager START (a double ENTER out of GAME OVER) raced the arm still in
+ * flight — and the arm then wiped the fresh countdown, stranding the host on
+ * the game screen with the opening screen on air and END ROUND doing nothing.
+ * Shared with the HOW TO PLAY briefing, whose LET'S HUNT is the real start.
+ */
+export function lobbyReady(
+  feed: ShooterFeed,
+  room: DuckHunterRoom,
+  busy: boolean,
+): boolean {
+  return (
+    feed.match?.phase === 'lobby' &&
+    !busy &&
+    feed.targetActive &&
+    !room.creating &&
+    !!room.roomId
+  );
+}
+
+/**
  * Phone lobby: creates the arcade room on entry (the YOLO sidecar warms up
  * behind the QR), shows the join QR + live hunter list, and starts the
  * match. Ducks already fly on the output while the lobby is open — that's
@@ -94,6 +118,8 @@ export function Lobby({
   feed,
   busy = false,
   onStart,
+  onRules,
+  onPipeline,
   onBack,
 }: {
   setup: MatchSetup;
@@ -103,7 +129,12 @@ export function Lobby({
   feed: ShooterFeed;
   /** openLobby's stage swap / config push / arm is still in flight. */
   busy?: boolean;
+  /** The lobby is ready and the host pressed START (the briefing comes next). */
   onStart: () => void;
+  /** Open HOW TO PLAY as a read (no start). */
+  onRules: () => void;
+  /** Open HOW IT WORKS (the tech pipeline). */
+  onPipeline: () => void;
   onBack: () => void;
 }) {
   const [base, setBase] = useState('');
@@ -149,16 +180,8 @@ export function Lobby({
     return () => window.clearTimeout(timer);
   }, [shootUrl, base, roomId]);
 
-  // START waits for the server's own word that the lobby is armed (the feed's
-  // 'lobby' snapshot) and for openLobby's chain to finish. Both used to be
-  // skipped: the button lit up on the previous round's stale targetActive the
-  // instant this screen mounted, so an eager START (a double ENTER out of
-  // GAME OVER) raced the arm still in flight — and the arm then wiped the
-  // fresh countdown, stranding the host on the game screen with the opening
-  // screen on air and END ROUND doing nothing.
   const armed = feed.match?.phase === 'lobby';
-  const ready =
-    armed && !busy && feed.targetActive && !room.creating && !!room.roomId;
+  const ready = lobbyReady(feed, room, busy);
   const canStart = ready && feed.players.length > 0;
   // The roster and the hunter catalog are the same scarce thing (one character
   // each), so a full lobby means the QR has nothing left to sell.
@@ -212,6 +235,18 @@ export function Lobby({
           }
           right={
             <div style={{ display: 'flex', gap: 12 }}>
+              <PixelButton
+                accent='cyan'
+                glyph='Y'
+                label='PIPELINE'
+                onClick={onPipeline}
+              />
+              <PixelButton
+                accent='yellow'
+                glyph='X'
+                label='RULES'
+                onClick={onRules}
+              />
               <PixelButton
                 accent='red'
                 glyph='B'

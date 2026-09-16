@@ -478,8 +478,6 @@ export function AmmoRow({
 /** Bottom controls: utility chips + the CENTER/FIRE trigger zone. */
 export function ControlsRow({
   gyroMode,
-  showModeToggle,
-  onToggleMode,
   onRecenter,
   onAxes,
   camOn,
@@ -493,13 +491,6 @@ export function ControlsRow({
   onFire,
 }: {
   gyroMode: boolean;
-  /**
-   * Offer the aim-mode chip at all. Finger aiming is hidden while the gyro is
-   * healthy — with the feed off there is nothing on screen to tap at — and
-   * comes back the moment the sensor lets the player down.
-   */
-  showModeToggle: boolean;
-  onToggleMode: () => void;
   onRecenter: () => void;
   onAxes: () => void;
   camOn: boolean;
@@ -539,14 +530,6 @@ export function ControlsRow({
         active={streamOn}
         onClick={onToggleStream}
       />
-      {showModeToggle ? (
-        <ChipButton
-          label={gyroMode ? '🎯' : '👆'}
-          title='Aim mode'
-          active={gyroMode}
-          onClick={onToggleMode}
-        />
-      ) : null}
       {gyroMode ? (
         <ChipButton label='⚙' title='Axis setup' onClick={onAxes} />
       ) : null}

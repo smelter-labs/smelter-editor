@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import type {
   ShooterMatchConfig,
   ShooterMatchMode,
@@ -17,14 +16,25 @@ import {
 import { useShooterFeed } from './use-shooter-feed';
 import { TitleScreen } from './screens/title-screen';
 import { ModeSelect } from './screens/mode-select';
-import { Lobby } from './screens/lobby';
+import { Lobby, lobbyReady } from './screens/lobby';
+import { RulesScreen, type RulesIntent } from './screens/rules';
+import { PipelineScreen } from './screens/pipeline';
 import { GameScreen } from './screens/game-screen';
 import { Results } from './screens/results';
 import './retro.css';
 
 // Characters are picked per player on the phones, so the host flow goes
-// straight from the title to the match config.
-type Screen = 'title' | 'config' | 'lobby' | 'game' | 'results';
+// straight from the title to the match config. 'rules' (HOW TO PLAY) and
+// 'pipeline' (HOW IT WORKS) are lobby side-screens: the rules also run as the
+// briefing between START and the server's countdown.
+type Screen =
+  | 'title'
+  | 'config'
+  | 'lobby'
+  | 'rules'
+  | 'pipeline'
+  | 'game'
+  | 'results';
 
 export type MatchSetup = {
   mode: ShooterMatchMode;
@@ -42,7 +52,7 @@ const DEFAULT_SLIDERS: DuckHunterSliderConfig = {
   maxAmmo: 6,
   reloadSec: 1.5,
   duckScale: 0.6,
-  auraLeadSec: 1.5,
+  auraLeadSec: 0.2,
   fleeSec: 0.7,
   flySpeed: 0.15,
   crosshairBadges: true,
@@ -84,14 +94,17 @@ function loadSliders(): DuckHunterSliderConfig {
   }
 }
 
-/** The /duck-hunter screen machine. */
+/**
+ * The /duck-hunter screen machine. Mounted once from the /duck-hunter layout
+ * (see arcade-host.tsx) so the URL rewrite after room creation cannot remount
+ * it — everything here is in-memory state that has to outlive that rewrite.
+ */
 export function DuckHunterArcade({
   initialRoomId,
 }: {
   /** Room from the URL (/duck-hunter/[roomId]): rehydrate instead of title. */
   initialRoomId?: string;
 } = {}) {
-  const router = useRouter();
   // null = booting: a URL-bound room is being checked, and the screen is
   // picked from the match phase once the feed's snapshot lands — no title
   // flash in between.
@@ -133,7 +146,12 @@ export function DuckHunterArcade({
   // current screen keeps manual navigation (PLAY AGAIN → config) in charge.
   const phase = feed.match?.phase;
   useEffect(() => {
-    if ((phase === 'countdown' || phase === 'playing') && screen === 'lobby') {
+    if (
+      (phase === 'countdown' || phase === 'playing') &&
+      (screen === 'lobby' || screen === 'rules' || screen === 'pipeline')
+    ) {
+      // The round is on — whether this host confirmed it on the briefing or
+      // another tab pressed START while the side-screens were up.
       setScreen('game');
     } else if (phase === 'ended' && screen === 'game') {
       setScreen('results');
@@ -180,11 +198,14 @@ export function DuckHunterArcade({
   useEffect(() => {
     if (!initialRoomId) return;
     if (room.roomStatus === 'gone') {
-      router.replace('/duck-hunter');
+      // A full reload, not a router navigation: the arcade lives in the
+      // layout and would survive a soft navigation with this dead room id
+      // still frozen in — the plain entry has to boot from scratch.
+      window.location.replace('/duck-hunter');
     } else if (screen === null && (room.roomStatus === 'error' || roomGone)) {
       setScreen('title');
     }
-  }, [initialRoomId, room.roomStatus, roomGone, screen, router]);
+  }, [initialRoomId, room.roomStatus, roomGone, screen]);
 
   // The staged round, in wire shape. Sent on the lobby arm as well as the
   // start: the broadcast's opening screen announces it before a match exists.
@@ -222,6 +243,32 @@ export function DuckHunterArcade({
       }
     } finally {
       setLobbyBusy(false);
+    }
+  };
+
+  // HOW TO PLAY doubles as the pre-round briefing: START on the lobby opens
+  // it with intent 'start', and its confirm is what actually fires the
+  // server's 'start'. Opened from the RULES button it is just a read.
+  const [rulesIntent, setRulesIntent] = useState<RulesIntent>('browse');
+  const [starting, setStarting] = useState(false);
+  // Same readiness the lobby's START button uses, re-evaluated live so the
+  // briefing cannot start a round the lobby would have refused (the arm
+  // dropped, the room vanished, another tab already started it).
+  const startable = lobbyReady(feed, room, lobbyBusy) && !roomGone;
+  const openRules = (intent: RulesIntent) => {
+    setRulesIntent(intent);
+    setScreen('rules');
+  };
+  const startFromRules = async () => {
+    if (!startable || starting) return;
+    setStarting(true);
+    try {
+      // Stay on the briefing: the feed's 'countdown' moves us to the game
+      // (see the phase effect). Setting 'lobby' here could clobber that, as
+      // the WS event may land before this action resolves.
+      await room.startMatch(matchConfig);
+    } finally {
+      setStarting(false);
     }
   };
 
@@ -281,9 +328,29 @@ export function DuckHunterArcade({
           room={room}
           feed={feed}
           busy={lobbyBusy}
-          onStart={() => void room.startMatch(matchConfig)}
+          onStart={() => openRules('start')}
+          onRules={() => openRules('browse')}
+          onPipeline={() => setScreen('pipeline')}
           onBack={() => setScreen('config')}
         />
+      ) : null}
+      {screen === 'rules' ? (
+        <RulesScreen
+          intent={rulesIntent}
+          setup={setup}
+          sliders={sliders}
+          canStart={startable}
+          starting={starting}
+          onConfirm={
+            rulesIntent === 'start'
+              ? () => void startFromRules()
+              : () => setScreen('lobby')
+          }
+          onBack={() => setScreen('lobby')}
+        />
+      ) : null}
+      {screen === 'pipeline' ? (
+        <PipelineScreen onBack={() => setScreen('lobby')} />
       ) : null}
       {screen === 'game' ? (
         <GameScreen room={room} onAbort={() => void room.stopMatch()} />

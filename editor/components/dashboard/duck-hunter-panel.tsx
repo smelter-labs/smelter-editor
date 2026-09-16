@@ -53,7 +53,7 @@ const MAX_DUCK_SCALE = 3;
 // Aura lead = how long the spawn aura marks a bird before its duck appears;
 // pause = how long a duck holds before flying off; speed = fly speed as a
 // fraction of the larger screen edge per second (lower = ducks linger longer).
-const DEFAULT_AURA_LEAD_SEC = 1.5;
+const DEFAULT_AURA_LEAD_SEC = 0.2;
 const MIN_AURA_LEAD_SEC = 0;
 const MAX_AURA_LEAD_SEC = 10;
 const DEFAULT_FLEE_SEC = 0.7;
