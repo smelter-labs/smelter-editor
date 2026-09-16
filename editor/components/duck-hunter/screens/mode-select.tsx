@@ -663,18 +663,24 @@ export function ModeSelect({
         <div
           style={{
             width: 300,
+            minHeight: 0,
             display: 'flex',
             flexDirection: 'column',
             gap: 12,
           }}>
           <PanelTitle>TUNING</PanelTitle>
+          {/* Bounded by the body so it never runs under the footer buttons;
+              scrolls if the knobs outgrow the slot. */}
           <PixelPanel
             cut={10}
+            stretch
+            style={{ flex: '0 1 auto' }}
             innerStyle={{
-              padding: '16px 16px',
+              padding: '10px 16px',
               display: 'flex',
               flexDirection: 'column',
-              gap: 14,
+              gap: 8,
+              overflowY: 'auto',
             }}>
             {SLIDER_DEFS.map((def) => (
               <label key={def.key} style={{ display: 'block' }}>
@@ -683,7 +689,7 @@ export function ModeSelect({
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'baseline',
-                    marginBottom: 4,
+                    marginBottom: 2,
                   }}>
                   <span
                     style={{

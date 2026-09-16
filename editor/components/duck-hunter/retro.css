@@ -172,3 +172,48 @@
 .r5-range:focus::-webkit-slider-thumb {
   background: #ffb428;
 }
+
+/* TV banner: the active pipeline step "powers on" like a CRT — a flat
+   bright line that snaps open in hard steps, then settles. */
+@keyframes r5-crt-on {
+  0% {
+    transform: scaleY(0.04);
+    opacity: 0.7;
+    filter: brightness(2.4);
+  }
+  40% {
+    transform: scaleY(1.06);
+    opacity: 1;
+    filter: brightness(1.7);
+  }
+  70% {
+    transform: scaleY(0.98);
+    filter: brightness(1.2);
+  }
+  100% {
+    transform: scaleY(1);
+    filter: brightness(1);
+  }
+}
+
+.r5-crt-on {
+  animation: r5-crt-on 0.42s steps(7, end) both;
+  transform-origin: center;
+}
+
+/* The lit thumbnail in the chain: a chunky stepped pop that stays big. */
+@keyframes r5-thumb-pop {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.16);
+  }
+  100% {
+    transform: scale(1.1);
+  }
+}
+
+.r5-thumb-pop {
+  animation: r5-thumb-pop 0.3s steps(4, end) both;
+}

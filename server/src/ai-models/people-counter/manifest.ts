@@ -77,6 +77,22 @@ const BIRD_TILES_PARAM: ModelParamSpec = {
   default: 'off',
 };
 
+// Size gate on the YOLO boxes themselves. With conf lowered to 0.2 and imgsz
+// raised for distant birds, the detector also fires on specks a few pixels
+// wide — sensor noise, leaves, compression blocks — that are useless as duck
+// targets. Same unit as the motion/marker gates: the box's longer side as a
+// fraction of the frame (0.01 on 1080p ≈ 11 px). 0 = off.
+const BIRD_MIN_BOX_PARAM: NumberParamSpec = {
+  key: 'minBox',
+  label: 'Min bird size',
+  description:
+    'Drop detections smaller than this (longer side, fraction of the frame) — filters out specks',
+  min: 0,
+  max: 0.1,
+  step: 0.002,
+  default: 0,
+};
+
 const BIRD_AUGMENT_PARAM: ModelParamSpec = {
   type: 'select',
   key: 'augment',
@@ -271,6 +287,7 @@ const BIRD_YOLO_PARAMS: ModelParamSpec[] = [
     }
     return p;
   }),
+  BIRD_MIN_BOX_PARAM,
   ...BIRD_MOTION_PARAMS,
   ...MARKER_PARAMS,
 ];

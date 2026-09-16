@@ -24,7 +24,7 @@ import {
 } from '../retro-kit';
 import { useArcadeKeys } from '../use-arcade-input';
 
-type Node = {
+export type PipelineNode = {
   title: string;
   /** One-line tag under the title on the chain. */
   tag: string;
@@ -40,8 +40,9 @@ type Node = {
 /**
  * The tech pipeline, in signal order. Facts come from the code and the
  * workshop write-up (workshops/smelter-workshop-blog-articles.md, article 5).
+ * Shared with the TV banner (banner.tsx) so both tell the same story.
  */
-const NODES: Node[] = [
+export const PIPELINE_NODES: PipelineNode[] = [
   {
     title: 'STAGE VIDEO',
     tag: 'MP4 / HLS IN',
@@ -138,11 +139,11 @@ export function PipelineScreen({ onBack }: { onBack: () => void }) {
   const [idx, setIdx] = useState(0);
   useArcadeKeys({
     left: () => setIdx((i) => Math.max(0, i - 1)),
-    right: () => setIdx((i) => Math.min(NODES.length - 1, i + 1)),
+    right: () => setIdx((i) => Math.min(PIPELINE_NODES.length - 1, i + 1)),
     confirm: onBack,
     back: onBack,
   });
-  const node = NODES[idx];
+  const node = PIPELINE_NODES[idx];
 
   return (
     <RetroFrame
@@ -168,7 +169,7 @@ export function PipelineScreen({ onBack }: { onBack: () => void }) {
         }}>
         {/* The chain */}
         <div style={{ display: 'flex', alignItems: 'stretch', gap: 6 }}>
-          {NODES.map((n, i) => {
+          {PIPELINE_NODES.map((n, i) => {
             const selected = i === idx;
             return (
               <React.Fragment key={n.title}>
@@ -253,7 +254,7 @@ export function PipelineScreen({ onBack }: { onBack: () => void }) {
               size={22}
               color={ACCENT_LINE[node.accent]}
               glowRgb={R5.yellowRgb}>
-              {idx + 1}/{NODES.length}
+              {idx + 1}/{PIPELINE_NODES.length}
             </LedText>
             <span
               style={{

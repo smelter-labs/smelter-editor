@@ -1161,6 +1161,11 @@ def detect(
             if len(dets):
                 dets = dets[_nms(dets[:, :4], dets[:, 4], NMS_IOU)]
 
+        # Size gate: 'minBox' drops boxes whose longer side (fraction of the
+        # frame) is below the threshold — at bird conf/imgsz YOLO also fires
+        # on few-pixel specks that make useless targets. Same unit as the
+        # motion and marker gates. 0 (default) = off.
+        min_box = float(params.get("minBox", 0.0) or 0.0)
         boxes: list[dict] = [
             {
                 "x": round(max(0.0, x1 / w), 4),
@@ -1171,6 +1176,7 @@ def detect(
                 "src": "yolo",
             }
             for x1, y1, x2, y2, c in dets.tolist()
+            if max((x2 - x1) / w, (y2 - y1) / h) >= min_box
         ]
         if state is not None and str(params.get("motion", "off")) == "on":
             _fuse_motion_boxes(state, rgb, params, boxes)

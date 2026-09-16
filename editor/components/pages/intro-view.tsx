@@ -47,6 +47,7 @@ import {
   Gamepad2,
   Volleyball,
   Goal,
+  Tv,
 } from 'lucide-react';
 import RecordingsList from '@/components/recordings-list';
 import { toast } from 'sonner';
@@ -911,7 +912,7 @@ export default function IntroView() {
               </label>
               {ACTIVE_GAMES.map((game) => {
                 const Icon = GAME_META[game].icon;
-                return (
+                const button = (
                   <Button
                     key={game}
                     size='lg'
@@ -921,6 +922,26 @@ export default function IntroView() {
                     <Icon className='w-4 h-4 mr-2' />
                     {GAME_META[game].label}
                   </Button>
+                );
+                if (game !== 'duck-hunter') return button;
+                // Duck Hunter shares its row with the TV placard (rules,
+                // pipeline, QR codes) that stands next to the game screen at
+                // events — opened in its own tab so it can go to the TV.
+                return (
+                  <div key={game} className='flex gap-2'>
+                    <div className='flex-1 min-w-0'>{button}</div>
+                    <Button
+                      size='lg'
+                      variant='outline'
+                      className='flex-1 min-w-0 cursor-pointer'
+                      title='Duck Hunter TV banner: rules, pipeline, QR codes'
+                      onClick={() =>
+                        window.open('/duck-hunter-banner', '_blank')
+                      }>
+                      <Tv className='w-4 h-4 mr-2' />
+                      TV Banner
+                    </Button>
+                  </div>
                 );
               })}
             </div>
