@@ -1055,33 +1055,151 @@ describe('ducks', () => {
     h.controller.dispose();
   });
 
-  it('a fresh start re-hatches ids that flew off during the previous round', async () => {
+  /** Live (unshot) ducks in the latest overlay. */
+  const liveDucks = (h: ReturnType<typeof harness>) =>
+    h.lastOverlay()!.ducks.filter((d) => d.diedAt == null);
+
+  /**
+   * Tick until the flock is (`present`) / is not (`!present`) in the sky.
+   * Returns the ms waited, or -1 if it never happened within `maxMs`.
+   */
+  async function untilLiveDucks(
+    h: ReturnType<typeof harness>,
+    present: boolean,
+    maxMs: number,
+  ): Promise<number> {
+    let waited = 0;
+    while (waited < maxMs) {
+      await vi.advanceTimersByTimeAsync(33);
+      waited += 33;
+      if (liveDucks(h).length > 0 === present) return waited;
+    }
+    return -1;
+  }
+
+  /** A stable stage: the detector reports the same bird id for the whole
+   * session (the stage is not reloaded between rounds); its duck clears the
+   * frame ~100 ms after appearing. */
+  const stableBird = (): PersonBoxes => ({
+    ...birdTarget(1),
+    duckPauseMs: 0,
+    duckFlySpeed: 10,
+  });
+
+  it('respawn on: a bird whose duck flew off hatches again after the cooldown', async () => {
     const h = harness();
-    // A stable stage: the detector keeps reporting the same bird id for the
-    // whole session (the stage is not reloaded between rounds).
-    h.sceneState.peopleBoxes['stage'] = {
-      ...birdTarget(1),
-      duckPauseMs: 0,
-      duckFlySpeed: 10, // clears the frame in ~100 ms
-    };
+    h.sceneState.peopleBoxes['stage'] = stableBird();
     h.controller.controlMatch({ action: 'start', mode: 'time' });
-    await vi.advanceTimersByTimeAsync(100);
-    expect(h.lastOverlay()!.ducks.length).toBe(1);
-    // Aura lead, then the duck flies straight off — and stays suppressed for
-    // as long as the id is still being detected.
-    await vi.advanceTimersByTimeAsync(DEFAULT_DUCK_AURA_LEAD_MS + 1000);
-    expect(h.lastOverlay()!.ducks).toEqual([]);
-    await vi.advanceTimersByTimeAsync(5000);
-    expect(h.lastOverlay()!.ducks).toEqual([]);
+    expect(await untilLiveDucks(h, true, 200)).toBeGreaterThan(0);
+    expect(
+      await untilLiveDucks(h, false, DEFAULT_DUCK_AURA_LEAD_MS + 2000),
+    ).toBeGreaterThan(0);
+    // Still detected the whole time — the same id re-hatches after RESPAWN_MS.
+    const back = await untilLiveDucks(h, true, 5000);
+    expect(back).toBeGreaterThanOrEqual(2800);
+    expect(back).toBeLessThanOrEqual(3300);
+    h.controller.dispose();
+  });
+
+  it('respawn off: a bird hatches once per round, and again on the next start', async () => {
+    const h = harness();
+    h.controller.setRoomConfig({ duckRespawn: false });
+    h.sceneState.peopleBoxes['stage'] = stableBird();
+    h.controller.controlMatch({ action: 'start', mode: 'time' });
+    expect(await untilLiveDucks(h, true, 200)).toBeGreaterThan(0);
+    expect(
+      await untilLiveDucks(h, false, DEFAULT_DUCK_AURA_LEAD_MS + 2000),
+    ).toBeGreaterThan(0);
+    expect(await untilLiveDucks(h, true, 8000)).toBe(-1);
+    // Nor when the bird drops out of detection and comes back as the same id.
+    h.sceneState.peopleBoxes['stage'] = { ...stableBird(), boxes: [] };
+    await vi.advanceTimersByTimeAsync(500);
+    h.sceneState.peopleBoxes['stage'] = stableBird();
+    expect(await untilLiveDucks(h, true, 1000)).toBe(-1);
 
     h.controller.controlMatch({ action: 'stop' });
     await vi.advanceTimersByTimeAsync(6000); // ended linger elapses
-    expect(h.lastOverlay()!.ducks).toEqual([]);
+    expect(liveDucks(h)).toEqual([]);
 
     // Next round: the same id may hatch again.
     h.controller.controlMatch({ action: 'start', mode: 'time' });
-    await vi.advanceTimersByTimeAsync(100);
-    expect(h.lastOverlay()!.ducks.length).toBe(1);
+    expect(await untilLiveDucks(h, true, 200)).toBeGreaterThan(0);
+    h.controller.dispose();
+  });
+
+  it('a shot bird re-hatches after the cooldown only with respawn on', async () => {
+    for (const duckRespawn of [true, false]) {
+      const h = harness();
+      h.controller.setRoomConfig({ duckRespawn });
+      h.sceneState.peopleBoxes['stage'] = {
+        boxes: [{ id: 1, x: 0.45, y: 0.45, w: 0.1, h: 0.1, color: 0 }],
+        frameW: 1920,
+        frameH: 1080,
+        ghost: true,
+        sprite: 'bird',
+      };
+      h.joinPlayer('c1', 'Bob');
+      await vi.advanceTimersByTimeAsync(DEFAULT_DUCK_AURA_LEAD_MS + 50);
+      h.controller.fire('c1');
+      await vi.advanceTimersByTimeAsync(33);
+      expect(liveDucks(h)).toEqual([]);
+      const back = await untilLiveDucks(h, true, 6000);
+      if (duckRespawn) {
+        expect(back).toBeGreaterThanOrEqual(2800);
+        expect(back).toBeLessThanOrEqual(3300);
+      } else {
+        expect(back).toBe(-1);
+      }
+      h.controller.dispose();
+    }
+  });
+
+  it('a new tracker generation (trackEpoch) forgets which ids already hatched', async () => {
+    const h = harness();
+    h.controller.setRoomConfig({ duckRespawn: false });
+    h.sceneState.peopleBoxes['stage'] = { ...stableBird(), trackEpoch: 1 };
+    h.controller.controlMatch({ action: 'start', mode: 'time' });
+    expect(await untilLiveDucks(h, true, 200)).toBeGreaterThan(0);
+    expect(
+      await untilLiveDucks(h, false, DEFAULT_DUCK_AURA_LEAD_MS + 2000),
+    ).toBeGreaterThan(0);
+    expect(await untilLiveDucks(h, true, 1000)).toBe(-1);
+    // The tracker was re-created: id 1 is now a different bird.
+    h.sceneState.peopleBoxes['stage'] = { ...stableBird(), trackEpoch: 2 };
+    expect(await untilLiveDucks(h, true, 200)).toBeGreaterThan(0);
+    h.controller.dispose();
+  });
+
+  it('duckRespawn round-trips through the room config', () => {
+    const h = harness();
+    expect(h.controller.getRoomConfig().duckRespawn).toBe(true);
+    h.controller.setRoomConfig({});
+    expect(h.controller.getRoomConfig().duckRespawn).toBe(true);
+    h.controller.setRoomConfig({ duckRespawn: false });
+    expect(h.controller.getRoomConfig().duckRespawn).toBe(false);
+    h.controller.dispose();
+  });
+
+  it('a duck still flying can be shot while its bird is out of detection', async () => {
+    const h = harness();
+    h.sceneState.peopleBoxes['stage'] = {
+      boxes: [{ id: 1, x: 0.45, y: 0.45, w: 0.1, h: 0.1, color: 0 }],
+      frameW: 1920,
+      frameH: 1080,
+      ghost: true,
+      sprite: 'bird',
+    };
+    h.joinPlayer('c1', 'Bob');
+    await vi.advanceTimersByTimeAsync(DEFAULT_DUCK_AURA_LEAD_MS + 50);
+    // The detector loses the bird; the duck keeps flying on its own.
+    h.sceneState.peopleBoxes['stage'] = {
+      ...h.sceneState.peopleBoxes['stage'],
+      boxes: [],
+    };
+    await vi.advanceTimersByTimeAsync(33);
+    expect(liveDucks(h)).toHaveLength(1);
+    h.controller.fire('c1');
+    expect(h.lastOverlay()!.ducks[0].diedAt).toBeDefined();
     h.controller.dispose();
   });
 

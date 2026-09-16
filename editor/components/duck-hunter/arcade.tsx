@@ -56,6 +56,7 @@ const DEFAULT_SLIDERS: DuckHunterSliderConfig = {
   fleeSec: 0.7,
   flySpeed: 0.15,
   crosshairBadges: true,
+  duckRespawn: true,
 };
 
 /** Same localStorage shape as the dashboard DuckHunterPanel, so tuning done
@@ -88,6 +89,10 @@ function loadSliders(): DuckHunterSliderConfig {
         typeof p.crosshairBadges === 'boolean'
           ? p.crosshairBadges
           : DEFAULT_SLIDERS.crosshairBadges,
+      duckRespawn:
+        typeof p.duckRespawn === 'boolean'
+          ? p.duckRespawn
+          : DEFAULT_SLIDERS.duckRespawn,
     };
   } catch {
     return DEFAULT_SLIDERS;

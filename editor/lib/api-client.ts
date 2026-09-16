@@ -212,6 +212,8 @@ interface SmelterApiClient {
       duckFlySpeed?: number;
       /** Name badges above crosshairs (off = thicker reticle). */
       crosshairBadges?: boolean;
+      /** One bird → many ducks (true) or one duck per bird per round. */
+      duckRespawn?: boolean;
       /** Join link for the broadcast opening screen's QR (write-only). */
       joinUrl?: string;
       joinLabel?: string;
