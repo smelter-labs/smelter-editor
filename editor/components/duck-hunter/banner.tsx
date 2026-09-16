@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import QRCode from 'react-qr-code';
 import {
   AmmoPips,
@@ -11,6 +11,11 @@ import {
   Sprite,
 } from './illustrations';
 import { PIPELINE_NODES } from './screens/pipeline';
+import {
+  CHARACTERS,
+  characterVideoUrl,
+  type ArcadeCharacter,
+} from './characters';
 import {
   ACCENT_LINE,
   ACCENT_RGB,
@@ -36,8 +41,9 @@ import './retro.css';
  * signal chain) in the middle, and two QR codes (smelter.dev + the
  * workshop) on the right. No interaction beyond click / F = fullscreen;
  * the chain steps through its nodes on a timer — thumbnails in signal
- * order, the lit one popped out and explained in a CRT-style panel — so
- * the placard is never a dead frame on the TV.
+ * order, the lit one popped out and explained in a CRT-style panel — and
+ * after every full lap the screen cuts to an attract-mode title card for a
+ * few seconds, so the placard is never a dead frame on the TV.
  * ------------------------------------------------------------------ */
 
 const SMELTER_URL = 'https://smelter.dev';
@@ -45,17 +51,48 @@ const WORKSHOP_URL = 'https://workshop.smelter.dev';
 
 /** Milliseconds each pipeline step stays lit. */
 const STEP_DWELL_MS = 30_000;
+/** The title card's CRT power-off, played before it unmounts. */
+const TITLE_OFF_MS = 450;
+/** If a character clip never ends (failed load, stalled), move on anyway. */
+const CLIP_FALLBACK_MS = 8_000;
 
 export function DuckHunterBanner() {
-  // Attract loop over the chain.
+  // Attract loop: the chain steps through its nodes; after the last one the
+  // whole screen cuts to the title card, which plays every character clip
+  // in full, then the lap restarts.
   const [lit, setLit] = useState(0);
+  const [phase, setPhase] = useState<'steps' | 'title'>('steps');
+  const [titleOff, setTitleOff] = useState(false);
   useEffect(() => {
-    const t = window.setInterval(
-      () => setLit((i) => (i + 1) % PIPELINE_NODES.length),
-      STEP_DWELL_MS,
-    );
-    return () => window.clearInterval(t);
-  }, []);
+    if (phase !== 'steps') return;
+    const t = window.setTimeout(() => {
+      if (lit === PIPELINE_NODES.length - 1) setPhase('title');
+      else setLit(lit + 1);
+    }, STEP_DWELL_MS);
+    return () => window.clearTimeout(t);
+  }, [phase, lit]);
+
+  // Power the title card off, then hand back to step 1. Guarded: the last
+  // clip's `ended` and a right-click can both ask for it.
+  const leavingRef = useRef(false);
+  const finishTitle = () => {
+    if (leavingRef.current) return;
+    leavingRef.current = true;
+    setTitleOff(true);
+    window.setTimeout(() => {
+      leavingRef.current = false;
+      setTitleOff(false);
+      setLit(0);
+      setPhase('steps');
+    }, TITLE_OFF_MS);
+  };
+
+  // Right-click = next step (the host skipping ahead for the room).
+  const advance = () => {
+    if (phase === 'title') finishTitle();
+    else if (lit === PIPELINE_NODES.length - 1) setPhase('title');
+    else setLit(lit + 1);
+  };
 
   // TV mode: a click or F toggles fullscreen (the page has nothing else to
   // click), so the placard can be parked on a second display with the
@@ -79,6 +116,10 @@ export function DuckHunterBanner() {
     <ArcadeStage>
       <div
         onClick={toggleFullscreen}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          advance();
+        }}
         style={{ position: 'absolute', inset: 0, cursor: 'pointer' }}>
         <PixelPanel
           accent='blue'
@@ -154,7 +195,7 @@ export function DuckHunterBanner() {
               padding: '0 28px 12px',
             }}>
             <RetroFooter
-              tip='scan a code · click or F for fullscreen'
+              tip='scan a code · click or F for fullscreen · right-click next step'
               right={
                 <span
                   style={{
@@ -172,8 +213,230 @@ export function DuckHunterBanner() {
 
           <div className='r5-scanlines' />
         </PixelPanel>
+        {phase === 'title' ? (
+          <TitleCard clips={CHARACTERS} off={titleOff} onDone={finishTitle} />
+        ) : null}
       </div>
     </ArcadeStage>
+  );
+}
+
+/* ----------------------------- title card ----------------------------- */
+
+/**
+ * Ducks on the title card, flown the way the game flies them: hatch, hold a
+ * beat, then a straight 45° flee (up-left or up-right) at the game's speed,
+ * wings on the three NES flap frames. `x` is the hatch point (stage px), so
+ * left-goers start right of center; `color` picks one of the three ducks.
+ */
+const TITLE_DUCKS: Array<{
+  x: number;
+  dir: 'ul' | 'ur';
+  color: 0 | 1 | 2;
+  delaySec: number;
+  /** Full cycle: hold + flight + a quiet gap before the next hatch. */
+  cycleSec: number;
+  size: number;
+}> = [
+  { x: 140, dir: 'ur', color: 0, delaySec: 0.8, cycleSec: 11, size: 84 },
+  { x: 1060, dir: 'ul', color: 1, delaySec: 3.6, cycleSec: 12.5, size: 92 },
+  { x: 520, dir: 'ur', color: 2, delaySec: 6.1, cycleSec: 11.5, size: 72 },
+  { x: 760, dir: 'ul', color: 0, delaySec: 8.9, cycleSec: 12, size: 80 },
+  { x: 340, dir: 'ur', color: 1, delaySec: 11.4, cycleSec: 13, size: 100 },
+];
+
+/** Game flap cadence: ~112 ms a frame, three frames (PacmanBirdsInput). */
+const FLAP_FRAME_MS = 112;
+
+/** One duck: the three flap frames stacked, shown one at a time. */
+function FlapDuck({
+  color,
+  size,
+  mirror,
+  phaseMs,
+}: {
+  color: 0 | 1 | 2;
+  size: number;
+  mirror: boolean;
+  phaseMs: number;
+}) {
+  return (
+    <div
+      style={{
+        position: 'relative',
+        width: size,
+        height: size,
+        transform: mirror ? 'scaleX(-1)' : undefined,
+      }}>
+      {[0, 1, 2].map((frame) => (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          key={frame}
+          src={`/duck-hunter/duck-${color}-${frame}.png`}
+          alt=''
+          className='r5-flap-frame'
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: size,
+            height: size,
+            imageRendering: 'pixelated',
+            animationDelay: `${-(frame * FLAP_FRAME_MS + phaseMs)}ms`,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Attract-mode interlude: the cabinet title over the character clips, each
+ * played in full, one after another (the card ends with the last one).
+ * Powers on like a CRT, the headline slams in, the wings slide up to it,
+ * ducks hatch at the bottom and flee at 45°; `off` swaps in the power-off
+ * so the card collapses to a line before the placard returns.
+ */
+function TitleCard({
+  clips,
+  off,
+  onDone,
+}: {
+  clips: ArcadeCharacter[];
+  off: boolean;
+  onDone: () => void;
+}) {
+  const [clipIdx, setClipIdx] = useState(0);
+  const clip = clips[clipIdx];
+  const next = () => {
+    if (clipIdx >= clips.length - 1) onDone();
+    else setClipIdx(clipIdx + 1);
+  };
+  // A clip that never fires `ended` must not park the card forever.
+  const nextRef = useRef(next);
+  nextRef.current = next;
+  useEffect(() => {
+    const t = window.setTimeout(() => nextRef.current(), CLIP_FALLBACK_MS);
+    return () => window.clearTimeout(t);
+  }, [clipIdx]);
+
+  return (
+    <div
+      className={off ? 'r5-crt-off' : 'r5-crt-on'}
+      style={{
+        position: 'absolute',
+        inset: 0,
+        zIndex: 40,
+        background: R5.bgDeep,
+        overflow: 'hidden',
+      }}>
+      <video
+        key={clip.id}
+        src={characterVideoUrl(clip)}
+        autoPlay
+        muted
+        playsInline
+        onEnded={next}
+        onError={next}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          objectFit: 'cover',
+          opacity: 0.32,
+        }}
+      />
+      <BlueprintBackdrop />
+
+      {TITLE_DUCKS.map((d, i) => (
+        <div
+          key={i}
+          className={d.dir === 'ul' ? 'r5-duck-ul' : 'r5-duck-ur'}
+          style={{
+            position: 'absolute',
+            left: d.x,
+            bottom: -d.size - 10,
+            animationDuration: `${d.cycleSec}s`,
+            animationDelay: `${d.delaySec}s`,
+          }}>
+          <FlapDuck
+            color={d.color}
+            size={d.size}
+            // The frames face up-right; mirror them for the left-goers.
+            mirror={d.dir === 'ul'}
+            phaseMs={i * 70}
+          />
+        </div>
+      ))}
+
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 26,
+        }}>
+        <div
+          className='r5-pop-in'
+          style={{
+            animationDelay: '1.1s',
+            fontFamily: pixelFont,
+            fontSize: 10,
+            letterSpacing: 5,
+            color: R5.inkMuted,
+          }}>
+          EST. 1984 · SMELTER ARCADE
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 28 }}>
+          <div className='r5-wing-in' style={{ animationDelay: '0.85s' }}>
+            <PixelWing size={96} />
+          </div>
+          <div className='r5-slam' style={{ animationDelay: '0.4s' }}>
+            <ArcadeText size={78}>DUCK HUNTER</ArcadeText>
+          </div>
+          <div
+            className='r5-wing-in'
+            style={{ animationDelay: '0.85s', animationName: 'r5-wing-in-r' }}>
+            <PixelWing size={96} flip />
+          </div>
+        </div>
+        <div className='r5-pop-in' style={{ animationDelay: '1.3s' }}>
+          <StarLine size={15}>PHONES ARE GUNS · TV IS THE MARSH</StarLine>
+        </div>
+        <div
+          className='r5-pop-in'
+          style={{ animationDelay: '1.7s', marginTop: 30 }}>
+          <span
+            className='r5-blink'
+            style={{
+              display: 'inline-block',
+              fontFamily: pixelFont,
+              fontSize: 22,
+              letterSpacing: 3,
+              color: R5.yellow,
+              textShadow: `0 0 12px rgba(${R5.yellowRgb},0.7)`,
+            }}>
+            SCAN THE QR · PLAY ON YOUR PHONE
+          </span>
+        </div>
+        <div
+          className='r5-pop-in'
+          style={{
+            animationDelay: '2s',
+            fontFamily: monoFont,
+            fontSize: 13,
+            letterSpacing: 3,
+            color: R5.cyan,
+            textTransform: 'uppercase',
+          }}>
+          smelter.dev · workshop.smelter.dev
+        </div>
+      </div>
+      <div className='r5-scanlines' />
+    </div>
   );
 }
 

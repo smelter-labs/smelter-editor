@@ -217,3 +217,154 @@
 .r5-thumb-pop {
   animation: r5-thumb-pop 0.3s steps(4, end) both;
 }
+
+/* TV banner title card: CRT power-off (the mirror of r5-crt-on) and the
+   attract-mode pieces — headline slam, wings sliding in, hard pop-ins and
+   ducks hatching below the screen and fleeing at 45° with a stepped flap. */
+@keyframes r5-crt-off {
+  0% {
+    transform: scaleY(1);
+    filter: brightness(1);
+  }
+  55% {
+    transform: scaleY(0.04);
+    filter: brightness(2.6);
+    opacity: 1;
+  }
+  100% {
+    transform: scaleY(0.04) scaleX(0);
+    opacity: 0;
+  }
+}
+
+.r5-crt-off {
+  animation: r5-crt-off 0.45s steps(6, end) both;
+  transform-origin: center;
+}
+
+@keyframes r5-slam {
+  0% {
+    transform: scale(3);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(0.92);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.r5-slam {
+  animation: r5-slam 0.5s steps(6, end) both;
+}
+
+@keyframes r5-wing-in {
+  from {
+    transform: translateX(-140px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes r5-wing-in-r {
+  from {
+    transform: translateX(140px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.r5-wing-in {
+  animation: r5-wing-in 0.35s steps(5, end) both;
+}
+
+@keyframes r5-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.r5-pop-in {
+  animation: r5-pop-in 0.25s steps(3, end) both;
+}
+
+/* Title-card ducks, timed like the game: hatch below the bottom edge, hold
+   a beat, flee in a straight 45° line up-left or up-right at a steady pace,
+   then stay hidden off-screen until the cycle hatches them again. The
+   distance (1200px) over the flight window is ~190px/s — the game's default
+   0.15 of the frame per second. */
+@keyframes r5-duck-ul {
+  0%,
+  6% {
+    transform: translate(0, 0);
+    opacity: 1;
+  }
+  64% {
+    transform: translate(-1200px, -1200px);
+    opacity: 1;
+  }
+  64.1%,
+  100% {
+    transform: translate(-1200px, -1200px);
+    opacity: 0;
+  }
+}
+
+@keyframes r5-duck-ur {
+  0%,
+  6% {
+    transform: translate(0, 0);
+    opacity: 1;
+  }
+  64% {
+    transform: translate(1200px, -1200px);
+    opacity: 1;
+  }
+  64.1%,
+  100% {
+    transform: translate(1200px, -1200px);
+    opacity: 0;
+  }
+}
+
+.r5-duck-ul {
+  /* Off-screen until its first hatch (the delay), not parked on the edge. */
+  opacity: 0;
+  animation: r5-duck-ul 11s linear infinite;
+}
+
+.r5-duck-ur {
+  opacity: 0;
+  animation: r5-duck-ur 11s linear infinite;
+}
+
+/* Three stacked flap frames, each visible for a third of the cycle; the
+   frame index is set by a negative animation-delay. */
+@keyframes r5-flap-frame {
+  0%,
+  33.3% {
+    opacity: 1;
+  }
+  33.4%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.r5-flap-frame {
+  animation: r5-flap-frame 336ms steps(1, end) infinite;
+}
