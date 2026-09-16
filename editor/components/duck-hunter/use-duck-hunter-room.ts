@@ -85,6 +85,9 @@ export type DuckHunterSliderConfig = {
   flySpeed: number;
   /** Name badges above crosshairs on the broadcast (off = thicker reticle). */
   crosshairBadges: boolean;
+  /** One bird hatches ducks again after each one is gone (true) or exactly
+   * one duck per bird per round (false). */
+  duckRespawn: boolean;
 };
 
 // Refresh recovery: the live room's identity, stashed per-tab so an
@@ -302,6 +305,7 @@ export function useDuckHunterRoom(initialRoomId?: string): DuckHunterRoom {
           duckPauseMs: Math.round(cfg.fleeSec * 1000),
           duckFlySpeed: cfg.flySpeed,
           crosshairBadges: cfg.crosshairBadges,
+          duckRespawn: cfg.duckRespawn,
         });
       } catch (err) {
         // A deleted/GC'd room 404s here — surface it instead of an unhandled

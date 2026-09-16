@@ -174,7 +174,15 @@ type Player = {
 export type AmmoConfig = { maxAmmo?: number; reloadMs?: number };
 
 /** Room-wide rules pushed from the settings panels (ammo + HUD chrome). */
-export type RoomConfig = AmmoConfig & { crosshairBadges?: boolean };
+export type RoomConfig = AmmoConfig & {
+  crosshairBadges?: boolean;
+  /**
+   * Whether one tracked bird may hatch ducks repeatedly (a new duck
+   * RESPAWN_MS after its previous one flew off or was shot) or exactly once
+   * per round. Default true.
+   */
+  duckRespawn?: boolean;
+};
 
 /** Command from the arcade page's match endpoint. */
 export type MatchCommand = {
@@ -296,9 +304,18 @@ export class DuckHunterController {
    * hit-test shoots at them, so a shot always lands on the sprite.
    */
   private readonly ducks = new Map<number, DuckEntity>();
-  /** Track ids whose duck already flew off; suppresses respawn until the id
-   * leaves detection and re-enters as a fresh sighting. */
-  private readonly departed = new Set<number>();
+  /** Track ids whose duck flew off → when the same bird may hatch again
+   * (respawn mode); mirrors deadGhosts for shot ducks. */
+  private readonly departed = new Map<number, number>();
+  /** Track ids that hatched a duck this round — in once-per-bird mode they
+   * never hatch again until the next round. */
+  private readonly hatched = new Set<number>();
+  /**
+   * `${inputId}:${trackEpoch}` of the flock's current target. Box ids only
+   * mean anything within one tracker generation on one input; when either
+   * changes, every per-id record above is about birds that no longer exist.
+   */
+  private flockKey: string | null = null;
   private bursts: ShooterBurst[] = [];
   private nextBurstId = 1;
   /** Floating combo announcements; ids share nextBurstId (never keyed together). */
@@ -323,6 +340,8 @@ export class DuckHunterController {
   private roomReloadMs = DEFAULT_RELOAD_MS;
   /** Name badges above crosshairs; off = the reticle draws thicker instead. */
   private crosshairBadges = true;
+  /** One bird → many ducks (true) or one duck per bird per round (false). */
+  private duckRespawn = true;
   /** Arcade round state; null = free-play (classic dashboard behavior). */
   private match: MatchState | null = null;
   /**
@@ -628,6 +647,9 @@ export class DuckHunterController {
     if (typeof cfg.crosshairBadges === 'boolean') {
       this.crosshairBadges = cfg.crosshairBadges;
     }
+    if (typeof cfg.duckRespawn === 'boolean') {
+      this.duckRespawn = cfg.duckRespawn;
+    }
     const { maxAmmo, reloadMs } = normalizeAmmoConfig({
       maxAmmo: cfg.maxAmmo ?? this.roomMaxAmmo,
       reloadMs: cfg.reloadMs ?? this.roomReloadMs,
@@ -649,11 +671,13 @@ export class DuckHunterController {
     maxAmmo: number;
     reloadMs: number;
     crosshairBadges: boolean;
+    duckRespawn: boolean;
   } {
     return {
       maxAmmo: this.roomMaxAmmo,
       reloadMs: this.roomReloadMs,
       crosshairBadges: this.crosshairBadges,
+      duckRespawn: this.duckRespawn,
     };
   }
 
@@ -747,12 +771,14 @@ export class DuckHunterController {
         this.lobbyArmed = false;
         // Fresh flock for a fresh round: every bird currently tracked may
         // hatch again. The stage keeps playing across matches (no reload on
-        // start), so ids that flew off (departed) or were shot (deadGhosts)
-        // stay suppressed for as long as the detector keeps seeing them —
-        // on a stable stage a second match would otherwise start duckless.
+        // start), so ids that already hatched (hatched), flew off (departed)
+        // or were shot (deadGhosts) stay suppressed for as long as the
+        // detector keeps seeing them — on a stable stage a second match would
+        // otherwise start duckless.
         this.ducks.clear();
         this.departed.clear();
         this.deadGhosts.clear();
+        this.hatched.clear();
         this.ensureRunning();
         break;
       }
@@ -1131,9 +1157,17 @@ export class DuckHunterController {
     const pb = targetId
       ? this.store.getState().peopleBoxes[targetId]
       : undefined;
-    if (!pb || pb.boxes.length === 0) {
-      // No ducks in the sky — a miss, but not one the dog laughs at (see
-      // registerMiss): shooting at nothing shouldn't summon anything.
+    // Nothing in the sky — a miss, but not one the dog laughs at (see
+    // registerMiss): shooting at nothing shouldn't summon anything. Ducks fly
+    // detached from their detection boxes (and a bird can drop out of
+    // detection mid-flight), so in bird mode "the sky" is the live flock, not
+    // the box list.
+    const skyEmpty =
+      !pb ||
+      (pb.sprite === 'bird'
+        ? ![...this.ducks.values()].some((d) => d.diedAt == null)
+        : pb.boxes.length === 0);
+    if (skyEmpty) {
       this.sendMiss(clientId);
       return;
     }
@@ -1290,6 +1324,8 @@ export class DuckHunterController {
     this.deadGhosts.clear();
     this.ducks.clear();
     this.departed.clear();
+    this.hatched.clear();
+    this.flockKey = null;
     this.bursts = [];
     this.comboPops = [];
     this.dogReveals = [];
@@ -1518,9 +1554,10 @@ export class DuckHunterController {
    * duck's free-flight. Runs every tick (even with no players) so ducks keep
    * flying on the broadcast. New detection ids spawn a duck frozen at the box
    * center (invisible for the first `auraLeadMs` while the aura telegraphs
-   * it); a duck that flies off-screen is retired and its id suppressed until
-   * it leaves detection and re-enters; a shot duck plays its death beat then is
-   * dropped. This is the sole owner of duck state — the renderer only draws it.
+   * it); a duck that flies off-screen is retired and its bird may hatch again
+   * after RESPAWN_MS (respawn mode) or not before the next round (once mode);
+   * a shot duck plays its death beat then is dropped. This is the sole owner
+   * of duck state — the renderer only draws it.
    *
    * Returns whether a hit-stop is in effect, so reconcileDogs freezes on the
    * same decision instead of computing its own and drifting from it.
@@ -1528,21 +1565,36 @@ export class DuckHunterController {
   private reconcileDucks(now: number, dt: number): boolean {
     const target = this.getTargetPb();
     if (!target || target.pb.sprite !== 'bird') {
+      // deadGhosts stays: the haunter target uses it for its own respawns.
       this.ducks.clear();
       this.departed.clear();
+      this.hatched.clear();
+      this.flockKey = null;
       return false;
     }
     const { pb } = target;
+    // Box ids restart from 0 whenever the input's tracker is re-created (and
+    // mean nothing across inputs), so every per-id record is about a flock
+    // that no longer exists once the target or its tracker generation moves.
+    const flockKey = `${target.id}:${pb.trackEpoch ?? 0}`;
+    if (flockKey !== this.flockKey) {
+      this.flockKey = flockKey;
+      this.ducks.clear();
+      this.departed.clear();
+      this.deadGhosts.clear();
+      this.hatched.clear();
+    }
     const v = duckViewport(this.store.getState().resolution, pb);
     const params = flightParams(pb);
     const mul = pb.duckScale ?? 1;
     const geomOk = validViewport(v);
 
-    // Spawn a duck the first time each detection id appears.
-    const detected = new Set<number>();
+    // Spawn a duck the first time each detection id appears — and, in respawn
+    // mode, again RESPAWN_MS after its previous duck flew off (departed) or
+    // was shot (deadGhosts). In once-per-bird mode a hatched id is done for
+    // the round.
     if (geomOk) {
       for (const b of pb.boxes.slice(0, MAX_DUCKS)) {
-        detected.add(b.id);
         const telegraphing = this.ducks.get(b.id);
         if (telegraphing) {
           // While the aura is still telegraphing, keep the hatch point glued
@@ -1559,6 +1611,7 @@ export class DuckHunterController {
           continue;
         }
         if (
+          (!this.duckRespawn && this.hatched.has(b.id)) ||
           this.departed.has(b.id) ||
           this.deadGhosts.has(b.id) ||
           // Cap the LIVE flock, not just this frame's detections — tracker id
@@ -1575,11 +1628,8 @@ export class DuckHunterController {
           cy0: b.y + b.h / 2,
           sideFrac: duckSidePx(b.w, b.h, mul, v) / v.width,
         });
+        this.hatched.add(b.id);
       }
-    }
-    // An id that left detection can spawn a fresh duck if it comes back later.
-    for (const id of [...this.departed]) {
-      if (!detected.has(id)) this.departed.delete(id);
     }
 
     // Hit-stop: while any shot duck is still hanging — or a shot dog is still
@@ -1611,10 +1661,11 @@ export class DuckHunterController {
       const pos = duckContentPos(d, now, params, v);
       const { px, py } = contentToPx(pos.x, pos.y, v);
       const sidePx = d.sideFrac * v.width;
-      // Fully off the top or right edge — the duck has flown away.
+      // Fully off the top or right edge — the duck has flown away. The bird
+      // may hatch again after the same cooldown a shot duck gets.
       if (px - sidePx / 2 > v.width || py + sidePx / 2 < 0) {
         this.ducks.delete(id);
-        if (detected.has(id)) this.departed.add(id);
+        this.departed.set(id, now + RESPAWN_MS);
       }
     }
     return hitStop;
@@ -1784,6 +1835,9 @@ export class DuckHunterController {
     }
     for (const [id, respawnAt] of this.deadGhosts) {
       if (respawnAt <= now) this.deadGhosts.delete(id);
+    }
+    for (const [id, readyAt] of this.departed) {
+      if (readyAt <= now) this.departed.delete(id);
     }
     this.bursts = this.bursts.filter((b) => now - b.at <= BURST_MS);
     this.comboPops = this.comboPops.filter((c) => now - c.at <= COMBO_POP_MS);

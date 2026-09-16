@@ -320,7 +320,12 @@ export class RoomState {
    * Cross-frame tracker for bird boxes (stable id + color), keyed
    * `modelId:inputId` — several bird backends can run on the same input.
    */
-  private readonly birdTrackers = new Map<string, PeopleTracker>();
+  private readonly birdTrackers = new Map<
+    string,
+    { tracker: PeopleTracker; epoch: number }
+  >();
+  /** Monotonic generation counter for bird trackers (see PersonBoxes.trackEpoch). */
+  private birdTrackerEpoch = 0;
 
   /** Per-input cross-frame tracker for car-ads vehicles (stable id + quad). */
   private readonly carAdTrackers = new Map<string, CarTracker>();
@@ -986,13 +991,28 @@ export class RoomState {
           // reused tracker would keep the wrong setting for the rest of the run.
           const trackerKey = `${marker ? 'marker' : 'yolo'}:${event.inputId}`;
           if (show) {
-            let tracker = this.birdTrackers.get(trackerKey);
-            if (!tracker) {
+            let entry = this.birdTrackers.get(trackerKey);
+            if (!entry) {
               // Birds get a tighter 2-response miss grace than people so a
-              // caught/lost bird stops rendering quickly.
-              tracker = new PeopleTracker(2, !marker);
-              this.birdTrackers.set(trackerKey, tracker);
+              // caught/lost bird stops rendering quickly — but keep a lost
+              // bird's identity for a while and match it as a fast mover, so
+              // one bird crossing the frame stays one id (one duck) instead
+              // of minting a fresh id on every response. Markers are exact
+              // and slow, so they keep the plain matcher.
+              entry = {
+                tracker: new PeopleTracker({
+                  maxMisses: 2,
+                  withLead: !marker,
+                  fastMovers: !marker,
+                  identityMs: marker ? 0 : 2500,
+                  mergeOverlapping: !marker,
+                  maxVelDtMs: marker ? undefined : 2500,
+                }),
+                epoch: ++this.birdTrackerEpoch,
+              };
+              this.birdTrackers.set(trackerKey, entry);
             }
+            const { tracker, epoch } = entry;
             const now = Date.now();
             let tracked = tracker.update(data.boxes!, now);
             if (marker) {
@@ -1015,6 +1035,7 @@ export class RoomState {
               frameH: data.frameH!,
               ghost: sprite,
               sprite: 'bird',
+              trackEpoch: epoch,
               duckScale: this.duckScale,
               duckAuraLeadMs: this.duckAuraLeadMs,
               duckPauseMs: this.duckPauseMs,
@@ -1203,7 +1224,7 @@ export class RoomState {
             // quickly points at empty road. No server-side lead — CarHueWrapper
             // dead-reckons between responses itself, and leading here would
             // predict motion twice.
-            tracker = new PeopleTracker(2, false);
+            tracker = new PeopleTracker({ maxMisses: 2, withLead: false });
             this.carHueTrackers.set(event.inputId, tracker);
           }
           const tracked = tracker.update(
@@ -2849,6 +2870,7 @@ export class RoomState {
     duckPauseMs?: number;
     duckFlySpeed?: number;
     crosshairBadges?: boolean;
+    duckRespawn?: boolean;
     joinUrl?: string;
     joinLabel?: string;
   }): {
@@ -2859,6 +2881,7 @@ export class RoomState {
     duckPauseMs: number;
     duckFlySpeed: number;
     crosshairBadges: boolean;
+    duckRespawn: boolean;
   } {
     this.duckHunter.setRoomConfig(cfg);
     if (cfg.joinUrl !== undefined || cfg.joinLabel !== undefined) {

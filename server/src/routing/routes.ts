@@ -2780,6 +2780,8 @@ const DuckHunterConfigSchema = Type.Object({
   duckPauseMs: Type.Optional(Type.Number()),
   duckFlySpeed: Type.Optional(Type.Number()),
   crosshairBadges: Type.Optional(Type.Boolean()),
+  // One bird → many ducks (true) or one duck per bird per round (false).
+  duckRespawn: Type.Optional(Type.Boolean()),
   // Join link for the broadcast opening screen's QR — the server can't know
   // the public page base, so the host page pushes it down (same as KBT).
   joinUrl: Type.Optional(Type.String({ maxLength: 2048 })),
@@ -2800,6 +2802,7 @@ routes.post<RoomIdParams & { Body: Static<typeof DuckHunterConfigSchema> }>(
       duckPauseMs: req.body.duckPauseMs,
       duckFlySpeed: req.body.duckFlySpeed,
       crosshairBadges: req.body.crosshairBadges,
+      duckRespawn: req.body.duckRespawn,
       joinUrl: req.body.joinUrl,
     });
     const room = state.getRoom(roomId);
@@ -2811,6 +2814,7 @@ routes.post<RoomIdParams & { Body: Static<typeof DuckHunterConfigSchema> }>(
       duckPauseMs: req.body.duckPauseMs,
       duckFlySpeed: req.body.duckFlySpeed,
       crosshairBadges: req.body.crosshairBadges,
+      duckRespawn: req.body.duckRespawn,
       joinUrl: req.body.joinUrl,
       joinLabel: req.body.joinLabel,
     });

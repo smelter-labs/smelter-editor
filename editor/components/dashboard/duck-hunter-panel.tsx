@@ -98,6 +98,8 @@ export function DuckHunterPanel({ roomId }: Props) {
   const [flySpeed, setFlySpeed] = useState(DEFAULT_FLY_SPEED);
   // Name badges above crosshairs on the broadcast (off = thicker reticle).
   const [crosshairBadges, setCrosshairBadges] = useState(true);
+  // One bird → many ducks (on) or one duck per bird per round (off).
+  const [duckRespawn, setDuckRespawn] = useState(true);
   const firstAmmoSaveRef = useRef(true);
 
   // Inputs + the bird model, for the "start game" flow.
@@ -129,6 +131,7 @@ export function DuckHunterPanel({ roomId }: Props) {
           fleeSec?: number;
           flySpeed?: number;
           crosshairBadges?: boolean;
+          duckRespawn?: boolean;
         };
         if (typeof p.maxAmmo === 'number') setMaxAmmo(p.maxAmmo);
         if (typeof p.reloadSec === 'number') setReloadSec(p.reloadSec);
@@ -138,6 +141,7 @@ export function DuckHunterPanel({ roomId }: Props) {
         if (typeof p.flySpeed === 'number') setFlySpeed(p.flySpeed);
         if (typeof p.crosshairBadges === 'boolean')
           setCrosshairBadges(p.crosshairBadges);
+        if (typeof p.duckRespawn === 'boolean') setDuckRespawn(p.duckRespawn);
       }
     } catch {
       /* ignore malformed storage */
@@ -159,6 +163,7 @@ export function DuckHunterPanel({ roomId }: Props) {
           fleeSec,
           flySpeed,
           crosshairBadges,
+          duckRespawn,
         }),
       );
     } catch {
@@ -175,6 +180,7 @@ export function DuckHunterPanel({ roomId }: Props) {
         duckPauseMs: Math.round(fleeSec * 1000),
         duckFlySpeed: flySpeed,
         crosshairBadges,
+        duckRespawn,
       }).catch(() => {
         /* transient — next change retries */
       });
@@ -189,6 +195,7 @@ export function DuckHunterPanel({ roomId }: Props) {
     fleeSec,
     flySpeed,
     crosshairBadges,
+    duckRespawn,
   ]);
 
   // Load the bird model once (used to know which input types are supported).
@@ -474,6 +481,19 @@ export function DuckHunterPanel({ roomId }: Props) {
             <div className='text-[10px] text-neutral-500'>
               Off = no bubble over the crosshair; the crosshair draws thicker
               instead.
+            </div>
+            <label className='flex items-center gap-2 cursor-pointer'>
+              <Checkbox
+                checked={duckRespawn}
+                onCheckedChange={(v) => setDuckRespawn(v === true)}
+              />
+              <span className='text-xs text-neutral-200'>
+                Birds respawn ducks
+              </span>
+            </label>
+            <div className='text-[10px] text-neutral-500'>
+              On = a tracked bird hatches a new duck 3 s after its previous one
+              flew off or was shot. Off = one duck per bird per round.
             </div>
           </div>
 

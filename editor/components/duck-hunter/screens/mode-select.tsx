@@ -35,8 +35,8 @@ const POINT_PRESETS = [10, 25, 50] as const;
 // same as the dashboard DuckHunterPanel. Exported so the lobby can list the
 // same knobs (labels + formats) as a read-only settings summary.
 export const SLIDER_DEFS: Array<{
-  // Numeric knobs only — crosshairBadges is a toggle row below the sliders.
-  key: Exclude<keyof DuckHunterSliderConfig, 'crosshairBadges'>;
+  // Numeric knobs only — the booleans are toggle rows below the sliders.
+  key: Exclude<keyof DuckHunterSliderConfig, 'crosshairBadges' | 'duckRespawn'>;
   label: string;
   min: number;
   max: number;
@@ -756,6 +756,47 @@ export function ModeSelect({
                   color: R5.inkMuted,
                 }}>
                 OFF = thicker crosshair on stream.
+              </span>
+            </div>
+            {/* One tracked bird → one duck per round, or a fresh duck every
+                time its previous one is gone. */}
+            <div>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'baseline',
+                  marginBottom: 4,
+                }}>
+                <span
+                  style={{
+                    fontFamily: pixelFont,
+                    fontSize: 8,
+                    letterSpacing: 1,
+                    color: R5.ink,
+                  }}>
+                  RESPAWN
+                </span>
+                <LedText size={16}>
+                  {sliders.duckRespawn ? 'ON' : 'OFF'}
+                </LedText>
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+                {presetChip('ON', sliders.duckRespawn, () =>
+                  onSliders({ ...sliders, duckRespawn: true }),
+                )}
+                {presetChip('OFF', !sliders.duckRespawn, () =>
+                  onSliders({ ...sliders, duckRespawn: false }),
+                )}
+              </div>
+              <span
+                style={{
+                  fontFamily: monoFont,
+                  fontSize: 10,
+                  color: R5.inkMuted,
+                }}>
+                ON = a bird hatches again 3S after its duck is gone. OFF = one
+                duck per bird per round.
               </span>
             </div>
           </PixelPanel>

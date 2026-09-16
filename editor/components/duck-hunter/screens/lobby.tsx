@@ -531,6 +531,10 @@ export function Lobby({
               label='NAME TAGS'
               value={sliders.crosshairBadges ? 'ON' : 'OFF'}
             />
+            <SettingRow
+              label='RESPAWN'
+              value={sliders.duckRespawn ? 'ON' : 'OFF'}
+            />
           </PixelPanel>
           <span
             style={{ fontFamily: monoFont, fontSize: 10, color: R5.inkMuted }}>

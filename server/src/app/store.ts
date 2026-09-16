@@ -246,6 +246,12 @@ export type PersonBoxes = {
    * ghosts — people detections always use 'haunter'. */
   sprite?: 'bird' | 'haunter';
   /**
+   * Generation of the tracker that minted these box ids. Bumped whenever the
+   * tracker for this input is re-created (ids restart from 0), so consumers
+   * keyed by box id (the duck-hunter flock) know their per-id state is stale.
+   */
+  trackEpoch?: number;
+  /**
    * Operator-tunable duck-size multiplier (Duck Hunter panel), applied on top
    * of the sprite's base footprint. 1 = default; 0.5 = ducks half as big.
    */
