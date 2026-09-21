@@ -1991,11 +1991,15 @@ export class KettlebellTournamentController {
     let error: KbtMatchError | undefined;
     switch (cmd.action) {
       case 'roster':
+        error = this.settleActiveHeat() ?? undefined;
+        if (error) break;
         this.phase = 'roster';
         this.currentHeatIndex = null;
         void this.layoutRosterMosaic();
         break;
       case 'assign_heats':
+        error = this.settleActiveHeat() ?? undefined;
+        if (error) break;
         this.assignHeats();
         break;
       case 'start_heat': {
@@ -2009,7 +2013,8 @@ export class KettlebellTournamentController {
               : `No heat ${index + 1} to start.`,
           };
         } else {
-          void this.startHeat(index);
+          error = this.settleActiveHeat() ?? undefined;
+          if (!error) void this.startHeat(index);
         }
         break;
       }
@@ -2023,13 +2028,16 @@ export class KettlebellTournamentController {
         this.stopHeat();
         break;
       case 'next_heat':
-        this.nextHeat();
+        error = this.settleActiveHeat() ?? undefined;
+        if (!error) this.nextHeat();
         break;
       case 'start_final':
-        error = this.startFinal() ?? undefined;
+        error =
+          this.settleActiveHeat() ?? this.startFinal() ?? undefined;
         break;
       case 'podium':
-        this.phase = 'podium';
+        error = this.settleActiveHeat() ?? undefined;
+        if (!error) this.phase = 'podium';
         break;
       case 'reset':
         this.resetTournament();
@@ -2049,6 +2057,28 @@ export class KettlebellTournamentController {
     const match = this.getMatchSnapshot();
     this.deps.broadcast(match);
     return { state: this.stateSnapshot(), match, error };
+  }
+
+  /**
+   * Gate for every action that moves the show off the current heat. Only the
+   * active heat is ever ticked, so walking away from one that is still live
+   * would orphan it: never finalized (its scores never reach bestScore) and
+   * its coach AI armed for good. A live heat refuses — the host stops it
+   * first; an ended heat still inside the rep grace is finalized right here,
+   * so moving on at the buzzer keeps the result. Two control surfaces (host
+   * page + panel) send these actions, so the UI's own gating is not enough.
+   */
+  private settleActiveHeat(): KbtMatchError | null {
+    const heat = this.activeHeat();
+    if (!heat) return null;
+    if (heat.phase === 'ended') {
+      this.finalizeHeat(heat);
+      return null;
+    }
+    return {
+      code: 'heat_in_progress',
+      message: `${heat.final ? 'The final' : `Heat ${heat.index + 1}`} is still on — stop it first.`,
+    };
   }
 
   /** Chunk the roster (join order) into qualification heats of heatSize. */
@@ -2552,6 +2582,14 @@ export class KettlebellTournamentController {
 
   /** Top heatSize players by best qualification score re-run as the final. */
   private startFinal(): KbtMatchError | null {
+    // A repeated press (double click, second control surface) must not stack
+    // another final behind one that is already drawn and waiting.
+    const drawn = this.heats.find((h) => h.final && h.phase === 'idle');
+    if (drawn) {
+      this.phase = 'final';
+      this.currentHeatIndex = drawn.index;
+      return null;
+    }
     const ranked = [...this.players.values()]
       .filter((p) => p.bestScore > 0 || p.heatIndex != null)
       .sort((a, b) => b.bestScore - a.bestScore)

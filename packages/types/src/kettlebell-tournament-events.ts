@@ -465,6 +465,7 @@ export type KbtErrorCode =
   | "not_ready"
   | "heat_not_idle"
   | "heat_not_intro"
+  | "heat_in_progress"
   | "too_few_finalists"
   | "not_commentator"
   | "invalid_view"
