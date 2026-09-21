@@ -8,6 +8,8 @@
 //   FB_CLIPS=left:fb-demo/tricam-3min/cam0.mp4,centre:fb-demo/tricam-3min/cam1.mp4,right:fb-demo/tricam-3min/cam2.mp4 \
 //     node scripts/football-live-check.mjs                           # three cameras
 //   FB_API=http://localhost:3111 FB_SECONDS=60 node scripts/football-live-check.mjs
+//   FB_STAY=1 FB_MINIMAP_SIZE_AT=15:3,25:5 node scripts/football-live-check.mjs
+//     # follow only (no view switches / manual goal) + minimap resizes at 15 s and 25 s
 //
 // Then look at frames: ffmpeg -ss T -i data/recordings/<file> -frames:v 1 out.png
 
@@ -32,6 +34,11 @@ const CLIPS = (process.env.FB_CLIPS ?? 'pano:fb-demo/pano-3x40s/pano.mp4')
 const SECONDS = Number(process.env.FB_SECONDS ?? 45);
 const PLAY_FROM_MS = Number(process.env.FB_PLAY_FROM_MS ?? 0);
 const isPano = CLIPS.some((c) => c.role === 'pano');
+const STAY = process.env.FB_STAY === '1';
+const MINIMAP_SIZE_AT = (process.env.FB_MINIMAP_SIZE_AT ?? '')
+  .split(',')
+  .filter(Boolean)
+  .map((s) => s.split(':').map(Number));
 
 const t0 = Date.now();
 const log = (...a) =>
@@ -125,16 +132,18 @@ try {
     started.match?.elapsedMs,
   );
 
-  const plan = isPano
-    ? [
-        [Math.round(SECONDS * 0.4), { mode: 'view', view: 'wide' }],
-        [Math.round(SECONDS * 0.55), { mode: 'view', view: 'left-goal' }],
-        [Math.round(SECONDS * 0.7), { mode: 'auto' }],
-      ]
-    : [
-        [Math.round(SECONDS * 0.6), { mode: 'view', view: 'right' }],
-        [Math.round(SECONDS * 0.75), { mode: 'auto' }],
-      ];
+  const plan = STAY
+    ? []
+    : isPano
+      ? [
+          [Math.round(SECONDS * 0.4), { mode: 'view', view: 'wide' }],
+          [Math.round(SECONDS * 0.55), { mode: 'view', view: 'left-goal' }],
+          [Math.round(SECONDS * 0.7), { mode: 'auto' }],
+        ]
+      : [
+          [Math.round(SECONDS * 0.6), { mode: 'view', view: 'right' }],
+          [Math.round(SECONDS * 0.75), { mode: 'auto' }],
+        ];
   for (let s = 1; s <= SECONDS; s++) {
     await sleep(1000);
     const p = plan.find(([at]) => at === s);
@@ -142,7 +151,12 @@ try {
       log('VIEW →', JSON.stringify(p[1]));
       sock.send({ type: 'fb_commentator_view', override: p[1] });
     }
-    if (s === Math.round(SECONDS * 0.85)) {
+    const size = MINIMAP_SIZE_AT.find(([at]) => at === s);
+    if (size) {
+      log('MINIMAP SIZE →', size[1]);
+      sock.send({ type: 'fb_commentator_minimap_size', size: size[1] });
+    }
+    if (!STAY && s === Math.round(SECONDS * 0.85)) {
       log('manual goal A');
       sock.send({ type: 'fb_event_add', team: 'A', kind: 'goal' });
     }

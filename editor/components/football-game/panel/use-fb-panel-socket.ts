@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   FbAiLogEntry,
   FbCamRole,
+  FbDirectorPatch,
   FbDirectorState,
   FbEventChangeEvent,
   FbEventKind,
@@ -79,6 +80,9 @@ export type FbPanelSocket = {
   undoEvent: (eventId?: string) => void;
   setAiEvents: (enabled: boolean) => void;
   setMinimap: (enabled: boolean) => void;
+  setMinimapSize: (size: number) => void;
+  /** Live follow tuning (the server clamps and echoes it in `state.config`). */
+  tuneDirector: (director: FbDirectorPatch) => void;
   setReplay: (enabled: boolean) => void;
   setTeamColor: (team: FbTeamId, color: string) => void;
   retry: () => void;
@@ -273,6 +277,15 @@ export function useFbPanelSocket(roomId: string): FbPanelSocket {
     (enabled: boolean) => sendJson({ type: 'fb_commentator_minimap', enabled }),
     [sendJson],
   );
+  const setMinimapSize = useCallback(
+    (size: number) => sendJson({ type: 'fb_commentator_minimap_size', size }),
+    [sendJson],
+  );
+  const tuneDirector = useCallback(
+    (director: FbDirectorPatch) =>
+      sendJson({ type: 'fb_commentator_director', director }),
+    [sendJson],
+  );
   const setReplay = useCallback(
     (enabled: boolean) => sendJson({ type: 'fb_commentator_replay', enabled }),
     [sendJson],
@@ -308,6 +321,8 @@ export function useFbPanelSocket(roomId: string): FbPanelSocket {
     undoEvent,
     setAiEvents,
     setMinimap,
+    setMinimapSize,
+    tuneDirector,
     setReplay,
     setTeamColor,
     retry,

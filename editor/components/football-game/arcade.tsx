@@ -22,6 +22,7 @@ import {
   DEFAULT_FB_UI_CONFIG,
   sanitizeFbAi,
   sanitizeFbDirector,
+  sanitizeFbMinimapSize,
   sanitizeFbPerf,
   serverConfigToUi,
   useFbRoom,
@@ -64,6 +65,7 @@ function loadConfig(): FbUiConfig {
       ai: sanitizeFbAi(p.ai),
       replay: typeof p.replay === 'boolean' ? p.replay : d.replay,
       minimap: typeof p.minimap === 'boolean' ? p.minimap : d.minimap,
+      minimapSize: sanitizeFbMinimapSize(p.minimapSize),
       resolution:
         p.resolution && p.resolution in RESOLUTION_PRESETS
           ? p.resolution
@@ -137,6 +139,7 @@ export function FootballGameArcade({
     director: config.director,
     ai: config.ai,
     minimap: config.minimap,
+    minimapSize: config.minimapSize,
     replay: config.replay,
   });
   const pushedLiveRef = useRef(liveJson);
@@ -148,6 +151,7 @@ export function FootballGameArcade({
       director: config.director,
       ai: config.ai,
       minimap: config.minimap,
+      minimapSize: config.minimapSize,
       replay: config.replay,
     }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps

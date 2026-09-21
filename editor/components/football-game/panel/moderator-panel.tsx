@@ -41,13 +41,15 @@ function Shell({
         minHeight: '100vh',
         background: FB.page,
         color: FB.chalk,
-        padding: compact ? '12px 12px 24px' : '24px 20px 40px',
+        padding: compact
+          ? '12px clamp(12px, 1.2vw, 20px) 24px'
+          : '24px 20px 40px',
         boxSizing: 'border-box',
         display: 'flex',
         flexDirection: 'column',
         gap: compact ? 12 : 20,
-        maxWidth: 1180,
-        margin: '0 auto',
+        // The live panel takes the whole page; the join steps stay a column.
+        ...(compact ? { width: '100%' } : { maxWidth: 1180, margin: '0 auto' }),
       }}>
       {!compact ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -71,6 +73,7 @@ export function ModeratorPanel({ roomId }: { roomId: string }) {
   );
   const [whepUrl, setWhepUrl] = useState<string | null>(null);
   const [narrow, setNarrow] = useState(false);
+  const [columns, setColumns] = useState<2 | 3>(2);
 
   const socket = useFbPanelSocket(roomId);
 
@@ -91,7 +94,10 @@ export function ModeratorPanel({ roomId }: { roomId: string }) {
     const session = readModeratorSession(roomId);
     setName(session.name ?? window.localStorage.getItem(NAME_KEY) ?? '');
     loadRoom();
-    const onResize = () => setNarrow(window.innerWidth < 900);
+    const onResize = () => {
+      setNarrow(window.innerWidth < 900);
+      setColumns(window.innerWidth >= 1500 ? 3 : 2);
+    };
     onResize();
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
@@ -204,6 +210,7 @@ export function ModeratorPanel({ roomId }: { roomId: string }) {
             whepUrl={whepUrl}
             roomId={roomId}
             narrow={narrow}
+            columns={columns}
           />
         )}
       </Shell>

@@ -35,24 +35,25 @@ const GOAL_VIEW_WIDTH = 1500;
 const GOAL_VIEW_INSET = 260;
 /** Ball sits at this fraction of the window height (room for the play ahead). */
 const VERTICAL_BIAS = 0.05;
-const DEAD_ZONE_PX = 60;
-const TAU_MS: Record<FbDirectorConfig['smoothing'], number> = {
-  snappy: 350,
-  smooth: 600,
-};
-const VELOCITY_CAP_PXS = 1200;
-const CATCHUP_ERROR_PX = 900;
-const CATCHUP_TAU_MS = 250;
-const CATCHUP_CAP_PXS = 2500;
+/** Catch-up (long balls): blends in over this error range (px)… */
+const CATCHUP_FROM_PX = 600;
+const CATCHUP_FULL_PX = 1200;
+/** …down to this smooth time and up to this speed limit. */
+const CATCHUP_SMOOTH_MS = 250;
+const CATCHUP_SPEED_PXS = 2500;
 /** No ball fix for this long → drift to the wide view. */
 export const BALL_LOST_WIDE_MS = 2000;
-const LOST_TAU_MS = 1500;
+const LOST_SMOOTH_MS = 1500;
 
 export type FollowState = {
   cx: number;
   cy: number;
   /** Current window width (px); height follows the output aspect. */
   w: number;
+  /** Window velocity (px/s) — carried between steps so the motion has no kinks. */
+  vx: number;
+  vy: number;
+  vw: number;
 };
 
 export function clampCrop(crop: Crop, pano: Pano): Crop {
@@ -109,6 +110,20 @@ export function goalCrop(
   );
 }
 
+/** The window as an unrounded crop — what the tile is laid out from. */
+export function exactCropOf(
+  state: FollowState,
+  aspect: number,
+  pano: Pano,
+): Crop {
+  const h = state.w / aspect;
+  return clampCrop(
+    { x: state.cx - state.w / 2, y: state.cy - h / 2, w: state.w, h },
+    pano,
+  );
+}
+
+/** The window in whole panorama pixels (reported to the panel, baked into replays). */
 export function cropOf(state: FollowState, aspect: number, pano: Pano): Crop {
   const w = Math.round(state.w);
   const h = Math.round(w / aspect);
@@ -134,9 +149,45 @@ export type FollowInput = {
 };
 
 /**
- * One director tick of the follow window: exponential approach with a dead
- * zone, a velocity cap and a catch-up mode for long balls; width by zoom
- * preset (+ speed in auto); drifts to the wide view when the ball is lost.
+ * Critically damped spring towards `target` (the closed-form step, exact for
+ * any dt): position and velocity are both continuous, `smoothS` is roughly
+ * the time to settle and `maxSpeed` caps the steady-state speed.
+ */
+function smoothDamp(
+  pos: number[],
+  vel: number[],
+  target: number[],
+  smoothS: number,
+  maxSpeed: number,
+  dt: number,
+): { pos: number[]; vel: number[] } {
+  const omega = 2 / smoothS;
+  const decay = Math.exp(-omega * dt);
+  let change = pos.map((p, i) => p - target[i]);
+  const len = Math.hypot(...change);
+  const maxChange = maxSpeed * smoothS;
+  if (len > maxChange) change = change.map((c) => (c * maxChange) / len);
+  const aim = pos.map((p, i) => p - change[i]);
+  const temp = vel.map((v, i) => (v + omega * change[i]) * dt);
+  let nextVel = vel.map((v, i) => (v - omega * temp[i]) * decay);
+  let next = aim.map((a, i) => a + (change[i] + temp[i]) * decay);
+  // Never overshoot a target that stopped.
+  const past = target.reduce(
+    (acc, tg, i) => acc + (tg - pos[i]) * (next[i] - tg),
+    0,
+  );
+  if (past > 0) {
+    next = [...target];
+    nextVel = vel.map(() => 0);
+  }
+  return { pos: next, vel: nextVel };
+}
+
+/**
+ * One director tick of the follow window: a critically damped approach with
+ * a soft dead zone, a speed limit and a blended catch-up for long balls;
+ * width by zoom preset (+ speed in auto); drifts to the wide view when the
+ * ball is lost.
  */
 export function stepFollow(
   prev: FollowState | null,
@@ -155,59 +206,94 @@ export function stepFollow(
     );
   }
   let target = input.target;
-  let tau = TAU_MS[cfg.smoothing];
-  let cap = VELOCITY_CAP_PXS;
+  let smoothMs = Math.max(1, cfg.smoothTimeMs);
+  let maxSpeed = cfg.maxSpeedPxS;
+  let deadZone = cfg.deadZonePx;
+  let following = false;
   if (input.fixedWidth != null && target) {
     targetW = input.fixedWidth;
+    deadZone = 0;
   } else if (!target || input.lostForMs >= BALL_LOST_WIDE_MS) {
     const wide = wideCrop(pano, aspect, zones);
     target = { x: wide.x + wide.w / 2, y: wide.y + wide.h / 2 };
     targetW = wide.w;
-    tau = LOST_TAU_MS;
-    cap = VELOCITY_CAP_PXS;
+    smoothMs = LOST_SMOOTH_MS;
+    deadZone = 0;
   } else {
     // Ball sits a little above the centre: the play ahead is what matters.
     target = { x: target.x, y: target.y - VERTICAL_BIAS * (targetW / aspect) };
+    following = true;
   }
   if (!prev) {
-    return clampState({ cx: target.x, cy: target.y, w: targetW }, aspect, pano);
+    return clampState(
+      { cx: target.x, cy: target.y, w: targetW, vx: 0, vy: 0, vw: 0 },
+      aspect,
+      pano,
+    );
   }
   const dt = Math.max(0, input.dtMs) / 1000;
+  if (dt === 0) return prev;
   const ex = target.x - prev.cx;
   const ey = target.y - prev.cy;
   const err = Math.hypot(ex, ey);
-  if (err > CATCHUP_ERROR_PX) {
-    tau = Math.min(tau, CATCHUP_TAU_MS);
-    cap = CATCHUP_CAP_PXS;
+  if (following && cfg.catchUp) {
+    const f = Math.max(
+      0,
+      Math.min(
+        1,
+        (err - CATCHUP_FROM_PX) / (CATCHUP_FULL_PX - CATCHUP_FROM_PX),
+      ),
+    );
+    smoothMs += (Math.min(smoothMs, CATCHUP_SMOOTH_MS) - smoothMs) * f;
+    maxSpeed += (Math.max(maxSpeed, CATCHUP_SPEED_PXS) - maxSpeed) * f;
   }
-  let cx = prev.cx;
-  let cy = prev.cy;
-  if (err > DEAD_ZONE_PX && dt > 0) {
-    const alpha = 1 - Math.exp(-(dt * 1000) / tau);
-    let mx = ex * alpha;
-    let my = ey * alpha;
-    const step = Math.hypot(mx, my);
-    const maxStep = cap * dt;
-    if (step > maxStep) {
-      mx *= maxStep / step;
-      my *= maxStep / step;
-    }
-    cx += mx;
-    cy += my;
-  }
+  // Soft dead zone: the window chases the edge of the zone, not its centre,
+  // so it eases in and out of rest instead of starting with a full step.
+  const reach = err > deadZone ? 1 - deadZone / err : 0;
+  const centre = smoothDamp(
+    [prev.cx, prev.cy],
+    [prev.vx, prev.vy],
+    [prev.cx + ex * reach, prev.cy + ey * reach],
+    smoothMs / 1000,
+    maxSpeed,
+    dt,
+  );
   // Width eases too, a little slower than the position.
-  const wAlpha = dt > 0 ? 1 - Math.exp(-(dt * 1000) / (tau * 1.5)) : 1;
-  const w = prev.w + (targetW - prev.w) * wAlpha;
-  return clampState({ cx, cy, w }, aspect, pano);
+  const width = smoothDamp(
+    [prev.w],
+    [prev.vw],
+    [targetW],
+    (smoothMs * 1.5) / 1000,
+    Infinity,
+    dt,
+  );
+  return clampState(
+    {
+      cx: centre.pos[0],
+      cy: centre.pos[1],
+      w: width.pos[0],
+      vx: centre.vel[0],
+      vy: centre.vel[1],
+      vw: width.vel[0],
+    },
+    aspect,
+    pano,
+  );
 }
 
+/** Keeps the window inside the panorama; a clamped axis loses its velocity. */
 function clampState(s: FollowState, aspect: number, pano: Pano): FollowState {
   const w = Math.min(pano.w, Math.max(400, s.w));
   const h = w / aspect;
+  const cx = Math.max(w / 2, Math.min(pano.w - w / 2, s.cx));
+  const cy = Math.max(h / 2, Math.min(pano.h - h / 2, s.cy));
   return {
-    cx: Math.max(w / 2, Math.min(pano.w - w / 2, s.cx)),
-    cy: Math.max(h / 2, Math.min(pano.h - h / 2, s.cy)),
+    cx,
+    cy,
     w,
+    vx: cx === s.cx ? s.vx : 0,
+    vy: cy === s.cy ? s.vy : 0,
+    vw: w === s.w ? s.vw : 0,
   };
 }
 

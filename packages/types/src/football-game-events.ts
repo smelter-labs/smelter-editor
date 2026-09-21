@@ -100,12 +100,40 @@ export type FbDirectorSwitch = "glide" | "cut";
 /** Virtual director knobs (panorama session; the cut rule for three cameras). */
 export type FbDirectorConfig = {
   zoom: FbDirectorZoom;
-  smoothing: FbDirectorSmoothing;
   /** View switches glide (eased move) or hard-cut with a fade. */
   switchStyle: FbDirectorSwitch;
   /** How far ahead of the on-air frame the follow window aims (the ball's future is known). */
   lookaheadMs: number;
+  /** How far behind the on-air frame the ball track is averaged into the follow target. */
+  averageMs: number;
+  /** Time the follow window takes to settle on its target (critically damped). */
+  smoothTimeMs: number;
+  /** The ball may wander this far (full-panorama px) before the window moves. */
+  deadZonePx: number;
+  /** Follow window speed limit (full-panorama px/s). */
+  maxSpeedPxS: number;
+  /** Long balls: settle faster and lift the speed limit while the window is far behind. */
+  catchUp: boolean;
 };
+
+/** Clamp ranges of the numeric director knobs (shared by the server and the editor). */
+export const FB_DIRECTOR_LIMITS = {
+  lookaheadMs: { min: 0, max: 2000, step: 100 },
+  averageMs: { min: 0, max: 1500, step: 100 },
+  smoothTimeMs: { min: 100, max: 3000, step: 50 },
+  deadZonePx: { min: 0, max: 400, step: 10 },
+  maxSpeedPxS: { min: 200, max: 5000, step: 100 },
+} as const;
+
+/** Legacy `smoothing` preset → smooth time (still accepted in a config patch). */
+export const FB_SMOOTHING_PRESET_MS: Record<FbDirectorSmoothing, number> = {
+  snappy: 350,
+  smooth: 600,
+};
+
+/** Tracking minimap size step: 1 = 336×218 at 1080p, 5 = the largest. */
+export type FbMinimapSize = 1 | 2 | 3 | 4 | 5;
+export const FB_MINIMAP_SIZES: readonly FbMinimapSize[] = [1, 2, 3, 4, 5];
 
 /** AI EVENTS: what fires from the clip's telemetry and which kinds get a replay. */
 export type FbAiConfig = {
@@ -140,7 +168,13 @@ export type FbConfig = {
   replayDelayMs: number;
   /** Tracking minimap on air. */
   minimap: boolean;
+  minimapSize: FbMinimapSize;
   perf: FbPerfConfig;
+};
+
+export type FbDirectorPatch = Partial<FbDirectorConfig> & {
+  /** Legacy preset; sets `smoothTimeMs`. */
+  smoothing?: FbDirectorSmoothing;
 };
 
 /** Partial config as accepted by POST /room/:id/football-game/config. */
@@ -149,11 +183,12 @@ export type FbConfigPatch = {
   halfMs?: number;
   clockFromClip?: boolean;
   attacksLeft?: FbTeamId | null;
-  director?: Partial<FbDirectorConfig>;
+  director?: FbDirectorPatch;
   ai?: Partial<FbAiConfig>;
   replay?: boolean;
   replayDelayMs?: number;
   minimap?: boolean;
+  minimapSize?: number;
   perf?: Partial<FbPerfConfig>;
   /** Moderator panel join URL — the server renders it as the lobby QR. */
   joinUrls?: Partial<Record<"commentator", string>>;
@@ -194,9 +229,13 @@ export const FB_DEFAULT_CONFIG: FbConfig = {
   attacksLeft: null,
   director: {
     zoom: "normal",
-    smoothing: "smooth",
     switchStyle: "glide",
     lookaheadMs: 500,
+    averageMs: 200,
+    smoothTimeMs: 600,
+    deadZonePx: 60,
+    maxSpeedPxS: 1200,
+    catchUp: true,
   },
   ai: {
     events: true,
@@ -206,6 +245,7 @@ export const FB_DEFAULT_CONFIG: FbConfig = {
   replay: true,
   replayDelayMs: 1500,
   minimap: true,
+  minimapSize: 1,
   perf: {
     animTickHz: 60,
     hudPublishHz: 5,
@@ -312,9 +352,7 @@ export type FbCommentator = {
  */
 export type FbSceneName = "lobby" | "live" | "replay" | "ended";
 
-export type FbViewOverride =
-  | { mode: "auto" }
-  | { mode: "view"; view: FbView };
+export type FbViewOverride = { mode: "auto" } | { mode: "view"; view: FbView };
 
 /** Where the director is right now (1 Hz in `fb_state` / `fb_director`). */
 export type FbDirectorState = {
@@ -407,6 +445,15 @@ export type FbCommentatorMinimapMessage = {
   type: "fb_commentator_minimap";
   enabled: boolean;
 };
+export type FbCommentatorMinimapSizeMessage = {
+  type: "fb_commentator_minimap_size";
+  size: number;
+};
+/** Live follow tuning from the moderator panel. */
+export type FbCommentatorDirectorMessage = {
+  type: "fb_commentator_director";
+  director: FbDirectorPatch;
+};
 export type FbCommentatorReplayMessage = {
   type: "fb_commentator_replay";
   enabled: boolean;
@@ -439,6 +486,8 @@ export type FbClientMessage =
   | FbCommentatorMatchMessage
   | FbCommentatorAiEventsMessage
   | FbCommentatorMinimapMessage
+  | FbCommentatorMinimapSizeMessage
+  | FbCommentatorDirectorMessage
   | FbCommentatorReplayMessage
   | FbTeamColorMessage
   | FbEventResolveMessage
@@ -524,7 +573,14 @@ export type FbAiLogEntry = {
   atMs: number;
   /** Clip media time (s) of the play, when it comes from the telemetry. */
   t?: number;
-  kind: "event" | "refcall" | "director" | "clock" | "replay" | "session" | "ai";
+  kind:
+    | "event"
+    | "refcall"
+    | "director"
+    | "clock"
+    | "replay"
+    | "session"
+    | "ai";
   tone: FbAiLogTone;
   label: string;
   text: string;

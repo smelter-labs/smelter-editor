@@ -673,6 +673,54 @@ describe('FootballGameController — virtual director', () => {
     expect(h.lastState().minimap).toBe(false);
     h.controller.dispose();
   });
+
+  it('lets the moderator resize the minimap (1–5, clamped)', async () => {
+    const h = harness();
+    await started(h);
+    await vi.advanceTimersByTimeAsync(3300);
+    expect(h.lastHud()?.minimap?.size).toBe(1);
+    h.controller.handleMessage('mod', {
+      type: 'fb_commentator_minimap_size',
+      size: 4,
+    });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(h.lastHud()?.minimap?.size).toBe(4);
+    expect(h.lastState().config.minimapSize).toBe(4);
+    h.controller.handleMessage('mod', {
+      type: 'fb_commentator_minimap_size',
+      size: 9,
+    });
+    expect(h.lastState().config.minimapSize).toBe(5);
+    h.controller.handleMessage('stranger', {
+      type: 'fb_commentator_minimap_size',
+      size: 2,
+    });
+    expect(h.lastState().config.minimapSize).toBe(5);
+    h.controller.dispose();
+  });
+
+  it('takes follow tuning from the moderator, clamped, and the legacy preset', async () => {
+    const h = harness();
+    await started(h);
+    h.controller.handleMessage('mod', {
+      type: 'fb_commentator_director',
+      director: { smoothTimeMs: 99_999, deadZonePx: -5, maxSpeedPxS: 800 },
+    });
+    const d = h.lastState().config.director;
+    expect(d.smoothTimeMs).toBe(3000);
+    expect(d.deadZonePx).toBe(0);
+    expect(d.maxSpeedPxS).toBe(800);
+    h.controller.handleMessage('stranger', {
+      type: 'fb_commentator_director',
+      director: { maxSpeedPxS: 4000 },
+    });
+    expect(h.lastState().config.director.maxSpeedPxS).toBe(800);
+    expect(
+      h.controller.setConfig({ director: { smoothing: 'snappy' } }).director
+        .smoothTimeMs,
+    ).toBe(350);
+    h.controller.dispose();
+  });
 });
 
 describe('FootballGameController — instant replay', () => {
