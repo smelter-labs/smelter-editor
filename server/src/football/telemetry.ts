@@ -23,6 +23,8 @@ export type FbCameraModel = {
   x0: number;
   y0: number;
   tilt: number;
+  /** Roll about the optical axis (rad); absent in older zones files = 0. */
+  roll?: number;
 };
 
 export type FbZones = {
@@ -132,7 +134,7 @@ export function parseZones(json: unknown): FbZones {
     );
     if (vals.every((v) => v != null)) {
       const [cx, d, hc, f, x0, y0, tilt] = vals as number[];
-      camera = { cx, d, hc, f, x0, y0, tilt };
+      camera = { cx, d, hc, f, x0, y0, tilt, roll: num(c.roll) ?? 0 };
     }
   }
   return { pano: { w, h }, camera };
@@ -262,10 +264,14 @@ export function projectPitch(
   const cp = Math.cos(phi);
   const ry = Math.sin(phi) * ct + Math.cos(theta) * cp * st;
   const rz = -Math.sin(phi) * st + Math.cos(theta) * cp * ct;
-  const rx = Math.sin(theta) * cp;
+  const rx0 = Math.sin(theta) * cp;
+  const cr = Math.cos(cam.roll ?? 0);
+  const sr = Math.sin(cam.roll ?? 0);
+  const rx = rx0 * cr - ry * sr;
+  const ryr = rx0 * sr + ry * cr;
   return [
     cam.x0 + cam.f * Math.atan2(rx, rz),
-    cam.y0 - (cam.f * ry) / Math.hypot(rx, rz),
+    cam.y0 - (cam.f * ryr) / Math.hypot(rx, rz),
   ];
 }
 

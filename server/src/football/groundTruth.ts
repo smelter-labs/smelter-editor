@@ -32,6 +32,8 @@ export type FbGroundTruth = {
   session: 'pano' | 'tricam' | null;
   /** Real kick-off relative to clip start (negative = the clip begins mid-half). */
   kickoffMs: number | null;
+  /** Half the footage is from (2 = a second-half clip; the match clock then starts there). */
+  period: 1 | 2;
   /** Which goal of the picture each team attacks in this clip, when the file says. */
   attacks: Record<FbTeamId, FbSide> | null;
   events: FbGtEvent[];
@@ -95,6 +97,7 @@ export function parseFbGroundTruth(json: unknown): FbGroundTruth {
         ? json.session
         : null,
     kickoffMs: num(json.kickoffMs) ?? null,
+    period: json.period === 2 ? 2 : 1,
     attacks,
     events,
     otherEvents,

@@ -8,10 +8,17 @@
  *   2013-11-28/zxy/*.csv                                            (ZXY 20 Hz / raw / 1 Hz)
  *   2013-11-03/First Half/{0,1,2}/NNNN_2013-11-03 18:01:14.248366000.h264 (943 × 3 s, 1280×960 @30)
  *   2013-11-03/zxy/*_first.csv
+ *   2013-11-07/Second Half/panorama/NNNN_2013-11-07 22:53:28.432311000.h264 (the goal: only a window, see below)
+ *   2013-11-07/zxy/*_second.csv
  *
  * Usage:
- *   node scripts/alfheim-fetch.mjs --set pano-2013-11-28 | tricam-2013-11-03 | all
- *        [--out <dir>] [--parallel 4] [--limit N] [--verify] [--dry-run]
+ *   node scripts/alfheim-fetch.mjs --set pano-2013-11-28 | tricam-2013-11-03 | pano-2013-11-07 | all
+ *        [--out <dir>] [--parallel 4] [--limit N] [--from HH:MM:SS --to HH:MM:SS] [--verify] [--dry-run]
+ *
+ * --from/--to (local wall clock of the segment names) keep only the segments
+ * overlapping that window. pano-2013-11-07 carries a default window (the last
+ * minutes of the half, around the 90+3' goal) because the whole half is
+ * 9.5 GB; "all" does not include it.
  *
  * --out defaults to $ALFHEIM_DIR, else ~/workspace/streaming/workshops/workshop_5/pzpn/alfheim.
  * Resumable: files whose local size matches the server are skipped, partial
@@ -27,6 +34,7 @@ import https from 'node:https';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { parseSegmentName, parseWhen } from './lib/alfheim.mjs';
 
 const BASE = 'https://datasets.simula.no/downloads/alfheim/';
 const DEFAULT_OUT = path.join(
@@ -64,7 +72,22 @@ const SETS = {
     expectedSegments: 943,
     unzip: null,
   },
+  'pano-2013-11-07': {
+    match: '2013-11-07',
+    segmentDirs: ['2013-11-07/Second Half/panorama/'],
+    files: [
+      '2013-11-07/zxy/2013-11-07_tromso_anji_second.csv',
+      '2013-11-07/zxy/2013-11-07_tromso_anji_raw_second.csv',
+      '2013-11-07/zxy/2013-11-07_tromso_anji_agg_second.csv',
+    ],
+    expectedSegments: 978,
+    unzip: null,
+    window: { from: '22:51:00', to: '22:54:30' },
+    optIn: true,
+  },
 };
+
+const SEGMENT_MS = 3000;
 
 function parseArgs(argv) {
   const out = { _: [] };
@@ -93,7 +116,9 @@ const dryRun = args['dry-run'] === true;
 const verifyOnly = args.verify === true;
 
 const setNames =
-  setArg === 'all' ? Object.keys(SETS) : setArg.split(',').map((s) => s.trim());
+  setArg === 'all'
+    ? Object.keys(SETS).filter((s) => !SETS[s].optIn)
+    : setArg.split(',').map((s) => s.trim());
 for (const s of setNames) {
   if (!SETS[s]) {
     console.error(
@@ -101,6 +126,22 @@ for (const s of setNames) {
     );
     process.exit(2);
   }
+}
+
+/** [fromMs, toMs] of a set's segment window (flags win over the set default), or null. */
+function windowOf(set) {
+  const from = args.from ?? set.window?.from;
+  const to = args.to ?? set.window?.to;
+  if (from == null && to == null) return null;
+  return [
+    from != null ? parseWhen(String(from), set.match) : -Infinity,
+    to != null ? parseWhen(String(to), set.match) : Infinity,
+  ];
+}
+
+function inWindow(name, win) {
+  const seg = parseSegmentName(name);
+  return !!seg && seg.wallMs + SEGMENT_MS > win[0] && seg.wallMs < win[1];
 }
 
 // The site's certificate chain does not verify on this machine (missing
@@ -248,7 +289,9 @@ async function fetchSet(name) {
   const segmentsByDir = {};
   for (const dir of set.segmentDirs) {
     const names = await listSegments(dir);
-    const picked = limit != null ? names.slice(0, limit) : names;
+    const win = windowOf(set);
+    const windowed = win ? names.filter((n) => inWindow(n, win)) : names;
+    const picked = limit != null ? windowed.slice(0, limit) : windowed;
     segmentsByDir[dir] = { total: names.length, picked: picked.length };
     console.log(
       `   ${dir}: ${names.length} segments on the server, taking ${picked.length}`,
@@ -320,16 +363,29 @@ async function verifySet(name) {
   let ok = true;
   for (const dir of set.segmentDirs) {
     const local = path.join(outDir, dir);
+    const win = windowOf(set);
     let n = 0;
+    let lo = Infinity;
+    let hi = -Infinity;
     try {
-      n = (await fsp.readdir(local)).filter((f) => f.endsWith('.h264')).length;
+      for (const f of await fsp.readdir(local)) {
+        if (!f.endsWith('.h264') || (win && !inWindow(f, win))) continue;
+        n++;
+        const wallMs = parseSegmentName(f)?.wallMs;
+        if (wallMs != null) {
+          lo = Math.min(lo, wallMs);
+          hi = Math.max(hi, wallMs);
+        }
+      }
     } catch {
       /* missing */
     }
-    const expected =
-      limit != null
-        ? Math.min(limit, set.expectedSegments)
-        : set.expectedSegments;
+    // A window is complete when the local segments in it are contiguous
+    // (the recording may end before --to, so there is no fixed count).
+    const full = win
+      ? Math.max(1, Math.round((hi - lo) / SEGMENT_MS) + 1)
+      : set.expectedSegments;
+    const expected = limit != null ? Math.min(limit, full) : full;
     console.log(
       `   ${dir}: ${n}/${expected} segments${n >= expected ? '' : '  ← incomplete'}`,
     );

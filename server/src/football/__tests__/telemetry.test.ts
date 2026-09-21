@@ -176,3 +176,15 @@ describe('lookups', () => {
     expect(onPitch(-3, 10)).toBe(false);
   });
 });
+
+describe('camera roll', () => {
+  it('is optional and round-trips through unprojectPitch', () => {
+    const rolled = { ...CAM, roll: -0.0161 };
+    const [x0, y0] = projectPitch(CAM, 105, 34);
+    const [x1, y1] = projectPitch(rolled, 105, 34);
+    expect(Math.hypot(x1 - x0, y1 - y0)).toBeGreaterThan(5);
+    const [X, Y] = unprojectPitch(rolled, x1, y1);
+    expect(X).toBeCloseTo(105, 0);
+    expect(Y).toBeCloseTo(34, 0);
+  });
+});

@@ -4,11 +4,12 @@
 // Dataset facts (verified 2026-09-15):
 // - Video comes as 3 s raw Annex-B H.264 segments named
 //   `NNNN_YYYY-MM-DD hh:mm:ss.nnnnnnnnn.h264`; the time is the local wall
-//   clock (Europe/Oslo, UTC+1 on both match days — DST ended 2013-10-27).
+//   clock (Europe/Oslo, UTC+1 on all match days — DST ended 2013-10-27).
 // - ZXY player positions use the same wall clock: rows
 //   `"YYYY-MM-DD hh:mm:ss[.ff]",tag,x,y,heading,direction,energy,speed,total_distance`
 //   (x 0..105 m along the pitch, y 0..68 m; off-pitch values on the bench).
-// - Ball tracks (Tottenham panorama only): one `<segment>.h264_track.txt`
+// - Ball tracks (Tottenham panorama only; 2013-11-07 gets a hand-keyed
+//   ball.json from fb-ball-keyframes.mjs): one `<segment>.h264_track.txt`
 //   per segment, lines `frameNo x y` in panorama pixels (4450×2000).
 //
 // Media time of every prepared clip = wall clock − t0Utc (same anchor for
@@ -36,6 +37,25 @@ export const SESSIONS = {
     zxy: '2013-11-28/zxy/2013-11-28_tromso_tottenham.csv',
     ballTracks: '2013-11-28/ball/track',
   },
+  // Second half only: the footage's one goal (Anzhi, 90+3', ≈22:53:32 local,
+  // right goal). Different stitch than 2013-11-28 (shot from behind the
+  // crowd) → its own camera model; no ball track for this match.
+  pano1107: {
+    id: 'pano-2013-11-07',
+    match: '2013-11-07',
+    title:
+      '2013-11-07 Tromsø IL – Anzhi Makhachkala (UEFA Europa League), second half',
+    home: 'Tromsø',
+    away: 'Anzhi',
+    session: 'pano',
+    period: 2,
+    fps: 25,
+    framesPerSegment: 75,
+    pano: { w: 4450, h: 2000 },
+    cams: { pano: { dir: '2013-11-07/Second Half/panorama', role: 'pano' } },
+    zxy: '2013-11-07/zxy/2013-11-07_tromso_anji_second.csv',
+    ballTracks: null,
+  },
   tricam: {
     id: 'tricam-2013-11-03',
     match: '2013-11-03',
@@ -55,6 +75,24 @@ export const SESSIONS = {
     ballTracks: null,
   },
 };
+
+/**
+ * The SESSIONS entry a prepared clip came from. Two sets share the 'pano'
+ * rig tag, so go by the sidecar's `sessionId`, then by the match date
+ * (sidecars written before `sessionId` existed), then by the rig.
+ */
+export function sessionOfSidecar(sidecar) {
+  const all = Object.entries(SESSIONS);
+  const date = String(sidecar.t0Iso ?? sidecar.match ?? '').slice(0, 10);
+  return (
+    all.find(([key]) => key === sidecar.sessionId)?.[1] ??
+    all.find(
+      ([, s]) => s.session === sidecar.session && s.match === date,
+    )?.[1] ??
+    all.find(([, s]) => s.session === sidecar.session)?.[1] ??
+    null
+  );
+}
 
 /**
  * `0123_2013-11-28 19:10:03.469509000.h264` → { index, name, wallMs } where
@@ -155,7 +193,7 @@ export const PITCH = { length: 105, width: 68 };
  * ~1 m accuracy over the whole pitch.
  */
 export function projectPitch(cam, X, Y) {
-  const { cx, d, hc, f, x0, y0, tilt } = cam;
+  const { cx, d, hc, f, x0, y0, tilt, roll = 0 } = cam;
   const dx = X - cx;
   const dz = PITCH.width + d - Y;
   const theta = Math.atan2(dx, dz);
@@ -166,8 +204,12 @@ export function projectPitch(cam, X, Y) {
   const cp = Math.cos(phi);
   const ry = Math.sin(phi) * ct + Math.cos(theta) * cp * st;
   const rz = -Math.sin(phi) * st + Math.cos(theta) * cp * ct;
-  const rx = Math.sin(theta) * cp;
-  return [x0 + f * Math.atan2(rx, rz), y0 - (f * ry) / Math.hypot(rx, rz)];
+  const rx0 = Math.sin(theta) * cp;
+  const cr = Math.cos(roll);
+  const sr = Math.sin(roll);
+  const rx = rx0 * cr - ry * sr;
+  const ryr = rx0 * sr + ry * cr;
+  return [x0 + f * Math.atan2(rx, rz), y0 - (f * ryr) / Math.hypot(rx, rz)];
 }
 
 const unprojectGrids = new WeakMap();

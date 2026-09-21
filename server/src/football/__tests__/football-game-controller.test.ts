@@ -1087,6 +1087,24 @@ describe('FootballGameController — host fallback + auto flow', () => {
     h.controller.dispose();
   });
 
+  it('a second-half clip kicks off in period 2; autoFlow leaves added time alone', async () => {
+    const h = harness();
+    // halfMs 120 s (see started()), the clip opens 125 s into the second half.
+    await panoAttached(h, {
+      events: { ...EVENTS, period: 2, kickoffMs: -125_000 },
+    });
+    h.controller.setConfig({ halfMs: 120_000, autoFlow: true });
+    await vi.advanceTimersByTimeAsync(150);
+    expect(
+      h.controller.controlMatch({ action: 'start' }).error,
+    ).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(h.lastMatch().period).toBe(2);
+    expect(h.lastMatch().elapsedMs).toBeGreaterThanOrEqual(125_000);
+    expect(h.lastMatch().phase).toBe('live');
+    h.controller.dispose();
+  });
+
   it('without autoFlow the clock runs into added time', async () => {
     const h = harness();
     await panoAttached(h, { events: null });

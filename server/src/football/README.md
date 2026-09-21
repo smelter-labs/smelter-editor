@@ -51,6 +51,7 @@ standardowym `record/start` / `record/stop`.
   |---|---|---|---|
   | `fb-demo/pano-3x40s/pano.mp4` | 4450×2000 @ 25 | 120 s (pętla) | **najlepszy do demo**: 6 strzałów, 3 szanse, 2 rożne, 7 sprintów; pierwszy SHOT już w 4,6 s |
   | `fb-demo/pano-shot-2815/pano.mp4` | 4450×2000 @ 25 | 60 s | jedna akcja: celny strzał Tromsø w 19,6 s, szansa 21,0 s, rożny 52,9 s |
+  | `fb-demo/pano-anzhi-goal/pano.mp4` | 4450×2000 @ 25 | 118 s | **jedyny prawdziwy gol**: Tromsø–Anzhi 0:1, 90+3' — szansa 62,7 s, celny strzał 65,2 s, **GOAL? (REF CALL) 66,0 s** w prawej bramce, potem cieszynka i wznowienie od środka. W setupie ustaw drużynę B na `ANZHI` / `ANZ`; moderator potwierdza gola klawiszem **B** |
   | `fb-demo/pano-half-3min/pano-half.mp4` | 2224×1000 @ 25 | 180 s | panorama w połowie rozdzielczości — **gdy silnik gubi klatki** na 4450×2000 |
   | `fb-demo/tricam-3min/cam{0,1,2}.mp4` | 1280×960 @ 30 | 180 s | trzy kamery; brak toru piłki → tylko sprinty + reguła cięć |
 
@@ -294,6 +295,7 @@ WS w obie strony. Po zmianie: `pnpm --filter @smelter-editor/types build`.
 `alfheim-fetch.mjs` (pobieranie datasetu) · `alfheim-prep.mjs` (segmenty → mp4)
 · `alfheim-telemetry.mjs` (`zxy.json`, `ball.json`) · `alfheim-events.mjs`
 (`events.json`) · `fb-clip-window.mjs` (okna/montaże demo z remapem sidecarów)
+· `fb-ball-keyframes.mjs` + `.html` (ręczny tor piłki → `ball.json`) · `fb-fit-camera.py` (dopasowanie modelu kamery)
 · `fb-render-assets.mjs` (plansze PNG HUD → `imgs/fb/`) · `fb-zones/*.json`
 (model kamery + orientacja ZXY) · `football-e2e.mjs`, `football-live-check.mjs`
 · `lib/alfheim.mjs`, `lib/fb-api.mjs`.
@@ -331,7 +333,15 @@ Używane podzbiory (~10 GB, katalog z env `ALFHEIM_DIR`):
   segmentów × 3 s ≈ pierwsza połowa), ZXY (20 Hz, tylko Tromsø, metry), pozycja
   piłki na klatkę w pikselach panoramy. Wideo startuje przy 03:41 na zegarze →
   offset kick-offu −221 s. Obie bramki padły w drugiej połowie, której nie ma
-  na wideo → **w materiale nie ma gola**.
+  na wideo → w tym materiale nie ma gola.
+- **2013‑11‑07 Tromsø – Anzhi (0:1)** — tylko końcówka 2. połowy z panoramy
+  (`--set pano-2013-11-07`, domyślne okno 22:51:00–koniec, ~0,8 GB zamiast
+  9,5 GB; `--set all` jej nie pobiera). **Jedyny gol w datasecie**: Mkrtchyan,
+  90+3', ≈22:53:26 czasu lokalnego, prawa bramka. To **inny stitch** niż
+  2013‑11‑28 (kamera zza kibiców: boisko to pas y≈570..1100 px, dół kadru to
+  trybuna, po golu kibice wstają) → osobny model kamery; **brak toru piłki**
+  → ręczne klatki kluczowe; ZXY tylko Tromsø. Kamera 2 z trzech kamer urywa
+  się o 22:49:20, więc gola widać wyłącznie na panoramie.
 - **2013‑11‑03 Tromsø – Strømsgodset** — trzy kamery 1280×960 @ 30 fps + ZXY,
   bez toru piłki.
 
@@ -363,7 +373,35 @@ node scripts/alfheim-telemetry.mjs --clip fb/tricam-2013-11-03/cam1.mp4 --zones 
 node scripts/alfheim-events.mjs   --clip fb/tricam-2013-11-03/cam1.mp4 --attacks-left B
 ```
 
-Gola do demo można dodać na stałe: `alfheim-events.mjs --inject goal@<s>`.
+Klip z prawdziwym golem (2013‑11‑07, 2. połowa, gwizdek ≈22:05:30 → klip
+startujący o 22:52:20 ma kick-off −2810 s):
+
+```bash
+node scripts/alfheim-fetch.mjs --set pano-2013-11-07           # okno 22:51:00–koniec (+ --from/--to)
+node scripts/alfheim-prep.mjs --set pano1107 --from 22:52:20 --to 22:54:18 \
+     --out data/mp4s/fb-demo/pano-anzhi-goal --bitrate 20M --stills
+cp scripts/fb-zones/pano-2013-11-07.json data/mp4s/fb-demo/pano-anzhi-goal/zones.json
+node scripts/alfheim-telemetry.mjs --clip fb-demo/pano-anzhi-goal/pano.mp4        # zxy.json (ball.json nie powstaje)
+node scripts/fb-ball-keyframes.mjs --clip fb-demo/pano-anzhi-goal/pano.mp4 \
+     --keyframes scripts/fb-zones/pano-2013-11-07.ball-keyframes.json             # ręczny tor piłki → ball.json
+node scripts/alfheim-events.mjs --clip fb-demo/pano-anzhi-goal/pano.mp4 \
+     --attacks-left A --period 2 --kickoff-s -2810 --inject goal@66:B
+```
+
+- Klatki kluczowe piłki poprawia się w `scripts/fb-ball-keyframes.html`
+  (otwórz w Chrome, wskaż klip i json, klikaj piłkę; „Save json" → podmień plik
+  w `fb-zones/` i przebuduj `ball.json`). Reżyserowi wystarcza „środek akcji";
+  przerwa > 3 s między klatkami = dziura (kamera zjeżdża na WIDE).
+- `--inject kind@s[:A|B]` — bez sufiksu akcja drużyny A, `:B` stawia ją pod
+  drugą bramką. `goal` zawsze ląduje jako REF CALL. `--period 2` (albo
+  `period` z sidecara) sprawia, że KICK-OFF startuje od razu w 2. połowie
+  (zegar 92:xx), a `autoFlow` nie kończy meczu, gdy klip otwiera się już w
+  doliczonym czasie.
+- Nową panoramę kalibruje `scripts/fb-fit-camera.py` (numpy LM; punkty w
+  `fb-zones/<set>.landmarks.json`, `--still/--overlay` rysuje dopasowane
+  linie boiska na kadrze do kontroli wzrokowej).
+
+Na materiale bez gola można go dodać na stałe: `alfheim-events.mjs --inject goal@<s>`.
 
 ### Kalibracja — rzeczy nieoczywiste
 
@@ -372,8 +410,13 @@ Gola do demo można dodać na stałe: `alfheim-events.mjs --inject goal@<s>`.
   cylindra** (14 ręcznie odczytanych punktów boiska, błąd < ~1 m).
   Układ: X 0..105 (lewa → prawa linia bramkowa *jak w panoramie*), Y 0..68
   (dalsza → bliższa linia boczna); ZXY mapuje się jako `X = zx`, `Y = 68 − zy`.
-- **Zegar czujników ZXY wyprzedza wideo o 4,0 s** (2013‑11‑28;
-  `zones.zxy.offsetMs`). Dla trzech kamer offset nie był mierzony (przyjęto 0).
+- `fb-zones/pano-2013-11-07.json` — ten sam model + opcjonalny **`roll`**
+  (obrót wokół osi optycznej; brak pola = 0), bo ten stitch jest lekko
+  przechylony: 18 punktów, rms 15 px, max 38 px.
+- **Zegar czujników ZXY wyprzedza wideo o 4,0 s** (2013‑11‑28, zmierzone
+  piłką; 2013‑11‑07 — to samo 4,0 s potwierdzone wzrokowo nakładką kropek ZXY
+  na biegnących zawodników; `zones.zxy.offsetMs`). Dla trzech kamer offset nie
+  był mierzony (przyjęto 0).
 - Nazwy segmentów niosą czas lokalny Europe/Oslo; kadencja segmentów pływa,
   więc prep re-timuje każdy segment (mkvmerge → ffmpeg CFR).
 - Tor piłki to jeden piksel na klatkę — piłka w powietrzu „odrzutowuje się"
@@ -596,6 +639,14 @@ trzech kamer na stop-klatce, replay bez homografii dla sesji trzech kamer
   `autoFlow`, ANIM HZ i REPLAY DELAY w setupie, `POST …/view` / `…/minimap`,
   `GET /football-game/clips` + odmowa klipu z niewłaściwego riga, KIT COLOURS /
   LEAVE / pasek błędów w panelu, `scripts/football-e2e-tricam.mjs`.
+
+- **`@piotrsnow/football-anzhi-goal`** — klip z prawdziwym golem
+  (`fb-demo/pano-anzhi-goal`): set `pano-2013-11-07` + okno `--from/--to` w
+  fetchu, `sessionId`/`period` w sidecarze (telemetria nie myli już dwóch
+  panoram), `roll` w modelu kamery, `fb-fit-camera.py`,
+  `fb-ball-keyframes.{mjs,html}`, `--inject …:B` / `--period`, start meczu w
+  2. połowie z `events.json`, `FB_CONFIRM_GOALS` / `FB_HALF_MIN` w
+  `football-live-check.mjs`.
 
 Świadomie nie zrobione: wspólna fabryka kitu `createGameKit(theme)` dla
 `fb-kit` i `bb-kit` (różni je ~280 z 2800 linii, ale przepisanie dotyka obu
