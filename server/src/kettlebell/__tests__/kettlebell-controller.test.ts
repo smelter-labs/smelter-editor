@@ -134,6 +134,27 @@ describe('KettlebellCoachController', () => {
     expect(changes[0]).toMatchObject({ exercise: 'swing', prevExercise: 'idle' });
   });
 
+  it('returns consumers to idle when the worker session restarts', () => {
+    const h = harness();
+    h.advance(10_000);
+    h.controller.handleResult(INPUT, {
+      session: 'a',
+      events: [{ type: 'exercise_changed', exercise: 'swing', prev: 'idle' }],
+    });
+    h.advance(10_000);
+    // Camera reconnect: a fresh analyzer, silently back at 'idle'.
+    h.controller.handleResult(INPUT, { session: 'b', events: [] });
+    h.advance(10_000);
+    // Re-detecting the same lift is a real change again, not a replay.
+    h.controller.handleResult(INPUT, {
+      session: 'b',
+      events: [{ type: 'exercise_changed', exercise: 'swing', prev: 'idle' }],
+    });
+    expect(
+      h.ofType('kettlebell_exercise_changed').map((e) => e.exercise),
+    ).toEqual(['swing', 'idle', 'swing']);
+  });
+
   it('parks a too-soon change and flushes it on a later result', () => {
     const h = harness();
     h.advance(10_000);

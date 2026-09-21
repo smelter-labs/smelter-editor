@@ -1632,11 +1632,24 @@ export class RoomState {
       this.birdTrackers.delete(`yolo:${inputId}`);
       this.birdTrackers.delete(`marker:${inputId}`);
       this.output.store.getState().setPeopleBoxes(inputId, null);
+      this.dropKettlebellState(inputId);
 
       if (this.pruneInputFromLayers(inputId)) {
         this.updateStoreWithState();
       }
     });
+  }
+
+  /**
+   * Forget a removed input's kettlebell-coach state (overlay, event debounce,
+   * held-apply clock). Otherwise this only runs on an explicit model disable,
+   * which neither a plain removal nor the stale-WHIP sweep issues — the last
+   * skeleton and rep count stayed in the store as a ghost entry.
+   */
+  private dropKettlebellState(inputId: string): void {
+    this.output.store.getState().setKettlebell(inputId, null);
+    this.kettlebellController.reset(inputId);
+    this.kettlebellApplyAt.delete(inputId);
   }
 
   /** Drop an input from every layer. Lock-free — call under the mutex. */
@@ -1989,6 +2002,7 @@ export class RoomState {
       let layersUpdated = false;
       for (const id of ids) {
         layersUpdated = this.pruneInputFromLayers(id) || layersUpdated;
+        this.dropKettlebellState(id);
       }
       if (layersUpdated) {
         this.updateStoreWithState();
