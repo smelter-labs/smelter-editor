@@ -860,7 +860,13 @@ describe('FootballGameController — operator regressions', () => {
       events: {
         ...EVENTS,
         events: [
-          { tMs: 1000, kind: 'goal', side: 'left', team: null, candidate: true },
+          {
+            tMs: 1000,
+            kind: 'goal',
+            side: 'left',
+            team: null,
+            candidate: true,
+          },
         ],
       },
     });
@@ -883,9 +889,8 @@ describe('FootballGameController — operator regressions', () => {
     expect(h.lastState().commentator?.name).toBe('MOD');
 
     // The holder resumes on a new socket with its key.
-    const joined = h.sent.find(
-      (s) => s.event.type === 'fb_commentator_joined',
-    )!.event as Extract<RoomEvent, { type: 'fb_commentator_joined' }>;
+    const joined = h.sent.find((s) => s.event.type === 'fb_commentator_joined')!
+      .event as Extract<RoomEvent, { type: 'fb_commentator_joined' }>;
     h.controller.handleMessage('mod-2', {
       type: 'fb_commentator_join',
       name: 'MOD',
@@ -960,6 +965,59 @@ describe('FootballGameController — operator regressions', () => {
     expect(s.teams.B.score).toBe(1);
     const rows = (h.controller as unknown as { events: unknown[] }).events;
     expect(rows.length).toBeLessThanOrEqual(600);
+    h.controller.dispose();
+  });
+});
+
+describe('FootballGameController — host fallback + auto flow', () => {
+  it('the host steers the view and the minimap without a moderator seat', async () => {
+    const h = harness();
+    await started(h);
+    expect(
+      h.controller.hostSetViewOverride({ mode: 'view', view: 'wide' }),
+    ).toBeNull();
+    expect(h.lastState().director.view).toBe('wide');
+    // The same refusals as the panel gets.
+    expect(
+      h.controller.hostSetViewOverride({ mode: 'view', view: 'centre' }),
+    ).toMatch(/camera/);
+    expect(h.controller.hostSetViewOverride({ mode: 'nope' })).toMatch(
+      /Unknown/,
+    );
+    h.controller.setMinimapOn(false);
+    expect(h.lastState().minimap).toBe(false);
+    h.controller.dispose();
+  });
+
+  it('autoFlow blows HALF TIME and FULL TIME when the halves run out', async () => {
+    const h = harness();
+    await panoAttached(h, { events: null });
+    h.controller.setConfig({
+      halfMs: 60_000,
+      clockFromClip: false,
+      autoFlow: true,
+    });
+    h.controller.controlMatch({ action: 'start' });
+    await vi.advanceTimersByTimeAsync(59_000);
+    expect(h.lastMatch().phase).toBe('live');
+    await vi.advanceTimersByTimeAsync(1_500);
+    expect(h.lastMatch().phase).toBe('halftime');
+    // The break is the moderator's: nothing restarts on its own.
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(h.lastMatch().phase).toBe('halftime');
+    h.controller.controlMatch({ action: 'second_half' });
+    await vi.advanceTimersByTimeAsync(60_500);
+    expect(h.lastMatch().phase).toBe('ended');
+    h.controller.dispose();
+  });
+
+  it('without autoFlow the clock runs into added time', async () => {
+    const h = harness();
+    await panoAttached(h, { events: null });
+    h.controller.setConfig({ halfMs: 60_000, clockFromClip: false });
+    h.controller.controlMatch({ action: 'start' });
+    await vi.advanceTimersByTimeAsync(90_000);
+    expect(h.lastMatch().phase).toBe('live');
     h.controller.dispose();
   });
 });

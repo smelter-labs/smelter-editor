@@ -2,35 +2,49 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import type { FbCam, FbCamRole } from '@smelter-editor/types';
+import type { FbSession } from '@smelter-editor/types';
 import {
   attachFbMp4Cam,
+  getFbClips,
   getMP4Suggestions,
   syncFbFileCams,
 } from '@/app/actions/actions';
 import { FB, FbSelect, Chip, Meta } from './fb-kit';
+import { clipFitsRole } from './clip-role';
 
 type Cams = Record<FbCamRole, FbCam>;
 
 /** Clips in data/mp4s usable as a camera (menu assets of other games excluded). */
 export function useMp4Library() {
   const [files, setFiles] = useState<string[]>([]);
+  const [sessions, setSessions] = useState<Map<string, FbSession | null>>(
+    () => new Map(),
+  );
   const [loading, setLoading] = useState(true);
   const reload = useCallback(() => {
     setLoading(true);
     void getMP4Suggestions({ refresh: true })
-      .then((s) =>
+      .then(async (s) => {
         setFiles(
           s.mp4s
             .filter((f) => f.toLowerCase().endsWith('.mp4'))
             .filter((f) => !f.startsWith('duck-hunter-characters/'))
             .sort((a, b) => a.localeCompare(b)),
-        ),
-      )
+        );
+        // The rig each clip's sidecar names (after the refresh above).
+        const { clips } = await getFbClips();
+        setSessions(new Map(clips.map((c) => [c.fileName, c.session])));
+      })
       .catch(() => setFiles([]))
       .finally(() => setLoading(false));
   }, []);
   useEffect(() => reload(), [reload]);
-  return { files, loading, reload };
+  /** Candidate clips for a camera role (sidecar rig first, then the name). */
+  const filterFor = useCallback(
+    (role: FbCamRole) => (f: string) => clipFitsRole(role, f, sessions.get(f)),
+    [sessions],
+  );
+  return { files, loading, reload, filterFor };
 }
 
 /** `LIVE · …` style status for a cam row, naming the clip. */

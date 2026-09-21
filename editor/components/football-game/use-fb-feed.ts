@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import type {
+  FbDirectorEvent,
   FbEventChangeEvent,
   FbMatchEvent,
   FbStateEvent,
@@ -73,6 +74,11 @@ export function useFbFeed(roomId: string | null): FbFeed {
     onEvent: (parsed) => {
       if (parsed.type === 'fb_state') {
         setState(parsed as FbStateEvent);
+      } else if (parsed.type === 'fb_director') {
+        // 1 Hz between the (rarer) state snapshots: keeps the host's
+        // DIRECTOR pill and PROGRAM caption current.
+        const director = (parsed as FbDirectorEvent).director;
+        setState((prev) => (prev ? { ...prev, director } : prev));
       } else if (parsed.type === 'fb_match') {
         setMatch(parsed as FbMatchEvent);
         setMatchReceivedAt(Date.now());

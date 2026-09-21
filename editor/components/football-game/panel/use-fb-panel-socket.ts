@@ -69,6 +69,8 @@ export type FbPanelSocket = {
   director: FbDirectorState | null;
   directorAt: number;
   join: (name: string) => void;
+  /** Hand the seat over: the server frees it and the stored key is dropped. */
+  leave: () => void;
   sendView: (override: FbViewOverride) => void;
   sendMatch: (action: FbMatchAction, role?: FbCamRole) => void;
   resolveEvent: (
@@ -145,6 +147,8 @@ export function useFbPanelSocket(roomId: string): FbPanelSocket {
           setDirectorAt(Date.now());
           break;
         case 'fb_error':
+          // Someone else holds the seat: stop re-joining on every reconnect.
+          if (event.code === 'role_taken') wantsJoinRef.current = false;
           setLastError({
             code: event.code,
             message: event.message,
@@ -233,6 +237,13 @@ export function useFbPanelSocket(roomId: string): FbPanelSocket {
     [sendJson],
   );
 
+  const leave = useCallback(() => {
+    wantsJoinRef.current = false;
+    keyRef.current = null;
+    writeModeratorSession(roomId, {});
+    sendJson({ type: 'fb_commentator_leave' });
+  }, [roomId, sendJson]);
+
   const sendView = useCallback(
     (override: FbViewOverride) =>
       sendJson({ type: 'fb_commentator_view', override }),
@@ -301,6 +312,7 @@ export function useFbPanelSocket(roomId: string): FbPanelSocket {
     director,
     directorAt,
     join,
+    leave,
     sendView,
     sendMatch,
     resolveEvent,

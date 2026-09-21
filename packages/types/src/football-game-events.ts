@@ -128,10 +128,16 @@ export type FbConfig = {
   /** Take the match clock from the clip (its events sidecar names the kick-off). */
   clockFromClip: boolean;
   /**
-   * Which team attacks the LEFT goal of the picture in the first half; null
-   * = whatever the clip's events sidecar says (Tromsø's own half from ZXY).
+   * Which team attacks the LEFT goal IN THE FOOTAGE; null = whatever the
+   * clip's events sidecar says (Tromsø's own half from ZXY). Never swapped by
+   * the period: the picture does not change ends at half time.
    */
   attacksLeft: FbTeamId | null;
+  /**
+   * Whistle by the clock: HALF TIME when the first half runs out, FULL TIME
+   * when the second does. Off = the moderator ends the halves (added time).
+   */
+  autoFlow: boolean;
   director: FbDirectorConfig;
   ai: FbAiConfig;
   /** Instant replay window after a replay-worthy event. */
@@ -149,6 +155,7 @@ export type FbConfigPatch = {
   halfMs?: number;
   clockFromClip?: boolean;
   attacksLeft?: FbTeamId | null;
+  autoFlow?: boolean;
   director?: Partial<FbDirectorConfig>;
   ai?: Partial<FbAiConfig>;
   replay?: boolean;
@@ -192,6 +199,7 @@ export const FB_DEFAULT_CONFIG: FbConfig = {
   halfMs: 45 * 60_000,
   clockFromClip: true,
   attacksLeft: null,
+  autoFlow: false,
   director: {
     zoom: "normal",
     smoothing: "smooth",

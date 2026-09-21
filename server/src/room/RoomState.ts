@@ -91,6 +91,7 @@ import {
   type FbMatchCommand,
   type FbMatchError,
 } from '../football/FootballGameController';
+import { fbRoleRefusal, readFbClipSession } from '../football/clipSession';
 import type {
   FbCamRole,
   FbConfig,
@@ -2600,6 +2601,15 @@ export class RoomState {
     this.football.setAiEventsEnabled(enabled);
   }
 
+  /** Host fallback for the moderator's VIEW buttons; returns the refusal. */
+  public setFbView(override: unknown): string | null {
+    return this.football.hostSetViewOverride(override);
+  }
+
+  public setFbMinimap(enabled: boolean): void {
+    this.football.setMinimapOn(enabled);
+  }
+
   /**
    * Register a looping local-mp4 (from data/mp4s) as a football camera role.
    * No side channel: the picture airs live and the clip's telemetry sidecars
@@ -2609,6 +2619,14 @@ export class RoomState {
     role: FbCamRole,
     fileName: string,
   ): Promise<{ inputId: string }> {
+    // The clip's own sidecar says which rig shot it: a three-camera clip in
+    // the PANORAMA slot (or the reverse) would run the wrong director.
+    const session = await readFbClipSession(
+      path.join(DATA_DIR, 'mp4s'),
+      fileName,
+    );
+    const refusal = fbRoleRefusal(role, session);
+    if (refusal) throw new Error(`${fileName}: ${refusal}`);
     const inputId = await this.addNewInput({
       type: 'local-mp4',
       source: { fileName },

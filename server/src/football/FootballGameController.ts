@@ -888,11 +888,22 @@ export class FootballGameController {
 
   setViewOverride(clientId: string, raw: unknown): void {
     if (!this.requireCommentator(clientId, 'switch the broadcast view')) return;
+    const error = this.applyViewOverride(raw);
+    if (error) this.sendError(clientId, 'invalid_view', error);
+  }
+
+  /**
+   * Host fallback (REST): the laptop can steer the director when the
+   * moderator's phone is gone. Returns the refusal, null when applied.
+   */
+  hostSetViewOverride(raw: unknown): string | null {
+    this.engaged = true;
+    return this.applyViewOverride(raw);
+  }
+
+  private applyViewOverride(raw: unknown): string | null {
     const override = this.parseViewOverride(raw);
-    if (!override) {
-      this.sendError(clientId, 'invalid_view', 'Unknown view override.');
-      return;
-    }
+    if (!override) return 'Unknown view override.';
     if (override.mode === 'view') {
       const session = this.session();
       const allowed =
@@ -901,25 +912,14 @@ export class FootballGameController {
           : session === 'tricam'
             ? FB_TRICAM_VIEWS
             : [];
-      if (!allowed.includes(override.view)) {
-        this.sendError(
-          clientId,
-          'invalid_view',
-          'That view needs its camera attached.',
-        );
-        return;
-      }
+      if (!allowed.includes(override.view))
+        return 'That view needs its camera attached.';
       if (
         session === 'tricam' &&
         override.view !== 'auto' &&
         !this.cams.get(override.view as FbCamRole)?.inputId
       ) {
-        this.sendError(
-          clientId,
-          'invalid_view',
-          'That camera is not attached.',
-        );
-        return;
+        return 'That camera is not attached.';
       }
     }
     this.viewOverride =
@@ -939,6 +939,7 @@ export class FootballGameController {
     this.flushAiLog();
     this.directorTick(this.now(), true);
     this.deps.broadcast(this.stateSnapshot());
+    return null;
   }
 
   private parseViewOverride(raw: unknown): FbViewOverride | null {
@@ -964,6 +965,11 @@ export class FootballGameController {
       this.sendError(clientId, 'invalid_view', 'Invalid minimap toggle.');
       return;
     }
+    this.setMinimapOn(raw);
+  }
+
+  /** Minimap on air (the moderator's toggle; the host's REST fallback). */
+  setMinimapOn(raw: boolean): void {
     if (this.minimapOn === raw) return;
     this.minimapOn = raw;
     this.aiLog.push(
@@ -1408,6 +1414,7 @@ export class FootballGameController {
       halfMs?: number;
       clockFromClip?: boolean;
       attacksLeft?: FbTeamId | null;
+      autoFlow?: boolean;
       director?: Partial<FbConfig['director']>;
       ai?: Partial<FbConfig['ai']>;
       replay?: boolean;
@@ -1469,6 +1476,7 @@ export class FootballGameController {
         c.ai.replayOn = a.replayOn.filter(isEventKind);
     }
     if (typeof partial.replay === 'boolean') c.replay = partial.replay;
+    if (typeof partial.autoFlow === 'boolean') c.autoFlow = partial.autoFlow;
     if (
       typeof partial.replayDelayMs === 'number' &&
       Number.isFinite(partial.replayDelayMs)
@@ -1717,6 +1725,13 @@ export class FootballGameController {
         ? now - this.segmentStartedAt
         : 0;
     return this.elapsedBeforeSegmentMs + Math.max(0, running);
+  }
+
+  /** `autoFlow`: the clock blows the whistle when a half runs out. */
+  private checkAutoFlow(now: number): void {
+    if (!this.config.autoFlow || this.phase !== 'live') return;
+    if (this.periodElapsed(now) < this.config.halfMs) return;
+    this.controlMatch({ action: this.period === 1 ? 'half_time' : 'end' });
   }
 
   private endMatch(now: number): void {
@@ -2782,6 +2797,7 @@ export class FootballGameController {
     if (this.aiEventsOn && !this.aiRun && !this.aiLoading)
       void this.armAiEvents();
     this.directorTick(now);
+    this.checkAutoFlow(now);
     this.syncScene(now);
     if (this.phase !== 'lobby') {
       if (now - this.lastMatchBroadcastAt >= MATCH_BROADCAST_MS) {

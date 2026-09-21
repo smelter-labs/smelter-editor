@@ -1,8 +1,8 @@
 'use client';
 
-import { changedSections } from './live-config-diff';
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { changedSections } from './live-config-diff';
 import type { FbMatchEvent, FbStateEvent } from '@smelter-editor/types';
 import { getFbState, setFbConfig } from '@/app/actions/actions';
 import { RESOLUTION_PRESETS } from '@/lib/resolution';
@@ -23,6 +23,7 @@ import {
   DEFAULT_FB_UI_CONFIG,
   sanitizeFbAi,
   sanitizeFbDirector,
+  sanitizeReplayDelay,
   sanitizeFbPerf,
   serverConfigToUi,
   useFbRoom,
@@ -61,6 +62,8 @@ function loadConfig(): FbUiConfig {
           : d.clockFromClip,
       attacksLeft:
         p.attacksLeft === 'A' || p.attacksLeft === 'B' ? p.attacksLeft : null,
+      autoFlow: p.autoFlow === true,
+      replayDelayMs: sanitizeReplayDelay(p.replayDelayMs),
       director: sanitizeFbDirector(p.director),
       ai: sanitizeFbAi(p.ai),
       replay: typeof p.replay === 'boolean' ? p.replay : d.replay,
@@ -140,6 +143,8 @@ export function FootballGameArcade({
     ai: config.ai,
     minimap: config.minimap,
     replay: config.replay,
+    replayDelayMs: config.replayDelayMs,
+    autoFlow: config.autoFlow,
   };
   const liveJson = JSON.stringify(live);
   const pushedLiveRef = useRef(live);

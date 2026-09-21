@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import { readFbClipSession } from '../football/clipSession';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import websocket from '@fastify/websocket';
@@ -3670,6 +3671,7 @@ const FbConfigSchema = Type.Object({
   replay: Type.Optional(Type.Boolean()),
   replayDelayMs: Type.Optional(Type.Number()),
   minimap: Type.Optional(Type.Boolean()),
+  autoFlow: Type.Optional(Type.Boolean()),
   perf: Type.Optional(
     Type.Object({
       animTickHz: Type.Optional(
@@ -3879,6 +3881,55 @@ routes.post<RoomIdParams & { Body: Static<typeof FbAiEventsSchema> }>(
     res.status(200).send({ status: 'ok', ...room.getFbState() });
   },
 );
+
+// Host fallback for the moderator's VIEW / MINIMAP controls (the laptop can
+// steer the director when the panel is gone).
+const FbViewSchema = Type.Object({
+  override: Type.Union([
+    Type.Object({ mode: Type.Literal('auto') }),
+    Type.Object({ mode: Type.Literal('view'), view: Type.String() }),
+  ]),
+});
+
+routes.post<RoomIdParams & { Body: Static<typeof FbViewSchema> }>(
+  '/room/:roomId/football-game/view',
+  { schema: { params: RoomIdParamsSchema, body: FbViewSchema } },
+  async (req, res) => {
+    const room = state.getRoom(req.params.roomId);
+    const refusal = room.setFbView(req.body.override);
+    if (refusal)
+      return res.status(400).send({ status: 'error', message: refusal });
+    res.status(200).send({ status: 'ok', ...room.getFbState() });
+  },
+);
+
+const FbMinimapSchema = Type.Object({ enabled: Type.Boolean() });
+
+routes.post<RoomIdParams & { Body: Static<typeof FbMinimapSchema> }>(
+  '/room/:roomId/football-game/minimap',
+  { schema: { params: RoomIdParamsSchema, body: FbMinimapSchema } },
+  async (req, res) => {
+    const room = state.getRoom(req.params.roomId);
+    room.setFbMinimap(req.body.enabled);
+    res.status(200).send({ status: 'ok', ...room.getFbState() });
+  },
+);
+
+// Library clips with the rig their sidecar names (`<clip>.alfheim.json`), so
+// the pickers offer panorama clips to PANORAMA and camera clips to the cams.
+routes.get('/football-game/clips', async (_req, res) => {
+  const root = path.join(DATA_DIR, 'mp4s');
+  const files = mp4SuggestionsMonitor.mp4Files.filter((f) =>
+    f.toLowerCase().endsWith('.mp4'),
+  );
+  const clips = await Promise.all(
+    files.map(async (fileName) => ({
+      fileName,
+      session: await readFbClipSession(root, fileName),
+    })),
+  );
+  res.status(200).send({ clips });
+});
 
 // ── Haunting ghosts ────────────────────────────────────────────
 
