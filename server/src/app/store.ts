@@ -490,6 +490,8 @@ export type KbtHudScene =
   | 'split';
 
 export type KbtBoardRow = {
+  /** Stable row identity (React key + Smelter id) — names are not unique. */
+  clientId: string;
   rank: number;
   name: string;
   color: string;

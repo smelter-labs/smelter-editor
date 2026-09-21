@@ -3097,6 +3097,7 @@ export class KettlebellTournamentController {
           }
         }
         return {
+          clientId: p.clientId,
           rank: i + 1,
           name: p.name,
           color: p.color,

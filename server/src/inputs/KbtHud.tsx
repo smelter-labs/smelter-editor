@@ -943,7 +943,15 @@ function SoloScene({ hud, k }: { hud: KbtHudState; k: number }) {
 }
 
 /** BOARD: centered standings panel between heats. */
-function BoardScene({ hud, k }: { hud: KbtHudState; k: number }) {
+function BoardScene({
+  hud,
+  k,
+  frozen = false,
+}: {
+  hud: KbtHudState;
+  k: number;
+  frozen?: boolean;
+}) {
   const board = hud.board;
   if (!board) return null;
   const BX = 360;
@@ -975,10 +983,14 @@ function BoardScene({ hud, k }: { hud: KbtHudState; k: number }) {
         const rowY = BY + 130 + i * 62;
         return (
           <View
-            key={row.name}
-            id={`kbt-board-row-${row.name}`}
+            key={row.clientId}
             // Stable per-player id + transition: rank swaps on a live board
             // (forced 'board' during a heat) slide rows instead of teleporting.
+            // Keyed on clientId — two lifters may share a name — and left off
+            // the frozen outgoing copy of a crossfade, which would otherwise
+            // put the same id in the scene twice (e.g. a PiP toggle on the
+            // board swaps board → board).
+            id={frozen ? undefined : `kbt-board-row-${row.clientId}`}
             transition={{
               durationMs: 300,
               easingFunction: {
@@ -1877,9 +1889,13 @@ function CommentatorOverlay({ hud, k }: { hud: KbtHudState; k: number }) {
 function SceneChrome({
   hud,
   resolution,
+  frozen = false,
 }: {
   hud: KbtHudState;
   resolution: Resolution;
+  /** The outgoing copy of a crossfade: it carries no Smelter ids, so the
+   * incoming copy of the same scene never duplicates them. */
+  frozen?: boolean;
 }) {
   const k = resolution.height / 1080;
   const heatScene = hud.scene === 'solo' || hud.scene === 'grid';
@@ -1893,7 +1909,9 @@ function SceneChrome({
         overflow: 'visible',
       }}>
       {hud.scene === 'lobby' ? <LobbyScene hud={hud} k={k} /> : null}
-      {hud.scene === 'board' ? <BoardScene hud={hud} k={k} /> : null}
+      {hud.scene === 'board' ? (
+        <BoardScene hud={hud} k={k} frozen={frozen} />
+      ) : null}
       {hud.scene === 'podium' ? <PodiumScene hud={hud} k={k} /> : null}
       {hud.scene === 'solo' ? <SoloScene hud={hud} k={k} /> : null}
       {hud.scene === 'caster' ? <CasterFullScene hud={hud} k={k} /> : null}
@@ -2005,7 +2023,7 @@ export function KbtMatchHud({
               startedAtMs: outgoing.startedAtMs,
             }}
             resolution={resolution}>
-            <SceneChrome hud={outgoing.hud} resolution={resolution} />
+            <SceneChrome hud={outgoing.hud} resolution={resolution} frozen />
           </TransitionShaderWrapper>
         </View>
       ) : null}
