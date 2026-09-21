@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { FbEventKind, FbTeamId, FbView } from '@smelter-editor/types';
 import {
+  FB_MINIMAP_SIZES,
   FB_PANO_VIEWS,
   FB_TEAM_COLOR_PRESETS,
   FB_TRICAM_VIEWS,
@@ -25,6 +26,7 @@ import {
   PlateHead,
   RefCallCard,
   ScoreRow,
+  Segment,
   StatusPill,
   TagChip,
   TeamStripe,
@@ -48,6 +50,14 @@ import { replayClip } from '../replay-helpers';
 import { MANUAL_EVENT_KINDS, eventLabel } from '../fb-kit-helpers';
 import { formatClock, matchClock } from '../use-fb-feed';
 import type { FbPanelSocket } from './use-fb-panel-socket';
+import { FollowTuningRows } from '../follow-tuning';
+
+const COLUMN: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 16,
+  minWidth: 0,
+};
 
 const PLATE: React.CSSProperties = {
   padding: 16,
@@ -110,7 +120,7 @@ function ProgramMonitor({ whepUrl }: { whepUrl: string | null }) {
  * The moderator panel: REF CALLS on top (goal candidates), then score +
  * clock + match flow, manual goals, views, the program monitor, cameras,
  * the ledger, the AI log and the tracking table. One column on phones, two
- * on a tablet/laptop.
+ * on a tablet/laptop, three on a wide screen — the panel takes the full width.
  */
 export function PanelScreen({
   socket,
@@ -119,6 +129,7 @@ export function PanelScreen({
   roomId,
   narrow,
   onLeave,
+  columns,
 }: {
   socket: FbPanelSocket;
   name: string;
@@ -127,6 +138,8 @@ export function PanelScreen({
   narrow: boolean;
   /** Hand the moderator seat over and go back to the name step. */
   onLeave?: () => void;
+  /** Desktop column count (ignored when `narrow`). */
+  columns: 2 | 3;
 }) {
   const rec = useKbtRecording(roomId, socket.state?.isRecording ?? false);
   const library = useMp4Library();
@@ -349,7 +362,8 @@ export function PanelScreen({
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: narrow ? '1fr 1fr' : 'repeat(4, 1fr)',
+        gridTemplateColumns:
+          narrow || columns === 3 ? '1fr 1fr' : 'repeat(4, 1fr)',
         gap: 8,
       }}>
       {phase === 'lobby' ? (
@@ -490,7 +504,12 @@ export function PanelScreen({
                   label={eventLabel(k)}
                   disabled={eventsLocked}
                   onClick={() => socket.addEvent(t, k)}
-                  style={{ flex: 1, height: 40 }}
+                  style={{
+                    flex: 1,
+                    height: 40,
+                    minWidth: 0,
+                    ...(narrow ? { padding: '0 4px' } : {}),
+                  }}
                 />
               ))}
             </div>
@@ -577,6 +596,27 @@ export function PanelScreen({
           title='Tracking minimap on air'
           onClick={() => socket.setMinimap(!state?.minimap)}
         />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Meta size={10} tracking={0.16}>
+            SIZE
+          </Meta>
+          <Segment
+            height={28}
+            fontSize={10}
+            style={{
+              width: 170,
+              ...(state?.minimap
+                ? {}
+                : { pointerEvents: 'none', opacity: 0.5 }),
+            }}
+            options={FB_MINIMAP_SIZES.map((n) => ({
+              value: n,
+              label: String(n),
+            }))}
+            value={state?.config.minimapSize ?? 1}
+            onChange={(v) => socket.setMinimapSize(v)}
+          />
+        </div>
       </div>
       {director ? (
         <Meta size={10} tracking={0.16}>
@@ -590,6 +630,44 @@ export function PanelScreen({
       ) : null}
     </>
   );
+
+  // Follow feel, live: the server clamps each knob and echoes it in the config.
+  const tuningPlate =
+    session === 'pano' && state ? (
+      <FbPlate cutPx={12} style={{ ...PLATE, gap: 4 }}>
+        <PlateHead
+          size={22}
+          right={
+            <Meta size={10} tracking={0.2}>
+              LIVE
+            </Meta>
+          }>
+          FOLLOW TUNING
+        </PlateHead>
+        <FollowTuningRows
+          director={state.config.director}
+          onChange={socket.tuneDirector}
+          controlHeight={30}
+          row={(label, control) => (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 10,
+                borderBottom: `1px solid ${FB.rule}`,
+                padding: '6px 0',
+                minHeight: 42,
+              }}>
+              <Meta size={10} tracking={0.14}>
+                {label}
+              </Meta>
+              {control}
+            </div>
+          )}
+        />
+      </FbPlate>
+    ) : null;
 
   const viewPlate = (
     <FbPlate cutPx={12} style={{ ...PLATE, gap: 10 }}>
@@ -805,7 +883,7 @@ export function PanelScreen({
       <div
         className='fb-scroll'
         style={{
-          maxHeight: 340,
+          maxHeight: !narrow && columns === 3 ? 520 : 340,
           overflowY: 'auto',
           display: 'flex',
           flexDirection: 'column',
@@ -1025,6 +1103,7 @@ export function PanelScreen({
         {scoreFlowPlate}
         {manualPlate}
         {viewPlate}
+        {tuningPlate}
         {programPlate}
         {camerasPlate}
         {ledgerPlate}
@@ -1048,23 +1127,47 @@ export function PanelScreen({
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
+          gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
           gap: 16,
           alignItems: 'start',
         }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {refCallPlate}
-          {scoreFlowPlate}
-          {manualPlate}
-          {trackingPlate}
-          {kitsPlate}
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {programPlate}
-          {ledgerPlate}
-          {aiLogPlate}
-          {camerasPlate}
-        </div>
+        {columns === 3 ? (
+          <>
+            <div style={COLUMN}>
+              {refCallPlate}
+              {scoreFlowPlate}
+              {manualPlate}
+              {trackingPlate}
+              {kitsPlate}
+            </div>
+            <div style={COLUMN}>
+              {programPlate}
+              {tuningPlate}
+              {camerasPlate}
+            </div>
+            <div style={COLUMN}>
+              {ledgerPlate}
+              {aiLogPlate}
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={COLUMN}>
+              {refCallPlate}
+              {scoreFlowPlate}
+              {manualPlate}
+              {trackingPlate}
+              {kitsPlate}
+            </div>
+            <div style={COLUMN}>
+              {programPlate}
+              {tuningPlate}
+              {ledgerPlate}
+              {aiLogPlate}
+              {camerasPlate}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

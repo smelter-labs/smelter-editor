@@ -29,6 +29,7 @@ describe('host UI config ↔ server config', () => {
       replayDelayMs: 1500,
       replay: true,
       minimap: true,
+      minimapSize: 1,
     });
   });
 

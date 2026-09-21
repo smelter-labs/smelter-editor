@@ -23,6 +23,7 @@ import {
   DEFAULT_FB_UI_CONFIG,
   sanitizeFbAi,
   sanitizeFbDirector,
+  sanitizeFbMinimapSize,
   sanitizeReplayDelay,
   sanitizeFbPerf,
   serverConfigToUi,
@@ -68,6 +69,7 @@ function loadConfig(): FbUiConfig {
       ai: sanitizeFbAi(p.ai),
       replay: typeof p.replay === 'boolean' ? p.replay : d.replay,
       minimap: typeof p.minimap === 'boolean' ? p.minimap : d.minimap,
+      minimapSize: sanitizeFbMinimapSize(p.minimapSize),
       resolution:
         p.resolution && p.resolution in RESOLUTION_PRESETS
           ? p.resolution
@@ -142,6 +144,7 @@ export function FootballGameArcade({
     director: config.director,
     ai: config.ai,
     minimap: config.minimap,
+    minimapSize: config.minimapSize,
     replay: config.replay,
     replayDelayMs: config.replayDelayMs,
     autoFlow: config.autoFlow,

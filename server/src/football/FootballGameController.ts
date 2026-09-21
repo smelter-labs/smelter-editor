@@ -6,6 +6,8 @@ import type {
   FbCamRole,
   FbClipClock,
   FbConfig,
+  FbDirectorPatch,
+  FbMinimapSize,
   FbDirectorState,
   FbErrorCode,
   FbEventEntry,
@@ -27,9 +29,12 @@ import type {
 import {
   FB_CAM_ROLES,
   FB_DEFAULT_CONFIG,
+  FB_DIRECTOR_LIMITS,
   FB_EVENT_KINDS,
   FB_MATCH_ACTIONS,
+  FB_MINIMAP_SIZES,
   FB_PANO_VIEWS,
+  FB_SMOOTHING_PRESET_MS,
   FB_TEAM_IDS,
   FB_TRICAM_VIEWS,
 } from '@smelter-editor/types';
@@ -40,6 +45,7 @@ import {
   BALL_LOST_WIDE_MS,
   cropForReplay,
   cropOf,
+  exactCropOf,
   goalCrop,
   resolvePanoView,
   stepFollow,
@@ -235,7 +241,14 @@ type EventInput = {
 
 const TICK_MS = 100;
 const MATCH_BROADCAST_MS = 1000;
-const DIRECTOR_TICK_MS = 250;
+/** The follow window steps on every controller tick (the gate absorbs timer jitter)… */
+const DIRECTOR_TICK_MS = TICK_MS - 10;
+/**
+ * …and each step's tile glide outlasts the tick: the next step interrupts it
+ * mid-flight, so the camera never arrives and waits (a late or dropped tick
+ * just rides the same glide a little longer).
+ */
+const DIRECTOR_GLIDE_MS = 250;
 const DIRECTOR_BROADCAST_MS = 1000;
 const VIEW_SWITCH_MS = 600;
 const PARK_LEAD_MS = 50;
@@ -355,6 +368,8 @@ export class FootballGameController {
   private directorApplying = false;
   private effectiveView: FbView = 'wide';
   private currentCrop: Crop | null = null;
+  /** The same window unrounded — the tile is laid out from this one. */
+  private currentCropExact: Crop | null = null;
   private ballLostSince: number | null = null;
   private ballTracked = false;
   private minimapOn = true;
@@ -452,6 +467,8 @@ export class FootballGameController {
       eventId?: unknown;
       kind?: unknown;
       voided?: unknown;
+      size?: unknown;
+      director?: unknown;
     };
     switch (msg.type) {
       case 'fb_spectate':
@@ -478,6 +495,16 @@ export class FootballGameController {
         break;
       case 'fb_commentator_minimap':
         this.setMinimap(clientId, msg.enabled);
+        break;
+      case 'fb_commentator_minimap_size':
+        if (!this.requireCommentator(clientId, 'resize the minimap')) break;
+        if (typeof msg.size === 'number')
+          this.setConfig({ minimapSize: msg.size });
+        break;
+      case 'fb_commentator_director':
+        if (!this.requireCommentator(clientId, 'tune the director')) break;
+        if (msg.director && typeof msg.director === 'object')
+          this.setConfig({ director: msg.director as FbDirectorPatch });
         break;
       case 'fb_commentator_replay':
         if (!this.requireCommentator(clientId, 'toggle the replay')) break;
@@ -1434,11 +1461,12 @@ export class FootballGameController {
       clockFromClip?: boolean;
       attacksLeft?: FbTeamId | null;
       autoFlow?: boolean;
-      director?: Partial<FbConfig['director']>;
+      director?: FbDirectorPatch;
       ai?: Partial<FbConfig['ai']>;
       replay?: boolean;
       replayDelayMs?: number;
       minimap?: boolean;
+      minimapSize?: number;
       perf?: Partial<FbConfig['perf']>;
       joinUrls?: Partial<Record<'commentator', string>>;
       joinLabel?: string;
@@ -1474,12 +1502,24 @@ export class FootballGameController {
       if (d.zoom === 'tight' || d.zoom === 'normal' || d.zoom === 'wide')
         c.director.zoom = d.zoom;
       if (d.smoothing === 'snappy' || d.smoothing === 'smooth')
-        c.director.smoothing = d.smoothing;
+        c.director.smoothTimeMs = FB_SMOOTHING_PRESET_MS[d.smoothing];
       if (d.switchStyle === 'glide' || d.switchStyle === 'cut')
         c.director.switchStyle = d.switchStyle;
       if (typeof d.lookaheadMs === 'number' && Number.isFinite(d.lookaheadMs)) {
         c.director.lookaheadMs = clamp(Math.round(d.lookaheadMs), 0, 2000);
       }
+      for (const key of [
+        'averageMs',
+        'smoothTimeMs',
+        'deadZonePx',
+        'maxSpeedPxS',
+      ] as const) {
+        const v = d[key];
+        if (typeof v !== 'number' || !Number.isFinite(v)) continue;
+        const lim = FB_DIRECTOR_LIMITS[key];
+        c.director[key] = clamp(Math.round(v), lim.min, lim.max);
+      }
+      if (typeof d.catchUp === 'boolean') c.director.catchUp = d.catchUp;
     }
     if (partial.ai) {
       const a = partial.ai;
@@ -1505,6 +1545,16 @@ export class FootballGameController {
     if (typeof partial.minimap === 'boolean') {
       c.minimap = partial.minimap;
       this.minimapOn = partial.minimap;
+    }
+    if (
+      typeof partial.minimapSize === 'number' &&
+      Number.isFinite(partial.minimapSize)
+    ) {
+      c.minimapSize = clamp(
+        Math.round(partial.minimapSize),
+        FB_MINIMAP_SIZES[0],
+        FB_MINIMAP_SIZES[FB_MINIMAP_SIZES.length - 1],
+      ) as FbMinimapSize;
     }
     if (partial.perf) {
       const p = partial.perf;
@@ -2342,7 +2392,7 @@ export class FootballGameController {
     this.lastDirectorAt = now;
     const session = this.session();
     if (!session) return;
-    const air = this.airMediaMs(now + DIRECTOR_TICK_MS);
+    const air = this.airMediaMs(now + DIRECTOR_GLIDE_MS);
     const t = this.telemetry();
     if (session === 'pano') {
       const pano = this.pano();
@@ -2355,7 +2405,11 @@ export class FootballGameController {
       let fixed: { w: number } | null = null;
       if (view === 'follow') {
         if (t?.ball && air != null) {
-          const b = ballMean(t.ball, air - 200, air + cfg.lookaheadMs);
+          const b = ballMean(
+            t.ball,
+            air - cfg.averageMs,
+            air + cfg.lookaheadMs,
+          );
           if (b) {
             target = { x: b.px, y: b.py };
             speed = ballSpeedPx(t.ball, air);
@@ -2408,7 +2462,7 @@ export class FootballGameController {
       if (fixed) {
         next =
           switched || !this.follow
-            ? { cx: target!.x, cy: target!.y, w: fixed.w }
+            ? { cx: target!.x, cy: target!.y, w: fixed.w, vx: 0, vy: 0, vw: 0 }
             : stepFollow(
                 this.follow,
                 {
@@ -2442,12 +2496,13 @@ export class FootballGameController {
       }
       this.follow = next;
       this.currentCrop = cropOf(next, aspect, pano);
+      this.currentCropExact = exactCropOf(next, aspect, pano);
       void this.applyDirectorTile(
         switched
           ? cfg.switchStyle === 'cut'
             ? 0
             : VIEW_SWITCH_MS
-          : DIRECTOR_TICK_MS,
+          : DIRECTOR_GLIDE_MS,
         switched,
       );
       if (switched) this.deps.broadcast(this.stateSnapshot());
@@ -2532,7 +2587,7 @@ export class FootballGameController {
     const pano = this.pano();
     const res = this.deps.getResolution();
     const crop =
-      this.currentCrop ??
+      this.currentCropExact ??
       wideCrop(pano, res.width / res.height, this.telemetry()?.zones ?? null);
     return { inputId: cam.inputId, ...tileForCrop(crop, pano, res) };
   }
@@ -3005,6 +3060,7 @@ export class FootballGameController {
       if (!top || s.topKmh > top.kmh)
         top = { tag: s.tag, kmh: Math.round(s.topKmh) };
     return {
+      size: this.config.minimapSize,
       teamColor: this.config.teams.A.color,
       teamShort: this.config.teams.A.short,
       players,

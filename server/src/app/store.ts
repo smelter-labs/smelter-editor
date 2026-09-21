@@ -15,6 +15,7 @@ import type {
 } from '../types';
 import type {
   BbPipFx,
+  FbMinimapSize,
   KbtViewTransitionStyle,
   ShooterTopScoreEntry,
 } from '@smelter-editor/types';
@@ -22,6 +23,7 @@ import type { HandsStore } from '../hands/handStore';
 import type { DogEntity } from '../duckHunter/dogTaunt';
 import type { DuckEntity } from '../duckHunter/duckFlight';
 import { createContext, useContext } from 'react';
+import { MINIMAP_PLATE, minimapScale } from '../inputs/fbHudMetrics';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 
@@ -802,7 +804,12 @@ export type FbHudStage = {
   } | null;
 };
 
-export type FbHudTeam = { name: string; short: string; color: string; score: number };
+export type FbHudTeam = {
+  name: string;
+  short: string;
+  color: string;
+  score: number;
+};
 
 export type FbHudPlayer = {
   tag: number;
@@ -840,6 +847,8 @@ export type FbHudState = {
   pendingCount: number;
   /** Tracking minimap (null when off / no telemetry). */
   minimap: {
+    /** Size step 1–5 (see minimapScale). */
+    size: FbMinimapSize;
     teamColor: string;
     teamShort: string;
     players: FbHudPlayer[];
@@ -853,13 +862,24 @@ export type FbHudState = {
     cams: { role: string; fileName: string | null; live: boolean }[];
     commentatorName: string | null;
     halfMs: number;
-    telemetry: { zxy: boolean; ball: boolean; zones: boolean; events: boolean } | null;
+    telemetry: {
+      zxy: boolean;
+      ball: boolean;
+      zones: boolean;
+      events: boolean;
+    } | null;
   } | null;
   ended: {
     winner: 'A' | 'B' | null;
     teams: Record<
       'A' | 'B',
-      { score: number; chances: number; shots: number; shotsOnTarget: number; corners: number }
+      {
+        score: number;
+        chances: number;
+        shots: number;
+        shotsOnTarget: number;
+        corners: number;
+      }
     >;
     topSpeed: { tag: number; kmh: number } | null;
     topDistance: { tag: number; meters: number } | null;
@@ -872,15 +892,15 @@ export type FbHudState = {
   } | null;
 };
 
-/** Tracking minimap plate: 336×218 at 1080p, bottom-left. */
-export function fbMinimapRect(resolution: {
-  width: number;
-  height: number;
-}): FbHudRect {
-  const k = resolution.height / 1080;
-  const w = Math.round(336 * k);
-  const h = Math.round(218 * k);
-  const m = Math.round(56 * k);
+/** Tracking minimap plate: 336×218 at 1080p for size 1, anchored bottom-left. */
+export function fbMinimapRect(
+  resolution: { width: number; height: number },
+  size: FbMinimapSize = 1,
+): FbHudRect {
+  const k = (resolution.height / 1080) * minimapScale(size);
+  const w = Math.round(MINIMAP_PLATE.w * k);
+  const h = Math.round(MINIMAP_PLATE.h * k);
+  const m = Math.round(56 * (resolution.height / 1080));
   return { x: m, y: resolution.height - m - h, width: w, height: h };
 }
 

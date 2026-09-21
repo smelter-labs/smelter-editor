@@ -3660,6 +3660,11 @@ const FbConfigSchema = Type.Object({
         Type.Union([Type.Literal('glide'), Type.Literal('cut')]),
       ),
       lookaheadMs: Type.Optional(Type.Number()),
+      averageMs: Type.Optional(Type.Number()),
+      smoothTimeMs: Type.Optional(Type.Number()),
+      deadZonePx: Type.Optional(Type.Number()),
+      maxSpeedPxS: Type.Optional(Type.Number()),
+      catchUp: Type.Optional(Type.Boolean()),
     }),
   ),
   ai: Type.Optional(
@@ -3673,6 +3678,7 @@ const FbConfigSchema = Type.Object({
   replayDelayMs: Type.Optional(Type.Number()),
   minimap: Type.Optional(Type.Boolean()),
   autoFlow: Type.Optional(Type.Boolean()),
+  minimapSize: Type.Optional(Type.Number()),
   perf: Type.Optional(
     Type.Object({
       animTickHz: Type.Optional(

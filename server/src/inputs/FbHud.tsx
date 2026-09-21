@@ -20,6 +20,7 @@ import {
   formatClock,
   minimapLines,
   minimapPoint,
+  minimapScale,
   monoWidth,
   tagChipRect,
 } from './fbHudMetrics';
@@ -551,28 +552,30 @@ function MinimapPlate({
 }) {
   const m = hud.minimap;
   if (!m) return null;
-  const rect = fbMinimapRect(resolution);
-  const ox = rect.x / k;
-  const oy = rect.y / k;
+  const rect = fbMinimapRect(resolution, m.size);
+  // The whole plate scales as one: every child is drawn at the plate's own k.
+  const pk = k * minimapScale(m.size);
+  const ox = rect.x / pk;
+  const oy = rect.y / pk;
   const dot = 9;
   return (
-    <Group x={ox} y={oy} w={MINIMAP_PLATE.w} h={MINIMAP_PLATE.h} k={k}>
+    <Group x={ox} y={oy} w={MINIMAP_PLATE.w} h={MINIMAP_PLATE.h} k={pk}>
       <Block
         x={0}
         y={0}
         w={MINIMAP_PLATE.w}
         h={MINIMAP_PLATE.h}
-        k={k}
+        k={pk}
         color='#0B1220E6'
       />
-      <Block x={0} y={0} w={MINIMAP_PLATE.w} h={3} k={k} color={GRASS} />
+      <Block x={0} y={0} w={MINIMAP_PLATE.w} h={3} k={pk} color={GRASS} />
       <Label
         x={14}
         y={6}
         w={200}
         text={`TRACKING · ${m.teamShort}`}
         fs={11}
-        k={k}
+        k={pk}
         font={MONO}
         weight='semi_bold'
         color={DIM}
@@ -585,7 +588,7 @@ function MinimapPlate({
           w={162}
           text={`TOP #${m.top.tag} ${m.top.kmh} KM/H`}
           fs={11}
-          k={k}
+          k={pk}
           font={MONO}
           weight='semi_bold'
           align='right'
@@ -598,7 +601,7 @@ function MinimapPlate({
         y={MINIMAP_PITCH.y}
         w={MINIMAP_PITCH.w}
         h={MINIMAP_PITCH.h}
-        k={k}
+        k={pk}
         color='#173B2A'
       />
       {minimapLines().map((l, i) => (
@@ -608,7 +611,7 @@ function MinimapPlate({
           y={l.y}
           w={l.w}
           h={l.h}
-          k={k}
+          k={pk}
           color='#F4F1E866'
         />
       ))}
@@ -622,7 +625,7 @@ function MinimapPlate({
               y={pt.y - dot / 2}
               w={dot}
               h={dot}
-              k={k}
+              k={pk}
               color={sprinting ? AMBER : m.teamColor}
               radius={dot / 2}
             />
@@ -632,7 +635,7 @@ function MinimapPlate({
               w={24}
               text={String(p.tag)}
               fs={9}
-              k={k}
+              k={pk}
               font={MONO}
               weight='semi_bold'
               align='center'
@@ -651,7 +654,7 @@ function MinimapPlate({
                 y={pt.y - 4}
                 w={8}
                 h={8}
-                k={k}
+                k={pk}
                 color={CHALK}
                 radius={4}
               />
@@ -665,7 +668,7 @@ function MinimapPlate({
             y={MINIMAP_PLATE.h - 14 - 18}
             w={140}
             h={18}
-            k={k}
+            k={pk}
             color={AMBER}
           />
           <Label
@@ -674,7 +677,7 @@ function MinimapPlate({
             w={140}
             text={`SPRINT #${m.sprint.tag} · ${m.sprint.kmh} KM/H`}
             fs={10}
-            k={k}
+            k={pk}
             font={MONO}
             weight='semi_bold'
             align='center'

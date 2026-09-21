@@ -2,6 +2,7 @@
  * Layout helpers for the Touchline broadcast chrome (FbHud.tsx), kept
  * DOM/engine-free so the position maths is unit-testable.
  */
+import type { FbMinimapSize } from '@smelter-editor/types';
 
 /** Plex Mono advance is 0.6 em: label widths are predictable without measuring. */
 export function monoWidth(text: string, fontSize: number): number {
@@ -101,6 +102,18 @@ export function clockFace(clock: {
 /** The pitch drawing inside the minimap plate (design px, plate-local). */
 export const MINIMAP_PLATE = { w: 336, h: 218 };
 export const MINIMAP_PITCH = { x: 14, y: 26, w: 308, h: 178 };
+
+/** Plate scale per size step (1 = the design size); the whole plate scales as one. */
+const MINIMAP_SCALE: Record<FbMinimapSize, number> = {
+  1: 1,
+  2: 1.4,
+  3: 1.8,
+  4: 2.2,
+  5: 2.6,
+};
+export function minimapScale(size: FbMinimapSize | undefined): number {
+  return MINIMAP_SCALE[size ?? 1] ?? 1;
+}
 
 /** Pitch metres (X 0..105, Y 0..68) → plate-local design px. */
 export function minimapPoint(xM: number, yM: number): { x: number; y: number } {
