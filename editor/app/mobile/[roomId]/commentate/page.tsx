@@ -170,6 +170,16 @@ export default function CommentatorPage() {
           'CAMERA/MIC BLOCKED — allow camera and microphone access for this site (HTTPS required) and try again.',
         );
         setCamOn(false);
+        // The old tracks were stopped above, so a publish that was live now
+        // sends nothing — and neither 'ended' (stop() never fires it) nor the
+        // pc state will say so. Tear it down; the self-heal loop re-acquires
+        // and republishes (same as the lifter page).
+        if (camPcRef.current) {
+          camPcRef.current.close();
+          camPcRef.current = null;
+          setLive(false);
+          scheduleRepublishRef.current?.();
+        }
       }
     },
     [syncPreviews],

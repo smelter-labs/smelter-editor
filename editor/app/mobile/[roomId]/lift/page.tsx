@@ -282,6 +282,17 @@ export default function LiftControllerPage() {
           'CAMERA BLOCKED — allow camera access for this site (HTTPS required) and try again.',
         );
         setCamOn(false);
+        // The old tracks were stopped above (iOS allows one open camera, so
+        // acquiring first is not an option). A publish that was live is now
+        // sending nothing, and nothing will ever say so: stop() fires no
+        // 'ended', the pc stays 'connected'. Tear it down and hand over to
+        // the self-heal loop, which re-acquires the camera and republishes.
+        if (camPcRef.current) {
+          camPcRef.current.close();
+          camPcRef.current = null;
+          setLive(false);
+          scheduleRepublishRef.current?.();
+        }
       }
     },
     [saveSession, syncPreviews],
