@@ -446,8 +446,11 @@ export class KettlebellTournamentController {
    * publishes (reps, scene flips) bypass it. 100 ms = the historical 10 Hz. */
   private hudMinIntervalMs = 100;
   private lastPeriodicHudAt = 0;
-  /** Pose flip debounce per clientId. */
-  private readonly poseFlipAt = new Map<string, number>();
+  /** Pose flip debounce per clientId: the candidate value and since when. */
+  private readonly posePending = new Map<
+    string,
+    { tracked: boolean; fullBody: boolean; since: number }
+  >();
   private lastCamPoll = 0;
   private simRepSeq = 1_000_000; // simulated reps stay clear of worker indices
   private disposed = false;
@@ -697,9 +700,9 @@ export class KettlebellTournamentController {
     orphan.connected = true;
     orphan.disconnectedAt = null;
     this.players.set(clientId, orphan);
-    const pose = this.poseFlipAt.get(oldId);
-    this.poseFlipAt.delete(oldId);
-    if (pose != null) this.poseFlipAt.set(clientId, pose);
+    const pose = this.posePending.get(oldId);
+    this.posePending.delete(oldId);
+    if (pose != null) this.posePending.set(clientId, pose);
     for (const heat of this.heats) {
       heat.playerIds = heat.playerIds.map((id) =>
         id === oldId ? clientId : id,
@@ -1557,6 +1560,7 @@ export class KettlebellTournamentController {
     const wasOnStage = this.isPlayerInActiveHeat(clientId);
     this.retireCamera(p);
     this.players.delete(clientId);
+    this.posePending.delete(clientId);
     this.clearViewOverrideIfPlayer(clientId);
     this.clearCommentatorOverlayIfPlayer(clientId);
     // Heat score sheets keep their own name/color snapshot, so past results
@@ -1629,15 +1633,32 @@ export class KettlebellTournamentController {
 
   /**
    * Live pose visibility from the raw worker results (the coach events carry
-   * no pose). Debounced so a single dropped frame doesn't flicker the check.
+   * no pose). Debounced so a single dropped frame doesn't flicker the check:
+   * a new value only lands once it has held for POSE_DEBOUNCE_MS, and any
+   * sample agreeing with the current state cancels the pending flip. (It used
+   * to be a throttle — the first stray sample flipped at once and the way
+   * back was then blocked for the window, so ONE dropped frame read as 0.7 s
+   * of POSE ✗ and cost two full state broadcasts.)
    */
   onPoseSample(inputId: string, tracked: boolean, fullBody = true): void {
     const p = [...this.players.values()].find((pl) => pl.inputId === inputId);
-    if (!p || (p.poseTracked === tracked && p.fullBody === fullBody)) return;
+    if (!p) return;
+    if (p.poseTracked === tracked && p.fullBody === fullBody) {
+      this.posePending.delete(p.clientId);
+      return;
+    }
     const now = this.now();
-    const since = this.poseFlipAt.get(p.clientId) ?? 0;
-    if (now - since < POSE_DEBOUNCE_MS) return;
-    this.poseFlipAt.set(p.clientId, now);
+    const pending = this.posePending.get(p.clientId);
+    if (
+      !pending ||
+      pending.tracked !== tracked ||
+      pending.fullBody !== fullBody
+    ) {
+      this.posePending.set(p.clientId, { tracked, fullBody, since: now });
+      return;
+    }
+    if (now - pending.since < POSE_DEBOUNCE_MS) return;
+    this.posePending.delete(p.clientId);
     p.poseTracked = tracked;
     p.fullBody = fullBody;
     this.deps.sendTo(p.clientId, {
@@ -2551,6 +2572,7 @@ export class KettlebellTournamentController {
     }
     this.retireCamera(p);
     this.players.delete(clientId);
+    this.posePending.delete(clientId);
     this.clearViewOverrideIfPlayer(clientId);
     this.clearCommentatorOverlayIfPlayer(clientId);
     for (const heat of this.heats) {

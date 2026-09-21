@@ -2022,6 +2022,43 @@ describe('resilience: playerKey identity, error channel, host recovery', () => {
   });
 });
 
+describe('pose debounce', () => {
+  it('ignores a single stray sample and lands a change that holds', async () => {
+    const h = harness();
+    h.controller.join('p1', 'ANIA');
+    await h.controller.startCamera('p1');
+    const inputId = h.camOfferFor('p1')!.inputId;
+    const tracked = () => h.controller.stateSnapshot().players[0].poseTracked;
+    const poseMsgs = () =>
+      h.sent.filter((s) => s.event.type === 'kbt_pose').length;
+
+    // Acquire: the value has to hold for the window before it lands.
+    h.controller.onPoseSample(inputId, true);
+    expect(tracked()).toBe(false);
+    await vi.advanceTimersByTimeAsync(800);
+    h.controller.onPoseSample(inputId, true);
+    expect(tracked()).toBe(true);
+    expect(poseMsgs()).toBe(1);
+
+    // One dropped frame in a steady stream: no flip, no message.
+    h.controller.onPoseSample(inputId, false);
+    await vi.advanceTimersByTimeAsync(70);
+    h.controller.onPoseSample(inputId, true);
+    await vi.advanceTimersByTimeAsync(800);
+    h.controller.onPoseSample(inputId, true);
+    expect(tracked()).toBe(true);
+    expect(poseMsgs()).toBe(1);
+
+    // A real loss: consecutive misses across the window.
+    h.controller.onPoseSample(inputId, false);
+    await vi.advanceTimersByTimeAsync(800);
+    h.controller.onPoseSample(inputId, false);
+    expect(tracked()).toBe(false);
+    expect(poseMsgs()).toBe(2);
+    h.controller.dispose();
+  });
+});
+
 describe('standings pace', () => {
   it('rates a heat cut short by stop_heat over the time it actually ran', async () => {
     const h = harness();
