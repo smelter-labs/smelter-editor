@@ -809,6 +809,34 @@ describe('FootballGameController — three cameras', () => {
     return ids;
   }
 
+  it('kicking a camera only drops the manual view that needed it', async () => {
+    const h = harness();
+    await tricam(h, 50);
+    h.controller.controlMatch({ action: 'start' });
+    h.controller.handleMessage('mod', {
+      type: 'fb_commentator_view',
+      override: { mode: 'view', view: 'centre' },
+    });
+    h.controller.controlMatch({ action: 'kick_cam', role: 'left' });
+    expect(h.lastState().director.view).toBe('centre');
+    h.controller.controlMatch({ action: 'kick_cam', role: 'centre' });
+    expect(h.lastState().director.view).toBe('auto');
+    h.controller.dispose();
+  });
+
+  it('a reaped input frees its slot instead of reading CONNECTING for ever', async () => {
+    const h = harness();
+    const ids = await tricam(h, 50);
+    h.connected.delete(ids.right);
+    h.controller.onInputsRemoved([ids.right]);
+    await vi.advanceTimersByTimeAsync(0);
+    const cams = h.lastState().cams;
+    expect(cams.right.fileName ?? null).toBeNull();
+    expect(cams.centre.fileName).toBe('fb/tricam/cam-centre.mp4');
+    expect(h.removed).toEqual([]);
+    h.controller.dispose();
+  });
+
   it('cuts to the camera of the third the players occupy, with a dwell', async () => {
     const h = harness();
     const ids = await tricam(h, 15);
@@ -880,6 +908,281 @@ describe('FootballGameController — HUD hold', () => {
       label: 'x/panel',
     });
     expect(h.lastHud()?.lobby?.commentatorName).toBe('MOD');
+    h.controller.dispose();
+  });
+});
+
+describe('FootballGameController — operator regressions', () => {
+  it("a pause / resume keeps the moderator's manual view; a new segment returns to AUTO", async () => {
+    const h = harness();
+    await started(h);
+    h.controller.handleMessage('mod', {
+      type: 'fb_commentator_view',
+      override: { mode: 'view', view: 'wide' },
+    });
+    expect(h.lastState().director.view).toBe('wide');
+    h.controller.controlMatch({ action: 'pause' });
+    expect(h.lastState().director.view).toBe('wide');
+    h.controller.controlMatch({ action: 'resume' });
+    expect(h.lastState().director.view).toBe('wide');
+    h.controller.controlMatch({ action: 'half_time' });
+    expect(h.lastState().director.view).toBe('auto');
+    h.controller.dispose();
+  });
+
+  it('UNDO with no confirmed play leaves a pending REF CALL alone', async () => {
+    const h = harness();
+    await started(h, {
+      events: {
+        ...EVENTS,
+        events: [
+          {
+            tMs: 1000,
+            kind: 'goal',
+            side: 'left',
+            team: null,
+            candidate: true,
+          },
+        ],
+      },
+    });
+    await vi.advanceTimersByTimeAsync(1300);
+    expect(h.lastState().pending).toHaveLength(1);
+    h.controller.handleMessage('mod', { type: 'fb_event_undo' });
+    expect(h.errorsFor('mod').map((e) => e.code)).toEqual(['unknown_event']);
+    expect(h.lastState().pending).toHaveLength(1);
+    h.controller.dispose();
+  });
+
+  it('a stranger cannot take the seat of a connected moderator; a gone one frees it', async () => {
+    const h = harness();
+    await panoAttached(h);
+    h.controller.handleMessage('intruder', {
+      type: 'fb_commentator_join',
+      name: 'EVE',
+    });
+    expect(h.errorsFor('intruder').map((e) => e.code)).toEqual(['role_taken']);
+    expect(h.lastState().commentator?.name).toBe('MOD');
+
+    // The holder resumes on a new socket with its key.
+    const joined = h.sent.find((s) => s.event.type === 'fb_commentator_joined')!
+      .event as Extract<RoomEvent, { type: 'fb_commentator_joined' }>;
+    h.controller.handleMessage('mod-2', {
+      type: 'fb_commentator_join',
+      name: 'MOD',
+      commentatorKey: joined.commentatorKey,
+    });
+    expect(h.errorsFor('mod-2')).toEqual([]);
+
+    // Dropped for good: the seat frees itself and the next join succeeds.
+    h.controller.handleDisconnect('mod-2');
+    expect(h.lastState().commentator?.connected).toBe(false);
+    await vi.advanceTimersByTimeAsync(91_000);
+    expect(h.lastState().commentator).toBeNull();
+    h.controller.handleMessage('intruder', {
+      type: 'fb_commentator_join',
+      name: 'EVE',
+    });
+    expect(h.lastState().commentator?.name).toBe('EVE');
+    h.controller.dispose();
+  });
+
+  it('the second half keeps the footage sides: AI plays are credited as in the first', async () => {
+    const h = harness();
+    await started(h);
+    h.controller.setConfig({ attacksLeft: 'B' });
+    h.controller.controlMatch({ action: 'half_time' });
+    h.controller.controlMatch({ action: 'second_half' });
+    // The clip loops (30 s): the shot at 5 s airs again in the second lap.
+    await vi.advanceTimersByTimeAsync(36_000);
+    const shots = h
+      .ofType('fb_event')
+      .filter((e) => e.kind === 'fired' && e.event.kind === 'shot');
+    expect(shots.length).toBeGreaterThan(0);
+    // side 'left' + B attacks the left goal in the clip → B, in either half.
+    expect(shots.every((e) => e.event.team === 'B')).toBe(true);
+    h.controller.dispose();
+  });
+
+  it('TAKE THE LEAD airs only when the lead changes hands', async () => {
+    const h = harness();
+    await started(h, { events: null });
+    const goal = (team: 'A' | 'B') =>
+      h.controller.handleMessage('mod', {
+        type: 'fb_event_add',
+        team,
+        kind: 'goal',
+      });
+    const leadBanner = () =>
+      h.lastHud()?.banner?.kind === 'lead_change'
+        ? h.lastHud()!.banner!.text
+        : null;
+    goal('A'); // 1–0: the opening goal is not a lead change
+    expect(leadBanner()).toBeNull();
+    goal('B'); // 1–1
+    goal('A'); // 2–1: the same team back in front
+    expect(leadBanner()).toBeNull();
+    goal('B'); // 2–2
+    goal('B'); // 2–3: the lead changes hands
+    expect(leadBanner()).toMatch(/TAKE THE LEAD/);
+    h.controller.dispose();
+  });
+
+  it('an unattended looping clip keeps the REF CALL queue and the ledger bounded, scores exact', async () => {
+    const h = harness();
+    await started(h, { events: null });
+    for (let i = 0; i < 20; i++) h.controller.simulateEvent('goal', null);
+    expect(h.lastState().pending).toHaveLength(12);
+
+    for (let i = 0; i < 700; i++) h.controller.addManualEvent('A', 'corner');
+    h.controller.addManualEvent('B', 'goal');
+    const s = h.lastState();
+    expect(s.teams.A.corners).toBe(700);
+    expect(s.teams.B.score).toBe(1);
+    const rows = (h.controller as unknown as { events: unknown[] }).events;
+    expect(rows.length).toBeLessThanOrEqual(600);
+    h.controller.dispose();
+  });
+});
+
+describe('FootballGameController — host fallback + auto flow', () => {
+  it('the host steers the view and the minimap without a moderator seat', async () => {
+    const h = harness();
+    await started(h);
+    expect(
+      h.controller.hostSetViewOverride({ mode: 'view', view: 'wide' }),
+    ).toBeNull();
+    expect(h.lastState().director.view).toBe('wide');
+    // The same refusals as the panel gets.
+    expect(
+      h.controller.hostSetViewOverride({ mode: 'view', view: 'centre' }),
+    ).toMatch(/camera/);
+    expect(h.controller.hostSetViewOverride({ mode: 'nope' })).toMatch(
+      /Unknown/,
+    );
+    h.controller.setMinimapOn(false);
+    expect(h.lastState().minimap).toBe(false);
+    h.controller.dispose();
+  });
+
+  it('autoFlow blows HALF TIME and FULL TIME when the halves run out', async () => {
+    const h = harness();
+    await panoAttached(h, { events: null });
+    h.controller.setConfig({
+      halfMs: 60_000,
+      clockFromClip: false,
+      autoFlow: true,
+    });
+    h.controller.controlMatch({ action: 'start' });
+    await vi.advanceTimersByTimeAsync(59_000);
+    expect(h.lastMatch().phase).toBe('live');
+    await vi.advanceTimersByTimeAsync(1_500);
+    expect(h.lastMatch().phase).toBe('halftime');
+    // The break is the moderator's: nothing restarts on its own.
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(h.lastMatch().phase).toBe('halftime');
+    h.controller.controlMatch({ action: 'second_half' });
+    await vi.advanceTimersByTimeAsync(60_500);
+    expect(h.lastMatch().phase).toBe('ended');
+    h.controller.dispose();
+  });
+
+  it('without autoFlow the clock runs into added time', async () => {
+    const h = harness();
+    await panoAttached(h, { events: null });
+    h.controller.setConfig({ halfMs: 60_000, clockFromClip: false });
+    h.controller.controlMatch({ action: 'start' });
+    await vi.advanceTimersByTimeAsync(90_000);
+    expect(h.lastMatch().phase).toBe('live');
+    h.controller.dispose();
+  });
+});
+
+describe('FootballGameController — moderator seat + kits + AI attribution', () => {
+  it('the host frees the seat with kick_commentator; LEAVE hands it over', async () => {
+    const h = harness();
+    await panoAttached(h);
+    expect(
+      h.controller.controlMatch({ action: 'kick_commentator' }).error,
+    ).toBeUndefined();
+    expect(h.lastState().commentator).toBeNull();
+    // The kicked socket lost its rights.
+    h.controller.handleMessage('mod', {
+      type: 'fb_commentator_view',
+      override: { mode: 'auto' },
+    });
+    expect(h.errorsFor('mod').map((e) => e.code)).toEqual(['not_commentator']);
+    expect(
+      h.controller.controlMatch({ action: 'kick_commentator' }).error?.code,
+    ).toBe('bad_action');
+
+    h.controller.handleMessage('next', {
+      type: 'fb_commentator_join',
+      name: 'NEXT',
+    });
+    h.controller.handleMessage('next', { type: 'fb_commentator_leave' });
+    expect(h.lastState().commentator).toBeNull();
+    h.controller.dispose();
+  });
+
+  it('the moderator recolours a kit; a bad colour or a spectator is refused', async () => {
+    const h = harness();
+    await panoAttached(h);
+    h.controller.handleMessage('mod', {
+      type: 'fb_team_color',
+      team: 'B',
+      color: '#6cabdd',
+    });
+    expect(h.lastState().teams.B.color).toBe('#6cabdd');
+    expect(h.lastHud()?.teams.B.color).toBe('#6cabdd');
+    h.controller.handleMessage('mod', {
+      type: 'fb_team_color',
+      team: 'B',
+      color: 'sky',
+    });
+    h.controller.handleMessage('spec', {
+      type: 'fb_team_color',
+      team: 'A',
+      color: '#ffffff',
+    });
+    expect(h.errorsFor('mod').map((e) => e.code)).toEqual(['invalid_color']);
+    expect(h.errorsFor('spec').map((e) => e.code)).toEqual(['not_commentator']);
+    expect(h.lastState().teams.B.color).toBe('#6cabdd');
+    h.controller.dispose();
+  });
+
+  it('an AI play whose team is unknown waits for the moderator, whatever its kind', async () => {
+    const h = harness();
+    await started(h, {
+      events: {
+        ...EVENTS,
+        events: [{ tMs: 1000, kind: 'corner', side: null, team: null }],
+      },
+    });
+    await vi.advanceTimersByTimeAsync(1300);
+    const corner = h.ofType('fb_event').find((e) => e.kind === 'fired')!;
+    expect(corner.event.status).toBe('pending');
+    expect(h.lastState().teams.A.corners + h.lastState().teams.B.corners).toBe(
+      0,
+    );
+    h.controller.handleMessage('mod', {
+      type: 'fb_event_resolve',
+      eventId: corner.event.id,
+      team: 'B',
+    });
+    expect(h.lastState().teams.B.corners).toBe(1);
+    h.controller.dispose();
+  });
+
+  it('a looping clip airs its plays again every lap', async () => {
+    const h = harness();
+    await started(h);
+    await vi.advanceTimersByTimeAsync(2 * CLIP_MS + 6_000);
+    const shots = h
+      .ofType('fb_event')
+      .filter((e) => e.kind === 'fired' && e.event.kind === 'shot');
+    expect(shots).toHaveLength(3);
+    expect(h.lastState().teams.A.shots).toBe(3);
     h.controller.dispose();
   });
 });

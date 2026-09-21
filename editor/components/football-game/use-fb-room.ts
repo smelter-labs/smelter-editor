@@ -35,8 +35,12 @@ export type FbUiConfig = {
   halfMin: number;
   /** Take the match clock from the clip's kick-off (events sidecar). */
   clockFromClip: boolean;
-  /** Which team attacks the left goal of the picture in the first half (null = from the clip). */
+  /** Which team attacks the left goal in the footage (null = from the clip). */
   attacksLeft: FbTeamId | null;
+  /** The clock ends the halves (HALF TIME / FULL TIME) instead of the moderator. */
+  autoFlow: boolean;
+  /** Banner-only time before the REPLAY window opens. */
+  replayDelayMs: number;
   director: FbConfig['director'];
   ai: FbConfig['ai'];
   replay: boolean;
@@ -168,6 +172,12 @@ export function sanitizeFbAi(
   };
 }
 
+export function sanitizeReplayDelay(ms: unknown): number {
+  return typeof ms === 'number' && Number.isFinite(ms)
+    ? Math.min(5000, Math.max(0, Math.round(ms / 500) * 500))
+    : FB_DEFAULT_CONFIG.replayDelayMs;
+}
+
 export const DEFAULT_FB_UI_CONFIG: FbUiConfig = {
   teams: {
     A: { ...FB_DEFAULT_CONFIG.teams.A },
@@ -176,6 +186,8 @@ export const DEFAULT_FB_UI_CONFIG: FbUiConfig = {
   halfMin: 45,
   clockFromClip: true,
   attacksLeft: null,
+  autoFlow: FB_DEFAULT_CONFIG.autoFlow,
+  replayDelayMs: FB_DEFAULT_CONFIG.replayDelayMs,
   director: { ...FB_DEFAULT_CONFIG.director },
   ai: {
     ...FB_DEFAULT_CONFIG.ai,
@@ -199,6 +211,8 @@ export function serverConfigToUi(
     halfMin: Math.round(cfg.halfMs / 60000),
     clockFromClip: cfg.clockFromClip,
     attacksLeft: cfg.attacksLeft,
+    autoFlow: cfg.autoFlow === true,
+    replayDelayMs: sanitizeReplayDelay(cfg.replayDelayMs),
     director: sanitizeFbDirector(cfg.director),
     ai: sanitizeFbAi(cfg.ai),
     replay: cfg.replay,
@@ -215,6 +229,8 @@ export function uiConfigToPatch(cfg: FbUiConfig) {
     halfMs: Math.round(cfg.halfMin * 60000),
     clockFromClip: cfg.clockFromClip,
     attacksLeft: cfg.attacksLeft,
+    autoFlow: cfg.autoFlow,
+    replayDelayMs: cfg.replayDelayMs,
     director: cfg.director,
     ai: cfg.ai,
     replay: cfg.replay,

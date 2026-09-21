@@ -79,6 +79,7 @@ import {
   statsAt,
   unprojectPitch,
   type FbTelemetry,
+  type FbZxy,
 } from './telemetry';
 
 /** Command from the arcade page's match endpoint (and the panel over WS). */
@@ -198,6 +199,8 @@ type CommentatorState = {
   commentatorKey: string;
   name: string;
   connected: boolean;
+  /** Wall time the socket dropped (null while connected). */
+  disconnectedAt: number | null;
 };
 
 type TeamTally = {
@@ -254,6 +257,17 @@ const EVENT_BANNER_MS = 3500;
 const REPLAY_CLIP_LEAD_MS = 250;
 const REPLAY_OPEN_GRACE_MS = 3000;
 const RECENT_EVENTS = 14;
+/**
+ * A looping demo clip re-fires its plays every lap, so an unattended room
+ * would grow the ledger and the REF CALL queue for ever. Past these caps the
+ * oldest REF CALLs expire (voided) and the oldest ledger rows are folded into
+ * a base tally (the scores and stats stay exact, only the rows go).
+ */
+const MAX_PENDING = 12;
+const MAX_LEDGER = 600;
+const LEDGER_TRIM_BATCH = 100;
+/** A moderator whose socket has been gone this long frees the seat. */
+const COMMENTATOR_GONE_MS = 90_000;
 const HALF_MIN_MS = 60_000;
 const HALF_MAX_MS = 60 * 60_000;
 /** An AI event whose fire time is further in the past than this is skipped. */
@@ -326,6 +340,17 @@ export class FootballGameController {
     B: emptyTally(),
   };
   private leader: FbTeamId | null = null;
+  /** Tally + last leader of the rows trimmed off a very long ledger. */
+  private baseTally: Record<FbTeamId, TeamTally> = {
+    A: emptyTally(),
+    B: emptyTally(),
+  };
+  private baseLeader: FbTeamId | null = null;
+  private statsCache: {
+    zxy: FbZxy;
+    idx: number;
+    stats: ReturnType<typeof statsAt>;
+  } | null = null;
   private lastEvent: { event: FbEventEntry; at: number } | null = null;
   private banner: FbHudState['banner'] = null;
 
@@ -726,8 +751,18 @@ export class FootballGameController {
 
   private releaseCamSlot(cam: CamState): void {
     this.retireCamInput(cam);
+    this.dropCamSlot(cam);
+  }
+
+  /** Forget a camera slot whose input is gone (kicked, or reaped by the room). */
+  private dropCamSlot(cam: CamState): void {
     this.cams.delete(cam.role);
-    if (this.viewOverride.mode === 'view') this.clearViewOverride();
+    // Only the manual view that needed this camera goes back to AUTO.
+    if (
+      this.viewOverride.mode === 'view' &&
+      (cam.role === 'pano' || this.viewOverride.view === cam.role)
+    )
+      this.clearViewOverride();
     this.follow = null;
     this.tricam = null;
   }
@@ -841,12 +876,23 @@ export class FootballGameController {
       c.clientId = clientId;
       c.name = name;
       c.connected = true;
+      c.disconnectedAt = null;
+    } else if (c && c.connected) {
+      // The seat is held by a live socket: a stranger cannot take it over
+      // (the host frees it with `kick_commentator`, the holder with LEAVE).
+      this.sendError(
+        clientId,
+        'role_taken',
+        `${c.name} is moderating this match.`,
+      );
+      return;
     } else {
       this.commentator = {
         clientId,
         commentatorKey: key ?? randomUUID(),
         name,
         connected: true,
+        disconnectedAt: null,
       };
     }
     const cur = this.commentator!;
@@ -885,11 +931,22 @@ export class FootballGameController {
 
   setViewOverride(clientId: string, raw: unknown): void {
     if (!this.requireCommentator(clientId, 'switch the broadcast view')) return;
+    const error = this.applyViewOverride(raw);
+    if (error) this.sendError(clientId, 'invalid_view', error);
+  }
+
+  /**
+   * Host fallback (REST): the laptop can steer the director when the
+   * moderator's phone is gone. Returns the refusal, null when applied.
+   */
+  hostSetViewOverride(raw: unknown): string | null {
+    this.engaged = true;
+    return this.applyViewOverride(raw);
+  }
+
+  private applyViewOverride(raw: unknown): string | null {
     const override = this.parseViewOverride(raw);
-    if (!override) {
-      this.sendError(clientId, 'invalid_view', 'Unknown view override.');
-      return;
-    }
+    if (!override) return 'Unknown view override.';
     if (override.mode === 'view') {
       const session = this.session();
       const allowed =
@@ -898,25 +955,14 @@ export class FootballGameController {
           : session === 'tricam'
             ? FB_TRICAM_VIEWS
             : [];
-      if (!allowed.includes(override.view)) {
-        this.sendError(
-          clientId,
-          'invalid_view',
-          'That view needs its camera attached.',
-        );
-        return;
-      }
+      if (!allowed.includes(override.view))
+        return 'That view needs its camera attached.';
       if (
         session === 'tricam' &&
         override.view !== 'auto' &&
         !this.cams.get(override.view as FbCamRole)?.inputId
       ) {
-        this.sendError(
-          clientId,
-          'invalid_view',
-          'That camera is not attached.',
-        );
-        return;
+        return 'That camera is not attached.';
       }
     }
     this.viewOverride =
@@ -936,6 +982,7 @@ export class FootballGameController {
     this.flushAiLog();
     this.directorTick(this.now(), true);
     this.deps.broadcast(this.stateSnapshot());
+    return null;
   }
 
   private parseViewOverride(raw: unknown): FbViewOverride | null {
@@ -961,6 +1008,11 @@ export class FootballGameController {
       this.sendError(clientId, 'invalid_view', 'Invalid minimap toggle.');
       return;
     }
+    this.setMinimapOn(raw);
+  }
+
+  /** Minimap on air (the moderator's toggle; the host's REST fallback). */
+  setMinimapOn(raw: boolean): void {
     if (this.minimapOn === raw) return;
     this.minimapOn = raw;
     this.aiLog.push(
@@ -1354,18 +1406,31 @@ export class FootballGameController {
   handleDisconnect(clientId: string): void {
     if (this.commentator?.clientId === clientId) {
       this.commentator.connected = false;
+      this.commentator.disconnectedAt = this.now();
       this.broadcastState();
     }
+  }
+
+  /** A moderator who never came back frees the seat (and the lobby card). */
+  private reapCommentator(now: number): void {
+    const c = this.commentator;
+    if (!c || c.connected || c.disconnectedAt == null) return;
+    if (now - c.disconnectedAt < COMMENTATOR_GONE_MS) return;
+    this.commentator = null;
+    this.broadcastState();
   }
 
   onInputsRemoved(inputIds: string[]): void {
     if (this.disposed) return;
     const gone = new Set(inputIds);
     let changed = false;
-    for (const cam of this.cams.values()) {
+    for (const cam of [...this.cams.values()]) {
       if (cam.inputId != null && gone.has(cam.inputId)) {
+        // A reaped input never comes back (a clip restart keeps its id): free
+        // the slot, or the panel row would read "CONNECTING · <file>" for ever.
         cam.inputId = null;
         cam.camConnected = false;
+        this.dropCamSlot(cam);
         changed = true;
       }
     }
@@ -1395,6 +1460,7 @@ export class FootballGameController {
       halfMs?: number;
       clockFromClip?: boolean;
       attacksLeft?: FbTeamId | null;
+      autoFlow?: boolean;
       director?: FbDirectorPatch;
       ai?: Partial<FbConfig['ai']>;
       replay?: boolean;
@@ -1469,6 +1535,7 @@ export class FootballGameController {
         c.ai.replayOn = a.replayOn.filter(isEventKind);
     }
     if (typeof partial.replay === 'boolean') c.replay = partial.replay;
+    if (typeof partial.autoFlow === 'boolean') c.autoFlow = partial.autoFlow;
     if (
       typeof partial.replayDelayMs === 'number' &&
       Number.isFinite(partial.replayDelayMs)
@@ -1547,7 +1614,19 @@ export class FootballGameController {
     this.engaged = true;
     const error = this.applyMatchAction(cmd);
     if (!error) {
-      if (this.viewOverride.mode !== 'auto')
+      // A new segment starts on the director's pick; a pause, a resume or a
+      // kick must not yank the moderator's manual view back to AUTO. A kicked
+      // camera only drops the override that was pointing at it.
+      const keepsView =
+        cmd.action === 'pause' ||
+        cmd.action === 'resume' ||
+        cmd.action === 'kick_commentator' ||
+        (cmd.action === 'kick_cam' &&
+          !(
+            this.viewOverride.mode === 'view' &&
+            this.viewOverride.view === cmd.role
+          ));
+      if (!keepsView && this.viewOverride.mode !== 'auto')
         this.viewOverride = { mode: 'auto' };
       this.syncScene();
       this.deps.broadcast(this.getMatchSnapshot());
@@ -1647,11 +1726,6 @@ export class FootballGameController {
         this.elapsedBeforeSegmentMs = 0;
         this.segmentStartedAt = now;
         this.setBanner('kick_off', 'SECOND HALF', '#f4f1e8', now);
-        // Teams swap ends.
-        if (this.aiRun) {
-          this.unloadAiRun();
-          void this.armAiEvents();
-        }
         return null;
       case 'end':
         if (
@@ -1693,6 +1767,8 @@ export class FootballGameController {
     this.endedAt = null;
     this.winner = null;
     this.events = [];
+    this.baseTally = { A: emptyTally(), B: emptyTally() };
+    this.baseLeader = null;
     this.eventSeq = 0;
     this.lastEvent = null;
     this.banner = null;
@@ -1718,6 +1794,13 @@ export class FootballGameController {
         ? now - this.segmentStartedAt
         : 0;
     return this.elapsedBeforeSegmentMs + Math.max(0, running);
+  }
+
+  /** `autoFlow`: the clock blows the whistle when a half runs out. */
+  private checkAutoFlow(now: number): void {
+    if (!this.config.autoFlow || this.phase !== 'live') return;
+    if (this.periodElapsed(now) < this.config.halfMs) return;
+    this.controlMatch({ action: this.period === 1 ? 'half_time' : 'end' });
   }
 
   private endMatch(now: number): void {
@@ -1765,41 +1848,75 @@ export class FootballGameController {
     return { A: this.tally.A.score, B: this.tally.B.score };
   }
 
+  private static tallyEvent(
+    tally: Record<FbTeamId, TeamTally>,
+    e: FbEventEntry,
+  ): void {
+    if (e.status !== 'confirmed' || !e.team) return;
+    const t = tally[e.team];
+    switch (e.kind) {
+      case 'goal':
+        t.score += 1;
+        break;
+      case 'chance':
+        t.chances += 1;
+        break;
+      case 'shot':
+        t.shots += 1;
+        if (e.onTarget) t.shotsOnTarget += 1;
+        break;
+      case 'corner':
+        t.corners += 1;
+        break;
+      case 'sprint':
+        t.sprints += 1;
+        break;
+      default:
+        break;
+    }
+  }
+
+  private static topOf(tally: Record<FbTeamId, TeamTally>): FbTeamId | null {
+    return tally.A.score === tally.B.score
+      ? null
+      : tally.A.score > tally.B.score
+        ? 'A'
+        : 'B';
+  }
+
+  /**
+   * `leader` is the LAST team to have been in front: it survives an equaliser,
+   * so "TAKE THE LEAD" airs only when the lead changes hands (not on the
+   * opening goal, not when the same team goes back in front).
+   */
   private recompute(): void {
-    this.tally = { A: emptyTally(), B: emptyTally() };
-    let leader: FbTeamId | null = null;
+    this.tally = {
+      A: { ...this.baseTally.A },
+      B: { ...this.baseTally.B },
+    };
+    let leader: FbTeamId | null = this.baseLeader;
     for (const e of this.events) {
       if (e.status !== 'confirmed' || !e.team) continue;
-      const t = this.tally[e.team];
-      switch (e.kind) {
-        case 'goal':
-          t.score += 1;
-          break;
-        case 'chance':
-          t.chances += 1;
-          break;
-        case 'shot':
-          t.shots += 1;
-          if (e.onTarget) t.shotsOnTarget += 1;
-          break;
-        case 'corner':
-          t.corners += 1;
-          break;
-        case 'sprint':
-          t.sprints += 1;
-          break;
-        default:
-          break;
-      }
-      const top =
-        this.tally.A.score === this.tally.B.score
-          ? null
-          : this.tally.A.score > this.tally.B.score
-            ? 'A'
-            : 'B';
+      FootballGameController.tallyEvent(this.tally, e);
+      const top = FootballGameController.topOf(this.tally);
       if (top) leader = top;
     }
     this.leader = leader;
+  }
+
+  /** Keep the ledger and the REF CALL queue bounded (see MAX_LEDGER). */
+  private boundLedger(): void {
+    const pending = this.events.filter((e) => e.status === 'pending');
+    for (const e of pending.slice(0, Math.max(0, pending.length - MAX_PENDING)))
+      e.status = 'voided';
+    if (this.events.length <= MAX_LEDGER) return;
+    const gone = this.events.splice(0, LEDGER_TRIM_BATCH);
+    for (const e of gone) {
+      if (e.status !== 'confirmed' || !e.team) continue;
+      FootballGameController.tallyEvent(this.baseTally, e);
+      const top = FootballGameController.topOf(this.baseTally);
+      if (top) this.baseLeader = top;
+    }
   }
 
   private afterLedgerChange(now: number): void {
@@ -1841,6 +1958,7 @@ export class FootballGameController {
       confirmed ? 'confirmed' : 'pending',
     );
     this.events.push(entry);
+    this.boundLedger();
     this.afterLedgerChange(now);
     this.lastEvent = { event: entry, at: now };
     if (this.config.ai.replayOn.includes(entry.kind))
@@ -1976,7 +2094,7 @@ export class FootballGameController {
       : ([...this.events]
           .reverse()
           .find((e) => e.status === 'confirmed' && e.kind === 'goal') ??
-        [...this.events].reverse().find((e) => e.status !== 'voided'));
+        [...this.events].reverse().find((e) => e.status === 'confirmed'));
     if (!target || target.status === 'voided') return null;
     const now = this.now();
     target.status = 'voided';
@@ -2437,11 +2555,14 @@ export class FootballGameController {
     }
   }
 
-  /** Which team attacks the left goal in the current half. */
+  /**
+   * Which team attacks the left goal IN THE FOOTAGE: the host's override, else
+   * the clip's sidecar. Never swapped by the period — the picture does not
+   * change ends at half time (a second-half clip says so in its own sidecar),
+   * and the AI EVENTS mapping (`selectAiEvents`) reads the same value.
+   */
   private attacksLeftNow(): FbTeamId | null {
-    const first = this.config.attacksLeft ?? this.clipAttacksLeft;
-    if (!first) return null;
-    return this.period === 2 ? (first === 'A' ? 'B' : 'A') : first;
+    return this.config.attacksLeft ?? this.clipAttacksLeft;
   }
 
   private directorSnapshot(): FbDirectorState {
@@ -2744,11 +2865,13 @@ export class FootballGameController {
   private tick(): void {
     const now = this.now();
     this.pollCameras(now);
+    this.reapCommentator(now);
     this.checkFileCamLoop(now);
     this.checkAiClock(now);
     if (this.aiEventsOn && !this.aiRun && !this.aiLoading)
       void this.armAiEvents();
     this.directorTick(now);
+    this.checkAutoFlow(now);
     this.syncScene(now);
     if (this.phase !== 'lobby') {
       if (now - this.lastMatchBroadcastAt >= MATCH_BROADCAST_MS) {
@@ -2820,7 +2943,20 @@ export class FootballGameController {
     const t = this.telemetry();
     const air = this.airMediaMs(now);
     if (!t?.zxy || air == null) return [];
-    return statsAt(t.zxy, air).sort((a, b) => b.topKmh - a.topKmh);
+    return [...this.statsFor(t.zxy, air)].sort((a, b) => b.topKmh - a.topKmh);
+  }
+
+  /**
+   * `statsAt` for the on-air sample, shared by the panel's tracking table and
+   * the minimap chips: both ask for the same sample several times a tick.
+   */
+  private statsFor(zxy: FbZxy, airMs: number): ReturnType<typeof statsAt> {
+    const idx = Math.round(airMs / (1000 / zxy.hz));
+    const c = this.statsCache;
+    if (c && c.zxy === zxy && c.idx === idx) return c.stats;
+    const stats = statsAt(zxy, airMs);
+    this.statsCache = { zxy, idx, stats };
+    return stats;
   }
 
   stateSnapshot(): FbStateEvent {
@@ -2920,7 +3056,7 @@ export class FootballGameController {
     }
     const sprint = sprintAt(t.zxy, airMs);
     let top: { tag: number; kmh: number } | null = null;
-    for (const s of statsAt(t.zxy, airMs))
+    for (const s of this.statsFor(t.zxy, airMs))
       if (!top || s.topKmh > top.kmh)
         top = { tag: s.tag, kmh: Math.round(s.topKmh) };
     return {

@@ -182,14 +182,7 @@ export function LobbyScreen({
   useArcadeKeys({ confirm: start, back: onBack });
   const teams = state?.teams;
   const armed = !ready && force.armed === 'start';
-  const filterFor = (role: FbCamRole) => (f: string) =>
-    role === 'pano'
-      ? /pano/i.test(f) || !/cam\d/i.test(f)
-      : role === 'left'
-        ? /cam0|left/i.test(f)
-        : role === 'centre'
-          ? /cam1|centre|center/i.test(f)
-          : /cam2|right/i.test(f);
+  const filterFor = library.filterFor;
 
   return (
     <HostFrame

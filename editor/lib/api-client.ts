@@ -346,6 +346,22 @@ interface SmelterApiClient {
     roomId: string,
     enabled: boolean,
   ): Promise<{ state: FbStateEvent; match: FbMatchEvent }>;
+  /** Host fallback for the moderator's VIEW buttons. */
+  setFbView(
+    roomId: string,
+    override: import('@smelter-editor/types').FbViewOverride,
+  ): Promise<{ state: FbStateEvent; match: FbMatchEvent }>;
+  setFbMinimap(
+    roomId: string,
+    enabled: boolean,
+  ): Promise<{ state: FbStateEvent; match: FbMatchEvent }>;
+  /** Library clips with the rig their sidecar names (null = no sidecar). */
+  getFbClips(): Promise<{
+    clips: {
+      fileName: string;
+      session: import('@smelter-editor/types').FbSession | null;
+    }[];
+  }>;
 
   setHaunterConfig(
     roomId: string,
@@ -973,6 +989,36 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
         state: data.state as FbStateEvent,
         match: data.match as FbMatchEvent,
       };
+    },
+
+    async setFbView(roomId, override) {
+      const data = await req(
+        'post',
+        `/room/${enc(roomId)}/football-game/view`,
+        {
+          override,
+        },
+      );
+      return {
+        state: data.state as FbStateEvent,
+        match: data.match as FbMatchEvent,
+      };
+    },
+
+    async setFbMinimap(roomId, enabled) {
+      const data = await req(
+        'post',
+        `/room/${enc(roomId)}/football-game/minimap`,
+        { enabled },
+      );
+      return {
+        state: data.state as FbStateEvent,
+        match: data.match as FbMatchEvent,
+      };
+    },
+
+    async getFbClips() {
+      return await req('get', '/football-game/clips');
     },
 
     async setHaunterConfig(roomId, config) {

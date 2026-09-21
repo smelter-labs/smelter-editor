@@ -91,6 +91,7 @@ import {
   type FbMatchCommand,
   type FbMatchError,
 } from '../football/FootballGameController';
+import { fbRoleRefusal, readFbClipSession } from '../football/clipSession';
 import type {
   FbCamRole,
   FbConfig,
@@ -710,7 +711,7 @@ export class RoomState {
         await this.syncBbFileCams(0);
       },
       // Ultra AI: the plays annotated next to a file clip.
-      loadClipEvents: (clipFileName) => this.readBbClipEvents(clipFileName),
+      loadClipEvents: (clipFileName) => this.readClipEvents(clipFileName),
       // Instant replay of a file cam: cut from the mp4 on disk (no worker).
       cutReplayClip: (clipFileName, mediaMs, shotId) =>
         this.cutBbReplayClip(clipFileName, mediaMs, shotId),
@@ -804,7 +805,7 @@ export class RoomState {
       resyncFileCams: async () => {
         await this.syncFbFileCams(0);
       },
-      loadClipEvents: (clipFileName) => this.readBbClipEvents(clipFileName),
+      loadClipEvents: (clipFileName) => this.readClipEvents(clipFileName),
       loadClipTelemetry: (clipFileName) =>
         this.readFbClipTelemetry(clipFileName),
       cutReplayClip: (clipFileName, mediaMs, eventId, crop) =>
@@ -2600,6 +2601,15 @@ export class RoomState {
     this.football.setAiEventsEnabled(enabled);
   }
 
+  /** Host fallback for the moderator's VIEW buttons; returns the refusal. */
+  public setFbView(override: unknown): string | null {
+    return this.football.hostSetViewOverride(override);
+  }
+
+  public setFbMinimap(enabled: boolean): void {
+    this.football.setMinimapOn(enabled);
+  }
+
   /**
    * Register a looping local-mp4 (from data/mp4s) as a football camera role.
    * No side channel: the picture airs live and the clip's telemetry sidecars
@@ -2609,6 +2619,14 @@ export class RoomState {
     role: FbCamRole,
     fileName: string,
   ): Promise<{ inputId: string }> {
+    // The clip's own sidecar says which rig shot it: a three-camera clip in
+    // the PANORAMA slot (or the reverse) would run the wrong director.
+    const session = await readFbClipSession(
+      path.join(DATA_DIR, 'mp4s'),
+      fileName,
+    );
+    const refusal = fbRoleRefusal(role, session);
+    if (refusal) throw new Error(`${fileName}: ${refusal}`);
     const inputId = await this.addNewInput({
       type: 'local-mp4',
       source: { fileName },
@@ -2687,12 +2705,13 @@ export class RoomState {
   }
 
   /**
-   * Events sidecar of a clip for Ultra AI: `<clip>.events.json`, then
-   * `events.json` in the clip's folder (both written by
-   * scripts/bb-clip-window.mjs). Null when there is none; a malformed file
-   * throws (the controller reports it).
+   * Events sidecar of a clip — basketball's Ultra AI and football's AI EVENTS
+   * read the same layout: `<clip>.events.json`, then `events.json` in the
+   * clip's folder (scripts/bb-clip-window.mjs, fb-clip-window.mjs,
+   * alfheim-events.mjs). Null when there is none; a malformed file throws
+   * (the controller reports it).
    */
-  private async readBbClipEvents(
+  private async readClipEvents(
     fileName: string,
   ): Promise<{ fileName: string; json: unknown } | null> {
     const base = fileName.replace(/\.mp4$/i, '');

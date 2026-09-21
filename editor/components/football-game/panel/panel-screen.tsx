@@ -1,17 +1,14 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import type {
-  FbEventKind,
-  FbTeamId,
-  FbView,
-  FbViewOverride,
-} from '@smelter-editor/types';
+import type { FbEventKind, FbTeamId, FbView } from '@smelter-editor/types';
 import {
   FB_MINIMAP_SIZES,
   FB_PANO_VIEWS,
+  FB_TEAM_COLOR_PRESETS,
   FB_TRICAM_VIEWS,
 } from '@smelter-editor/types';
+import { VIEW_LABEL, overrideFor } from '../view-labels';
 import { connectWhep } from '@/lib/webrtc/whep-connect';
 import { useKbtRecording } from '@/components/kettlebell-tournament/use-kbt-recording';
 import {
@@ -119,21 +116,6 @@ function ProgramMonitor({ whepUrl }: { whepUrl: string | null }) {
   );
 }
 
-const VIEW_LABEL: Record<FbView, string> = {
-  auto: 'AUTO',
-  wide: 'WIDE',
-  follow: 'FOLLOW',
-  'left-goal': 'LEFT GOAL',
-  'right-goal': 'RIGHT GOAL',
-  left: 'LEFT CAM',
-  centre: 'CENTRE CAM',
-  right: 'RIGHT CAM',
-};
-
-function overrideFor(view: FbView): FbViewOverride {
-  return view === 'auto' ? { mode: 'auto' } : { mode: 'view', view };
-}
-
 /**
  * The moderator panel: REF CALLS on top (goal candidates), then score +
  * clock + match flow, manual goals, views, the program monitor, cameras,
@@ -146,6 +128,7 @@ export function PanelScreen({
   whepUrl,
   roomId,
   narrow,
+  onLeave,
   columns,
 }: {
   socket: FbPanelSocket;
@@ -153,6 +136,8 @@ export function PanelScreen({
   whepUrl: string | null;
   roomId: string;
   narrow: boolean;
+  /** Hand the moderator seat over and go back to the name step. */
+  onLeave?: () => void;
   /** Desktop column count (ignored when `narrow`). */
   columns: 2 | 3;
 }) {
@@ -174,7 +159,9 @@ export function PanelScreen({
       const target = e.target as HTMLElement | null;
       if (
         target &&
-        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT')
       )
         return;
       const top = pendingRef.current[0];
@@ -474,7 +461,7 @@ export function PanelScreen({
 
   const eventsLocked = phase === 'lobby';
   const recentError =
-    socket.lastError && Date.now() - socket.lastError.at < 6000
+    socket.lastError && Date.now() - socket.lastError.at < 12_000
       ? socket.lastError
       : null;
   const manualPlate = (
@@ -548,11 +535,6 @@ export function PanelScreen({
             : ''}
         </Mono>
       </button>
-      {recentError ? (
-        <Meta size={10} tracking={0.12} color={FB.amber}>
-          {recentError.message.toUpperCase()}
-        </Meta>
-      ) : null}
     </FbPlate>
   );
 
@@ -873,7 +855,8 @@ export function PanelScreen({
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
             {run ? (
               <Meta size={10} tracking={0.16}>
-                {run.fired}/{run.total} · NEXT{' '}
+                {run.fired}/{run.total}
+                {run.skipped > 0 ? ` · ${run.skipped} SKIPPED` : ''} · NEXT{' '}
                 {run.nextFireInMs != null
                   ? `${Math.ceil(run.nextFireInMs / 1000)} S`
                   : '—'}
@@ -1036,11 +1019,74 @@ export function PanelScreen({
           MODERATOR · {name.toUpperCase()} · ROOM {roomId.slice(0, 8)}
         </Meta>
       ) : null}
-      <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+      <div
+        style={{
+          marginLeft: 'auto',
+          display: 'flex',
+          gap: 6,
+          alignItems: 'center',
+        }}>
+        {onLeave ? (
+          <Chip
+            dense
+            label='LEAVE'
+            title='Hand the moderator seat over'
+            onClick={onLeave}
+          />
+        ) : null}
         {headerPill}
       </div>
     </div>
   );
+
+  // Every refusal (view, flow, ledger, AI, kits) lands here, not in one plate.
+  const errorStrip = recentError ? (
+    <FbPlate
+      cutPx={8}
+      leftBar={4}
+      leftBarColor={FB.amber}
+      style={{ padding: '8px 12px 8px 16px' }}>
+      <Meta size={10} tracking={0.12} color={FB.amber}>
+        {recentError.message.toUpperCase()} · {recentError.code}
+      </Meta>
+    </FbPlate>
+  ) : null;
+
+  const kitsPlate = teams ? (
+    <FbPlate cutPx={12} style={{ ...PLATE, gap: 8 }}>
+      <PlateHead size={22}>KIT COLOURS</PlateHead>
+      {(['A', 'B'] as const).map((id) => (
+        <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Mono size={10} tracking={0.18} style={{ width: 40 }}>
+            {teams[id].short}
+          </Mono>
+          {FB_TEAM_COLOR_PRESETS.map((p) => {
+            const on = teams[id].color.toLowerCase() === p.color;
+            return (
+              <button
+                key={p.id}
+                type='button'
+                title={p.label}
+                aria-label={`${teams[id].short} ${p.label}`}
+                aria-pressed={on}
+                onClick={() => socket.setTeamColor(id, p.color)}
+                style={{
+                  width: 26,
+                  height: 26,
+                  padding: 0,
+                  cursor: 'pointer',
+                  background: p.color,
+                  border: on
+                    ? `2px solid ${FB.chalk}`
+                    : '1px solid rgba(244,241,232,0.25)',
+                }}
+              />
+            );
+          })}
+        </div>
+      ))}
+    </FbPlate>
+  ) : null;
 
   if (narrow) {
     return (
@@ -1052,6 +1098,7 @@ export function PanelScreen({
           paddingBottom: 24,
         }}>
         {header}
+        {errorStrip}
         {refCallPlate}
         {scoreFlowPlate}
         {manualPlate}
@@ -1062,6 +1109,7 @@ export function PanelScreen({
         {ledgerPlate}
         {aiLogPlate}
         {trackingPlate}
+        {kitsPlate}
       </div>
     );
   }
@@ -1075,6 +1123,7 @@ export function PanelScreen({
         paddingBottom: 24,
       }}>
       {header}
+      {errorStrip}
       <div
         style={{
           display: 'grid',
@@ -1089,6 +1138,7 @@ export function PanelScreen({
               {scoreFlowPlate}
               {manualPlate}
               {trackingPlate}
+              {kitsPlate}
             </div>
             <div style={COLUMN}>
               {programPlate}
@@ -1107,6 +1157,7 @@ export function PanelScreen({
               {scoreFlowPlate}
               {manualPlate}
               {trackingPlate}
+              {kitsPlate}
             </div>
             <div style={COLUMN}>
               {programPlate}

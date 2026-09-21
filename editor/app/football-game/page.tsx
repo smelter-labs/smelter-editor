@@ -8,9 +8,10 @@ export const metadata: Metadata = {
 };
 
 /**
- * The standalone one-hoop streetball production: rules setup → phones join
- * by QR (hoop cam runs the football-scorer AI, court cam is the picture,
- * a moderator confirms the calls) → the match on the Smelter output → final.
+ * The standalone football production ("Touchline"): setup → pre-match (pick
+ * the panorama or the three camera clips, the moderator joins by QR) → the
+ * match on the Smelter output (virtual director, AI EVENTS from the clip's
+ * sidecars, REF CALLS confirmed by the moderator) → full time.
  */
 export default function FootballGamePage() {
   return (

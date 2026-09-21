@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import type {
-  FbEventChangeEvent,
+  FbDirectorEvent,
   FbMatchEvent,
   FbStateEvent,
 } from '@smelter-editor/types';
@@ -14,8 +14,6 @@ export type FbFeed = {
   match: FbMatchEvent | null;
   /** Wall-clock ms the last `match` snapshot arrived (clock interpolation). */
   matchReceivedAt: number;
-  /** Rolling ledger changes (newest first) for the host ticker. */
-  events: FbEventChangeEvent[];
 };
 
 /** Ms elapsed in the current half right now, interpolated between 1 Hz snapshots. */
@@ -48,8 +46,6 @@ export function matchClock(
   return formatClock(shown);
 }
 
-const TICKER_LEN = 10;
-
 /**
  * Read-only live feed for the /football-game page: connects to the room
  * WebSocket, sends `fb_spectate` (snapshot reply, never a participant) and
@@ -59,13 +55,11 @@ export function useFbFeed(roomId: string | null): FbFeed {
   const [state, setState] = useState<FbStateEvent | null>(null);
   const [match, setMatch] = useState<FbMatchEvent | null>(null);
   const [matchReceivedAt, setMatchReceivedAt] = useState(0);
-  const [events, setEvents] = useState<FbEventChangeEvent[]>([]);
 
   useEffect(() => {
     if (roomId) return;
     setState(null);
     setMatch(null);
-    setEvents([]);
   }, [roomId]);
 
   const { connected } = useRoomSocketFeed(roomId, {
@@ -73,16 +67,17 @@ export function useFbFeed(roomId: string | null): FbFeed {
     onEvent: (parsed) => {
       if (parsed.type === 'fb_state') {
         setState(parsed as FbStateEvent);
+      } else if (parsed.type === 'fb_director') {
+        // 1 Hz between the (rarer) state snapshots: keeps the host's
+        // DIRECTOR pill and PROGRAM caption current.
+        const director = (parsed as FbDirectorEvent).director;
+        setState((prev) => (prev ? { ...prev, director } : prev));
       } else if (parsed.type === 'fb_match') {
         setMatch(parsed as FbMatchEvent);
         setMatchReceivedAt(Date.now());
-      } else if (parsed.type === 'fb_event') {
-        setEvents((prev) =>
-          [parsed as FbEventChangeEvent, ...prev].slice(0, TICKER_LEN),
-        );
       }
     },
   });
 
-  return { connected, state, match, matchReceivedAt, events };
+  return { connected, state, match, matchReceivedAt };
 }

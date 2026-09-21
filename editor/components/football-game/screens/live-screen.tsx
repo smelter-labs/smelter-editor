@@ -22,6 +22,7 @@ import {
 import type { FbFeed } from '../use-fb-feed';
 import { matchClock } from '../use-fb-feed';
 import type { FbRoom } from '../use-fb-room';
+import { HostDirectorRow } from './host-director-row';
 
 /** PROGRAM monitor with reconnect (the arcade page has no mic — unmuted is fine). */
 function ProgramMonitor({
@@ -369,6 +370,7 @@ export function LiveScreen({ room, feed }: { room: FbRoom; feed: FbFeed }) {
           ) : (
             flowButtons
           )}
+          <HostDirectorRow room={room} state={state} />
         </div>
 
         <div

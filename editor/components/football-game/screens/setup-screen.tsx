@@ -298,12 +298,26 @@ export function SetupScreen({
                   }
                 />
               </Field>
-              <Field label='ATTACKS THE LEFT GOAL (1ST HALF)' span={2}>
+              <Field label='HALVES END'>
                 <Segment
                   height={CONTROL_H}
                   fontSize={10}
                   options={[
-                    { value: 'auto', label: 'FROM THE CLIP' },
+                    { value: 'manual', label: 'MODERATOR' },
+                    { value: 'auto', label: 'BY THE CLOCK' },
+                  ]}
+                  value={config.autoFlow ? 'auto' : 'manual'}
+                  onChange={(v) =>
+                    onConfig({ ...config, autoFlow: v === 'auto' })
+                  }
+                />
+              </Field>
+              <Field label='ATTACKS LEFT (IN THE CLIP)'>
+                <Segment
+                  height={CONTROL_H}
+                  fontSize={10}
+                  options={[
+                    { value: 'auto', label: 'CLIP' },
                     { value: 'A', label: config.teams.A.short || 'HOME' },
                     { value: 'B', label: config.teams.B.short || 'AWAY' },
                   ]}
@@ -564,7 +578,7 @@ export function SetupScreen({
                   )}
                 </FbSelect>
               </Field>
-              <Field label='RECORDING SCALE' span={3}>
+              <Field label='RECORDING SCALE'>
                 <Segment
                   height={CONTROL_H}
                   fontSize={10}
@@ -577,6 +591,32 @@ export function SetupScreen({
                   onChange={(s) =>
                     setPerf({ recordingScale: s as 1 | 0.75 | 0.5 })
                   }
+                />
+              </Field>
+              <Field label='ANIM HZ'>
+                <Segment
+                  height={CONTROL_H}
+                  fontSize={10}
+                  options={[
+                    { value: 60, label: '60' },
+                    { value: 30, label: '30' },
+                    { value: 15, label: '15' },
+                  ]}
+                  value={config.perf.animTickHz}
+                  onChange={(hz) => setPerf({ animTickHz: hz as 60 | 30 | 15 })}
+                />
+              </Field>
+              <Field label='REPLAY DELAY'>
+                <Stepper
+                  height={CONTROL_H}
+                  font='mono'
+                  fontSize={13}
+                  value={config.replayDelayMs}
+                  min={0}
+                  max={5000}
+                  step={500}
+                  onChange={(v) => onConfig({ ...config, replayDelayMs: v })}
+                  render={(v) => `${(v / 1000).toFixed(1)} S`}
                 />
               </Field>
             </div>

@@ -131,6 +131,18 @@ export function ModeratorPanel({ roomId }: { roomId: string }) {
     setStep('panel');
   }, [name, socket]);
 
+  // The seat is taken (or we handed it over): back to the name step.
+  const roleTaken =
+    socket.lastError?.code === 'role_taken' ? socket.lastError : null;
+  useEffect(() => {
+    if (roleTaken && step === 'panel') setStep('name');
+  }, [roleTaken, step]);
+  const leave = useCallback(() => {
+    socket.leave();
+    resumedRef.current = true;
+    setStep('name');
+  }, [socket]);
+
   const retryConnect = useCallback(() => {
     if (roomStatus !== 'ok') loadRoom();
     socket.retry();
@@ -210,6 +222,7 @@ export function ModeratorPanel({ roomId }: { roomId: string }) {
             whepUrl={whepUrl}
             roomId={roomId}
             narrow={narrow}
+            onLeave={leave}
             columns={columns}
           />
         )}

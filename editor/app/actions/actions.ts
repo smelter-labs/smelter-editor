@@ -770,6 +770,39 @@ export async function syncFbFileCams(
   return (await getClient()).syncFbFileCams(roomId, playFromMs);
 }
 
+export async function setFbView(
+  roomId: string,
+  override: import('@smelter-editor/types').FbViewOverride,
+): Promise<{
+  state: import('@smelter-editor/types').FbStateEvent;
+  match: import('@smelter-editor/types').FbMatchEvent;
+}> {
+  return (await getClient()).setFbView(roomId, override);
+}
+
+export async function setFbMinimap(
+  roomId: string,
+  enabled: boolean,
+): Promise<{
+  state: import('@smelter-editor/types').FbStateEvent;
+  match: import('@smelter-editor/types').FbMatchEvent;
+}> {
+  return (await getClient()).setFbMinimap(roomId, enabled);
+}
+
+export async function getFbClips(): Promise<{
+  clips: {
+    fileName: string;
+    session: import('@smelter-editor/types').FbSession | null;
+  }[];
+}> {
+  try {
+    return await (await getClient()).getFbClips();
+  } catch {
+    return { clips: [] };
+  }
+}
+
 export async function setFbAiEvents(
   roomId: string,
   enabled: boolean,

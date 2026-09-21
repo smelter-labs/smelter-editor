@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { changedSections } from './live-config-diff';
 import type { FbMatchEvent, FbStateEvent } from '@smelter-editor/types';
 import { getFbState, setFbConfig } from '@/app/actions/actions';
 import { RESOLUTION_PRESETS } from '@/lib/resolution';
@@ -23,6 +24,7 @@ import {
   sanitizeFbAi,
   sanitizeFbDirector,
   sanitizeFbMinimapSize,
+  sanitizeReplayDelay,
   sanitizeFbPerf,
   serverConfigToUi,
   useFbRoom,
@@ -61,6 +63,8 @@ function loadConfig(): FbUiConfig {
           : d.clockFromClip,
       attacksLeft:
         p.attacksLeft === 'A' || p.attacksLeft === 'B' ? p.attacksLeft : null,
+      autoFlow: p.autoFlow === true,
+      replayDelayMs: sanitizeReplayDelay(p.replayDelayMs),
       director: sanitizeFbDirector(p.director),
       ai: sanitizeFbAi(p.ai),
       replay: typeof p.replay === 'boolean' ? p.replay : d.replay,
@@ -77,7 +81,7 @@ function loadConfig(): FbUiConfig {
   }
 }
 
-function deriveScreen(state: FbStateEvent, _match: FbMatchEvent): Screen {
+function deriveScreen(state: FbStateEvent): Screen {
   if (state.phase === 'lobby') return 'lobby';
   if (state.phase === 'ended') return 'results';
   return 'live';
@@ -115,7 +119,7 @@ export function FootballGameArcade({
       .then(({ state, match }) => {
         setConfig(serverConfigToUi(state.config, loadConfig().resolution));
         configDirtyRef.current = false;
-        setScreen(deriveScreen(state, match));
+        setScreen(deriveScreen(state));
       })
       .catch(() => router.replace('/football-game'));
   }, [initialRoomId, room.roomStatus, screen, router]);
@@ -133,27 +137,26 @@ export function FootballGameArcade({
     }
   }, [config]);
 
-  // Perf + director + AI knobs push live while a room exists.
-  const liveJson = JSON.stringify({
+  // Perf + director + AI knobs push live while a room exists — only the
+  // sections that changed, so the panel's REPLAY / MINIMAP toggles survive.
+  const live = {
     perf: config.perf,
     director: config.director,
     ai: config.ai,
     minimap: config.minimap,
     minimapSize: config.minimapSize,
     replay: config.replay,
-  });
-  const pushedLiveRef = useRef(liveJson);
+    replayDelayMs: config.replayDelayMs,
+    autoFlow: config.autoFlow,
+  };
+  const liveJson = JSON.stringify(live);
+  const pushedLiveRef = useRef(live);
   useEffect(() => {
-    if (!room.roomId || pushedLiveRef.current === liveJson) return;
-    pushedLiveRef.current = liveJson;
-    void setFbConfig(room.roomId, {
-      perf: config.perf,
-      director: config.director,
-      ai: config.ai,
-      minimap: config.minimap,
-      minimapSize: config.minimapSize,
-      replay: config.replay,
-    }).catch(() => {});
+    if (!room.roomId) return;
+    const patch = changedSections(pushedLiveRef.current, live);
+    pushedLiveRef.current = live;
+    if (Object.keys(patch).length === 0) return;
+    void setFbConfig(room.roomId, patch).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room.roomId, liveJson]);
 
