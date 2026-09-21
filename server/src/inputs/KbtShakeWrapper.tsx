@@ -58,15 +58,18 @@ export function KbtShakeWrapper({
     return () => clearInterval(timer);
   }, [active, tickMs]);
 
-  if (!active) {
-    return <View style={{ ...resolution }}>{children}</View>;
-  }
-
-  const amp = SHAKE_AMP * Math.max(0, 1 - elapsed / FX_MS);
-  const ox = Math.round(Math.sin(elapsed * 0.073) * amp);
-  const oy = Math.round(Math.cos(elapsed * 0.097) * amp);
+  // The tree shape must not depend on `active`: React reconciles by position,
+  // so an extra View appearing only while shaking pushed every child one level
+  // down and remounted the whole tile — skeleton rig, bell box, rep floaters —
+  // at both ends of every milestone (the milestone rep's own floater never
+  // spawned, the skeleton blinked as the aura started). Idle is a zero offset.
+  // (`elapsed` is Infinity while idle — never feed it to the sines: NaN
+  // offsets would get the whole scene update rejected.)
+  const amp = active ? SHAKE_AMP * Math.max(0, 1 - elapsed / FX_MS) : 0;
+  const ox = active ? Math.round(Math.sin(elapsed * 0.073) * amp) : 0;
+  const oy = active ? Math.round(Math.cos(elapsed * 0.097) * amp) : 0;
   return (
-    <View style={{ ...resolution, overflow: 'hidden' }}>
+    <View style={{ ...resolution, ...(active ? { overflow: 'hidden' } : {}) }}>
       <View style={{ top: oy, left: ox, ...resolution }}>{children}</View>
     </View>
   );
