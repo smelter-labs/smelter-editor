@@ -148,18 +148,34 @@ export function useKbtRoom(initialRoomId?: string): KbtRoom {
   useEffect(() => {
     if (!initialRoomId) return;
     let cancelled = false;
-    void getRoomInfo(initialRoomId).then((info) => {
-      if (cancelled) return;
-      if (info && info !== 'not-found') {
-        setWhepUrl(info.whepUrl ?? null);
-        setRoomStatus('ok');
-      } else {
-        setRoomId(null);
-        setRoomStatus('gone');
-      }
-    });
+    let retryTimer: number | null = null;
+    let delay = 1000;
+    const check = () => {
+      getRoomInfo(initialRoomId).then(
+        (info) => {
+          if (cancelled) return;
+          if (info && info !== 'not-found') {
+            setWhepUrl(info.whepUrl ?? null);
+            setRoomStatus('ok');
+          } else {
+            setRoomId(null);
+            setRoomStatus('gone');
+          }
+        },
+        () => {
+          // The lookup itself failed (app server restarting, network blip) —
+          // that is not "room gone". Unhandled, it left the host on
+          // RESTORING ARENA… forever; keep trying instead, the label is true.
+          if (cancelled) return;
+          retryTimer = window.setTimeout(check, delay);
+          delay = Math.min(8000, delay * 2);
+        },
+      );
+    };
+    check();
     return () => {
       cancelled = true;
+      if (retryTimer != null) window.clearTimeout(retryTimer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

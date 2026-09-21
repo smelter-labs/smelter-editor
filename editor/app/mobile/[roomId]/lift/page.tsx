@@ -26,6 +26,7 @@ import {
   KbtConnectStep,
   KbtPhoneShell,
   KbtStatusStrip,
+  type KbtRoomLookupStatus,
 } from '@/components/kettlebell-tournament/kbt-kit';
 import { NameStep } from '@/components/kettlebell-tournament/phone/name-step';
 import { PhotoStep } from '@/components/kettlebell-tournament/phone/photo-step';
@@ -110,9 +111,18 @@ export default function LiftControllerPage() {
   const [step, setStep] = useState<Step>('connect');
   const [name, setName] = useState('');
   const [connected, setConnected] = useState(false);
-  const [roomStatus, setRoomStatus] = useState<'loading' | 'ok' | 'not-found'>(
-    'loading',
-  );
+  const [roomStatus, setRoomStatus] = useState<KbtRoomLookupStatus>('loading');
+  // A rejected lookup (app server unreachable) is NOT "room not found": the
+  // uplink can be green while this fails, so it gets its own retryable state.
+  const lookupRoom = useCallback(async () => {
+    setRoomStatus('loading');
+    try {
+      const info = await getRoomInfo(String(roomId));
+      setRoomStatus(info && info !== 'not-found' ? 'ok' : 'not-found');
+    } catch {
+      setRoomStatus('error');
+    }
+  }, [roomId]);
   const [wsDbg, setWsDbg] = useState('');
 
   const [kbtState, setKbtState] = useState<KbtStateEvent | null>(null);
@@ -729,9 +739,7 @@ export default function LiftControllerPage() {
     sessionRef.current = session;
     if (session.playerKey) resumeRef.current = 'pending';
     setName(session.name ?? window.localStorage.getItem(NAME_KEY) ?? '');
-    void getRoomInfo(String(roomId)).then((info) => {
-      setRoomStatus(info && info !== 'not-found' ? 'ok' : 'not-found');
-    });
+    void lookupRoom();
     // Re-arm after a StrictMode unmount/remount — the cleanup below set the
     // flag, and without the reset auto-reconnect would stay off for good.
     closedByUsRef.current = false;
@@ -928,17 +936,14 @@ export default function LiftControllerPage() {
   );
 
   const retryConnect = useCallback(() => {
+    if (roomStatus !== 'ok') void lookupRoom();
+    // A lookup-only failure must not bounce a healthy uplink.
+    if (connected) return;
     setWsDbg('');
     closedByUsRef.current = false;
     wsRef.current?.close();
-    if (roomStatus !== 'ok') {
-      setRoomStatus('loading');
-      void getRoomInfo(String(roomId)).then((info) => {
-        setRoomStatus(info && info !== 'not-found' ? 'ok' : 'not-found');
-      });
-    }
     connectWs();
-  }, [roomId, roomStatus, connectWs]);
+  }, [roomStatus, connected, lookupRoom, connectWs]);
 
   const fontClass = `${bigShoulders.variable} ${plexMono.variable}`;
 
