@@ -2928,7 +2928,10 @@ export class KettlebellTournamentController {
     };
   }
 
-  private scoresRecord(h: HeatState): Record<string, KbtScoreBreakdown> {
+  private scoresRecord(
+    h: HeatState,
+    withRepShots = true,
+  ): Record<string, KbtScoreBreakdown> {
     const out: Record<string, KbtScoreBreakdown> = {};
     for (const [id, s] of h.scores) {
       out[id] = {
@@ -2939,7 +2942,9 @@ export class KettlebellTournamentController {
         name: s.name,
         color: s.color,
         photoUrl: s.photoUrl,
-        ...(s.repShots.length ? { repShots: [...s.repShots] } : {}),
+        ...(withRepShots && s.repShots.length
+          ? { repShots: [...s.repShots] }
+          : {}),
       };
     }
     return out;
@@ -2973,7 +2978,12 @@ export class KettlebellTournamentController {
           : heat.phase === 'playing' && heat.endsAt != null
             ? Math.max(0, heat.endsAt - now)
             : undefined,
-      scores: this.scoresRecord(heat),
+      // The shot lists only ride the snapshots of a finished heat (the results
+      // screen reads them there). kbt_match goes to every phone once a second
+      // while a heat runs, and the lists grow with every rep — live shots
+      // already reach clients incrementally via kbt_rep, and kbt_state keeps
+      // the full lists for the panel.
+      scores: this.scoresRecord(heat, heat.phase === 'ended'),
       winner:
         heat.phase === 'ended' && heat.finalized ? heat.winner : undefined,
     };
@@ -3055,10 +3065,12 @@ export class KettlebellTournamentController {
         // Reps/pace from the player's latest played heat (average over the
         // heat — the board shows results, not a live window).
         let reps = 0;
+        let rpm = 0;
         for (let h = this.heats.length - 1; h >= 0; h--) {
           const s = this.heats[h].scores.get(p.clientId);
           if (s) {
             reps = s.reps.swing + s.reps.clean + s.reps.snatch;
+            rpm = this.averageRpm(this.heats[h], reps);
             break;
           }
         }
@@ -3069,9 +3081,22 @@ export class KettlebellTournamentController {
           photoImageId: p.photoImageId,
           points: p.rankPoints,
           reps,
-          rpm: Math.round((reps * 60_000) / this.config.heatDurationMs),
+          rpm,
         };
       });
+  }
+
+  /**
+   * Average pace over the time a heat actually ran, not its configured
+   * length: a heat cut short by stop_heat (or rules edited afterwards) would
+   * otherwise under- or over-report. Floored like the live RPM window.
+   */
+  private averageRpm(heat: HeatState, reps: number): number {
+    const ranMs =
+      heat.startsAt != null && heat.endsAt != null
+        ? heat.endsAt - heat.startsAt
+        : this.config.heatDurationMs;
+    return Math.round((reps * 60_000) / Math.max(15_000, ranMs));
   }
 
   /**
@@ -3112,10 +3137,12 @@ export class KettlebellTournamentController {
       };
     }
     let sheet: ScoreState | null = null;
+    let sheetHeat: HeatState | null = null;
     for (let h = this.heats.length - 1; h >= 0; h--) {
       const s = this.heats[h].scores.get(playerId);
       if (s) {
         sheet = s;
+        sheetHeat = this.heats[h];
         break;
       }
     }
@@ -3129,7 +3156,7 @@ export class KettlebellTournamentController {
         color: p.color,
         photoImageId: p.photoImageId,
         points: p.finalScore ?? p.bestScore,
-        rpm: Math.round((reps * 60_000) / this.config.heatDurationMs),
+        rpm: sheetHeat ? this.averageRpm(sheetHeat, reps) : 0,
         reps,
         streak: 0,
         bestStreak: sheet?.bestStreak ?? 0,

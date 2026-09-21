@@ -528,7 +528,12 @@ describe('KettlebellTournamentController', () => {
       '/kbt-rep-frames/a-r0002.jpg',
       undefined,
     ]);
-    const sheet = Object.values(h.controller.getMatchSnapshot().scores)[0];
+    // While the heat runs, the 1 Hz kbt_match stays lean — the growing shot
+    // lists ride kbt_state (the panel's source) and kbt_rep only.
+    expect(
+      Object.values(h.controller.getMatchSnapshot().scores)[0].repShots,
+    ).toBeUndefined();
+    const sheet = h.controller.stateSnapshot().heats[0].scores.p1;
     expect(sheet.repShots).toEqual([
       {
         repIndex: 1,
@@ -546,8 +551,14 @@ describe('KettlebellTournamentController', () => {
         issues: ['too_low'],
       },
     ]);
-    // After the heat ends the shots stick to the player (podium feed).
+    // After the heat ends the shots stick to the player (podium feed) and
+    // the finished heat's kbt_match carries them for the results screen.
     await vi.advanceTimersByTimeAsync(30_000 + 500);
+    expect(
+      h.controller
+        .getMatchSnapshot()
+        .scores.p1.repShots?.map((s) => s.repIndex),
+    ).toEqual([1, 2]);
     const player = h.controller
       .stateSnapshot()
       .players.find((p) => p.clientId === 'p1');
@@ -1883,8 +1894,9 @@ describe('resilience: playerKey identity, error channel, host recovery', () => {
       ['bent_arms'],
       '/kbt-rep-frames/b.jpg',
     );
-    // Issues ride the persisted shot, not just the live kbt_rep event.
-    const scores = h.controller.getMatchSnapshot().scores;
+    // Issues ride the persisted shot, not just the live kbt_rep event (read
+    // from kbt_state — a running heat's kbt_match carries no shot lists).
+    const scores = h.controller.stateSnapshot().heats[0].scores;
     expect(scores['p1'].repShots).toHaveLength(2);
     expect(scores['p1'].repShots![1].issues).toEqual(['bent_arms']);
     // No shots → refused.
@@ -2006,6 +2018,29 @@ describe('resilience: playerKey identity, error channel, host recovery', () => {
     });
     await vi.advanceTimersByTimeAsync(3500);
     expect(h.lastHud()!.repFloatText).toBe(true);
+    h.controller.dispose();
+  });
+});
+
+describe('standings pace', () => {
+  it('rates a heat cut short by stop_heat over the time it actually ran', async () => {
+    const h = harness();
+    const { in1 } = await playingHeat(h); // 30 s heat, 'playing' for ~100 ms
+    // 10 reps across 20 s of lifting, then the host stops the heat early.
+    for (let i = 1; i <= 10; i++) {
+      h.rep(in1, i, 'swing');
+      await vi.advanceTimersByTimeAsync(2000);
+    }
+    h.controller.controlMatch({ action: 'stop_heat' });
+    // Past the 5 s linger, plus the 3 s hold the board snapshot rides.
+    await vi.advanceTimersByTimeAsync(9000);
+    const board = h.lastHud()?.board;
+    const row = board?.rows.find((r) => r.name === 'ANIA');
+    // ~20.1 s on the clock → ~30 rpm. Dividing by the configured 30 s (the
+    // old math) would have claimed 20.
+    expect(row?.reps).toBe(10);
+    expect(row?.rpm).toBeGreaterThanOrEqual(29);
+    expect(row?.rpm).toBeLessThanOrEqual(31);
     h.controller.dispose();
   });
 });
