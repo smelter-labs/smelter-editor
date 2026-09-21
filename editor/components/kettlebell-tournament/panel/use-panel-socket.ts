@@ -27,6 +27,8 @@ import {
 } from '../phone/commentator-session';
 
 const RECONNECT_MAX_MS = 8000;
+// How long a refused action stays on screen (same as the host arcade).
+const ERROR_SHOW_MS = 4000;
 const TICKER_LEN = 6;
 // Rep-apex stills gallery (only reps that carried a screenshotUrl).
 const SHOTS_LEN = 12;
@@ -35,6 +37,10 @@ export type PanelSocket = {
   connected: boolean;
   /** Debug text from the WS layer, shown verbatim on failure. */
   wsError: string;
+  /** The server's latest refusal (kbt_error), or an action that could not
+   * leave a closed socket — display-ready, self-clearing. Without it a
+   * refused press looks exactly like a dead button. */
+  lastError: string | null;
   state: KbtStateEvent | null;
   match: KbtMatchEvent | null;
   /** Rolling play-by-play (newest first). */
@@ -81,6 +87,8 @@ export function usePanelSocket(
 ): PanelSocket {
   const [connected, setConnected] = useState(false);
   const [wsError, setWsError] = useState('');
+  const [lastError, setLastError] = useState<string | null>(null);
+  const lastErrorTimerRef = useRef<number | null>(null);
   const [state, setState] = useState<KbtStateEvent | null>(null);
   const [match, setMatch] = useState<KbtMatchEvent | null>(null);
   const [recentReps, setRecentReps] = useState<KbtRepEvent[]>([]);
@@ -100,12 +108,31 @@ export function usePanelSocket(
   const optsRef = useRef(opts);
   optsRef.current = opts;
 
+  const showError = useCallback((message: string) => {
+    setLastError(message);
+    if (lastErrorTimerRef.current != null) {
+      window.clearTimeout(lastErrorTimerRef.current);
+    }
+    lastErrorTimerRef.current = window.setTimeout(
+      () => setLastError(null),
+      ERROR_SHOW_MS,
+    );
+  }, []);
+
   const sendJson = useCallback((msg: object): boolean => {
     const ws = wsRef.current;
     if (ws?.readyState !== WebSocket.OPEN) return false;
     ws.send(JSON.stringify(msg));
     return true;
   }, []);
+
+  /** An operator press: say so when it could not even leave the panel. */
+  const sendAction = useCallback(
+    (msg: object) => {
+      if (!sendJson(msg)) showError('NOT CONNECTED — action not sent');
+    },
+    [sendJson, showError],
+  );
 
   const sendCamRequest = useCallback(() => {
     const dims = optsRef.current.getCamDims();
@@ -142,11 +169,14 @@ export function usePanelSocket(
         case 'kbt_cam_offer':
           if (wantsCamRef.current) optsRef.current.onCamOffer(event);
           break;
+        case 'kbt_error':
+          showError(event.message);
+          break;
         default:
           break;
       }
     },
-    [roomId],
+    [roomId, showError],
   );
 
   const handleEventRef = useRef(handleEvent);
@@ -216,6 +246,9 @@ export function usePanelSocket(
     return () => {
       closedByUsRef.current = true;
       wsRef.current?.close();
+      if (lastErrorTimerRef.current != null) {
+        window.clearTimeout(lastErrorTimerRef.current);
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -240,62 +273,62 @@ export function usePanelSocket(
 
   const sendView = useCallback(
     (override: KbtViewOverride) => {
-      sendJson({ type: 'kbt_commentator_view', override });
+      sendAction({ type: 'kbt_commentator_view', override });
     },
-    [sendJson],
+    [sendAction],
   );
 
   const sendMatch = useCallback(
     (action: KbtMatchAction, heatIndex?: number) => {
-      sendJson({
+      sendAction({
         type: 'kbt_commentator_match',
         action,
         ...(heatIndex != null ? { heatIndex } : {}),
       });
     },
-    [sendJson],
+    [sendAction],
   );
 
   const sendOverlay = useCallback(
     (overlay: KbtCommentatorOverlay) => {
-      sendJson({ type: 'kbt_commentator_overlay', overlay });
+      sendAction({ type: 'kbt_commentator_overlay', overlay });
     },
-    [sendJson],
+    [sendAction],
   );
 
   const sendBanner = useCallback(
     (bannerId: KbtHypeBannerId) => {
-      sendJson({ type: 'kbt_commentator_banner', bannerId });
+      sendAction({ type: 'kbt_commentator_banner', bannerId });
     },
-    [sendJson],
+    [sendAction],
   );
 
   const sendSkeleton = useCallback(
     (mode: KbtSkeletonMode) => {
-      sendJson({ type: 'kbt_commentator_skeleton', mode });
+      sendAction({ type: 'kbt_commentator_skeleton', mode });
     },
-    [sendJson],
+    [sendAction],
   );
 
   const sendRepFloat = useCallback(
     (enabled: boolean) => {
-      sendJson({ type: 'kbt_commentator_rep_float', enabled });
+      sendAction({ type: 'kbt_commentator_rep_float', enabled });
     },
-    [sendJson],
+    [sendAction],
   );
 
   const sendCasterPip = useCallback(
     (enabled: boolean) => {
-      sendJson({ type: 'kbt_commentator_caster_pip', enabled });
+      sendAction({ type: 'kbt_commentator_caster_pip', enabled });
     },
-    [sendJson],
+    [sendAction],
   );
 
   const sendTransitionStyle = useCallback(
     (style: KbtViewTransitionStyle) => {
-      sendJson({ type: 'kbt_commentator_transition_style', style });
+      sendAction({ type: 'kbt_commentator_transition_style', style });
     },
-    [sendJson],
+    [sendAction],
   );
 
   const retry = useCallback(() => {
@@ -308,6 +341,7 @@ export function usePanelSocket(
   return {
     connected,
     wsError,
+    lastError,
     state,
     match,
     recentReps,
