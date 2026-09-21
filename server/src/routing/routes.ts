@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import { readFbClipSession } from '../football/clipSession';
+import { sanitizeFbMp4FileName } from '../football/mp4CamFileName';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import websocket from '@fastify/websocket';
@@ -3828,7 +3829,7 @@ routes.post<RoomIdParams & { Body: Static<typeof FbMp4CamSchema> }>(
   '/room/:roomId/football-game/mp4-cam',
   { schema: { params: RoomIdParamsSchema, body: FbMp4CamSchema } },
   async (req, res) => {
-    const fileName = sanitizeBbMp4FileName(req.body.fileName);
+    const fileName = sanitizeFbMp4FileName(req.body.fileName);
     if (!fileName) {
       return res.status(400).send({
         status: 'error',

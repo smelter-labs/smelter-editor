@@ -6,9 +6,9 @@ import { ModeratorPanel } from '@/components/football-game/panel/moderator-panel
 import { fbDisplay, fbMono } from '../../fonts';
 
 /**
- * Courtside moderator panel (phone/tablet friendly): confirm the AI's calls
- * (pending makes), fix the ledger, run the clock, switch views — optionally
- * with a commentary cam + mic.
+ * Touchline moderator panel (phone/tablet friendly): rule on the REF CALLS
+ * (goal candidates), fix the ledger, run the clock and the halves, pick the
+ * broadcast view, swap the camera clips.
  */
 export default function ModeratorPanelPage() {
   const { roomId } = useParams();

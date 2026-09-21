@@ -73,6 +73,7 @@ import {
   statsAt,
   unprojectPitch,
   type FbTelemetry,
+  type FbZxy,
 } from './telemetry';
 
 /** Command from the arcade page's match endpoint (and the panel over WS). */
@@ -332,6 +333,11 @@ export class FootballGameController {
     B: emptyTally(),
   };
   private baseLeader: FbTeamId | null = null;
+  private statsCache: {
+    zxy: FbZxy;
+    idx: number;
+    stats: ReturnType<typeof statsAt>;
+  } | null = null;
   private lastEvent: { event: FbEventEntry; at: number } | null = null;
   private banner: FbHudState['banner'] = null;
 
@@ -2869,7 +2875,20 @@ export class FootballGameController {
     const t = this.telemetry();
     const air = this.airMediaMs(now);
     if (!t?.zxy || air == null) return [];
-    return statsAt(t.zxy, air).sort((a, b) => b.topKmh - a.topKmh);
+    return [...this.statsFor(t.zxy, air)].sort((a, b) => b.topKmh - a.topKmh);
+  }
+
+  /**
+   * `statsAt` for the on-air sample, shared by the panel's tracking table and
+   * the minimap chips: both ask for the same sample several times a tick.
+   */
+  private statsFor(zxy: FbZxy, airMs: number): ReturnType<typeof statsAt> {
+    const idx = Math.round(airMs / (1000 / zxy.hz));
+    const c = this.statsCache;
+    if (c && c.zxy === zxy && c.idx === idx) return c.stats;
+    const stats = statsAt(zxy, airMs);
+    this.statsCache = { zxy, idx, stats };
+    return stats;
   }
 
   stateSnapshot(): FbStateEvent {
@@ -2969,7 +2988,7 @@ export class FootballGameController {
     }
     const sprint = sprintAt(t.zxy, airMs);
     let top: { tag: number; kmh: number } | null = null;
-    for (const s of statsAt(t.zxy, airMs))
+    for (const s of this.statsFor(t.zxy, airMs))
       if (!top || s.topKmh > top.kmh)
         top = { tag: s.tag, kmh: Math.round(s.topKmh) };
     return {

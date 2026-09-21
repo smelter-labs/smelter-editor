@@ -5,7 +5,6 @@ import type {
   FbAiLogEntry,
   FbCamRole,
   FbDirectorState,
-  FbEventChangeEvent,
   FbEventKind,
   FbMatchAction,
   FbMatchEvent,
@@ -24,7 +23,6 @@ import {
 import { mergeAiLog } from '../ai-log-helpers';
 
 const RECONNECT_MAX_MS = 8000;
-const TICKER_LEN = 12;
 const AI_LOG_LEN = 60;
 
 type ModeratorSession = { commentatorKey?: string; name?: string };
@@ -62,12 +60,9 @@ export type FbPanelSocket = {
   state: FbStateEvent | null;
   match: FbMatchEvent | null;
   matchReceivedAt: number;
-  /** Rolling ledger changes (newest first). */
-  events: FbEventChangeEvent[];
   aiLog: FbAiLogEntry[];
-  /** Last `fb_director` (1 Hz while on air) and when it arrived. */
+  /** Last `fb_director` (1 Hz while on air). */
   director: FbDirectorState | null;
-  directorAt: number;
   join: (name: string) => void;
   /** Hand the seat over: the server frees it and the stored key is dropped. */
   leave: () => void;
@@ -99,10 +94,8 @@ export function useFbPanelSocket(roomId: string): FbPanelSocket {
   const [state, setState] = useState<FbStateEvent | null>(null);
   const [match, setMatch] = useState<FbMatchEvent | null>(null);
   const [matchReceivedAt, setMatchReceivedAt] = useState(0);
-  const [events, setEvents] = useState<FbEventChangeEvent[]>([]);
   const [aiLog, setAiLog] = useState<FbAiLogEntry[]>([]);
   const [director, setDirector] = useState<FbDirectorState | null>(null);
-  const [directorAt, setDirectorAt] = useState(0);
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectDelayRef = useRef(1000);
@@ -136,15 +129,11 @@ export function useFbPanelSocket(roomId: string): FbPanelSocket {
           setMatch(event);
           setMatchReceivedAt(Date.now());
           break;
-        case 'fb_event':
-          setEvents((prev) => [event, ...prev].slice(0, TICKER_LEN));
-          break;
         case 'fb_ai_log':
           setAiLog((prev) => mergeAiLog(prev, event, AI_LOG_LEN));
           break;
         case 'fb_director':
           setDirector(event.director);
-          setDirectorAt(Date.now());
           break;
         case 'fb_error':
           // Someone else holds the seat: stop re-joining on every reconnect.
@@ -307,10 +296,8 @@ export function useFbPanelSocket(roomId: string): FbPanelSocket {
     state,
     match,
     matchReceivedAt,
-    events,
     aiLog,
     director,
-    directorAt,
     join,
     leave,
     sendView,

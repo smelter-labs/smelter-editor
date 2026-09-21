@@ -47,12 +47,6 @@ export function useMp4Library() {
   return { files, loading, reload, filterFor };
 }
 
-/** `LIVE · …` style status for a cam row, naming the clip. */
-export function camSourceLabel(cam: FbCam | null | undefined): string {
-  if (!cam?.fileName) return '';
-  return `FILE · ${cam.fileName}`;
-}
-
 /** Roles of the given session. */
 export function rolesForSession(session: 'pano' | 'tricam'): FbCamRole[] {
   return session === 'pano' ? ['pano'] : ['left', 'centre', 'right'];

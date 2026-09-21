@@ -79,7 +79,7 @@ function loadConfig(): FbUiConfig {
   }
 }
 
-function deriveScreen(state: FbStateEvent, _match: FbMatchEvent): Screen {
+function deriveScreen(state: FbStateEvent): Screen {
   if (state.phase === 'lobby') return 'lobby';
   if (state.phase === 'ended') return 'results';
   return 'live';
@@ -117,7 +117,7 @@ export function FootballGameArcade({
       .then(({ state, match }) => {
         setConfig(serverConfigToUi(state.config, loadConfig().resolution));
         configDirtyRef.current = false;
-        setScreen(deriveScreen(state, match));
+        setScreen(deriveScreen(state));
       })
       .catch(() => router.replace('/football-game'));
   }, [initialRoomId, room.roomStatus, screen, router]);
