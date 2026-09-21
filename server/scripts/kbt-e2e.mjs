@@ -24,7 +24,10 @@
 // src/ai-models/kettlebell-coach/worker.py, plus the printed
 // SMELTER_SIDE_CHANNEL_SOCKET_DIR).
 
-const API = 'http://localhost:3001';
+// KBT_E2E_API points the run at a parallel stack (e.g. :3111) when :3001 is
+// taken by another session.
+const API = process.env.KBT_E2E_API || 'http://localhost:3001';
+const WS_API = API.replace(/^http/, 'ws');
 const MP4 = process.env.KBT_E2E_MP4 || '';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const j = (m) => JSON.stringify(m);
@@ -63,7 +66,7 @@ function stopAllAcking() {
 }
 
 function phone(roomId, name) {
-  const ws = new WebSocket(`ws://localhost:3001/room/${roomId}/ws`);
+  const ws = new WebSocket(`${WS_API}/room/${roomId}/ws`);
   const p = { name, ws, clientId: null, playerKey: null, points: 0, reps: [], poses: [], errors: [], types: new Set() };
   ws.addEventListener('message', (msg) => {
     let ev;
