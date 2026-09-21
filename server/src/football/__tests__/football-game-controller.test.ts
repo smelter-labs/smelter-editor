@@ -761,6 +761,34 @@ describe('FootballGameController — three cameras', () => {
     return ids;
   }
 
+  it('kicking a camera only drops the manual view that needed it', async () => {
+    const h = harness();
+    await tricam(h, 50);
+    h.controller.controlMatch({ action: 'start' });
+    h.controller.handleMessage('mod', {
+      type: 'fb_commentator_view',
+      override: { mode: 'view', view: 'centre' },
+    });
+    h.controller.controlMatch({ action: 'kick_cam', role: 'left' });
+    expect(h.lastState().director.view).toBe('centre');
+    h.controller.controlMatch({ action: 'kick_cam', role: 'centre' });
+    expect(h.lastState().director.view).toBe('auto');
+    h.controller.dispose();
+  });
+
+  it('a reaped input frees its slot instead of reading CONNECTING for ever', async () => {
+    const h = harness();
+    const ids = await tricam(h, 50);
+    h.connected.delete(ids.right);
+    h.controller.onInputsRemoved([ids.right]);
+    await vi.advanceTimersByTimeAsync(0);
+    const cams = h.lastState().cams;
+    expect(cams.right.fileName ?? null).toBeNull();
+    expect(cams.centre.fileName).toBe('fb/tricam/cam-centre.mp4');
+    expect(h.removed).toEqual([]);
+    h.controller.dispose();
+  });
+
   it('cuts to the camera of the third the players occupy, with a dwell', async () => {
     const h = harness();
     const ids = await tricam(h, 15);
@@ -1018,6 +1046,95 @@ describe('FootballGameController — host fallback + auto flow', () => {
     h.controller.controlMatch({ action: 'start' });
     await vi.advanceTimersByTimeAsync(90_000);
     expect(h.lastMatch().phase).toBe('live');
+    h.controller.dispose();
+  });
+});
+
+describe('FootballGameController — moderator seat + kits + AI attribution', () => {
+  it('the host frees the seat with kick_commentator; LEAVE hands it over', async () => {
+    const h = harness();
+    await panoAttached(h);
+    expect(
+      h.controller.controlMatch({ action: 'kick_commentator' }).error,
+    ).toBeUndefined();
+    expect(h.lastState().commentator).toBeNull();
+    // The kicked socket lost its rights.
+    h.controller.handleMessage('mod', {
+      type: 'fb_commentator_view',
+      override: { mode: 'auto' },
+    });
+    expect(h.errorsFor('mod').map((e) => e.code)).toEqual(['not_commentator']);
+    expect(
+      h.controller.controlMatch({ action: 'kick_commentator' }).error?.code,
+    ).toBe('bad_action');
+
+    h.controller.handleMessage('next', {
+      type: 'fb_commentator_join',
+      name: 'NEXT',
+    });
+    h.controller.handleMessage('next', { type: 'fb_commentator_leave' });
+    expect(h.lastState().commentator).toBeNull();
+    h.controller.dispose();
+  });
+
+  it('the moderator recolours a kit; a bad colour or a spectator is refused', async () => {
+    const h = harness();
+    await panoAttached(h);
+    h.controller.handleMessage('mod', {
+      type: 'fb_team_color',
+      team: 'B',
+      color: '#6cabdd',
+    });
+    expect(h.lastState().teams.B.color).toBe('#6cabdd');
+    expect(h.lastHud()?.teams.B.color).toBe('#6cabdd');
+    h.controller.handleMessage('mod', {
+      type: 'fb_team_color',
+      team: 'B',
+      color: 'sky',
+    });
+    h.controller.handleMessage('spec', {
+      type: 'fb_team_color',
+      team: 'A',
+      color: '#ffffff',
+    });
+    expect(h.errorsFor('mod').map((e) => e.code)).toEqual(['invalid_color']);
+    expect(h.errorsFor('spec').map((e) => e.code)).toEqual(['not_commentator']);
+    expect(h.lastState().teams.B.color).toBe('#6cabdd');
+    h.controller.dispose();
+  });
+
+  it('an AI play whose team is unknown waits for the moderator, whatever its kind', async () => {
+    const h = harness();
+    await started(h, {
+      events: {
+        ...EVENTS,
+        events: [{ tMs: 1000, kind: 'corner', side: null, team: null }],
+      },
+    });
+    await vi.advanceTimersByTimeAsync(1300);
+    const corner = h.ofType('fb_event').find((e) => e.kind === 'fired')!;
+    expect(corner.event.status).toBe('pending');
+    expect(h.lastState().teams.A.corners + h.lastState().teams.B.corners).toBe(
+      0,
+    );
+    h.controller.handleMessage('mod', {
+      type: 'fb_event_resolve',
+      eventId: corner.event.id,
+      team: 'B',
+    });
+    expect(h.lastState().teams.B.corners).toBe(1);
+    h.controller.dispose();
+  });
+
+  it('a looping clip airs its plays again every lap', async () => {
+    const h = harness();
+    await started(h);
+    await vi.advanceTimersByTimeAsync(2 * CLIP_MS + 6_000);
+    const shots = h
+      .ofType('fb_event')
+      .filter((e) => e.kind === 'fired' && e.event.kind === 'shot');
+    expect(shots).toHaveLength(3);
+    expect(h.lastState().teams.A.shots).toBe(3);
     h.controller.dispose();
   });
 });

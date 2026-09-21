@@ -724,8 +724,18 @@ export class FootballGameController {
 
   private releaseCamSlot(cam: CamState): void {
     this.retireCamInput(cam);
+    this.dropCamSlot(cam);
+  }
+
+  /** Forget a camera slot whose input is gone (kicked, or reaped by the room). */
+  private dropCamSlot(cam: CamState): void {
     this.cams.delete(cam.role);
-    if (this.viewOverride.mode === 'view') this.clearViewOverride();
+    // Only the manual view that needed this camera goes back to AUTO.
+    if (
+      this.viewOverride.mode === 'view' &&
+      (cam.role === 'pano' || this.viewOverride.view === cam.role)
+    )
+      this.clearViewOverride();
     this.follow = null;
     this.tricam = null;
   }
@@ -1387,10 +1397,13 @@ export class FootballGameController {
     if (this.disposed) return;
     const gone = new Set(inputIds);
     let changed = false;
-    for (const cam of this.cams.values()) {
+    for (const cam of [...this.cams.values()]) {
       if (cam.inputId != null && gone.has(cam.inputId)) {
+        // A reaped input never comes back (a clip restart keeps its id): free
+        // the slot, or the panel row would read "CONNECTING · <file>" for ever.
         cam.inputId = null;
         cam.camConnected = false;
+        this.dropCamSlot(cam);
         changed = true;
       }
     }
