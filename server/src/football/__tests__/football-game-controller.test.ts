@@ -835,3 +835,131 @@ describe('FootballGameController — HUD hold', () => {
     h.controller.dispose();
   });
 });
+
+describe('FootballGameController — operator regressions', () => {
+  it("a pause / resume keeps the moderator's manual view; a new segment returns to AUTO", async () => {
+    const h = harness();
+    await started(h);
+    h.controller.handleMessage('mod', {
+      type: 'fb_commentator_view',
+      override: { mode: 'view', view: 'wide' },
+    });
+    expect(h.lastState().director.view).toBe('wide');
+    h.controller.controlMatch({ action: 'pause' });
+    expect(h.lastState().director.view).toBe('wide');
+    h.controller.controlMatch({ action: 'resume' });
+    expect(h.lastState().director.view).toBe('wide');
+    h.controller.controlMatch({ action: 'half_time' });
+    expect(h.lastState().director.view).toBe('auto');
+    h.controller.dispose();
+  });
+
+  it('UNDO with no confirmed play leaves a pending REF CALL alone', async () => {
+    const h = harness();
+    await started(h, {
+      events: {
+        ...EVENTS,
+        events: [
+          { tMs: 1000, kind: 'goal', side: 'left', team: null, candidate: true },
+        ],
+      },
+    });
+    await vi.advanceTimersByTimeAsync(1300);
+    expect(h.lastState().pending).toHaveLength(1);
+    h.controller.handleMessage('mod', { type: 'fb_event_undo' });
+    expect(h.errorsFor('mod').map((e) => e.code)).toEqual(['unknown_event']);
+    expect(h.lastState().pending).toHaveLength(1);
+    h.controller.dispose();
+  });
+
+  it('a stranger cannot take the seat of a connected moderator; a gone one frees it', async () => {
+    const h = harness();
+    await panoAttached(h);
+    h.controller.handleMessage('intruder', {
+      type: 'fb_commentator_join',
+      name: 'EVE',
+    });
+    expect(h.errorsFor('intruder').map((e) => e.code)).toEqual(['role_taken']);
+    expect(h.lastState().commentator?.name).toBe('MOD');
+
+    // The holder resumes on a new socket with its key.
+    const joined = h.sent.find(
+      (s) => s.event.type === 'fb_commentator_joined',
+    )!.event as Extract<RoomEvent, { type: 'fb_commentator_joined' }>;
+    h.controller.handleMessage('mod-2', {
+      type: 'fb_commentator_join',
+      name: 'MOD',
+      commentatorKey: joined.commentatorKey,
+    });
+    expect(h.errorsFor('mod-2')).toEqual([]);
+
+    // Dropped for good: the seat frees itself and the next join succeeds.
+    h.controller.handleDisconnect('mod-2');
+    expect(h.lastState().commentator?.connected).toBe(false);
+    await vi.advanceTimersByTimeAsync(91_000);
+    expect(h.lastState().commentator).toBeNull();
+    h.controller.handleMessage('intruder', {
+      type: 'fb_commentator_join',
+      name: 'EVE',
+    });
+    expect(h.lastState().commentator?.name).toBe('EVE');
+    h.controller.dispose();
+  });
+
+  it('the second half keeps the footage sides: AI plays are credited as in the first', async () => {
+    const h = harness();
+    await started(h);
+    h.controller.setConfig({ attacksLeft: 'B' });
+    h.controller.controlMatch({ action: 'half_time' });
+    h.controller.controlMatch({ action: 'second_half' });
+    // The clip loops (30 s): the shot at 5 s airs again in the second lap.
+    await vi.advanceTimersByTimeAsync(36_000);
+    const shots = h
+      .ofType('fb_event')
+      .filter((e) => e.kind === 'fired' && e.event.kind === 'shot');
+    expect(shots.length).toBeGreaterThan(0);
+    // side 'left' + B attacks the left goal in the clip → B, in either half.
+    expect(shots.every((e) => e.event.team === 'B')).toBe(true);
+    h.controller.dispose();
+  });
+
+  it('TAKE THE LEAD airs only when the lead changes hands', async () => {
+    const h = harness();
+    await started(h, { events: null });
+    const goal = (team: 'A' | 'B') =>
+      h.controller.handleMessage('mod', {
+        type: 'fb_event_add',
+        team,
+        kind: 'goal',
+      });
+    const leadBanner = () =>
+      h.lastHud()?.banner?.kind === 'lead_change'
+        ? h.lastHud()!.banner!.text
+        : null;
+    goal('A'); // 1–0: the opening goal is not a lead change
+    expect(leadBanner()).toBeNull();
+    goal('B'); // 1–1
+    goal('A'); // 2–1: the same team back in front
+    expect(leadBanner()).toBeNull();
+    goal('B'); // 2–2
+    goal('B'); // 2–3: the lead changes hands
+    expect(leadBanner()).toMatch(/TAKE THE LEAD/);
+    h.controller.dispose();
+  });
+
+  it('an unattended looping clip keeps the REF CALL queue and the ledger bounded, scores exact', async () => {
+    const h = harness();
+    await started(h, { events: null });
+    for (let i = 0; i < 20; i++) h.controller.simulateEvent('goal', null);
+    expect(h.lastState().pending).toHaveLength(12);
+
+    for (let i = 0; i < 700; i++) h.controller.addManualEvent('A', 'corner');
+    h.controller.addManualEvent('B', 'goal');
+    const s = h.lastState();
+    expect(s.teams.A.corners).toBe(700);
+    expect(s.teams.B.score).toBe(1);
+    const rows = (h.controller as unknown as { events: unknown[] }).events;
+    expect(rows.length).toBeLessThanOrEqual(600);
+    h.controller.dispose();
+  });
+});

@@ -296,7 +296,7 @@ export function SetupScreen({
                   }
                 />
               </Field>
-              <Field label='ATTACKS THE LEFT GOAL (1ST HALF)' span={2}>
+              <Field label='ATTACKS THE LEFT GOAL (IN THE CLIP)' span={2}>
                 <Segment
                   height={CONTROL_H}
                   fontSize={10}

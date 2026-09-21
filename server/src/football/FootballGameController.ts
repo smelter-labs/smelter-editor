@@ -192,6 +192,8 @@ type CommentatorState = {
   commentatorKey: string;
   name: string;
   connected: boolean;
+  /** Wall time the socket dropped (null while connected). */
+  disconnectedAt: number | null;
 };
 
 type TeamTally = {
@@ -241,6 +243,17 @@ const EVENT_BANNER_MS = 3500;
 const REPLAY_CLIP_LEAD_MS = 250;
 const REPLAY_OPEN_GRACE_MS = 3000;
 const RECENT_EVENTS = 14;
+/**
+ * A looping demo clip re-fires its plays every lap, so an unattended room
+ * would grow the ledger and the REF CALL queue for ever. Past these caps the
+ * oldest REF CALLs expire (voided) and the oldest ledger rows are folded into
+ * a base tally (the scores and stats stay exact, only the rows go).
+ */
+const MAX_PENDING = 12;
+const MAX_LEDGER = 600;
+const LEDGER_TRIM_BATCH = 100;
+/** A moderator whose socket has been gone this long frees the seat. */
+const COMMENTATOR_GONE_MS = 90_000;
 const HALF_MIN_MS = 60_000;
 const HALF_MAX_MS = 60 * 60_000;
 /** An AI event whose fire time is further in the past than this is skipped. */
@@ -313,6 +326,12 @@ export class FootballGameController {
     B: emptyTally(),
   };
   private leader: FbTeamId | null = null;
+  /** Tally + last leader of the rows trimmed off a very long ledger. */
+  private baseTally: Record<FbTeamId, TeamTally> = {
+    A: emptyTally(),
+    B: emptyTally(),
+  };
+  private baseLeader: FbTeamId | null = null;
   private lastEvent: { event: FbEventEntry; at: number } | null = null;
   private banner: FbHudState['banner'] = null;
 
@@ -814,12 +833,23 @@ export class FootballGameController {
       c.clientId = clientId;
       c.name = name;
       c.connected = true;
+      c.disconnectedAt = null;
+    } else if (c && c.connected) {
+      // The seat is held by a live socket: a stranger cannot take it over
+      // (the host frees it with `kick_commentator`, the holder with LEAVE).
+      this.sendError(
+        clientId,
+        'role_taken',
+        `${c.name} is moderating this match.`,
+      );
+      return;
     } else {
       this.commentator = {
         clientId,
         commentatorKey: key ?? randomUUID(),
         name,
         connected: true,
+        disconnectedAt: null,
       };
     }
     const cur = this.commentator!;
@@ -1327,8 +1357,18 @@ export class FootballGameController {
   handleDisconnect(clientId: string): void {
     if (this.commentator?.clientId === clientId) {
       this.commentator.connected = false;
+      this.commentator.disconnectedAt = this.now();
       this.broadcastState();
     }
+  }
+
+  /** A moderator who never came back frees the seat (and the lobby card). */
+  private reapCommentator(now: number): void {
+    const c = this.commentator;
+    if (!c || c.connected || c.disconnectedAt == null) return;
+    if (now - c.disconnectedAt < COMMENTATOR_GONE_MS) return;
+    this.commentator = null;
+    this.broadcastState();
   }
 
   onInputsRemoved(inputIds: string[]): void {
@@ -1497,7 +1537,19 @@ export class FootballGameController {
     this.engaged = true;
     const error = this.applyMatchAction(cmd);
     if (!error) {
-      if (this.viewOverride.mode !== 'auto')
+      // A new segment starts on the director's pick; a pause, a resume or a
+      // kick must not yank the moderator's manual view back to AUTO. A kicked
+      // camera only drops the override that was pointing at it.
+      const keepsView =
+        cmd.action === 'pause' ||
+        cmd.action === 'resume' ||
+        cmd.action === 'kick_commentator' ||
+        (cmd.action === 'kick_cam' &&
+          !(
+            this.viewOverride.mode === 'view' &&
+            this.viewOverride.view === cmd.role
+          ));
+      if (!keepsView && this.viewOverride.mode !== 'auto')
         this.viewOverride = { mode: 'auto' };
       this.syncScene();
       this.deps.broadcast(this.getMatchSnapshot());
@@ -1597,11 +1649,6 @@ export class FootballGameController {
         this.elapsedBeforeSegmentMs = 0;
         this.segmentStartedAt = now;
         this.setBanner('kick_off', 'SECOND HALF', '#f4f1e8', now);
-        // Teams swap ends.
-        if (this.aiRun) {
-          this.unloadAiRun();
-          void this.armAiEvents();
-        }
         return null;
       case 'end':
         if (
@@ -1643,6 +1690,8 @@ export class FootballGameController {
     this.endedAt = null;
     this.winner = null;
     this.events = [];
+    this.baseTally = { A: emptyTally(), B: emptyTally() };
+    this.baseLeader = null;
     this.eventSeq = 0;
     this.lastEvent = null;
     this.banner = null;
@@ -1715,41 +1764,75 @@ export class FootballGameController {
     return { A: this.tally.A.score, B: this.tally.B.score };
   }
 
+  private static tallyEvent(
+    tally: Record<FbTeamId, TeamTally>,
+    e: FbEventEntry,
+  ): void {
+    if (e.status !== 'confirmed' || !e.team) return;
+    const t = tally[e.team];
+    switch (e.kind) {
+      case 'goal':
+        t.score += 1;
+        break;
+      case 'chance':
+        t.chances += 1;
+        break;
+      case 'shot':
+        t.shots += 1;
+        if (e.onTarget) t.shotsOnTarget += 1;
+        break;
+      case 'corner':
+        t.corners += 1;
+        break;
+      case 'sprint':
+        t.sprints += 1;
+        break;
+      default:
+        break;
+    }
+  }
+
+  private static topOf(tally: Record<FbTeamId, TeamTally>): FbTeamId | null {
+    return tally.A.score === tally.B.score
+      ? null
+      : tally.A.score > tally.B.score
+        ? 'A'
+        : 'B';
+  }
+
+  /**
+   * `leader` is the LAST team to have been in front: it survives an equaliser,
+   * so "TAKE THE LEAD" airs only when the lead changes hands (not on the
+   * opening goal, not when the same team goes back in front).
+   */
   private recompute(): void {
-    this.tally = { A: emptyTally(), B: emptyTally() };
-    let leader: FbTeamId | null = null;
+    this.tally = {
+      A: { ...this.baseTally.A },
+      B: { ...this.baseTally.B },
+    };
+    let leader: FbTeamId | null = this.baseLeader;
     for (const e of this.events) {
       if (e.status !== 'confirmed' || !e.team) continue;
-      const t = this.tally[e.team];
-      switch (e.kind) {
-        case 'goal':
-          t.score += 1;
-          break;
-        case 'chance':
-          t.chances += 1;
-          break;
-        case 'shot':
-          t.shots += 1;
-          if (e.onTarget) t.shotsOnTarget += 1;
-          break;
-        case 'corner':
-          t.corners += 1;
-          break;
-        case 'sprint':
-          t.sprints += 1;
-          break;
-        default:
-          break;
-      }
-      const top =
-        this.tally.A.score === this.tally.B.score
-          ? null
-          : this.tally.A.score > this.tally.B.score
-            ? 'A'
-            : 'B';
+      FootballGameController.tallyEvent(this.tally, e);
+      const top = FootballGameController.topOf(this.tally);
       if (top) leader = top;
     }
     this.leader = leader;
+  }
+
+  /** Keep the ledger and the REF CALL queue bounded (see MAX_LEDGER). */
+  private boundLedger(): void {
+    const pending = this.events.filter((e) => e.status === 'pending');
+    for (const e of pending.slice(0, Math.max(0, pending.length - MAX_PENDING)))
+      e.status = 'voided';
+    if (this.events.length <= MAX_LEDGER) return;
+    const gone = this.events.splice(0, LEDGER_TRIM_BATCH);
+    for (const e of gone) {
+      if (e.status !== 'confirmed' || !e.team) continue;
+      FootballGameController.tallyEvent(this.baseTally, e);
+      const top = FootballGameController.topOf(this.baseTally);
+      if (top) this.baseLeader = top;
+    }
   }
 
   private afterLedgerChange(now: number): void {
@@ -1791,6 +1874,7 @@ export class FootballGameController {
       confirmed ? 'confirmed' : 'pending',
     );
     this.events.push(entry);
+    this.boundLedger();
     this.afterLedgerChange(now);
     this.lastEvent = { event: entry, at: now };
     if (this.config.ai.replayOn.includes(entry.kind))
@@ -1926,7 +2010,7 @@ export class FootballGameController {
       : ([...this.events]
           .reverse()
           .find((e) => e.status === 'confirmed' && e.kind === 'goal') ??
-        [...this.events].reverse().find((e) => e.status !== 'voided'));
+        [...this.events].reverse().find((e) => e.status === 'confirmed'));
     if (!target || target.status === 'voided') return null;
     const now = this.now();
     target.status = 'voided';
@@ -2382,11 +2466,14 @@ export class FootballGameController {
     }
   }
 
-  /** Which team attacks the left goal in the current half. */
+  /**
+   * Which team attacks the left goal IN THE FOOTAGE: the host's override, else
+   * the clip's sidecar. Never swapped by the period — the picture does not
+   * change ends at half time (a second-half clip says so in its own sidecar),
+   * and the AI EVENTS mapping (`selectAiEvents`) reads the same value.
+   */
   private attacksLeftNow(): FbTeamId | null {
-    const first = this.config.attacksLeft ?? this.clipAttacksLeft;
-    if (!first) return null;
-    return this.period === 2 ? (first === 'A' ? 'B' : 'A') : first;
+    return this.config.attacksLeft ?? this.clipAttacksLeft;
   }
 
   private directorSnapshot(): FbDirectorState {
@@ -2689,6 +2776,7 @@ export class FootballGameController {
   private tick(): void {
     const now = this.now();
     this.pollCameras(now);
+    this.reapCommentator(now);
     this.checkFileCamLoop(now);
     this.checkAiClock(now);
     if (this.aiEventsOn && !this.aiRun && !this.aiLoading)

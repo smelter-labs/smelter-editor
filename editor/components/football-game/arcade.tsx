@@ -1,5 +1,6 @@
 'use client';
 
+import { changedSections } from './live-config-diff';
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { FbMatchEvent, FbStateEvent } from '@smelter-editor/types';
@@ -131,25 +132,23 @@ export function FootballGameArcade({
     }
   }, [config]);
 
-  // Perf + director + AI knobs push live while a room exists.
-  const liveJson = JSON.stringify({
+  // Perf + director + AI knobs push live while a room exists — only the
+  // sections that changed, so the panel's REPLAY / MINIMAP toggles survive.
+  const live = {
     perf: config.perf,
     director: config.director,
     ai: config.ai,
     minimap: config.minimap,
     replay: config.replay,
-  });
-  const pushedLiveRef = useRef(liveJson);
+  };
+  const liveJson = JSON.stringify(live);
+  const pushedLiveRef = useRef(live);
   useEffect(() => {
-    if (!room.roomId || pushedLiveRef.current === liveJson) return;
-    pushedLiveRef.current = liveJson;
-    void setFbConfig(room.roomId, {
-      perf: config.perf,
-      director: config.director,
-      ai: config.ai,
-      minimap: config.minimap,
-      replay: config.replay,
-    }).catch(() => {});
+    if (!room.roomId) return;
+    const patch = changedSections(pushedLiveRef.current, live);
+    pushedLiveRef.current = live;
+    if (Object.keys(patch).length === 0) return;
+    void setFbConfig(room.roomId, patch).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room.roomId, liveJson]);
 
