@@ -29,7 +29,6 @@ import {
 const RECONNECT_MAX_MS = 8000;
 // How long a refused action stays on screen (same as the host arcade).
 const ERROR_SHOW_MS = 4000;
-const TICKER_LEN = 6;
 // Rep-apex stills gallery (only reps that carried a screenshotUrl).
 const SHOTS_LEN = 12;
 
@@ -43,8 +42,6 @@ export type PanelSocket = {
   lastError: string | null;
   state: KbtStateEvent | null;
   match: KbtMatchEvent | null;
-  /** Rolling play-by-play (newest first). */
-  recentReps: KbtRepEvent[];
   /** Rolling rep-apex stills (newest first; only when screenshots are on). */
   recentShots: KbtRepEvent[];
   /** Join (or re-join) as the commentator; re-sent on every reconnect. */
@@ -91,7 +88,6 @@ export function usePanelSocket(
   const lastErrorTimerRef = useRef<number | null>(null);
   const [state, setState] = useState<KbtStateEvent | null>(null);
   const [match, setMatch] = useState<KbtMatchEvent | null>(null);
-  const [recentReps, setRecentReps] = useState<KbtRepEvent[]>([]);
   const [recentShots, setRecentShots] = useState<KbtRepEvent[]>([]);
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -161,7 +157,8 @@ export function usePanelSocket(
           setMatch(event);
           break;
         case 'kbt_rep':
-          setRecentReps((prev) => [event, ...prev].slice(0, TICKER_LEN));
+          // Only reps with a still are kept: nothing reads a play-by-play, and
+          // a setState per scored rep re-rendered the whole panel tree.
           if (event.screenshotUrl) {
             setRecentShots((prev) => [event, ...prev].slice(0, SHOTS_LEN));
           }
@@ -344,7 +341,6 @@ export function usePanelSocket(
     lastError,
     state,
     match,
-    recentReps,
     recentShots,
     join,
     requestCam,

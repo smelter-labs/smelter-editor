@@ -467,15 +467,29 @@ export default function LiftControllerPage() {
 
   // ── Source swap (camera ↔ recording), including mid-publish ──────────────
 
+  /**
+   * A manual (re)publish supersedes the self-heal loop — including its armed
+   * timer. Left behind, that timer fired a SECOND cam request while the first
+   * offer was still in flight (camPcRef is null in between): two overlapping
+   * publishes, a leaked peer connection and live=false on the healthy one.
+   */
+  const resetRepublish = useCallback(() => {
+    if (republishTimerRef.current != null) {
+      window.clearTimeout(republishTimerRef.current);
+      republishTimerRef.current = null;
+    }
+    republishAttemptsRef.current = 0;
+    republishDelayRef.current = 1000;
+    setPublishStuck(false);
+  }, []);
+
   /** Republish the freshly-swapped source; before the first GO LIVE the
    * wizard's explicit button stays the one publish trigger. */
   const swapPublish = useCallback(() => {
     if (!wantsCamRef.current) return;
-    republishAttemptsRef.current = 0;
-    republishDelayRef.current = 1000;
-    setPublishStuck(false);
+    resetRepublish();
     requestCam();
-  }, [requestCam]);
+  }, [resetRepublish, requestCam]);
 
   const swapToFile = useCallback(
     async (file: File) => {
@@ -961,9 +975,7 @@ export default function LiftControllerPage() {
   // One honest strip for whatever is being repaired right now, everywhere
   // past the boot screen (the boot screen has its own status rows).
   const retryPublishNow = () => {
-    republishAttemptsRef.current = 0;
-    republishDelayRef.current = 1000;
-    setPublishStuck(false);
+    resetRepublish();
     requestCam();
   };
   const unlockAudio = () => {

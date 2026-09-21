@@ -122,10 +122,14 @@ export function PhotoStep({
     selfieStreamRef.current = null;
   }, []);
 
+  // The unmount cleanup runs with the FIRST render's closure, where
+  // previewUrl is still null — so it reads the live value through a ref.
+  const previewUrlRef = useRef<string | null>(null);
+  previewUrlRef.current = previewUrl;
   useEffect(
     () => () => {
       stopSelfie();
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],

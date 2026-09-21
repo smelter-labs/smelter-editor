@@ -206,8 +206,10 @@ export function useKbtRoom(initialRoomId?: string): KbtRoom {
       creatingRef.current = true;
       setCreating(true);
       setError(null);
+      let createdRoomId: string | null = null;
       try {
         const created = await createNewRoom([], true, cfg.resolution);
+        createdRoomId = created.roomId;
         await pushConfig(cfg, created.roomId);
         // Born straight into the roster (registration screen).
         await controlKbtMatch(created.roomId, { action: 'roster' });
@@ -223,6 +225,10 @@ export function useKbtRoom(initialRoomId?: string): KbtRoom {
         );
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Arena setup failed');
+        // The room exists but setup failed after it: nothing in the UI points
+        // at it, so a retry would mint another one. Take it down instead of
+        // leaving it to the idle sweep.
+        if (createdRoomId) void deleteRoom(createdRoomId).catch(() => {});
       } finally {
         creatingRef.current = false;
         setCreating(false);
