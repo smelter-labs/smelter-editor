@@ -14,6 +14,7 @@ import {
   tileForCrop,
   tricamCamForX,
   wideCrop,
+  type FollowState,
 } from '../director';
 import type { FbDirectorConfig } from '@smelter-editor/types';
 
@@ -21,10 +22,31 @@ const PANO = { w: 4450, h: 2000 };
 const ASPECT = 16 / 9;
 const CFG: FbDirectorConfig = {
   zoom: 'normal',
-  smoothing: 'smooth',
   switchStyle: 'glide',
   lookaheadMs: 500,
+  averageMs: 200,
+  smoothTimeMs: 600,
+  deadZonePx: 60,
+  maxSpeedPxS: 1200,
+  catchUp: true,
 };
+
+/** One follow step towards a ball at (x, 900). */
+function follow(
+  prev: FollowState | null,
+  x: number,
+  dtMs: number,
+  cfg: FbDirectorConfig = CFG,
+): FollowState {
+  return stepFollow(
+    prev,
+    { target: { x, y: 900 }, speedPxS: 0, dtMs, auto: false, lostForMs: 0 },
+    cfg,
+    PANO,
+    ASPECT,
+    null,
+  );
+}
 
 describe('crops', () => {
   it('the wide crop spans the full height at the output aspect', () => {
@@ -87,99 +109,80 @@ describe('stepFollow', () => {
     // the ball sits a little below the window centre
     expect(s.cy).toBeLessThan(900);
   });
-  it('eases toward a moved target with a dead zone', () => {
-    const s0 = stepFollow(
-      null,
-      {
-        target: { x: 2000, y: 900 },
-        speedPxS: 0,
-        dtMs: 0,
-        auto: false,
-        lostForMs: 0,
-      },
-      CFG,
-      PANO,
-      ASPECT,
-      null,
-    );
-    const same = stepFollow(
-      s0,
-      {
-        target: { x: 2030, y: 900 },
-        speedPxS: 0,
-        dtMs: 250,
-        auto: false,
-        lostForMs: 0,
-      },
-      CFG,
-      PANO,
-      ASPECT,
-      null,
-    );
+  it('rests inside the dead zone and eases toward a moved target', () => {
+    const s0 = follow(null, 2000, 0);
+    const same = follow(s0, 2030, 100);
     expect(same.cx).toBe(s0.cx);
-    const moved = stepFollow(
-      s0,
-      {
-        target: { x: 2400, y: 900 },
-        speedPxS: 0,
-        dtMs: 250,
-        auto: false,
-        lostForMs: 0,
-      },
-      CFG,
-      PANO,
-      ASPECT,
-      null,
-    );
+    const moved = follow(s0, 2400, 100);
     expect(moved.cx).toBeGreaterThan(s0.cx);
     expect(moved.cx).toBeLessThan(2400);
+    // …and settles on the edge of the dead zone, not on the ball
+    let s = s0;
+    for (let i = 0; i < 100; i++) s = follow(s, 2400, 100);
+    expect(Math.abs(s.cx - (2400 - CFG.deadZonePx))).toBeLessThan(2);
   });
-  it('caps the velocity but catches up on long balls', () => {
-    const s0 = stepFollow(
-      null,
-      {
-        target: { x: 1000, y: 900 },
-        speedPxS: 0,
-        dtMs: 0,
-        auto: false,
-        lostForMs: 0,
-      },
-      CFG,
-      PANO,
-      ASPECT,
-      null,
+  it('starts and changes direction without a kink in the velocity', () => {
+    // The ball jumps away, then back: the step size may only change a little
+    // from one tick to the next (the old one-pole filter jumped at once).
+    let s = follow(null, 2000, 0);
+    const steps: number[] = [];
+    for (let i = 0; i < 60; i++) {
+      const next = follow(s, i < 30 ? 2500 : 1700, 100);
+      steps.push(next.cx - s.cx);
+      s = next;
+    }
+    const peak = Math.max(...steps.map(Math.abs));
+    for (let i = 1; i < steps.length; i++)
+      expect(Math.abs(steps[i] - steps[i - 1])).toBeLessThan(peak * 0.6);
+    expect(Math.abs(steps[0])).toBeLessThan(peak * 0.6);
+  });
+  it('keeps gliding behind a slow ball instead of stop-and-go', () => {
+    // 150 px/s: once the ball leaves the dead zone the window moves on every
+    // tick and converges on the ball's own speed.
+    let s = follow(null, 2000, 0);
+    const steps: number[] = [];
+    for (let i = 1; i <= 80; i++) {
+      const next = follow(s, 2000 + i * 15, 100);
+      steps.push(next.cx - s.cx);
+      s = next;
+    }
+    const moving = steps.slice(10);
+    for (const d of moving) expect(d).toBeGreaterThan(0);
+    for (const d of steps.slice(-10)) expect(Math.abs(d - 15)).toBeLessThan(1);
+  });
+  it('respects the speed limit but catches up on long balls', () => {
+    const run = (x: number, cfg: FbDirectorConfig) => {
+      let s = follow(null, 1000, 0);
+      let peak = 0;
+      for (let i = 0; i < 30; i++) {
+        const next = follow(s, x, 100, cfg);
+        peak = Math.max(peak, (next.cx - s.cx) / 0.1);
+        s = next;
+      }
+      return peak;
+    };
+    // 500 px away: below the catch-up range, the limit holds
+    expect(run(1500, { ...CFG, maxSpeedPxS: 300 })).toBeLessThanOrEqual(301);
+    expect(run(1500, CFG)).toBeGreaterThan(301);
+    // a long ball lifts the limit…
+    const far = run(3500, CFG);
+    expect(far).toBeGreaterThan(CFG.maxSpeedPxS);
+    expect(far).toBeLessThanOrEqual(2501);
+    // …unless catch-up is off
+    expect(run(3500, { ...CFG, catchUp: false })).toBeLessThanOrEqual(
+      CFG.maxSpeedPxS + 1,
     );
-    const near = stepFollow(
-      s0,
-      {
-        target: { x: 1800, y: 900 },
-        speedPxS: 0,
-        dtMs: 250,
-        auto: false,
-        lostForMs: 0,
-      },
-      CFG,
-      PANO,
-      ASPECT,
-      null,
-    );
-    expect(near.cx - s0.cx).toBeLessThanOrEqual(1200 * 0.25 + 1);
-    const far = stepFollow(
-      s0,
-      {
-        target: { x: 3500, y: 900 },
-        speedPxS: 0,
-        dtMs: 250,
-        auto: false,
-        lostForMs: 0,
-      },
-      CFG,
-      PANO,
-      ASPECT,
-      null,
-    );
-    expect(far.cx - s0.cx).toBeGreaterThan(near.cx - s0.cx);
-    expect(far.cx - s0.cx).toBeLessThanOrEqual(2500 * 0.25 + 1);
+  });
+  it('a longer smooth time and a wider dead zone slow the window down', () => {
+    const s0 = follow(null, 2000, 0);
+    const after = (cfg: FbDirectorConfig) => {
+      let s = s0;
+      for (let i = 0; i < 5; i++) s = follow(s, 2400, 100, cfg);
+      return s.cx - s0.cx;
+    };
+    expect(after({ ...CFG, smoothTimeMs: 1500 })).toBeLessThan(after(CFG));
+    expect(after({ ...CFG, deadZonePx: 300 })).toBeLessThan(after(CFG));
+    expect(after({ ...CFG, deadZonePx: 0 })).toBeGreaterThan(after(CFG));
   });
   it('widens with the ball speed in auto and never past the cap', () => {
     const slow = stepFollow(

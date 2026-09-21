@@ -2,6 +2,7 @@
 
 import React from 'react';
 import type { FbEventKind, FbTeamId } from '@smelter-editor/types';
+import { FB_MINIMAP_SIZES } from '@smelter-editor/types';
 import {
   FB,
   FbButton,
@@ -24,6 +25,7 @@ import {
 import { useArcadeKeys } from '@/components/duck-hunter/use-arcade-input';
 import { RESOLUTION_PRESETS, type ResolutionPreset } from '@/lib/resolution';
 import type { FbUiConfig } from '../use-fb-room';
+import { FollowTuningRows } from '../follow-tuning';
 import { eventLabel } from '../fb-kit-helpers';
 
 const OUTPUT_RESOLUTIONS: { value: ResolutionPreset; label: string }[] = [
@@ -365,23 +367,6 @@ export function SetupScreen({
                   }
                 />
               </KvRow>
-              <KvRow label='SMOOTHING'>
-                <Segment
-                  height={22}
-                  fontSize={9}
-                  style={{ width: 130 }}
-                  options={[
-                    { value: 'snappy', label: 'SNAPPY' },
-                    { value: 'smooth', label: 'SMOOTH' },
-                  ]}
-                  value={config.director.smoothing}
-                  onChange={(v) =>
-                    setDirector({
-                      smoothing: v as FbUiConfig['director']['smoothing'],
-                    })
-                  }
-                />
-              </KvRow>
               <KvRow label='VIEW SWITCH'>
                 <Segment
                   height={22}
@@ -399,6 +384,16 @@ export function SetupScreen({
                   }
                 />
               </KvRow>
+              <FollowTuningRows
+                director={config.director}
+                onChange={setDirector}
+                presetOnly
+                row={(label, control) => (
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <KvRow label={label}>{control}</KvRow>
+                  </div>
+                )}
+              />
               <KvRow label='LOOK-AHEAD'>
                 <Stepper
                   height={24}
@@ -437,6 +432,19 @@ export function SetupScreen({
                   ]}
                   value={config.minimap ? 'on' : 'off'}
                   onChange={(v) => onConfig({ ...config, minimap: v === 'on' })}
+                />
+              </KvRow>
+              <KvRow label='MAP SIZE'>
+                <Segment
+                  height={22}
+                  fontSize={9}
+                  style={{ width: 165 }}
+                  options={FB_MINIMAP_SIZES.map((n) => ({
+                    value: n,
+                    label: String(n),
+                  }))}
+                  value={config.minimapSize}
+                  onChange={(v) => onConfig({ ...config, minimapSize: v })}
                 />
               </KvRow>
             </div>
