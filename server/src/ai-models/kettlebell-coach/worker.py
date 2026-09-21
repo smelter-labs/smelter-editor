@@ -110,22 +110,22 @@ def _capture_enabled(params: dict) -> bool:
     return str(v).strip().lower() in ("1", "true", "on")
 
 
-def _buffer_rep_frame(state: "InputState", t: float, rgb) -> None:
-    h, w = rgb.shape[:2]
+def _buffer_rep_frame(state: "InputState", t: float, bgr) -> None:
+    h, w = bgr.shape[:2]
     if w > REP_FRAME_MAX_W:
         small = cv2.resize(
-            rgb,
+            bgr,
             (REP_FRAME_MAX_W, max(1, round(h * REP_FRAME_MAX_W / w))),
             interpolation=cv2.INTER_AREA,
         )
     else:
-        small = rgb.copy()
+        small = bgr.copy()
     state.frame_buf.append((t, small))
 
 
-def _encode_rep_frame(path: str, rgb) -> bool:
-    """JPEG-encode and write one buffered frame (runs in a thread)."""
-    bgr = np.ascontiguousarray(rgb[:, :, ::-1])
+def _encode_rep_frame(path: str, bgr) -> bool:
+    """JPEG-encode and write one buffered frame (runs in a thread). Buffered
+    frames are already BGR (cv2's convention) — see the copy in the loop."""
     ok, buf = cv2.imencode(
         ".jpg", bgr, [int(cv2.IMWRITE_JPEG_QUALITY), REP_FRAME_JPEG_QUALITY]
     )
@@ -149,14 +149,14 @@ async def _attach_rep_frames(input_id: str, state: "InputState", events: list) -
         if state.frames_written >= REP_FRAME_MAX_WRITES:
             continue
         target = float(top_t) - REP_FRAME_EMA_LAG_S
-        pts, rgb = min(state.frame_buf, key=lambda p: abs(p[0] - target))
+        pts, bgr = min(state.frame_buf, key=lambda p: abs(p[0] - target))
         if abs(pts - target) > REP_FRAME_MATCH_TOL_S:
             continue
         safe_input = re.sub(r"[^A-Za-z0-9_-]", "_", input_id)
         name = f"{safe_input}-{state.session}-r{int(event.get('index', 0)):04d}.jpg"
         try:
             ok = await asyncio.to_thread(
-                _encode_rep_frame, os.path.join(REP_FRAME_DIR, name), rgb
+                _encode_rep_frame, os.path.join(REP_FRAME_DIR, name), bgr
             )
         except Exception as err:  # noqa: BLE001
             log.warning("Rep frame write failed for %s: %s", input_id, err)
@@ -184,7 +184,7 @@ class InputState:
     # Discrete events held while the Node WS is down, flushed with the next
     # successful emission so none are lost.
     pending_events: list = field(default_factory=list)
-    # Recent (pts, downscaled-RGB) frames for apex-still lookup (rep
+    # Recent (pts, downscaled-BGR) frames for apex-still lookup (rep
     # screenshots). Only fed while `captureRepFrames` is on for this input.
     frame_buf: deque = field(default_factory=lambda: deque(maxlen=REP_FRAME_BUF_LEN))
     frames_written: int = 0
@@ -213,6 +213,10 @@ _backend_failed = False
 _pose_models: dict[str, object] = {}
 _world_model = None
 _torch_threads_capped = False
+# One lock per cached model object: every input's analysis thread shares these
+# models, and ultralytics keeps per-call state on the model's predictor — two
+# predict() calls racing on one object can cross results between athletes.
+_predict_locks: dict[int, threading.Lock] = {}
 
 
 def _cap_torch_threads() -> None:
@@ -292,6 +296,19 @@ def _get_world_model():
             return None
 
 
+def _predict(model, bgr, imgsz: int, conf: float):
+    """One YOLO pass, serialized per model object (see _predict_locks).
+
+    Input must be BGR: ultralytics treats numpy input as cv2-convention BGR,
+    while the side channel delivers RGB (the loop swaps once at its copy).
+    No explicit device: ultralytics already picks CUDA when present, and MPS
+    is deliberately NOT requested — it has a known wrong-keypoints pose bug
+    (ultralytics#4031)."""
+    lock = _predict_locks.setdefault(id(model), threading.Lock())
+    with lock:
+        return model.predict(bgr, imgsz=imgsz, conf=conf, verbose=False)
+
+
 def _best_pose(result) -> list[list[float]] | None:
     """Pick the largest detected person and return 17 normalized [x,y,conf]."""
     kp = getattr(result, "keypoints", None)
@@ -311,7 +328,7 @@ def _best_pose(result) -> list[list[float]] | None:
     return kpts if len(kpts) == 17 else None
 
 
-def detect_pose(rgb, params: dict) -> list | None:
+def detect_pose(bgr, params: dict) -> list | None:
     """Pose inference for one frame (runs in a thread).
 
     Returns 17 normalized [x, y, conf] keypoints, or None when there is no
@@ -320,11 +337,11 @@ def detect_pose(rgb, params: dict) -> list | None:
     if pose_model is None:
         return None
     imgsz = int(float(params.get("imgsz", IMGSZ)))
-    results = pose_model.predict(rgb, imgsz=imgsz, conf=POSE_CONF, verbose=False)
+    results = _predict(pose_model, bgr, imgsz, POSE_CONF)
     return _best_pose(results[0]) if results else None
 
 
-def detect_bell(rgb, params: dict) -> list | None:
+def detect_bell(bgr, params: dict) -> list | None:
     """Zero-shot kettlebell inference for one frame (runs in a thread).
 
     Returns a list of normalized {x, y, w, h, conf} candidates (possibly
@@ -336,7 +353,7 @@ def detect_bell(rgb, params: dict) -> list | None:
         return None
     imgsz = int(float(params.get("imgsz", IMGSZ)))
     kb_conf = float(params.get("kbConfidence", KB_CONF))
-    results = world_model.predict(rgb, imgsz=imgsz, conf=kb_conf, verbose=False)
+    results = _predict(world_model, bgr, imgsz, kb_conf)
     boxes: list[dict[str, float]] = []
     if results:
         b = results[0].boxes
@@ -356,16 +373,16 @@ def detect_bell(rgb, params: dict) -> list | None:
 
 
 async def _bell_pass(
-    input_id: str, rgb, params: dict, t: float, wrists: dict
+    input_id: str, bgr, params: dict, t: float, wrists: dict
 ) -> None:
     """One detached YOLO-World pass, folded into the tracker when it lands.
 
     Runs off the analysis loop so the pose stream keeps its cadence. The wrist
-    snapshot is the one from `rgb`'s own frame: the tracker uses it both to
+    snapshot is the one from `bgr`'s own frame: the tracker uses it both to
     gate candidates against where the hands were THEN and to carry the accepted
     box forward to where they are now."""
     try:
-        boxes = await asyncio.to_thread(detect_bell, rgb, params)
+        boxes = await asyncio.to_thread(detect_bell, bgr, params)
     except asyncio.CancelledError:
         raise
     except Exception as err:  # noqa: BLE001
@@ -379,17 +396,28 @@ async def _bell_pass(
     state.tracker.observe_detections(t, boxes, wrists_at=wrists)
 
 
-async def send_result(input_id: str, data: dict) -> None:
-    global ws_connection
-    if ws_connection is None:
-        return
-    await ws_connection.send(
-        json.dumps({"type": "result", "inputId": input_id, "data": data})
-    )
+async def send_result(input_id: str, data: dict) -> bool:
+    """True once the payload was handed to the socket. A closed/absent Node
+    connection is not an error here — main() reconnects, the caller keeps
+    whatever it must not lose (rep events) for the next pass."""
+    conn = ws_connection
+    if conn is None:
+        return False
+    try:
+        await conn.send(
+            json.dumps({"type": "result", "inputId": input_id, "data": data})
+        )
+    except websockets.ConnectionClosed:
+        return False
+    return True
 
 
 SUBSCRIBE_MAX_RETRIES = 5
 SUBSCRIBE_RETRY_DELAY_S = 1.0
+# A loop that ran healthy this long before failing earns the retry budget
+# back: the budget guards against a subscribe that never works, not against
+# five unrelated hiccups spread over a long tournament.
+RETRY_BUDGET_RESET_S = 10.0
 
 
 async def run_detector(input_id: str) -> None:
@@ -415,9 +443,12 @@ async def run_detector(input_id: str) -> None:
         time.monotonic() - wait_start,
     )
 
-    for attempt in range(1, SUBSCRIBE_MAX_RETRIES + 1):
+    attempt = 0
+    while attempt < SUBSCRIBE_MAX_RETRIES:
+        attempt += 1
         if input_id not in active_inputs:
             return
+        started_at = time.monotonic()
         try:
             channels = await asyncio.to_thread(list_channels)
             video_channels = [c for c in channels if c.kind.value == "video"]
@@ -454,6 +485,8 @@ async def run_detector(input_id: str) -> None:
         except asyncio.CancelledError:
             return
         except Exception as err:  # noqa: BLE001
+            if time.monotonic() - started_at >= RETRY_BUDGET_RESET_S:
+                attempt = 1
             if attempt < SUBSCRIBE_MAX_RETRIES:
                 delay = SUBSCRIBE_RETRY_DELAY_S * attempt
                 log.warning(
@@ -541,14 +574,15 @@ async def _run_detector_loop(input_id: str) -> int:
 
             # A contiguous copy: the pose pass and the (detached, longer-lived)
             # bell pass both read it after this frame's buffer may have been
-            # recycled by the SDK.
-            rgb = np.ascontiguousarray(rgba[:, :, :3])
+            # recycled by the SDK. Channels are reversed in the same copy —
+            # ultralytics and cv2.imencode both expect BGR.
+            bgr = np.ascontiguousarray(rgba[:, :, 2::-1])
             capture = (
                 cv2 is not None and bool(REP_FRAME_DIR) and _capture_enabled(params)
             )
             if capture:
-                _buffer_rep_frame(state, frame.pts_seconds, rgb)
-            pose_kpts = await asyncio.to_thread(detect_pose, rgb, params)
+                _buffer_rep_frame(state, frame.pts_seconds, bgr)
+            pose_kpts = await asyncio.to_thread(detect_pose, bgr, params)
 
             # Analysis is cheap — run it on the loop, per analyzed frame. Time
             # base is the frame's PTS: true source spacing, immune to
@@ -570,7 +604,7 @@ async def _run_detector_loop(input_id: str) -> int:
                 and (state.bell_task is None or state.bell_task.done())
             ):
                 state.bell_task = asyncio.create_task(
-                    _bell_pass(input_id, rgb, params, t, dict(wrists))
+                    _bell_pass(input_id, bgr, params, t, dict(wrists))
                 )
 
             kb_box = state.tracker.current()
@@ -592,9 +626,10 @@ async def _run_detector_loop(input_id: str) -> int:
             if ws_connection is None:
                 continue  # keep events pending until Node is back
             proc_ms = (time.monotonic() - received_at) * 1000.0
-            events = state.pending_events
-            state.pending_events = []
-            await send_result(
+            # Events stay pending until the send lands: Node counts reps from
+            # events alone, so one dropped on a WS blip is a lost point.
+            events = list(state.pending_events)
+            sent = await send_result(
                 input_id,
                 {
                     "count": snapshot["repCount"],
@@ -617,6 +652,8 @@ async def _run_detector_loop(input_id: str) -> int:
                     "events": events,
                 },
             )
+            if sent:
+                del state.pending_events[: len(events)]
 
     except asyncio.CancelledError:
         raise
