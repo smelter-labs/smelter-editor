@@ -2010,6 +2010,100 @@ describe('resilience: playerKey identity, error channel, host recovery', () => {
   });
 });
 
+describe('reconnects, leavers and banners', () => {
+  it('keeps the on-air overlay on a player adopted under a new clientId', async () => {
+    const h = harness();
+    const { in1 } = await playingHeat(h);
+    h.controller.joinCommentator('c1', 'MAREK');
+    h.rep(in1, 1, 'snatch');
+    h.controller.handleMessage('c1', {
+      type: 'kbt_commentator_overlay',
+      overlay: { kind: 'h2h', playerIdA: 'p1', playerIdB: 'p2' },
+    });
+    expect(h.lastHud()?.overlay).toMatchObject({ kind: 'h2h' });
+
+    // The phone reconnects: new socket, same resume token.
+    const key = h.joinedFor('p1')!.playerKey;
+    h.controller.handleDisconnect('p1');
+    h.controller.join('p1-new', 'ANIA', key);
+
+    expect(h.controller.stateSnapshot().commentatorOverlay).toEqual({
+      kind: 'h2h',
+      playerIdA: 'p1-new',
+      playerIdB: 'p2',
+    });
+    await vi.advanceTimersByTimeAsync(3200);
+    const hud = h.lastHud();
+    expect(hud?.overlay).toMatchObject({ kind: 'h2h' });
+    if (hud?.overlay?.kind === 'h2h') expect(hud.overlay.a.points).toBe(3);
+    h.controller.dispose();
+  });
+
+  it('a lifter leaving during the intro frees the begin gate', async () => {
+    const h = harness();
+    h.controller.join('p1', 'ANIA');
+    h.controller.join('p2', 'BARTEK');
+    await h.controller.startCamera('p1');
+    await h.controller.startCamera('p2');
+    h.controller.setConfig({ heatDurationMs: 30_000, heatSize: 2 });
+    h.controller.controlMatch({ action: 'assign_heats' });
+    h.controller.controlMatch({ action: 'start_heat' });
+    await vi.advanceTimersByTimeAsync(0);
+    h.controller.handleMessage('p1', { type: 'kbt_briefed' });
+    await vi.advanceTimersByTimeAsync(1100); // cam poll
+    const p2Input = h.camOfferFor('p2')!.inputId;
+
+    h.controller.handleMessage('p2', { type: 'kbt_leave' });
+    await vi.advanceTimersByTimeAsync(0);
+
+    const state = h.controller.stateSnapshot();
+    expect(state.heats[0].playerIds).toEqual(['p1']);
+    expect(Object.keys(state.heats[0].scores)).toEqual(['p1']);
+    // The remaining tile was re-flowed without the leaver's input.
+    const lastLayout = h.layouts[h.layouts.length - 1];
+    expect(lastLayout.some((t) => t.inputId === p2Input)).toBe(false);
+    // No force needed: everyone still in the heat is ready.
+    const { error } = h.controller.controlMatch({ action: 'begin_heat' });
+    expect(error).toBeUndefined();
+    expect(h.controller.getMatchSnapshot().phase).toBe('countdown');
+    h.controller.dispose();
+  });
+
+  it('takes a hype banner off the air outside a heat, where nothing else publishes', async () => {
+    const h = harness();
+    h.controller.join('p1', 'ANIA');
+    h.controller.joinCommentator('c1', 'MAREK');
+    h.controller.handleMessage('c1', {
+      type: 'kbt_commentator_banner',
+      bannerId: 'make_noise',
+    });
+    expect(h.lastHud()?.scene).toBe('lobby');
+    expect(h.lastHud()?.banner).toMatchObject({ kind: 'hype' });
+    // Let every held snapshot from the joins land, then go quiet.
+    await vi.advanceTimersByTimeAsync(3900);
+    expect(h.lastHud()?.banner).toMatchObject({ kind: 'hype' });
+    await vi.advanceTimersByTimeAsync(200); // past BANNER_MS
+    expect(h.lastHud()?.banner).toBeNull();
+    h.controller.dispose();
+  });
+
+  it('refuses banner ids that only exist on Object.prototype', () => {
+    const h = harness();
+    h.controller.joinCommentator('c1', 'MAREK');
+    for (const bannerId of ['constructor', 'toString', '__proto__']) {
+      h.controller.handleMessage('c1', {
+        type: 'kbt_commentator_banner',
+        bannerId,
+      });
+    }
+    expect(
+      h.errorsFor('c1').filter((e) => e.code === 'invalid_overlay'),
+    ).toHaveLength(3);
+    expect(h.hudApplies.every((s) => !s?.banner)).toBe(true);
+    h.controller.dispose();
+  });
+});
+
 describe('match actions never orphan a heat', () => {
   /** Four lifters, two heats of two; heat 1 is live ('playing'). */
   async function twoHeatsFirstPlaying(h: ReturnType<typeof harness>) {

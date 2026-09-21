@@ -370,6 +370,8 @@ export class KettlebellTournamentController {
   /** Leader of the running heat (for kbt_lead_change). */
   private leaderId: string | null = null;
   private banner: KbtHudState['banner'] = null;
+  /** Takes an expired banner off the air (see setBanner). */
+  private bannerTimer: ReturnType<typeof setTimeout> | null = null;
   private commentator: CommentatorState | null = null;
   /** Join URL for the lobby QR (pushed down from the host page's config). */
   private joinUrl: string | null = null;
@@ -716,6 +718,16 @@ export class KettlebellTournamentController {
       o.playerId === oldId
     ) {
       o.playerId = clientId;
+    }
+    // Same for the on-air overlay: left on the old id it silently drops off
+    // the output (overlaySnapshot finds no such player) while kbt_state keeps
+    // echoing it to the panel as live.
+    const ov = this.commentatorOverlay;
+    if (ov?.kind === 'h2h') {
+      if (ov.playerIdA === oldId) ov.playerIdA = clientId;
+      if (ov.playerIdB === oldId) ov.playerIdB = clientId;
+    } else if (ov && ov.playerId === oldId) {
+      ov.playerId = clientId;
     }
   }
 
@@ -1328,8 +1340,11 @@ export class KettlebellTournamentController {
 
   triggerHypeBanner(clientId: string, rawId: unknown): void {
     if (!this.requireCommentator(clientId, 'fire a banner')) return;
+    // Own keys only: 'constructor' / 'toString' would otherwise resolve to
+    // Object.prototype members and put an undefined text on air.
     const entry =
-      typeof rawId === 'string'
+      typeof rawId === 'string' &&
+      Object.prototype.hasOwnProperty.call(KBT_HYPE_BANNERS, rawId)
         ? KBT_HYPE_BANNERS[rawId as KbtHypeBannerId]
         : undefined;
     if (!entry) {
@@ -1539,18 +1554,27 @@ export class KettlebellTournamentController {
   leave(clientId: string): void {
     const p = this.players.get(clientId);
     if (!p) return;
+    const wasOnStage = this.isPlayerInActiveHeat(clientId);
     this.retireCamera(p);
     this.players.delete(clientId);
     this.clearViewOverrideIfPlayer(clientId);
     this.clearCommentatorOverlayIfPlayer(clientId);
     // Heat score sheets keep their own name/color snapshot, so past results
-    // stay intact; upcoming idle heats just lose the entrant.
+    // stay intact; heats that never got underway just lose the entrant. That
+    // includes a staged 'intro': a leaver kept there wedges the begin gate
+    // for good ("waiting for (gone)") and can no longer even be kicked.
     for (const heat of this.heats) {
-      if (heat.phase === 'idle') {
+      if (heat.phase === 'idle' || heat.phase === 'intro') {
         heat.playerIds = heat.playerIds.filter((id) => id !== clientId);
+        heat.scores.delete(clientId);
       }
     }
-    if (this.phase === 'roster') void this.layoutRosterMosaic();
+    if (wasOnStage) {
+      // Their tile is gone — re-flow the ones that remain.
+      void this.stageActiveHeat();
+    } else if (this.phase === 'roster') {
+      void this.layoutRosterMosaic();
+    }
     this.broadcastState();
     this.maybeStop();
   }
@@ -1807,6 +1831,23 @@ export class KettlebellTournamentController {
     color: string,
   ): void {
     this.banner = { kind, text, color, at: this.now() };
+    // The banner leaves the air only when a later snapshot omits it, and the
+    // tick publishes periodically only while a heat is on — in the lobby, on
+    // the board or the podium it would hang until some unrelated state
+    // change. One publish just past the TTL takes it down — immediately when
+    // no heat is publishing (nothing there is time-aligned to the delayed
+    // video), otherwise left to the regular held snapshots so the queued
+    // scores are not cut short.
+    if (this.bannerTimer) clearTimeout(this.bannerTimer);
+    this.bannerTimer = setTimeout(() => {
+      this.bannerTimer = null;
+      const heat = this.activeHeat();
+      const heatPublishing =
+        heat != null &&
+        (heat.phase !== 'ended' ||
+          (heat.endsAt != null && this.now() - heat.endsAt < ENDED_LINGER_MS));
+      this.publishHud(!heatPublishing);
+    }, BANNER_MS + 1);
   }
 
   // ── Config + match control (REST) ─────────────────────────────────────────
@@ -3341,6 +3382,10 @@ export class KettlebellTournamentController {
     if (this.parkTimer) {
       clearTimeout(this.parkTimer);
       this.parkTimer = null;
+    }
+    if (this.bannerTimer) {
+      clearTimeout(this.bannerTimer);
+      this.bannerTimer = null;
     }
     for (const imageId of this.repShotImageIds.values()) {
       this.deps.unregisterRepShotImage(imageId);
