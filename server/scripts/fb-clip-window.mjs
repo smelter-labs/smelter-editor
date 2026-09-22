@@ -190,6 +190,40 @@ if (zxy) {
   console.log(`zxy.json: ${zxy.tags.length} tags, ${sprints.length} sprints`);
 }
 
+// away.json (scripts/fb-away-detect.py): same sample grid as zxy.json
+const away = readJson(path.join(srcDir, 'away.json'));
+if (away) {
+  const step = 1000 / away.hz;
+  const n = Math.ceil(totalMs / step) + 1;
+  const slice = (arr) => {
+    const outArr = new Array(n).fill(null);
+    for (let i = 0; i < n; i++) {
+      const ms = i * step;
+      const seg = segments.find(
+        (s) => ms >= s.startMs && ms <= s.startMs + (s.toMs - s.fromMs),
+      );
+      if (!seg) continue;
+      const srcIdx = Math.round((ms - seg.startMs + seg.fromMs) / step);
+      outArr[i] = arr[srcIdx] ?? null;
+    }
+    return outArr;
+  };
+  const tracks = away.tracks
+    .map((t) => ({ id: t.id, x: slice(t.x), y: slice(t.y) }))
+    .filter((t) => t.x.some((v) => v != null));
+  fs.writeFileSync(
+    path.join(outDir, 'away.json'),
+    JSON.stringify({
+      ...away,
+      t0Utc: events?.t0Utc ?? null,
+      durationMs: totalMs,
+      montage: { segments },
+      tracks,
+    }),
+  );
+  console.log(`away.json: ${tracks.length} tracks`);
+}
+
 // ball.json
 const ball = readJson(path.join(srcDir, 'ball.json'));
 if (ball) {

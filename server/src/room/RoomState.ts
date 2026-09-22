@@ -2656,7 +2656,7 @@ export class RoomState {
 
   /**
    * Telemetry sidecars next to a football clip (scripts/alfheim-*.mjs):
-   * `<clip>.alfheim.json`, and `zxy.json` / `ball.json` / `zones.json` in
+   * `<clip>.alfheim.json`, and `zxy.json` / `ball.json` / `zones.json` / `away.json` in
    * the clip's folder. Missing files are simply absent; a malformed one is
    * reported by the controller.
    */
@@ -2665,6 +2665,7 @@ export class RoomState {
     zxy?: unknown;
     ball?: unknown;
     zones?: unknown;
+    away?: unknown;
   } | null> {
     const base = fileName.replace(/\.mp4$/i, '');
     const dir = fileName.includes('/')
@@ -2682,11 +2683,12 @@ export class RoomState {
         return undefined;
       }
     };
-    const [meta, zxy, ball, zones] = await Promise.all([
+    const [meta, zxy, ball, zones, away] = await Promise.all([
       readJson(`${base}.alfheim.json`),
       readJson(`${dir}zxy.json`),
       readJson(`${dir}ball.json`),
       readJson(`${dir}zones.json`),
+      readJson(`${dir}away.json`),
     ]);
     if (meta === undefined && zxy === undefined && ball === undefined && zones === undefined) {
       return null;
@@ -2696,6 +2698,7 @@ export class RoomState {
       ...(zxy !== undefined ? { zxy } : {}),
       ...(ball !== undefined ? { ball } : {}),
       ...(zones !== undefined ? { zones } : {}),
+      ...(away !== undefined ? { away } : {}),
     };
   }
 

@@ -1,7 +1,8 @@
 /**
  * Clip telemetry for the football game: the sidecars scripts/alfheim-*.mjs
  * write next to a prepared Alfheim clip (`zxy.json` player positions,
- * `ball.json` ball track, `zones.json` panorama camera model) parsed into
+ * `ball.json` ball track, `zones.json` panorama camera model, plus the
+ * optional `away.json` of scripts/fb-away-detect.py) parsed into
  * typed arrays, plus the lookups the director / HUD / events need. Pure —
  * no fs, no timers — so it is unit-testable and the controller tests stay
  * in-memory.
@@ -65,6 +66,21 @@ export type FbZxy = {
   sprints: FbSprint[];
 };
 
+export type FbAwayTrack = {
+  id: number;
+  /** Sample i ↔ media ms i·1000/hz; NaN = no fix. */
+  x: Float64Array;
+  y: Float64Array;
+};
+
+/** The untagged side, read off the video (scripts/fb-away-detect.py). */
+export type FbAway = {
+  hz: number;
+  durationMs: number;
+  team: string;
+  tracks: FbAwayTrack[];
+};
+
 export type FbBall = {
   fps: number;
   w: number;
@@ -95,6 +111,7 @@ export type FbTelemetry = {
   zxy: FbZxy | null;
   ball: FbBall | null;
   zones: FbZones | null;
+  away: FbAway | null;
 };
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
@@ -207,6 +224,29 @@ export function parseZxy(json: unknown): FbZxy {
     frame: json.frame === 'pano' ? 'pano' : 'sensor',
     tags,
     sprints,
+  };
+}
+
+export function parseAway(json: unknown): FbAway {
+  if (!isRecord(json) || !Array.isArray(json.tracks)) {
+    throw new Error('away.json: expected { hz, tracks[] }');
+  }
+  const hz = num(json.hz) ?? 10;
+  const durationMs = num(json.durationMs) ?? 0;
+  const n = Math.ceil(durationMs / (1000 / hz)) + 1;
+  const tracks: FbAwayTrack[] = [];
+  for (const raw of json.tracks) {
+    if (!isRecord(raw)) continue;
+    const id = num(raw.id);
+    if (id == null) continue;
+    const len = Math.max(n, Array.isArray(raw.x) ? raw.x.length : 0);
+    tracks.push({ id, x: toFloat(raw.x, len), y: toFloat(raw.y, len) });
+  }
+  return {
+    hz,
+    durationMs,
+    team: typeof json.team === 'string' ? json.team : 'AWAY',
+    tracks,
   };
 }
 
@@ -468,6 +508,23 @@ export function playersAt(zxy: FbZxy, tMs: number, margin = 1): PlayerSample[] {
   return out;
 }
 
+export type AwaySample = { id: number; x: number; y: number };
+
+/** Away players (video tracks) on the pitch at `tMs`. */
+export function awayAt(away: FbAway, tMs: number, margin = 1): AwaySample[] {
+  const i = Math.round(tMs / (1000 / away.hz));
+  const out: AwaySample[] = [];
+  if (i < 0) return out;
+  for (const track of away.tracks) {
+    if (i >= track.x.length) continue;
+    const x = track.x[i];
+    const y = track.y[i];
+    if (Number.isNaN(x) || Number.isNaN(y) || !onPitch(x, y, margin)) continue;
+    out.push({ id: track.id, x, y });
+  }
+  return out;
+}
+
 /** Centroid of the tagged players on the pitch (null when fewer than 3). */
 export function centroidAt(
   zxy: FbZxy,
@@ -544,5 +601,5 @@ export function sprintAt(
 }
 
 export function emptyTelemetry(): FbTelemetry {
-  return { meta: null, zxy: null, ball: null, zones: null };
+  return { meta: null, zxy: null, ball: null, zones: null, away: null };
 }

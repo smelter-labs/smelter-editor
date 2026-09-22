@@ -24,7 +24,11 @@ const CAM = {
 };
 
 /** Synthetic sidecars: a ball rolling left → right at 50 px/s, three tags. */
-function telemetryFiles(opts?: { centroidX?: number; noBall?: boolean }) {
+function telemetryFiles(opts?: {
+  centroidX?: number;
+  noBall?: boolean;
+  away?: boolean;
+}) {
   const samples: number[][] = [];
   for (let t = 0; t <= CLIP_MS; t += 40) {
     samples.push([t, 1000 + t * 0.05, 900, 20 + t / 1000, 34]);
@@ -65,6 +69,28 @@ function telemetryFiles(opts?: { centroidX?: number; noBall?: boolean }) {
       ],
     },
     ...(opts?.noBall ? {} : { ball: { fps: 25, w: 4450, h: 2000, samples } }),
+    // Two video tracks of the untagged side; the second one loses its fix at 2 s.
+    ...(opts?.away
+      ? {
+          away: {
+            hz: 10,
+            durationMs: CLIP_MS,
+            team: 'Anzhi',
+            tracks: [
+              {
+                id: 1,
+                x: Array.from({ length: n }, () => 70.24),
+                y: Array.from({ length: n }, () => 20),
+              },
+              {
+                id: 2,
+                x: Array.from({ length: n }, (_, i) => (i < 20 ? 80 : null)),
+                y: Array.from({ length: n }, (_, i) => (i < 20 ? 44 : null)),
+              },
+            ],
+          },
+        }
+      : {}),
   };
 }
 
@@ -671,6 +697,35 @@ describe('FootballGameController — virtual director', () => {
     });
     expect(h.lastHud()?.minimap).toBeNull();
     expect(h.lastState().minimap).toBe(false);
+    h.controller.dispose();
+  });
+
+  it('draws the away side from away.json in the B kit colour', async () => {
+    const h = harness();
+    await started(h, { telemetry: telemetryFiles({ away: true }) });
+    await vi.advanceTimersByTimeAsync(3300);
+    let mm = h.lastHud()?.minimap;
+    expect(mm!.players.map((p) => p.tag)).toEqual([1, 2, 3]);
+    expect(mm!.away).toEqual([{ x: 70, y: 20 }]);
+    expect(mm!.awayColor).toBe(h.lastState().teams.B.color);
+    expect(mm!.awayShort).toBe(h.lastState().teams.B.short);
+    h.controller.handleMessage('mod', {
+      type: 'fb_team_color',
+      team: 'B',
+      color: '#6cabdd',
+    });
+    await vi.advanceTimersByTimeAsync(300);
+    mm = h.lastHud()?.minimap;
+    expect(mm!.awayColor).toBe('#6cabdd');
+    expect(mm!.teamColor).not.toBe('#6cabdd');
+    h.controller.dispose();
+  });
+
+  it('keeps the minimap home-only without an away.json', async () => {
+    const h = harness();
+    await started(h);
+    await vi.advanceTimersByTimeAsync(3300);
+    expect(h.lastHud()?.minimap?.away).toEqual([]);
     h.controller.dispose();
   });
 

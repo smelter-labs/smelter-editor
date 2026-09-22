@@ -65,11 +65,13 @@ import {
 } from './groundTruth';
 import { FbAiLog, eventLabel, eventTitle } from './aiLog';
 import {
+  awayAt,
   ballAt,
   ballMean,
   ballSpeedPx,
   centroidAt,
   emptyTelemetry,
+  parseAway,
   parseBall,
   parseClipMeta,
   parseZones,
@@ -119,6 +121,7 @@ export type FbClipTelemetryFiles = {
   zxy?: unknown;
   ball?: unknown;
   zones?: unknown;
+  away?: unknown;
 };
 
 /**
@@ -720,6 +723,13 @@ export class FootballGameController {
           console.warn(`[fb] ${fileName}: bad ball.json`, err);
         }
       }
+      if (files?.away != null) {
+        try {
+          t.away = parseAway(files.away);
+        } catch (err) {
+          console.warn(`[fb] ${fileName}: bad away.json`, err);
+        }
+      }
       cam.telemetry = t;
       cam.telemetryFlags = {
         zxy: t.zxy != null,
@@ -732,7 +742,7 @@ export class FootballGameController {
           kind: 'session',
           tone: t.ball || t.zxy ? 'good' : 'amber',
           label: 'TELEMETRY',
-          text: `${cam.role} · ${[t.ball ? 'ball' : null, t.zxy ? `zxy ${t.zxy.tags.length} tags` : null, t.zones ? 'zones' : null].filter(Boolean).join(' · ') || 'none'}`,
+          text: `${cam.role} · ${[t.ball ? 'ball' : null, t.zxy ? `zxy ${t.zxy.tags.length} tags` : null, t.zones ? 'zones' : null, t.away ? `away ${t.away.tracks.length} tracks` : null].filter(Boolean).join(' · ') || 'none'}`,
         },
         this.now(),
       );
@@ -3055,6 +3065,12 @@ export class FootballGameController {
       y: Math.round(p.y * 2) / 2,
       kmh: Math.round(p.v * 3.6),
     }));
+    const away = t.away
+      ? awayAt(t.away, airMs).map((p) => ({
+          x: Math.round(p.x * 2) / 2,
+          y: Math.round(p.y * 2) / 2,
+        }))
+      : [];
     let ball: { x: number; y: number } | null = null;
     if (t.ball) {
       const b = ballAt(t.ball, airMs);
@@ -3075,6 +3091,9 @@ export class FootballGameController {
       teamColor: this.config.teams.A.color,
       teamShort: this.config.teams.A.short,
       players,
+      awayColor: this.config.teams.B.color,
+      awayShort: this.config.teams.B.short,
+      away,
       ball,
       sprint: sprint
         ? { tag: sprint.tag, kmh: Math.round(sprint.topKmh) }

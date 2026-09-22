@@ -540,7 +540,10 @@ function Banner({ hud, k }: { hud: FbHudState; k: number }) {
 
 // ── Minimap ──────────────────────────────────────────────────────────────────
 
-/** Tracking minimap (bottom-left): pitch outline, tagged players, ball, sprint chip. */
+/** Rim under every player dot, so a dark kit still reads on the dark pitch. */
+const DOT_RIM = '#F4F1E899';
+
+/** Tracking minimap (bottom-left): pitch outline, both sides' players, ball, sprint chip. */
 function MinimapPlate({
   hud,
   k,
@@ -569,18 +572,59 @@ function MinimapPlate({
         color='#0B1220E6'
       />
       <Block x={0} y={0} w={MINIMAP_PLATE.w} h={3} k={pk} color={GRASS} />
-      <Label
-        x={14}
-        y={6}
-        w={200}
-        text={`TRACKING · ${m.teamShort}`}
-        fs={11}
-        k={pk}
-        font={MONO}
-        weight='semi_bold'
-        color={DIM}
-        centerIn={16}
-      />
+      {m.away.length > 0 ? (
+        // Two sides on the plate: the header doubles as the colour legend.
+        [
+          { x: 14, color: m.teamColor, text: m.teamShort },
+          { x: 76, color: m.awayColor, text: m.awayShort },
+        ].map((side) => (
+          <React.Fragment key={side.x}>
+            <Block
+              x={side.x - 1}
+              y={9}
+              w={dot + 2}
+              h={dot + 2}
+              k={pk}
+              color={DOT_RIM}
+              radius={(dot + 2) / 2}
+            />
+            <Block
+              x={side.x}
+              y={10}
+              w={dot}
+              h={dot}
+              k={pk}
+              color={side.color}
+              radius={dot / 2}
+            />
+            <Label
+              x={side.x + dot + 5}
+              y={6}
+              w={46}
+              text={side.text}
+              fs={11}
+              k={pk}
+              font={MONO}
+              weight='semi_bold'
+              color={DIM}
+              centerIn={16}
+            />
+          </React.Fragment>
+        ))
+      ) : (
+        <Label
+          x={14}
+          y={6}
+          w={200}
+          text={`TRACKING · ${m.teamShort}`}
+          fs={11}
+          k={pk}
+          font={MONO}
+          weight='semi_bold'
+          color={DIM}
+          centerIn={16}
+        />
+      )}
       {m.top ? (
         <Label
           x={160}
@@ -615,11 +659,45 @@ function MinimapPlate({
           color='#F4F1E866'
         />
       ))}
+      {m.away.map((p, i) => {
+        const pt = minimapPoint(p.x, p.y);
+        return (
+          <React.Fragment key={`away-${i}`}>
+            <Block
+              x={pt.x - dot / 2 - 1}
+              y={pt.y - dot / 2 - 1}
+              w={dot + 2}
+              h={dot + 2}
+              k={pk}
+              color={DOT_RIM}
+              radius={(dot + 2) / 2}
+            />
+            <Block
+              x={pt.x - dot / 2}
+              y={pt.y - dot / 2}
+              w={dot}
+              h={dot}
+              k={pk}
+              color={m.awayColor}
+              radius={dot / 2}
+            />
+          </React.Fragment>
+        );
+      })}
       {m.players.map((p) => {
         const pt = minimapPoint(p.x, p.y);
         const sprinting = m.sprint?.tag === p.tag;
         return (
           <React.Fragment key={p.tag}>
+            <Block
+              x={pt.x - dot / 2 - 1}
+              y={pt.y - dot / 2 - 1}
+              w={dot + 2}
+              h={dot + 2}
+              k={pk}
+              color={DOT_RIM}
+              radius={(dot + 2) / 2}
+            />
             <Block
               x={pt.x - dot / 2}
               y={pt.y - dot / 2}
