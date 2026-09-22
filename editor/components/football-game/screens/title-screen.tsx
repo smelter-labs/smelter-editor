@@ -1,12 +1,13 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   FB,
   FbButton,
   Copy,
   Display,
   FooterHints,
+  Meta,
   Mono,
   TagSignature,
   Wordmark,
@@ -14,10 +15,69 @@ import {
   noiseUrl,
 } from '../fb-kit';
 import { useArcadeKeys } from '@/components/duck-hunter/use-arcade-input';
+import { getFbClips } from '@/app/actions/actions';
+import {
+  FB_DEMO_PRESETS,
+  demoClipsMissing,
+  type FbDemoPreset,
+} from '../demo-presets';
+
+/** The server's mp4 library (null until it answers — every demo stays enabled). */
+function useClipLibrary(): Set<string> | null {
+  const [library, setLibrary] = useState<Set<string> | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void getFbClips().then(({ clips }) => {
+      if (cancelled || clips.length === 0) return;
+      setLibrary(new Set(clips.map((c) => c.fileName)));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return library;
+}
 
 /** Attract screen (hangs on the TV): the wordmark, the pitch, OPEN THE MATCH. */
-export function TitleScreen({ onStart }: { onStart: () => void }) {
+export function TitleScreen({
+  onStart,
+  onDemo,
+}: {
+  onStart: () => void;
+  /** One-press demo: preset teams + the demo clips, straight to PRE-MATCH. */
+  onDemo: (preset: FbDemoPreset) => void;
+}) {
   useArcadeKeys({ confirm: onStart });
+  const library = useClipLibrary();
+  const missing = FB_DEMO_PRESETS.map((p) =>
+    library ? demoClipsMissing(p, library) : [],
+  );
+
+  // 1 / 2 / 3 start a demo (same input guard as useArcadeKeys).
+  const onDemoRef = useRef(onDemo);
+  onDemoRef.current = onDemo;
+  const missingRef = useRef(missing);
+  missingRef.current = missing;
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        tag === 'SELECT' ||
+        target?.isContentEditable
+      )
+        return;
+      const idx = ['1', '2', '3'].indexOf(e.key);
+      if (idx < 0 || idx >= FB_DEMO_PRESETS.length) return;
+      if (missingRef.current[idx].length > 0) return;
+      e.preventDefault();
+      onDemoRef.current(FB_DEMO_PRESETS[idx]);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   return (
     <div
@@ -115,6 +175,52 @@ export function TitleScreen({ onStart }: { onStart: () => void }) {
         />
       </div>
 
+      {/* quick demos: teams + clips preset, one press to PRE-MATCH */}
+      <div
+        style={{
+          position: 'absolute',
+          left: 560,
+          top: 484,
+          width: 640,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 6,
+        }}>
+        <Meta
+          size={10}
+          tracking={0.22}
+          color={FB.chalk}
+          style={{ opacity: 0.8 }}>
+          QUICK DEMOS · TEAMS + CLIPS PRESET · STRAIGHT TO PRE-MATCH
+        </Meta>
+        {FB_DEMO_PRESETS.map((preset, i) => {
+          const gone = missing[i];
+          return (
+            <FbButton
+              key={preset.id}
+              size='sm'
+              block
+              variant='outline'
+              keyBadge={String(i + 1)}
+              label={preset.label}
+              sub={
+                gone.length > 0
+                  ? `CLIP MISSING · ${gone.join(' · ')}`
+                  : preset.sub
+              }
+              disabled={gone.length > 0}
+              title={
+                gone.length > 0
+                  ? `Not in data/mp4s: ${gone.join(', ')}`
+                  : preset.clips.map((c) => c.fileName).join(', ')
+              }
+              onClick={() => onDemo(preset)}
+              style={{ justifyContent: 'space-between' }}
+            />
+          );
+        })}
+      </div>
+
       <div
         style={{
           position: 'absolute',
@@ -128,7 +234,10 @@ export function TitleScreen({ onStart }: { onStart: () => void }) {
           borderTop: `1px solid ${FB.rule}`,
         }}>
         <FooterHints
-          hints={[{ key: 'ENTER', label: 'START' }]}
+          hints={[
+            { key: 'ENTER', label: 'START' },
+            { key: '1-3', label: 'DEMO' },
+          ]}
           right={
             <Mono
               size={10}

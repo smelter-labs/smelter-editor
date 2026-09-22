@@ -20,12 +20,14 @@ import {
   FB_SMOOTHING_PRESET_MS,
 } from '@smelter-editor/types';
 import {
+  attachFbMp4Cam,
   controlFbMatch,
   createNewRoom,
   deleteRoom,
   editFbEvent,
   getRoomInfo,
   setFbConfig,
+  syncFbFileCams,
 } from '@/app/actions/actions';
 import type { ResolutionPreset } from '@/lib/resolution';
 
@@ -247,8 +249,18 @@ export type FbRoom = {
   error: string | null;
   roomStatus: 'idle' | 'checking' | 'ok' | 'gone';
   lastError: string | null;
-  createRoom(cfg: FbUiConfig): Promise<void>;
+  /** Resolves with the new room id (null when refused or failed). */
+  createRoom(cfg: FbUiConfig): Promise<string | null>;
   pushConfig(cfg: FbUiConfig): Promise<void>;
+  /**
+   * Attach library clips as file cameras, in order, then restart them
+   * together when there is more than one. Stops at the first refusal
+   * (missing file, wrong rig) and shows it; the room stays usable.
+   */
+  attachClips(
+    roomId: string,
+    clips: { role: FbCamRole; fileName: string }[],
+  ): Promise<boolean>;
   control(action: FbMatchAction, role?: FbCamRole): Promise<void>;
   editEvent(cmd: FbEventEdit): Promise<void>;
   recheck(): Promise<void>;
@@ -311,8 +323,8 @@ export function useFbRoom(initialRoomId?: string): FbRoom {
   );
 
   const createRoom = useCallback(
-    async (cfg: FbUiConfig) => {
-      if (creatingRef.current || roomId) return;
+    async (cfg: FbUiConfig): Promise<string | null> => {
+      if (creatingRef.current || roomId) return null;
       creatingRef.current = true;
       setCreating(true);
       setError(null);
@@ -328,14 +340,35 @@ export function useFbRoom(initialRoomId?: string): FbRoom {
           '',
           `/football-game/${encodeURIComponent(created.roomId)}`,
         );
+        return created.roomId;
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Match setup failed');
+        return null;
       } finally {
         creatingRef.current = false;
         setCreating(false);
       }
     },
     [roomId, pushConfig],
+  );
+
+  const attachClips = useCallback(
+    async (
+      target: string,
+      clips: { role: FbCamRole; fileName: string }[],
+    ): Promise<boolean> => {
+      try {
+        for (const clip of clips) {
+          await attachFbMp4Cam(target, clip.role, clip.fileName);
+        }
+        if (clips.length > 1) await syncFbFileCams(target, 0);
+        return true;
+      } catch (err) {
+        showError(err instanceof Error ? err.message : String(err));
+        return false;
+      }
+    },
+    [showError],
   );
 
   const control = useCallback(
@@ -394,6 +427,7 @@ export function useFbRoom(initialRoomId?: string): FbRoom {
     lastError,
     createRoom,
     pushConfig,
+    attachClips,
     control,
     editEvent,
     recheck,

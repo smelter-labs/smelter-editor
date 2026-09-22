@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { FbCam, FbCamRole } from '@smelter-editor/types';
 import type { FbSession } from '@smelter-editor/types';
 import {
@@ -88,13 +88,22 @@ export function FileCamPicker({
   const [error, setError] = useState<string | null>(null);
   const listed = filter ? files.filter(filter) : files;
 
+  // A clip attached elsewhere (QUICK DEMOS, the other host tab) becomes the
+  // selection, so the dropdown reads what the camera runs and the chip RESTART.
+  const current = cam?.fileName;
+  const seenRef = useRef(current);
   useEffect(() => {
+    const changed = seenRef.current !== current;
+    seenRef.current = current;
+    if (changed && current && listed.includes(current)) {
+      setSelected(current);
+      return;
+    }
     if (selected && listed.includes(selected)) return;
-    const current = cam?.fileName;
     setSelected(
       current && listed.includes(current) ? current : (listed[0] ?? ''),
     );
-  }, [listed, cam?.fileName, selected]);
+  }, [listed, current, selected]);
 
   const use = async () => {
     if (!selected || busy) return;

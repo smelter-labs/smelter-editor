@@ -47,13 +47,13 @@ standardowym `record/start` / `record/stop`.
   gitignorowany — na świeżym klonie trzeba je przygotować, patrz
   [Dane](#dane-dataset-sidecary-przygotowanie-klipów)):
 
-  | Klip | Rozdzielczość | Długość | Co się w nim dzieje |
-  |---|---|---|---|
-  | `fb-demo/pano-3x40s/pano.mp4` | 4450×2000 @ 25 | 120 s (pętla) | **najlepszy do demo**: 6 strzałów, 3 szanse, 2 rożne, 7 sprintów; pierwszy SHOT już w 4,6 s |
-  | `fb-demo/pano-shot-2815/pano.mp4` | 4450×2000 @ 25 | 60 s | jedna akcja: celny strzał Tromsø w 19,6 s, szansa 21,0 s, rożny 52,9 s |
-  | `fb-demo/pano-anzhi-goal/pano.mp4` | 4450×2000 @ 25 | 118 s | **jedyny prawdziwy gol**: Tromsø–Anzhi 0:1, 90+3' — szansa 62,7 s, celny strzał 65,2 s, **GOAL? (REF CALL) 66,0 s** w prawej bramce, potem cieszynka i wznowienie od środka. W setupie ustaw drużynę B na `ANZHI` / `ANZ`; moderator potwierdza gola klawiszem **B** |
-  | `fb-demo/pano-half-3min/pano-half.mp4` | 2224×1000 @ 25 | 180 s | panorama w połowie rozdzielczości — **gdy silnik gubi klatki** na 4450×2000 |
-  | `fb-demo/tricam-3min/cam{0,1,2}.mp4` | 1280×960 @ 30 | 180 s | trzy kamery; brak toru piłki → tylko sprinty + reguła cięć |
+  | Klip | Przycisk QUICK DEMOS | Rozdzielczość | Długość | Co się w nim dzieje |
+  |---|---|---|---|---|
+  | `fb-demo/pano-3x40s/pano.mp4` | **1** · TROMSØ – TOTTENHAM | 4450×2000 @ 25 | 120 s (pętla) | **najlepszy do demo**: 6 strzałów, 3 szanse, 2 rożne, 7 sprintów; pierwszy SHOT już w 4,6 s |
+  | `fb-demo/pano-shot-2815/pano.mp4` | — | 4450×2000 @ 25 | 60 s | jedna akcja: celny strzał Tromsø w 19,6 s, szansa 21,0 s, rożny 52,9 s |
+  | `fb-demo/pano-anzhi-goal/pano.mp4` | **2** · TROMSØ – ANZHI | 4450×2000 @ 25 | 118 s | **jedyny prawdziwy gol**: Tromsø–Anzhi 0:1, 90+3' — szansa 62,7 s, celny strzał 65,2 s, **GOAL? (REF CALL) 66,0 s** w prawej bramce, potem cieszynka i wznowienie od środka. Przycisk 2 ustawia drużynę B na `ANZHI` / `ANZ` (ręcznie: w setupie); moderator potwierdza gola klawiszem **B** |
+  | `fb-demo/pano-half-3min/pano-half.mp4` | — | 2224×1000 @ 25 | 180 s | panorama w połowie rozdzielczości — **gdy silnik gubi klatki** na 4450×2000 |
+  | `fb-demo/tricam-3min/cam{0,1,2}.mp4` | **3** · TROMSØ – STRØMSGODSET | 1280×960 @ 30 | 180 s | trzy kamery; brak toru piłki → tylko sprinty + reguła cięć |
 
 - Zbudowane typy: `pnpm --filter @smelter-editor/types build`.
 - `ffmpeg` w `PATH` (wycina klipy do instant replay).
@@ -82,6 +82,17 @@ pnpm dev            # SMELTER_EDITOR_SERVER_URL w editor/.env.local → http://l
   ścienny (zegar meczu skacze, wejścia plikowe robią się czarne).
 
 ### 2. Scenariusz (host = laptop, moderator = telefon)
+
+**Najszybciej:** na ekranie tytułowym `/football-game` są trzy przyciski
+**QUICK DEMOS** (klawisze **1** / **2** / **3**): Tromsø–Tottenham
+(panorama, najwięcej akcji), Tromsø–Anzhi (prawdziwy gol, 2. połowa) i
+Tromsø–Strømsgodset (trzy kamery). Jeden przycisk tworzy pokój, ustawia nazwy,
+skróty i kolory drużyn (`editor/components/football-game/demo-presets.ts`),
+sam podpina klipy z `fb-demo/` (i restartuje je razem przy trzech kamerach)
+i ląduje w **PRE-MATCH** — zostaje QR moderatora i **KICK-OFF** (kroki 4–10
+poniżej). Reszta ustawień hosta (rozdzielczość, perf, reżyser) zostaje jak
+w SETUP. Gdy klipu brakuje w `data/mp4s`, przycisk jest wyszarzony z nazwą
+brakującego pliku. Ścieżka ręczna:
 
 1. **Host:** otwórz `http://localhost:3000/football-game` (albo przycisk
    **Football** w sekcji *Games* na stronie startowej) → **OPEN THE MATCH**.
@@ -282,6 +293,7 @@ WS w obie strony. Po zmianie: `pnpm --filter @smelter-editor/types build`.
 | `editor/app/football-game/**` | trasy: host, host z `roomId`, panel |
 | `editor/components/football-game/arcade.tsx` | maszyna ekranów hosta |
 | `…/screens/{title,setup,lobby,live,results}-screen.tsx` | ekrany hosta |
+| `…/demo-presets.ts` | QUICK DEMOS: trzy presety (drużyny + klipy per rola) z ekranu tytułowego |
 | `…/screens/host-director-row.tsx` | rząd VIEW / REPLAY / MINIMAP + KICK moderatora na ekranie live |
 | `…/panel/{moderator-panel,panel-screen,use-fb-panel-socket}.tsx` | panel moderatora (kreator connect → name → panel) |
 | `…/use-fb-room.ts`, `use-fb-feed.ts` | REST pokoju / feed WS |
@@ -296,6 +308,7 @@ WS w obie strony. Po zmianie: `pnpm --filter @smelter-editor/types build`.
 · `alfheim-telemetry.mjs` (`zxy.json`, `ball.json`) · `alfheim-events.mjs`
 (`events.json`) · `fb-clip-window.mjs` (okna/montaże demo z remapem sidecarów)
 · `fb-ball-keyframes.mjs` + `.html` (ręczny tor piłki → `ball.json`) · `fb-fit-camera.py` (dopasowanie modelu kamery)
+· `fb-away-detect.py` + `fb_away_lib.py` (goście z wideo → `away.json`; testy `test_fb_away_lib.py`)
 · `fb-render-assets.mjs` (plansze PNG HUD → `imgs/fb/`) · `fb-zones/*.json`
 (model kamery + orientacja ZXY) · `football-e2e.mjs`, `football-live-check.mjs`
 · `lib/alfheim.mjs`, `lib/fb-api.mjs`.
@@ -352,6 +365,7 @@ Używane podzbiory (~10 GB, katalog z env `ALFHEIM_DIR`):
 | `<clip>.alfheim.json` | sesja (`pano`/`tricam`), `t0Utc`, fps, rozmiar, skala, drużyny | rozpoznanie riga |
 | `zxy.json` | `{hz, tags:[{id, x[], y[], v[], d[]}], sprints[]}` w metrach | minimapa, sprinty, cięcia trzech kamer |
 | `ball.json` | `{fps, samples:[[tMs, px, py, Xm, Ym]]}` | kamera FOLLOW |
+| `away.json` *(opcjonalny, tylko panorama)* | `{hz, team, colors, tracks:[{id, x[], y[]}]}` w metrach, siatka jak `zxy.json` | goście na minimapie |
 | `zones.json` | model kamery + orientacja/offset ZXY | rzutowanie boisko ↔ piksele |
 | `events.json` / `<clip>.events.json` | `{kickoffMs, teams, events:[{tMs, kind, side, team, …}]}` | AI EVENTS |
 
@@ -387,6 +401,30 @@ node scripts/fb-ball-keyframes.mjs --clip fb-demo/pano-anzhi-goal/pano.mp4 \
 node scripts/alfheim-events.mjs --clip fb-demo/pano-anzhi-goal/pano.mp4 \
      --attacks-left A --period 2 --kickoff-s -2810 --inject goal@66:B
 ```
+
+Goście na minimapie (czujniki nosili tylko gospodarze, więc drugą drużynę
+czyta się z obrazu — offline, runtime dalej nie ma modelu):
+
+```bash
+V=src/ai-models/people-counter/.venv/bin/python        # ultralytics + torch + opencv
+$V scripts/fb-away-detect.py --clip data/mp4s/fb-demo/pano-anzhi-goal/pano.mp4 \
+     --dets-cache /tmp/dets.json --debug-overlay /tmp/away.mp4      # → away.json w folderze klipu
+```
+
+- Detekcja osób na kaflach pasa boiska (YOLO11m, 5 Hz) → punkt stóp →
+  `unprojectPitch` → metry → kolor koszulki (trawa maskowana) → tracker w
+  metrach → tory w kolorze gości. Kolory strojów kalibrują się z klipu:
+  detekcja stojąca na tagu ZXY = gospodarz (kolor A), dominujący kolor reszty =
+  goście (B); sędzia i ball-boye wypadają jako „other", a tor „other" żyjący w
+  polu karnym z dala od tagów zostaje jako bramkarz gości.
+- `--dets-cache` zapisuje surowe detekcje — progi koloru/trackera stroi się
+  potem bez modelu. `--debug-overlay` rysuje klasy na pasie boiska (A czerwony,
+  B niebieski — gruby = trafia do `away.json`, other szary).
+- Log podaje medianę odległości „detekcja gospodarza ↔ tag ZXY" — to przy
+  okazji test kalibracji kamery i offsetu ZXY (ma być < ~2 m).
+- Tylko panorama (tricam nie ma modelu kamery). Bez `away.json` minimapa jest
+  jak dawniej — sami gospodarze. `fb-clip-window.mjs` remapuje `away.json`
+  razem z resztą sidecarów.
 
 - Klatki kluczowe piłki poprawia się w `scripts/fb-ball-keyframes.html`
   (otwórz w Chrome, wskaż klip i json, klikaj piłkę; „Save json" → podmień plik
@@ -503,7 +541,9 @@ Pokrętła w `FbConfig.director` (zakresy: `FB_DIRECTOR_LIMITS`), strojone na
 
 `server/src/inputs/FbHud.tsx`: score bug z minutą meczu · bannery zdarzeń
 (CHANCE / SHOT / CORNER / GOAL? / GOAL!) · pigułka REF CALL · okno REPLAY ·
-**minimapa** (lewy dół: obrys boiska, kropki Tromsø z numerami tagów, piłka,
+**minimapa** (lewy dół: obrys boiska, kropki Tromsø z numerami tagów w kolorze
+stroju A, goście z `away.json` jako kropki bez numerów w kolorze B — nagłówek
+zmienia się wtedy w legendę „● TIL ● ANZ”, KIT COLOURS przemalowuje obie warstwy —, piłka,
 chip najszybszego sprintera; `minimapSize` 1–5 skaluje całą plakietkę ×1 / 1,4
 / 1,8 / 2,2 / 2,6 od narożnika — od rozmiaru 2 bannery rysują się nad nią) ·
 plansza lobby z QR panelu · plansza końcowa.
@@ -623,7 +663,7 @@ zerowym ruchem między ruchomymi.
   (`docs/football-game.md`, `docs/football-improvements.md`) istnieją tylko lokalnie.
 
 **Poza v1:** kamery z telefonów / WHIP, żywy model („football-director"),
-goście na minimapie (brak czujników), weryfikacja orientacji ZXY ↔ kamera dla
+goście na minimapie dla trzech kamer (brak modelu kamery), weryfikacja orientacji ZXY ↔ kamera dla
 trzech kamer na stop-klatce, replay bez homografii dla sesji trzech kamer
 (używa kamery będącej na antenie).
 
