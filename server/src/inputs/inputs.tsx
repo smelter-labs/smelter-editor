@@ -18,6 +18,7 @@ import { wrapWithShaders } from '../utils/shaderUtils';
 import { ScrollingText } from './scrollingText';
 import { TransitionShaderWrapper } from './transitionWrapper';
 import { BbCamLook } from './BbCamLook';
+import { ObCamLook } from './ObCamLook';
 import { HandsInput } from './HandsInput';
 import { PacmanBirdsInput } from './PacmanBirdsInput';
 import { HaunterGhostsInput } from './HaunterGhostsInput';
@@ -229,6 +230,22 @@ export function Input({ input }: { input: InputConfig }) {
       (a != null && b != null && a.color === b.color && a.on === b.on),
   );
 
+  // OB Van: the program grade / spotlight of this camera. Content equality
+  // keeps an unchanged look from re-rendering the Input at the HUD rate.
+  const obLook = useStoreWithEqualityFn(
+    store,
+    (state) => state.obVan?.stage.tiles[input.inputId] ?? null,
+    (a, b) =>
+      a === b ||
+      (a != null &&
+        b != null &&
+        a.grade === b.grade &&
+        a.spotlight === b.spotlight &&
+        a.focus?.cx === b.focus?.cx &&
+        a.focus?.cy === b.focus?.cy &&
+        a.focus?.scale === b.focus?.scale),
+  );
+
   // The video/content element for the playing state. Extracted so Ghost City
   // can wrap it in the haunted-city shader without disturbing the overlays
   // (subtitle, boxes, count badge, shooter HUD) that sit beside it.
@@ -357,6 +374,18 @@ export function Input({ input }: { input: InputConfig }) {
         resolution={{ width: contentWidth, height: contentHeight }}>
         {videoContent}
       </BbCamLook>
+    );
+  }
+
+  // OB Van camera look (grade + spotlight): a picture treatment like the
+  // Blacktop one, mounted for as long as the camera belongs to the van.
+  if (obLook) {
+    videoContent = (
+      <ObCamLook
+        look={obLook}
+        resolution={{ width: contentWidth, height: contentHeight }}>
+        {videoContent}
+      </ObCamLook>
     );
   }
 
