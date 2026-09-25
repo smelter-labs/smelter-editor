@@ -19,6 +19,8 @@ import {
   BASKETBALL_SCORER_ID,
   isBasketballScorerModel,
 } from './basketball-scorer/manifest';
+import { ensureObVanSidecarStarted } from './ob-van/ob-van-sidecar';
+import { isObVanModel } from './ob-van/manifest';
 
 export type ResultListener = (event: ModelResultEvent) => void;
 
@@ -282,6 +284,9 @@ export class RoomAIController {
     }
     if (isBasketballScorerModel(modelId)) {
       return ensureBasketballScorerSidecarStarted();
+    }
+    if (isObVanModel(modelId)) {
+      return ensureObVanSidecarStarted();
     }
 
     let sidecar = globalSidecars.get(modelId);
