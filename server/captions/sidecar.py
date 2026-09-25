@@ -52,6 +52,13 @@ SIDE_CHANNEL_DELAY_S = _SIDE_CHANNEL_DELAY_MS / 1000
 # Fallback when Node does not send side_channel_ready (manual sidecar / SKIP_PYTHON).
 _DEFAULT_WARMUP_S = SIDE_CHANNEL_DELAY_S + 10
 CAPTIONS_WARMUP_S = float(os.environ.get("CAPTIONS_WARMUP_S", str(_DEFAULT_WARMUP_S)))
+# Under Node every transcription input gets side_channel_ready (replayed on
+# reconnect), and other audio side channels (WHIP phones, the OB Van signal
+# worker's cameras) must NOT be transcribed. The warm-up fallback therefore
+# only applies to a manually started sidecar or when CAPTIONS_WARMUP_S is set.
+WARMUP_FALLBACK = (
+    "CAPTIONS_WARMUP_S" in os.environ or not os.environ.get("NODE_WS_URL")
+)
 WORKER_RECONNECT_S = float(os.environ.get("CAPTIONS_RECONNECT_S", "5"))
 
 DEBUG = os.environ.get("CAPTIONS_DEBUG") == "1"
@@ -78,6 +85,8 @@ def should_start_worker(
     """
     if input_id in side_channel_ready_at:
         return True
+    if not WARMUP_FALLBACK:
+        return False
     first_seen = channel_first_seen.get(input_id)
     if first_seen is None:
         return False
