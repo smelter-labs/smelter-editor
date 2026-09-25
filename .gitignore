@@ -74,3 +74,5 @@ workshop/__pycache__/
 *.pyc
 weights/clip/
 docs/
+workshops/scenarios/
+
