@@ -7,6 +7,7 @@ import type { KettlebellServerEvent } from "./kettlebell-events.js";
 import type { KbtServerEvent } from "./kettlebell-tournament-events.js";
 import type { BbServerEvent } from "./basketball-game-events.js";
 import type { FbServerEvent } from "./football-game-events.js";
+import type { ObServerEvent } from "./ob-van-events.js";
 
 export type ConnectedPeer = {
   clientId: string;
@@ -98,4 +99,5 @@ export type RoomEvent =
   | KettlebellServerEvent
   | KbtServerEvent
   | BbServerEvent
-  | FbServerEvent;
+  | FbServerEvent
+  | ObServerEvent;
