@@ -48,6 +48,7 @@ import {
   Volleyball,
   Goal,
   Tv,
+  Clapperboard,
 } from 'lucide-react';
 import RecordingsList from '@/components/recordings-list';
 import { toast } from 'sonner';
@@ -114,12 +115,14 @@ type ActiveGame =
   | 'duck-hunter'
   | 'kettlebell-tournament'
   | 'basketball-game'
-  | 'football-game';
+  | 'football-game'
+  | 'ob-van';
 const ACTIVE_GAMES: ActiveGame[] = [
   'duck-hunter',
   'kettlebell-tournament',
   'basketball-game',
   'football-game',
+  'ob-van',
 ];
 const GAME_META: Record<
   ActiveGame,
@@ -154,17 +157,19 @@ const GAME_META: Record<
     badgeClass: 'bg-emerald-500/15 text-emerald-400',
     icon: Goal,
   },
+  'ob-van': {
+    label: 'OB Van',
+    badge: 'AI DIRECTOR',
+    badgeClass: 'bg-red-500/15 text-red-400',
+    icon: Clapperboard,
+  },
 };
 
 export default function IntroView() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const {
-    adminMode,
-    toggleMode,
-    toggleAdminMode,
-  } = useAppMode();
+  const { adminMode, toggleMode, toggleAdminMode } = useAppMode();
   const [loadingNew, setLoadingNew] = useState(false);
   const [loadingImport, setLoadingImport] = useState(false);
   const [importProgress, setImportProgress] =
