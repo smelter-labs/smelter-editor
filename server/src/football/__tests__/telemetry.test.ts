@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  awayAt,
+  parseAway,
   ballAt,
   ballMean,
   ballSpeedPx,
@@ -174,5 +176,47 @@ describe('lookups', () => {
     expect(sprintAt(zxy, 5000)).toBeNull();
     expect(onPitch(-0.5, 10)).toBe(true);
     expect(onPitch(-3, 10)).toBe(false);
+  });
+});
+
+describe('away side', () => {
+  const away = parseAway({
+    hz: 10,
+    durationMs: 1000,
+    team: 'Anzhi',
+    tracks: [
+      { id: 1, x: [10, 11, null, 13], y: [5, 5, null, 5] },
+      { id: 2, x: [120, 120], y: [30, 30] },
+      { x: [1], y: [1] },
+    ],
+  });
+
+  it('parses tracks onto the zxy sample grid (NaN = no fix)', () => {
+    expect(away.team).toBe('Anzhi');
+    expect(away.tracks.map((t) => t.id)).toEqual([1, 2]);
+    expect(away.tracks[0].x.length).toBe(11);
+    expect(Number.isNaN(away.tracks[0].x[2])).toBe(true);
+    expect(Number.isNaN(away.tracks[0].x[10])).toBe(true);
+    expect(() => parseAway({ hz: 10 })).toThrow(/away\.json/);
+  });
+
+  it('lists the fixes on the pitch at a media time', () => {
+    expect(awayAt(away, 0)).toEqual([{ id: 1, x: 10, y: 5 }]);
+    expect(awayAt(away, 120)).toEqual([{ id: 1, x: 11, y: 5 }]);
+    expect(awayAt(away, 200)).toEqual([]);
+    expect(awayAt(away, -500)).toEqual([]);
+    expect(awayAt(away, 60_000)).toEqual([]);
+  });
+});
+
+describe('camera roll', () => {
+  it('is optional and round-trips through unprojectPitch', () => {
+    const rolled = { ...CAM, roll: -0.0161 };
+    const [x0, y0] = projectPitch(CAM, 105, 34);
+    const [x1, y1] = projectPitch(rolled, 105, 34);
+    expect(Math.hypot(x1 - x0, y1 - y0)).toBeGreaterThan(5);
+    const [X, Y] = unprojectPitch(rolled, x1, y1);
+    expect(X).toBeCloseTo(105, 0);
+    expect(Y).toBeCloseTo(34, 0);
   });
 });

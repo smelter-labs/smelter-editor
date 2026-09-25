@@ -1,0 +1,17 @@
+{
+  "_comment": "Alfheim 2013-11-07 (Tromsø – Anzhi) stitched panorama, second half (4450x2000). A different stitch than 2013-11-28: shot from behind the crowd, the pitch is the band y≈570..1100. `camera` = tilted-cylinder model + `roll`, fitted 2026-09-21 with scripts/fb-fit-camera.py on the hand-read landmarks in pano-2013-11-07.landmarks.json (rms 15 px, max 38 px). Pitch frame as in pano-2013-11-28.json (X 0..105 left→right goal line in the panorama, Y 0..68 far→near touchline). `zxy`: same stand → same orientation (X = zx, Y = 68 − zy); there is no ball track for this match, so the sensor-clock lead (+4.0 s, the same as 2013-11-28) was confirmed by eye: projected ZXY dots vs. the running Tromsø players at 3/5/7 s.",
+  "pano": { "w": 4450, "h": 2000 },
+  "pitch": { "length": 105, "width": 68 },
+  "camera": {
+    "model": "tilted-cylinder",
+    "cx": 49.4317,
+    "d": 20.8906,
+    "hc": 9.3719,
+    "f": 1627.9296,
+    "x0": 2311.8238,
+    "y0": 1029.6642,
+    "tilt": 0.3848,
+    "roll": -0.0161
+  },
+  "zxy": { "flipX": false, "flipY": true, "offsetMs": 4000 }
+}

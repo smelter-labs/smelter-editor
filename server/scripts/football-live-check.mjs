@@ -10,6 +10,9 @@
 //   FB_API=http://localhost:3111 FB_SECONDS=60 node scripts/football-live-check.mjs
 //   FB_STAY=1 FB_MINIMAP_SIZE_AT=15:3,25:5 node scripts/football-live-check.mjs
 //     # follow only (no view switches / manual goal) + minimap resizes at 15 s and 25 s
+//   FB_CLIPS=pano:fb-demo/pano-anzhi-goal/pano.mp4 FB_PLAY_FROM_MS=50000 FB_SECONDS=45 FB_STAY=1 \
+//     FB_HALF_MIN=45 FB_CONFIRM_GOALS=1 node scripts/football-live-check.mjs
+//     # the real goal: the moderator confirms the GOAL? REF CALL 3 s after it lands
 //
 // Then look at frames: ffmpeg -ss T -i data/recordings/<file> -frames:v 1 out.png
 
@@ -35,6 +38,8 @@ const SECONDS = Number(process.env.FB_SECONDS ?? 45);
 const PLAY_FROM_MS = Number(process.env.FB_PLAY_FROM_MS ?? 0);
 const isPano = CLIPS.some((c) => c.role === 'pano');
 const STAY = process.env.FB_STAY === '1';
+const HALF_MIN = Number(process.env.FB_HALF_MIN ?? 5);
+const CONFIRM_GOALS = process.env.FB_CONFIRM_GOALS === '1';
 const MINIMAP_SIZE_AT = (process.env.FB_MINIMAP_SIZE_AT ?? '')
   .split(',')
   .filter(Boolean)
@@ -63,6 +68,17 @@ const sock = await openSocket(roomId, (ev) => {
   } else if (ev.type === 'fb_event') {
     events.push(ev);
     log('EVENT', ev.kind, fmtEvent(ev.event));
+    const e = ev.event;
+    if (CONFIRM_GOALS && e?.kind === 'goal' && e.status === 'pending') {
+      setTimeout(() => {
+        log('REF CALL → confirm goal', e.team ?? e.suggestedTeam ?? 'B');
+        sock.send({
+          type: 'fb_event_resolve',
+          eventId: e.id,
+          team: e.team ?? e.suggestedTeam ?? 'B',
+        });
+      }, 3000);
+    }
   } else if (ev.type === 'fb_ai_log') {
     for (const e of ev.entries) log('  ai-log', e.label, e.text);
   } else if (ev.type === 'fb_director') {
@@ -81,7 +97,7 @@ sock.send({ type: 'fb_commentator_join', name: 'Check' });
 
 try {
   await api('POST', `/room/${roomId}/football-game/config`, {
-    halfMs: 5 * 60_000,
+    halfMs: HALF_MIN * 60_000,
     replayDelayMs: 1000,
     perf: { hudPublishHz: 5 },
   });

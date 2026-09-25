@@ -1,0 +1,135 @@
+<!doctype html>
+<!--
+  Click-the-ball keyframe editor for scripts/fb-ball-keyframes.mjs.
+  Open this file in Chrome, pick the clip (e.g. data/mp4s/fb-demo/pano-anzhi-goal/pano.mp4)
+  and optionally an existing keyframes json. Click = keyframe at the current
+  time (replaces one within 100 ms). Keys: ←/→ 0.2 s, shift 1 s, alt 1 frame,
+  space play/pause, Backspace deletes the nearest keyframe, +/- zoom,
+  drag with the right button to pan. "Save" downloads the json.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>fb ball keyframes</title>
+    <style>
+      body { margin: 0; background: #111; color: #ddd; font: 13px/1.4 system-ui, sans-serif; }
+      header { display: flex; gap: 12px; align-items: center; padding: 8px 12px; flex-wrap: wrap; }
+      #view { position: relative; overflow: hidden; height: calc(100vh - 110px); background: #000; cursor: crosshair; }
+      #stage { position: absolute; transform-origin: 0 0; }
+      video { display: block; }
+      canvas { position: absolute; left: 0; top: 0; pointer-events: none; }
+      #list { padding: 6px 12px; white-space: nowrap; overflow-x: auto; }
+      #list span { margin-right: 10px; cursor: pointer; }
+      #list span.near { color: #ffd84a; }
+      button, input { font: inherit; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <label>clip <input type="file" id="clip" accept="video/mp4" /></label>
+      <label>keyframes <input type="file" id="kf" accept="application/json" /></label>
+      <button id="save">Save json</button>
+      <span id="time">0.00 s</span>
+      <span id="count">0 keyframes</span>
+    </header>
+    <div id="view"><div id="stage"><video id="v" muted playsinline></video><canvas id="c"></canvas></div></div>
+    <div id="list"></div>
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const v = $('v'), c = $('c'), view = $('view'), stage = $('stage');
+      let keyframes = [];
+      let comment;
+      let zoom = 0.4, panX = 0, panY = 0;
+
+      const layout = () => { stage.style.transform = `translate(${panX}px,${panY}px) scale(${zoom})`; };
+      const nearest = (tMs) => keyframes.reduce((b, k) => (!b || Math.abs(k[0] - tMs) < Math.abs(b[0] - tMs) ? k : b), null);
+
+      function draw() {
+        const tMs = v.currentTime * 1000;
+        const g = c.getContext('2d');
+        g.clearRect(0, 0, c.width, c.height);
+        g.lineWidth = 3;
+        g.strokeStyle = 'rgba(255,216,74,.5)';
+        g.beginPath();
+        keyframes.forEach((k, i) => (i && k[0] - keyframes[i - 1][0] <= 3000 ? g.lineTo(k[1], k[2]) : g.moveTo(k[1], k[2])));
+        g.stroke();
+        for (const k of keyframes) {
+          const dt = Math.abs(k[0] - tMs);
+          if (dt > 4000) continue;
+          g.strokeStyle = dt < 100 ? '#ff3b3b' : 'rgba(255,255,255,.6)';
+          g.beginPath();
+          g.arc(k[1], k[2], dt < 100 ? 22 : 10, 0, Math.PI * 2);
+          g.stroke();
+        }
+        $('time').textContent = `${v.currentTime.toFixed(2)} s`;
+        $('count').textContent = `${keyframes.length} keyframes`;
+        const near = nearest(tMs);
+        $('list').innerHTML = keyframes
+          .map((k) => `<span data-t="${k[0]}" class="${k === near ? 'near' : ''}">${(k[0] / 1000).toFixed(1)}</span>`)
+          .join('');
+      }
+
+      $('clip').onchange = (e) => {
+        v.src = URL.createObjectURL(e.target.files[0]);
+        v.onloadedmetadata = () => { c.width = v.videoWidth; c.height = v.videoHeight; zoom = view.clientWidth / v.videoWidth; layout(); draw(); };
+      };
+      $('kf').onchange = async (e) => {
+        const json = JSON.parse(await e.target.files[0].text());
+        comment = json._comment;
+        keyframes = json.keyframes.map((k) => k.slice(0, 3)).sort((a, b) => a[0] - b[0]);
+        draw();
+      };
+      $('save').onclick = () => {
+        const rows = keyframes.map((k) => `    [${k.join(', ')}]`).join(',\n');
+        const head = comment ? `  "_comment": ${JSON.stringify(comment)},\n` : '';
+        const blob = new Blob([`{\n${head}  "keyframes": [\n${rows}\n  ]\n}\n`], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'ball-keyframes.json';
+        a.click();
+      };
+      $('list').onclick = (e) => { if (e.target.dataset.t) v.currentTime = Number(e.target.dataset.t) / 1000; };
+
+      view.onclick = (e) => {
+        if (!v.videoWidth) return;
+        const r = view.getBoundingClientRect();
+        const px = Math.round((e.clientX - r.left - panX) / zoom);
+        const py = Math.round((e.clientY - r.top - panY) / zoom);
+        const tMs = Math.round(v.currentTime * 1000);
+        keyframes = keyframes.filter((k) => Math.abs(k[0] - tMs) > 100);
+        keyframes.push([tMs, px, py]);
+        keyframes.sort((a, b) => a[0] - b[0]);
+        draw();
+      };
+      view.oncontextmenu = (e) => e.preventDefault();
+      view.onmousedown = (e) => {
+        if (e.button !== 2) return;
+        const sx = e.clientX - panX, sy = e.clientY - panY;
+        const move = (m) => { panX = m.clientX - sx; panY = m.clientY - sy; layout(); };
+        window.addEventListener('mousemove', move);
+        window.addEventListener('mouseup', () => window.removeEventListener('mousemove', move), { once: true });
+      };
+      const zoomBy = (f) => {
+        const mx = view.clientWidth / 2, my = view.clientHeight / 2;
+        panX = mx - (mx - panX) * f; panY = my - (my - panY) * f; zoom *= f; layout();
+      };
+      window.onkeydown = (e) => {
+        if (e.target.tagName === 'INPUT') return;
+        const step = e.altKey ? 0.04 : e.shiftKey ? 1 : 0.2;
+        if (e.key === 'ArrowRight') v.currentTime += step;
+        else if (e.key === 'ArrowLeft') v.currentTime -= step;
+        else if (e.key === ' ') v.paused ? v.play() : v.pause();
+        else if (e.key === '+' || e.key === '=') zoomBy(1.25);
+        else if (e.key === '-') zoomBy(0.8);
+        else if (e.key === 'Backspace') {
+          const near = nearest(v.currentTime * 1000);
+          keyframes = keyframes.filter((k) => k !== near);
+          draw();
+        } else return;
+        e.preventDefault();
+      };
+      v.onseeked = draw;
+      v.ontimeupdate = draw;
+    </script>
+  </body>
+</html>

@@ -31,6 +31,7 @@ import {
   type FbUiConfig,
 } from './use-fb-room';
 import { matchClock, useFbFeed } from './use-fb-feed';
+import { applyDemoPreset, type FbDemoPreset } from './demo-presets';
 import { TitleScreen } from './screens/title-screen';
 import { SetupScreen } from './screens/setup-screen';
 import { LobbyScreen } from './screens/lobby-screen';
@@ -212,6 +213,20 @@ export function FootballGameArcade({
     }
   };
 
+  /**
+   * One-press demo: teams from the preset, a fresh room, the demo clips
+   * attached — then PRE-MATCH, where KICK-OFF is the host's call.
+   */
+  const startDemo = async (preset: FbDemoPreset) => {
+    if (room.creating || room.roomId) return;
+    const cfg = applyDemoPreset(config, preset);
+    setConfig(cfg);
+    configDirtyRef.current = false;
+    setScreen('lobby');
+    const created = await room.createRoom(cfg);
+    if (created) await room.attachClips(created, preset.clips);
+  };
+
   const exitToTitle = async () => {
     if (rec.effectiveIsRecording) await rec.stopAndDownload();
     setScreen('title');
@@ -353,7 +368,10 @@ export function FootballGameArcade({
         </div>
       ) : null}
       {screen === 'title' ? (
-        <TitleScreen onStart={() => setScreen('setup')} />
+        <TitleScreen
+          onStart={() => setScreen('setup')}
+          onDemo={(preset) => void startDemo(preset)}
+        />
       ) : null}
       {screen === 'setup' ? (
         <SetupScreen

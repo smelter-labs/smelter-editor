@@ -7,7 +7,7 @@
 // (`tMs` = clip media ms) so fb-clip-window.mjs can remap it onto demo windows.
 //
 //   node scripts/alfheim-events.mjs --clip fb/pano-2013-11-28/pano.mp4 [--out <events.json>] \
-//        [--attacks-left auto|A|B] [--kickoff-s -221] [--inject goal@184.5,shot@200] \
+//        [--attacks-left auto|A|B] [--kickoff-s -221] [--period 2] [--inject goal@184.5,shot@200:B] \
 //        [--sprints-max 40] [--keep-goal-candidates]
 //
 // The ball track is a single per-frame pixel, so a ball in the air unprojects
@@ -57,7 +57,7 @@ const flag = (name) => args.includes(`--${name}`);
 const clipRel = opt('clip', null);
 if (!clipRel) {
   console.error(
-    'usage: alfheim-events.mjs --clip <mp4 under data/mp4s> [--out events.json] [--attacks-left auto|A|B] [--kickoff-s N] [--inject kind@s,…] [--sprints-max 40] [--keep-goal-candidates]',
+    'usage: alfheim-events.mjs --clip <mp4 under data/mp4s> [--out events.json] [--attacks-left auto|A|B] [--kickoff-s N] [--period 1|2] [--inject kind@s[:A|B],…] [--sprints-max 40] [--keep-goal-candidates]',
   );
   process.exit(2);
 }
@@ -68,14 +68,20 @@ const outFile = opt('out', path.join(dir, 'events.json'));
 const sprintsMax = Number(opt('sprints-max', '40'));
 const attacksLeftArg = opt('attacks-left', 'auto');
 const kickoffArg = opt('kickoff-s', null);
+const periodArg = Number(opt('period', '0'));
 const keepGoalCandidates = flag('keep-goal-candidates');
 const inject = opt('inject', '')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean)
   .map((s) => {
-    const [kind, at] = s.split('@');
-    return { kind, tMs: Math.round(Number(at) * 1000) };
+    const [kind, rest = ''] = s.split('@');
+    const [at, team] = rest.split(':');
+    return {
+      kind,
+      tMs: Math.round(Number(at) * 1000),
+      team: team === 'A' || team === 'B' ? team : null,
+    };
   });
 if (!sidecar) {
   console.error(`no .alfheim.json next to ${clipPath}`);
@@ -486,7 +492,9 @@ if (zxy) {
 }
 
 for (const inj of inject) {
-  const side = aAttacksLeft ? 'left' : 'right';
+  // `kind@s` is team A's play; `kind@s:B` puts it at the other goal.
+  const aSide = aAttacksLeft ? 'left' : 'right';
+  const side = inj.team === 'B' ? (aSide === 'left' ? 'right' : 'left') : aSide;
   push({
     tMs: inj.tMs,
     kind: inj.kind,
@@ -498,6 +506,18 @@ for (const inj of inject) {
 }
 
 events.sort((a, b) => a.tMs - b.tMs || a.kind.localeCompare(b.kind));
+// A ball resting behind the line after a goal is not a goal kick.
+for (const g of events.filter((e) => e.kind === 'goal')) {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i];
+    if (
+      e.kind === 'goal_kick' &&
+      e.tMs >= g.tMs - 2000 &&
+      e.tMs <= g.tMs + 15000
+    )
+      events.splice(i, 1);
+  }
+}
 const out = {
   source: `alfheim ${sidecar.session} ${sidecar.match}`,
   license:
@@ -520,7 +540,7 @@ const out = {
     },
   },
   kickoffMs,
-  period: 1,
+  period: periodArg === 2 ? 2 : (sidecar.period ?? 1),
   events,
 };
 const counts = {};

@@ -65,11 +65,13 @@ import {
 } from './groundTruth';
 import { FbAiLog, eventLabel, eventTitle } from './aiLog';
 import {
+  awayAt,
   ballAt,
   ballMean,
   ballSpeedPx,
   centroidAt,
   emptyTelemetry,
+  parseAway,
   parseBall,
   parseClipMeta,
   parseZones,
@@ -119,6 +121,7 @@ export type FbClipTelemetryFiles = {
   zxy?: unknown;
   ball?: unknown;
   zones?: unknown;
+  away?: unknown;
 };
 
 /**
@@ -428,6 +431,10 @@ export class FootballGameController {
   private lastLoopResyncSig: string | null = null;
   /** Kick-off of the clip (media ms; negative when the clip starts mid-half). */
   private clipKickoffMs: number | null = null;
+  /** Half the clip is from, from the sidecar (a second-half clip kicks off in period 2). */
+  private clipPeriod: 1 | 2 = 1;
+  /** The clip clock opened the period already in added time: `autoFlow` must not whistle at once. */
+  private openedInAddedTime = false;
   /** Which team attacks the left goal in period 1, from the sidecar. */
   private clipAttacksLeft: FbTeamId | null = null;
 
@@ -716,6 +723,13 @@ export class FootballGameController {
           console.warn(`[fb] ${fileName}: bad ball.json`, err);
         }
       }
+      if (files?.away != null) {
+        try {
+          t.away = parseAway(files.away);
+        } catch (err) {
+          console.warn(`[fb] ${fileName}: bad away.json`, err);
+        }
+      }
       cam.telemetry = t;
       cam.telemetryFlags = {
         zxy: t.zxy != null,
@@ -728,7 +742,7 @@ export class FootballGameController {
           kind: 'session',
           tone: t.ball || t.zxy ? 'good' : 'amber',
           label: 'TELEMETRY',
-          text: `${cam.role} · ${[t.ball ? 'ball' : null, t.zxy ? `zxy ${t.zxy.tags.length} tags` : null, t.zones ? 'zones' : null].filter(Boolean).join(' · ') || 'none'}`,
+          text: `${cam.role} · ${[t.ball ? 'ball' : null, t.zxy ? `zxy ${t.zxy.tags.length} tags` : null, t.zones ? 'zones' : null, t.away ? `away ${t.away.tracks.length} tracks` : null].filter(Boolean).join(' · ') || 'none'}`,
         },
         this.now(),
       );
@@ -1111,6 +1125,7 @@ export class FootballGameController {
             attacks: gt.attacks,
           };
           this.clipKickoffMs = gt.kickoffMs;
+          this.clipPeriod = gt.period;
           this.clipAttacksLeft = gt.attacks
             ? gt.attacks.A === 'left'
               ? 'A'
@@ -1670,6 +1685,9 @@ export class FootballGameController {
           this.elapsedBeforeSegmentMs = this.clockFromClipUsed
             ? Math.max(0, (air as number) - (kick as number))
             : 0;
+          if (this.clockFromClipUsed) this.period = this.clipPeriod;
+          this.openedInAddedTime =
+            this.elapsedBeforeSegmentMs >= this.config.halfMs;
         }
         this.setBanner('kick_off', 'KICK-OFF', '#f4f1e8', now);
         this.aiLog.push(
@@ -1724,6 +1742,7 @@ export class FootballGameController {
         this.phase = 'live';
         this.period = 2;
         this.elapsedBeforeSegmentMs = 0;
+        this.openedInAddedTime = false;
         this.segmentStartedAt = now;
         this.setBanner('kick_off', 'SECOND HALF', '#f4f1e8', now);
         return null;
@@ -1764,6 +1783,7 @@ export class FootballGameController {
     this.segmentStartedAt = null;
     this.elapsedBeforeSegmentMs = 0;
     this.clockFromClipUsed = false;
+    this.openedInAddedTime = false;
     this.endedAt = null;
     this.winner = null;
     this.events = [];
@@ -1799,6 +1819,7 @@ export class FootballGameController {
   /** `autoFlow`: the clock blows the whistle when a half runs out. */
   private checkAutoFlow(now: number): void {
     if (!this.config.autoFlow || this.phase !== 'live') return;
+    if (this.openedInAddedTime) return;
     if (this.periodElapsed(now) < this.config.halfMs) return;
     this.controlMatch({ action: this.period === 1 ? 'half_time' : 'end' });
   }
@@ -3044,6 +3065,12 @@ export class FootballGameController {
       y: Math.round(p.y * 2) / 2,
       kmh: Math.round(p.v * 3.6),
     }));
+    const away = t.away
+      ? awayAt(t.away, airMs).map((p) => ({
+          x: Math.round(p.x * 2) / 2,
+          y: Math.round(p.y * 2) / 2,
+        }))
+      : [];
     let ball: { x: number; y: number } | null = null;
     if (t.ball) {
       const b = ballAt(t.ball, airMs);
@@ -3064,6 +3091,9 @@ export class FootballGameController {
       teamColor: this.config.teams.A.color,
       teamShort: this.config.teams.A.short,
       players,
+      awayColor: this.config.teams.B.color,
+      awayShort: this.config.teams.B.short,
+      away,
       ball,
       sprint: sprint
         ? { tag: sprint.tag, kmh: Math.round(sprint.topKmh) }

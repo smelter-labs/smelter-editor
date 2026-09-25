@@ -852,6 +852,10 @@ export type FbHudState = {
     teamColor: string;
     teamShort: string;
     players: FbHudPlayer[];
+    /** The untagged side, read off the video (no identities); [] without away.json. */
+    awayColor: string;
+    awayShort: string;
+    away: { x: number; y: number }[];
     ball: { x: number; y: number } | null;
     /** Top sprinter chip: tag + km/h. */
     sprint: { tag: number; kmh: number } | null;

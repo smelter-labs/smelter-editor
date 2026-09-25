@@ -335,6 +335,8 @@ for (const camKey of camKeys) {
   const sidecar = {
     dataset: 'alfheim',
     session: session.session,
+    sessionId: setName,
+    period: session.period ?? 1,
     match: session.title,
     cam: camKey === 'pano' ? 'pano' : Number(camKey),
     role: cam.role,

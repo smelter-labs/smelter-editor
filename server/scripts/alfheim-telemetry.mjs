@@ -25,7 +25,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   PITCH,
-  SESSIONS,
+  sessionOfSidecar,
   forEachZxyRow,
   loadZones,
   onPitch,
@@ -66,9 +66,7 @@ if (!sidecar) {
   );
   process.exit(1);
 }
-const session = Object.values(SESSIONS).find(
-  (s) => s.session === sidecar.session,
-);
+const session = sessionOfSidecar(sidecar);
 const zonesFile = opt(
   'zones',
   session.session === 'pano'
