@@ -9,7 +9,7 @@
 //
 // Writes:
 //   <raw>/fake/<persona>.mov      raw fake take (video + on-air audio, clap at @clap)
-//   <raw>/fake/wide.mov           raw fake wide (audio = everyone, softer)
+//   <raw>/fake/wide.mov           raw fake wide (audio = the clap only — see ob-conductor)
 //   <raw>/tape-src/fake-reel.mp4  stand-in highlights (muted; input for ob-tape-reel.mjs)
 //
 // Then: ob-prep-takes.mjs --timing … --in fake/….mov=<persona> … ; ob-tape-reel.mjs …
