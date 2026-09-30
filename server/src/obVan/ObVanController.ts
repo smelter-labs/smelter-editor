@@ -304,6 +304,13 @@ const REPLAY_OPEN_GRACE_MS = 8000;
 const REPLAY_CLOSE_LEAD_MS = 350;
 const REPLAY_UNREGISTER_MS = 450;
 const LOOP_RESYNC_LEAD_MS = 200;
+/** A restarted clip's first samples (fresh VAD state, decoder start) are noise. */
+const FILE_CAM_SETTLE_MS = 700;
+/** File cams this close in length and start phase loop natively and stay in sync… */
+const LOCKSTEP_MAX_LENGTH_DIFF_MS = 50;
+const LOCKSTEP_MAX_PHASE_DIFF_MS = 250;
+/** …until their length differences add up to this much drift. */
+const LOCKSTEP_MAX_DRIFT_MS = 150;
 const HISTORY_MAX = 20;
 const LOG_TAIL = 20;
 const TRANSCRIBED_ROLES = new Set<ObCamRole>(['speaker', 'guest', 'wide']);
@@ -506,6 +513,8 @@ export class ObVanController {
   private lastHudKey = '';
   private lastCamPoll = 0;
   private lastLoopResyncSig: string | null = null;
+  /** File cams mid-restart: worker samples are dropped until this wall time. */
+  private readonly settleUntil = new Map<string, number>();
   private disposed = false;
   private engaged = false;
 
@@ -833,6 +842,7 @@ export class ObVanController {
     height?: number;
     name?: string;
     talent?: string | null;
+    subtitle?: string | null;
   }): { ok: true; camId: string } | ObCommandError {
     return this.addInputCam('file', input);
   }
@@ -845,6 +855,7 @@ export class ObVanController {
     height?: number;
     name?: string;
     talent?: string | null;
+    subtitle?: string | null;
     fileName?: string;
   }): { ok: true; camId: string } | ObCommandError {
     return this.addInputCam('adopted', input);
@@ -860,6 +871,7 @@ export class ObVanController {
       height?: number;
       name?: string;
       talent?: string | null;
+      subtitle?: string | null;
     },
   ): { ok: true; camId: string } | ObCommandError {
     this.engage();
@@ -875,6 +887,7 @@ export class ObVanController {
       role: input.role,
       name: input.name?.trim() ? input.name : fallbackName,
       talent: input.talent ?? null,
+      subtitle: input.subtitle ?? null,
       inputId: input.inputId,
       width: input.width ?? null,
       height: input.height ?? null,
@@ -908,10 +921,37 @@ export class ObVanController {
       .map((c) => ({ role: c.role, inputId: c.inputId as string }));
   }
 
+  /**
+   * The file cams are about to restart (sync / loop resync). What the worker
+   * has already heard of them — up to a side-channel delay ahead — will never
+   * air, so their signals, the decisions scheduled from them and the brain's
+   * memory go; their samples are ignored until each clip is back.
+   */
+  fileCamsResyncing(): void {
+    if (this.disposed) return;
+    this.cancelScheduled((c) => c.source !== 'operator');
+    this.brain.reset();
+    for (const cam of this.cams.list()) {
+      if (cam.kind !== 'file') continue;
+      this.signals.removeCam(cam.id);
+      this.settleUntil.set(cam.id, Infinity);
+    }
+    this.markStateDirty();
+  }
+
+  /** One file cam's clip is registered again (or failed to be). */
+  fileCamRestarted(inputId: string): void {
+    const cam = this.cams.byInput(inputId);
+    if (!cam) return;
+    this.signals.removeCam(cam.id);
+    this.settleUntil.set(cam.id, this.now() + FILE_CAM_SETTLE_MS);
+  }
+
   private removeCam(cam: ObCamRecord, why: string): void {
     this.retireCamInput(cam);
     this.cams.remove(cam.id);
     this.signals.removeCam(cam.id);
+    this.settleUntil.delete(cam.id);
     this.lastTally.delete(cam.id);
     if (this.preferCam?.camId === cam.id) this.preferCam = null;
     if (this.config.audio.mode === 'master' && this.config.audio.cam === cam.id)
@@ -1103,6 +1143,7 @@ export class ObVanController {
         c.llm.analyst = patch.llm.analyst;
       this.llm?.setAnalyst(c.llm.analyst, c.llm.analystIntervalS);
     }
+    if (typeof patch.subtitles === 'boolean') c.subtitles = patch.subtitles;
     if (typeof patch.captions === 'boolean' && patch.captions !== c.captions) {
       c.captions = patch.captions;
       this.reconfigureCamSignals();
@@ -1565,7 +1606,7 @@ export class ObVanController {
       cmd.subtitle !== undefined
         ? cmd.subtitle?.trim().slice(0, 80) || null
         : cam
-          ? roleLabel(cam.role)
+          ? (cam.subtitle ?? roleLabel(cam.role))
           : null;
     this.showLowerThird({ name, subtitle, durationMs }, cam?.id ?? null);
     this.pushLog({
@@ -1649,6 +1690,9 @@ export class ObVanController {
         break;
       case 'talent':
         cam.talent = cleanTalent(cmd.value ?? null);
+        break;
+      case 'subtitle':
+        cam.subtitle = cleanTalent(cmd.value ?? null);
         break;
       case 'kick':
         if (cam.clientId)
@@ -1848,7 +1892,7 @@ export class ObVanController {
         this.showLowerThird(
           {
             name: cam.talent ?? cam.name,
-            subtitle: roleLabel(cam.role),
+            subtitle: cam.subtitle ?? roleLabel(cam.role),
             durationMs: change.lowerThird.holdMs ?? this.config.lowerThirdMs,
           },
           cam.id,
@@ -1858,7 +1902,7 @@ export class ObVanController {
           kind: 'lower_third',
           tone: 'ai',
           label: 'L3',
-          text: `${cam.talent ?? cam.name} · ${roleLabel(cam.role)}`,
+          text: `${cam.talent ?? cam.name} · ${cam.subtitle ?? roleLabel(cam.role)}`,
           camId: cam.id,
           ...reasons,
         });
@@ -2227,11 +2271,21 @@ export class ObVanController {
       });
       this.markStateDirty();
     }
-    if (this.prog.transition || this.scheduled.size > 0) return;
+    // Stepped every tick, a cut pending or not: the brain keeps its speech
+    // turns and rule timers current and plans after the last scheduled shot
+    // (brainContext). It only holds off while a transition runs.
     const decision = this.brain.step(this.brainContext());
     if (!decision) return;
     this.lastDecisionAt = now;
     this.schedule(decision, 'auto');
+  }
+
+  /** The last scheduled shot change: the program the brain plans after. */
+  private plannedShot(): ScheduledChange | null {
+    let last: ScheduledChange | null = null;
+    for (const c of this.scheduled.values())
+      if (c.change.shot && (!last || c.applyAtMs > last.applyAtMs)) last = c;
+    return last;
   }
 
   private brainContext(): ObBrainContext {
@@ -2244,6 +2298,10 @@ export class ObVanController {
         boost: this.preferCam.boost,
       };
     if (this.pacingOverride) overrides.pacing = { ...this.pacingOverride };
+    const plan = this.plannedShot();
+    const planHoldUntil = plan?.change.holdMs
+      ? plan.applyAtMs + plan.change.holdMs
+      : null;
     return {
       nowAir: this.clock.nowAir(),
       lookaheadMs: this.clock.lookaheadMs(),
@@ -2257,12 +2315,16 @@ export class ObVanController {
       })),
       signals: this.signals.view(),
       program: {
-        shot: this.prog.program,
-        sinceAirMs: this.prog.sinceMs,
+        shot: plan?.change.shot ?? this.prog.program,
+        sinceAirMs: plan?.applyAtMs ?? this.prog.sinceMs,
         history: this.history.map((h) => ({ ...h })),
-        pending: this.scheduled.size > 0,
+        pending: this.prog.transition !== null,
         manualUntilAirMs: this.autoPausedUntil,
-        holdUntilAirMs: this.holdUntil,
+        holdUntilAirMs:
+          planHoldUntil !== null &&
+          planHoldUntil > (this.holdUntil ?? -Infinity)
+            ? planHoldUntil
+            : this.holdUntil,
       },
       ruleset: this.ruleset,
       segment: this.segment(),
@@ -2328,11 +2390,18 @@ export class ObVanController {
   }
 
   private cancelScheduled(match: (c: ScheduledChange) => boolean): void {
+    let removed = false;
     for (const c of [...this.scheduled.values()]) {
       if (!match(c)) continue;
       clearTimeout(c.timer);
       this.scheduled.delete(c.id);
+      removed = true;
     }
+    if (!removed) return;
+    // New decisions queue after what is still scheduled, not after the dropped.
+    let last = Math.min(this.prog.lastApplyAtMs, this.now());
+    for (const c of this.scheduled.values()) last = Math.max(last, c.applyAtMs);
+    this.prog = { ...this.prog, lastApplyAtMs: last };
   }
 
   private nextScheduled(): ObState['autoPilot']['next'] {
@@ -2528,10 +2597,20 @@ export class ObVanController {
     const cam = this.cams.byInput(inputId);
     if (!cam) return;
     const now = this.now();
+    const settle = this.settleUntil.get(cam.id);
+    if (settle !== undefined) {
+      if (now < settle) return;
+      this.settleUntil.delete(cam.id);
+    }
     const sample = parseWorkerSample(data, now, ptsNanos);
     if (!sample) return;
     cam.lastSignalAt = now;
     this.signals.ingest(cam.id, sample);
+  }
+
+  /** Subtitles on a transcribed input: always, unless it is a camera and the show turned them off. */
+  showsSubtitles(inputId: string): boolean {
+    return this.config.subtitles || !this.cams.byInput(inputId);
   }
 
   /** A caption line that just aired on a camera input. */
@@ -3100,7 +3179,10 @@ export class ObVanController {
     if (this.holdUntil != null && now >= this.holdUntil) this.holdUntil = null;
   }
 
-  /** Looping file cams: joint restart just before the first clip wraps. */
+  /**
+   * Looping file cams: a joint restart just before the first clip wraps —
+   * unless they loop together on their own (see fileCamsLoopTogether).
+   */
   private checkFileCamLoop(now: number): void {
     const resync = this.deps.resyncFileCams;
     const get = this.deps.getFileClock;
@@ -3123,6 +3205,13 @@ export class ObVanController {
         (clock.durationMs ?? Infinity) - LOOP_RESYNC_LEAD_MS,
     );
     if (!wrapping) return;
+    if (
+      fileCamsLoopTogether(
+        clocks.map((c) => c.clock),
+        now,
+      )
+    )
+      return;
     this.lastLoopResyncSig = sig;
     resync().catch((err) =>
       console.warn(
@@ -3166,6 +3255,38 @@ function dimsOf(
   if (typeof w !== 'number' || typeof h !== 'number') return undefined;
   if (!(w >= 16 && w <= 7680 && h >= 16 && h <= 7680)) return undefined;
   return { width: Math.round(w), height: Math.round(h) };
+}
+
+/**
+ * Equal-length file cams started together wrap on their own in the engine
+ * (`loop: true`) — seamless on air — and stay aligned. A joint restart would
+ * black them out for the side-channel delay and skip each clip's last
+ * `delay` seconds, so it is only for clips of different lengths or start
+ * phases, or ones whose small length differences have drifted apart.
+ */
+export function fileCamsLoopTogether(
+  clocks: readonly ObFileClock[],
+  now: number,
+): boolean {
+  if (clocks.length === 0) return false;
+  const lengths = clocks.map((c) => c.durationMs ?? 0);
+  if (lengths.some((d) => d <= 0)) return false;
+  const lengthDiff = Math.max(...lengths) - Math.min(...lengths);
+  if (lengthDiff > LOCKSTEP_MAX_LENGTH_DIFF_MS) return false;
+  // Wall time at which each clip played media 0, compared around the loop.
+  const period = lengths[0];
+  const zero0 = clocks[0].anchorWallMs - clocks[0].playFromMs;
+  for (const c of clocks) {
+    const d =
+      (((c.anchorWallMs - c.playFromMs - zero0) % period) + period) % period;
+    if (Math.min(d, period - d) > LOCKSTEP_MAX_PHASE_DIFF_MS) return false;
+  }
+  const loops = Math.max(
+    ...clocks.map(
+      (c) => (c.playFromMs + now - c.anchorWallMs) / (c.durationMs as number),
+    ),
+  );
+  return Math.floor(loops) * lengthDiff <= LOCKSTEP_MAX_DRIFT_MS;
 }
 
 /** Media time of the frame ON AIR at wall time `now` for a file cam. */

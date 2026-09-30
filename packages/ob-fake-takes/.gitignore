@@ -1,0 +1,4 @@
+node_modules/
+# Fonts are copied in from server/fonts by ob-fake-takes.mjs before a render.
+public/fonts/
+out/

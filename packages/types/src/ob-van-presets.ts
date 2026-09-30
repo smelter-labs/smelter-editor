@@ -21,14 +21,47 @@ const TALK: ObRuleset = {
     ball: 0,
     novelty: 0.4,
     stay: 0.5,
-    roleBias: { speaker: 0.3, guest: 0.2, wide: 0.1, audience: -0.3, slides: -0.4 },
+    roleBias: {
+      speaker: 0.3,
+      guest: 0.2,
+      wide: 0.1,
+      audience: -0.3,
+      slides: -0.4,
+      tape: -0.6,
+    },
   },
   behaviours: { dialogueSplit: true, anticipate: true },
   keywords: {
-    slides: ["slide", "next slide", "as you can see", "chart", "diagram", "on the screen"],
+    slides: [
+      "slide",
+      "next slide",
+      "as you can see",
+      "chart",
+      "diagram",
+      "on the screen",
+    ],
     audience: ["question", "questions", "q and a", "q&a", "applause"],
+    tape: [
+      "roll the tape",
+      "go to the tape",
+      "the tape",
+      "roll it",
+      "highlights",
+    ],
   },
   rules: [
+    {
+      id: "tape-kw",
+      name: "Roll the tape",
+      priority: 85,
+      cooldownMs: 20000,
+      holdMs: 9000,
+      when: { signal: "keyword", op: "has", value: "tape" },
+      then: {
+        shot: { kind: "solo", cam: "tape" },
+        transition: { type: "cut" },
+      },
+    },
     {
       id: "slides-kw",
       name: "Slides when they mention them",
@@ -125,7 +158,13 @@ const MATCH: ObRuleset = {
       when: {
         all: [
           { signal: "burst", cam: "any" },
-          { signal: "motion", cam: "trigger", op: "<", value: 0.15, forMs: 1500 },
+          {
+            signal: "motion",
+            cam: "trigger",
+            op: "<",
+            value: 0.15,
+            forMs: 1500,
+          },
         ],
       },
       then: {
@@ -218,7 +257,12 @@ const STAGE: ObRuleset = {
       holdMs: 8000,
       when: { signal: "speech", cam: "wide", forMs: 4000 },
       then: {
-        shot: { kind: "virtual", cam: "wide", target: "speaker", zoom: "tight" },
+        shot: {
+          kind: "virtual",
+          cam: "wide",
+          target: "speaker",
+          zoom: "tight",
+        },
         effects: { spotlight: true },
         transition: { type: "dissolve", durationMs: 1200 },
       },
@@ -377,7 +421,8 @@ export const OB_PRESET_META: readonly ObPresetMeta[] = [
     id: "talk",
     label: "TALK",
     sub: "conference · panel",
-    blurb: "Cuts to whoever speaks, splits a dialogue, slides on cue, lower thirds.",
+    blurb:
+      "Cuts to whoever speaks, splits a dialogue, slides on cue, lower thirds.",
   },
   {
     id: "match",
@@ -389,7 +434,8 @@ export const OB_PRESET_META: readonly ObPresetMeta[] = [
     id: "stage",
     label: "STAGE",
     sub: "theatre · culture",
-    blurb: "Slow dissolves, never cuts a monologue, pushes in with a spotlight.",
+    blurb:
+      "Slow dissolves, never cuts a monologue, pushes in with a spotlight.",
   },
   {
     id: "gig",

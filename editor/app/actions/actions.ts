@@ -857,6 +857,7 @@ export async function attachObMp4Cam(
     fileName: string;
     name?: string;
     talent?: string;
+    subtitle?: string;
   },
 ): Promise<
   import('@/lib/api-client').ObResult<{ camId: string; inputId: string }>
@@ -878,6 +879,7 @@ export async function adoptObInput(
     role: import('@smelter-editor/types').ObCamRole;
     name?: string;
     talent?: string;
+    subtitle?: string;
   },
 ): Promise<import('@/lib/api-client').ObResult<{ camId: string }>> {
   return (await getClient()).adoptObInput(roomId, cam);

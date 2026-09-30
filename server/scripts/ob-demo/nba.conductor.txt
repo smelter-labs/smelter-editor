@@ -1,0 +1,74 @@
+# OB Van demo — "Full Court Press": an NBA studio panel on LeBron joining the
+# Sixers (Sept 2026 — media day week: LeBron + Jaylen Brown in Philadelphia,
+# the Knicks defending the title). One person plays all three panelists.
+#
+#   node scripts/ob-demo-slides.mjs --deck nba
+#   node scripts/ob-conductor.mjs scripts/ob-demo/nba.conductor.txt
+#   node scripts/ob-fake-takes.mjs --timing data/ob-demo-raw/nba/nba.timing.json
+#
+# Every line is placed to exercise one TALK rule (right-hand notes).
+# Keep these words OUT of every other line — the director listens for them:
+#   slide, next slide, as you can see, chart, diagram, on the screen   → SLIDES shot
+#   roll the tape, go to the tape, the tape, roll it, highlights       → TAPE fullscreen
+#   question(s), q and a, q&a, applause                                → audience cam
+
+@title   Full Court Press · LeBron in Philly
+@persona HOST  voice="Daniel" role=speaker talent="Piotr · the anchor"        subtitle="FULL COURT PRESS" color=#F2B134
+@persona COACH voice="Karen"  role=guest   talent="Piotr · the retired coach" subtitle="OLD SCHOOL"       color=#38BDF8
+@persona STATS voice="Rishi"  role=guest   talent="Piotr · the numbers guy"   subtitle="THE ANALYTICS DESK" color=#F472B6
+@rate 175
+@stretch 1.15
+@clap 10
+@start 2
+@tail 12
+@gap 0.4
+@slides data/ob-demo-raw/nba/slides
+
+SEGMENT Introductions
+SLIDE 01-title.png
++1.5 HOST Good evening and welcome to Full Court Press. Tonight: the King has moved to Philadelphia, and the East will never be the same.
+                                                  # cut + lower third on each new voice
++0.6 COACH Thanks for having me. I coached against LeBron for fifteen years, and I still don't believe what I watched this summer.
++0.6 STATS And I run the numbers. The numbers don't believe it either.
++0.5 HOST One note before we start — tonight's broadcast is being cut live by an AI director. If it misses a beat, blame the truck.
+                                                  # HOST keeps the floor into the next segment:
+                                                  # no cut there (rules look ~8 s ahead)
+
+SEGMENT The move
+SLIDE 02-numbers.png
++0.5 HOST (turns to the screen) Let's start with the resume. As you can see on the slide — year twenty-four, forty-three thousand points, four rings. And now he starts over in Philadelphia.
+                                                  # keyword → SPEAKER + SLIDES (holds 8 s)
++0.6 STATS And he isn't walking into a vacuum. Pair him with Jaylen Brown and Philly projects as a top-three offense in the league.
++0.5 COACH (sighs) On paper. I have seen a lot of paper lose in May.
++0.6 STATS Don't take my word for it. Roll the tape.
+                                                  # keyword at the END → TAPE fullscreen (9 s)
++0.5 HOST ~2.8 (watching the screen) Oh — look at that finish.
++0.8 COACH ~3.2 Sure. And every one of those came against last season's defenses. He turns forty-two in December.
++0.8 STATS Forty-one right now — with the best finishing rate at the rim in his age bracket. Ever.
+                                                  # tape hold ends here; back to talking heads
+
+SEGMENT The debate
+SLIDE 03-debate.png
++0.5 HOST So here is the real argument: do they get past New York? The champs looked untouchable in June.
+# The split needs 3+ turns inside 6 s: jabs under ~2 s, no commas,
+# step on each other's last word.
++0.3 STATS Philly wins the East.                  # quick back-and-forth → SPLIT
++-0.1 COACH The champs are deeper.
++-0.1 STATS LeBron closes games.
++-0.1 COACH He is forty-one!
++-0.1 STATS He is LeBron!
++-0.1 COACH That is not a plan!
++0.7 HOST Okay, okay. Here is the thing — somebody has to make that call in June, and none of us at this desk gets a vote.
+                                                  # one voice for 8+ s ends the split
++0.4 HOST So let's just sit with that for a second.
++0.3 ALL ~8.5 [total silence — freeze, look at the desk, nobody moves]
+                                                  # 6 s of silence → WIDE
++0.2 COACH It went to the wide again didn't it.
++0.2 ALL ~2.5 (everyone laughs)
+                                                  # loud moment → material for WHY
+
+SEGMENT Closing
+SLIDE 04-closing.png
++0.6 STATS My prediction: sixty wins, and the scoring record gets padded past forty-four thousand.
++0.5 COACH Mine: the minutes catch up by March — and Boston still boos Jaylen the whole night he comes back.
++0.5 HOST And mine: Sixers out of the East. And if tonight's cut looked good — that was the robot in the truck. Good night.

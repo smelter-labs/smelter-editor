@@ -15,6 +15,7 @@ export type ObFixedCamRole =
   | "guest"
   | "audience"
   | "slides"
+  | "tape"
   | "stage-left"
   | "stage-right"
   | "goal-left"
@@ -27,6 +28,7 @@ export const OB_CAM_ROLES: readonly ObFixedCamRole[] = [
   "guest",
   "audience",
   "slides",
+  "tape",
   "stage-left",
   "stage-right",
   "goal-left",
@@ -55,6 +57,8 @@ export type ObCam = {
   name: string;
   /** Person on this camera — the lower third's name. */
   talent: string | null;
+  /** Lower-third subtitle; falls back to the role label when null. */
+  subtitle: string | null;
   kind: ObCamKind;
   /** Phone socket attached (always true for file / adopted cams). */
   connected: boolean;
@@ -265,7 +269,15 @@ export const OB_SIGNAL_KINDS: readonly ObSignalKind[] = [
   "dialogue",
 ];
 export type ObOp = ">" | ">=" | "<" | "<=" | "==" | "!=" | "has";
-export const OB_OPS: readonly ObOp[] = [">", ">=", "<", "<=", "==", "!=", "has"];
+export const OB_OPS: readonly ObOp[] = [
+  ">",
+  ">=",
+  "<",
+  "<=",
+  "==",
+  "!=",
+  "has",
+];
 
 export type ObConditionLeaf = {
   signal: ObSignalKind;
@@ -384,6 +396,8 @@ export type ObConfig = {
   titleBugVisible: boolean;
   /** Transcribe speaker / guest / wide cams (keywords, LLM names). Delays every camera to 8 s. */
   captions: boolean;
+  /** With captions on: also show the transcript as subtitles on the camera tiles. */
+  subtitles: boolean;
   /** The host's natural-language brief (LLM input). */
   brief: string;
   rundown: ObRundownItem[];
@@ -404,6 +418,7 @@ export type ObConfigPatch = {
   lowerThirdMs?: number;
   titleBugVisible?: boolean;
   captions?: boolean;
+  subtitles?: boolean;
   brief?: string;
   rundown?: ObRundownItem[];
   llm?: Partial<ObConfig["llm"]>;
@@ -423,6 +438,7 @@ export const OB_DEFAULT_CONFIG: ObConfig = {
   lowerThirdMs: 6000,
   titleBugVisible: true,
   captions: false,
+  subtitles: true,
   brief: "",
   rundown: [],
   llm: { analyst: false, analystIntervalS: 30 },
@@ -585,7 +601,7 @@ export type ObOperatorCommand =
   | { op: "replay"; camId?: string; mediaMs?: number }
   | {
       op: "cam";
-      action: "role" | "name" | "talent" | "kick";
+      action: "role" | "name" | "talent" | "subtitle" | "kick";
       camId: string;
       value?: string;
     }

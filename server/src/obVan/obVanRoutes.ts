@@ -47,14 +47,15 @@ export interface ObRoomApi {
   attachObMp4Cam(
     role: ObCamRole,
     fileName: string,
-    meta?: { name?: string; talent?: string | null },
+    meta?: { name?: string; talent?: string | null; subtitle?: string | null },
   ): Promise<{ camId: string; inputId: string }>;
   adoptObInput(
     inputId: string,
     role: ObCamRole,
-    meta?: { name?: string; talent?: string | null },
+    meta?: { name?: string; talent?: string | null; subtitle?: string | null },
   ): Promise<{ camId: string }>;
   syncObFileCams(playFromMs?: number): Promise<string[]>;
+  obFileCamsMediaZeroAirMs(): number | null;
 }
 
 type RoomIdParams = { Params: { roomId: string } };
@@ -188,7 +189,7 @@ export const ObOperatorCommandSchema = Type.Union([
   }),
   Type.Object({
     op: Type.Literal('cam'),
-    action: literals(['role', 'name', 'talent', 'kick'] as const),
+    action: literals(['role', 'name', 'talent', 'subtitle', 'kick'] as const),
     camId: CamId,
     value: Type.Optional(Type.String({ maxLength: 60 })),
   }),
@@ -232,6 +233,7 @@ const ObConfigPatchSchema = Type.Object({
   lowerThirdMs: Type.Optional(Type.Number()),
   titleBugVisible: Type.Optional(Type.Boolean()),
   captions: Type.Optional(Type.Boolean()),
+  subtitles: Type.Optional(Type.Boolean()),
   brief: Type.Optional(Type.String({ maxLength: OB_CONFIG_LIMITS.brief.max })),
   rundown: Type.Optional(
     Type.Array(RundownItemSchema, { maxItems: OB_CONFIG_LIMITS.rundown.max }),
@@ -259,6 +261,9 @@ const Mp4CamSchema = Type.Object({
   talent: Type.Optional(
     Type.Union([Type.String({ maxLength: 40 }), Type.Null()]),
   ),
+  subtitle: Type.Optional(
+    Type.Union([Type.String({ maxLength: 40 }), Type.Null()]),
+  ),
 });
 const Mp4SyncSchema = Type.Object({
   playFromMs: Type.Optional(Type.Number({ minimum: 0 })),
@@ -268,6 +273,9 @@ const AdoptSchema = Type.Object({
   role: CamRoleSchema,
   name: Type.Optional(Type.String({ maxLength: 40 })),
   talent: Type.Optional(
+    Type.Union([Type.String({ maxLength: 40 }), Type.Null()]),
+  ),
+  subtitle: Type.Optional(
     Type.Union([Type.String({ maxLength: 40 }), Type.Null()]),
   ),
 });
@@ -419,6 +427,9 @@ export function registerObVanRoutes(
         const { camId, inputId } = await room.attachObMp4Cam(role, fileName, {
           ...(req.body.name !== undefined ? { name: req.body.name } : {}),
           ...(req.body.talent !== undefined ? { talent: req.body.talent } : {}),
+          ...(req.body.subtitle !== undefined
+            ? { subtitle: req.body.subtitle }
+            : {}),
         });
         return res.status(200).send({ camId, inputId });
       } catch (err) {
@@ -432,10 +443,14 @@ export function registerObVanRoutes(
     { schema: { params: RoomIdParamsSchema, body: Mp4SyncSchema } },
     async (req, res) => {
       try {
-        await getRoom(req.params.roomId).syncObFileCams(
-          req.body.playFromMs ?? 0,
-        );
-        return res.status(200).send({ ok: true });
+        const room = getRoom(req.params.roomId);
+        const restarted = await room.syncObFileCams(req.body.playFromMs ?? 0);
+        return res.status(200).send({
+          ok: true,
+          restarted: restarted.length,
+          // When media 0 airs (wall clock): the clips resume after the delay.
+          mediaZeroAirMs: room.obFileCamsMediaZeroAirMs(),
+        });
       } catch (err) {
         return sendError(res, 'bad_action', errMessage(err));
       }
@@ -454,6 +469,9 @@ export function registerObVanRoutes(
         const { camId } = await room.adoptObInput(req.body.inputId, role, {
           ...(req.body.name !== undefined ? { name: req.body.name } : {}),
           ...(req.body.talent !== undefined ? { talent: req.body.talent } : {}),
+          ...(req.body.subtitle !== undefined
+            ? { subtitle: req.body.subtitle }
+            : {}),
         });
         return res.status(200).send({ camId });
       } catch (err) {

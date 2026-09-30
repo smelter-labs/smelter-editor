@@ -388,14 +388,26 @@ interface SmelterApiClient {
   /** Use a looping mp4 from data/mp4s as a camera with a role. */
   attachObMp4Cam(
     roomId: string,
-    cam: { role: ObCamRole; fileName: string; name?: string; talent?: string },
+    cam: {
+      role: ObCamRole;
+      fileName: string;
+      name?: string;
+      talent?: string;
+      subtitle?: string;
+    },
   ): Promise<ObResult<{ camId: string; inputId: string }>>;
   /** Restart every file camera together (from `playFromMs`, default 0). */
   syncObFileCams(roomId: string, playFromMs?: number): Promise<ObResult<null>>;
   /** Turn an existing room input into a camera. */
   adoptObInput(
     roomId: string,
-    cam: { inputId: string; role: ObCamRole; name?: string; talent?: string },
+    cam: {
+      inputId: string;
+      role: ObCamRole;
+      name?: string;
+      talent?: string;
+      subtitle?: string;
+    },
   ): Promise<ObResult<{ camId: string }>>;
   /** Validated server-side (422 → `error.errors`). */
   setObRuleset(

@@ -43,6 +43,7 @@ export type ObRoom = {
     fileName: string;
     name?: string;
     talent?: string;
+    subtitle?: string;
   }): Promise<string | null>;
   /** Restart every file camera from 0:00 together. */
   syncFileCams(): Promise<void>;
@@ -205,6 +206,7 @@ export function useObRoom(
       fileName: string;
       name?: string;
       talent?: string;
+      subtitle?: string;
     }) => {
       const target = roomIdRef.current;
       if (!target) return null;

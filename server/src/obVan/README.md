@@ -156,7 +156,7 @@ HUD: `server/src/inputs/ObHud.tsx`, `ObCamLook.tsx`, plansze
 REST `/room/:roomId/ob-van/…`: `POST config` (`ObConfigPatch`), `POST control
 {action: setup|go_live|wrap|reset|kick_cam, camId?}`, `GET state`, `POST operate
 {cmd: ObOperatorCommand}`, `POST mp4-cam {role, fileName, name?, talent?}`,
-`POST mp4-cam/sync {playFromMs?}`, `POST adopt-input {inputId, role, …}`,
+`POST mp4-cam/sync {playFromMs?}` (→ `{restarted, mediaZeroAirMs}`), `POST adopt-input {inputId, role, …}`,
 `POST ruleset {ruleset}` (422 z listą błędów), `POST simulate-signal` (tylko
 `OB_SIM=1`), `POST llm/brief {brief}`, `POST llm/analyst {enabled, intervalS?}`,
 `GET llm/status`, `POST llm/wrap`, `POST llm/kill`.
@@ -203,6 +203,148 @@ OB_API=http://localhost:3121 node scripts/ob-van-auto-check.mjs   # TALK na 2 ka
 ANTHROPIC_API_KEY=… OB_API=… node scripts/ob-van-llm-smoke.mjs    # brief → reguły, analityk, notatki
 ffmpeg -ss <T> -i data/recordings/<plik> -frames:v 1 frame.png
 ```
+
+## Materiał demo w pojedynkę
+
+Jak nagrać event wielokamerowy, mając jedną osobę (i ewentualnie pomocnika).
+Dwa scenariusze: **panel z samym sobą** (TALK) i **koncert solo** (GIG).
+
+**Panel z samym sobą.** Jedna osoba gra wszystkich panelistów, każdą personę
+w osobnym take'u (inna koszulka, inne krzesło). Wszystkie take'y idą pod tę
+samą **ścieżkę dyrygenta** w słuchawce: kwestie pozostałych person czytane
+przez TTS, pip przed każdą własną kwestią i odliczanie do klaśnięcia, więc
+każda persona mówi dokładnie w swoim oknie. Po przycięciu do klaśnięcia take'y
+grają jako kamery plikowe, a reżyser tnie je jak prawdziwy panel.
+
+```bash
+cd server
+node scripts/ob-demo-slides.mjs                                  # slajdy demo (albo własne PNG)
+node scripts/ob-conductor.mjs scripts/ob-demo/panel.conductor.txt --mock
+#   data/ob-demo-raw/panel/: panel.<persona>.wav, panel.prompter.html (teleprompter),
+#   panel.cue.md, panel.timing.json, panel.slides.mp4; --mock = syntetyczne take'i do próby
+# nagranie: każdy take = telefon „close" persony + telefon „wide" na statywie (nieruszanym)
+node scripts/ob-prep-takes.mjs --timing data/ob-demo-raw/panel/panel.timing.json \
+  --in IMG_1.MOV=host --in IMG_2.MOV=skeptic --in IMG_3.MOV=nerd --outdir data/mp4s/ob-demo/panel
+node scripts/ob-prep-takes.mjs --timing data/ob-demo-raw/panel/panel.timing.json \
+  --in W_1.MOV=host --in W_2.MOV=skeptic --in W_3.MOV=nerd --outdir data/ob-demo-raw/panel/wide
+node scripts/ob-wide-composite.mjs --grid data/ob-demo-raw/panel/wide/*.mp4   # odczytaj kolumny siedzeń
+node scripts/ob-wide-composite.mjs --base data/ob-demo-raw/panel/wide/host.mp4 \
+  --layer data/ob-demo-raw/panel/wide/skeptic.mp4:x=700:w=600 \
+  --layer data/ob-demo-raw/panel/wide/nerd.mp4:x=1300:w=500 --out data/mp4s/ob-demo/panel/wide.mp4
+OB_API=http://localhost:3001 node scripts/ob-demo-run.mjs --dir ob-demo/panel            # pokój dla hosta
+OB_API=http://localhost:3001 node scripts/ob-demo-run.mjs --dir ob-demo/panel --live --record --check
+```
+
+- **Scenariusz** (`scripts/ob-demo/panel.conductor.txt`, format w nagłówku
+  `ob-conductor.mjs`) układa kwestie pod reguły TALK: nowy głos → cięcie +
+  belka, „as you can see on the slide" → mówca + slajdy, szybka wymiana
+  (≥ 3 zmiany mówcy w 6 s, riposty < 2 s bez przecinków) → SPLIT, ≥ 6 s ciszy →
+  plan ogólny. Słowa kluczowe (`slide`, `chart`, `question`…) tylko tam, gdzie
+  mają zadziałać.
+- **Nagrywanie:** HDR wideo w telefonie wyłączony (prep i tak tonemapuje),
+  blokada ekspozycji / ostrości / balansu bieli, statyw wide ani drgnie.
+  Start telefonów → PLAY w prompterze (`panel.prompter.html?p=HOST`, laptop pod
+  kamerą, słuchawka w jednym uchu) → klaśnięcie na „cztery" → własne kwestie,
+  reszta bezgłośnie. `ob-prep-takes` na końcu raportuje, ile głosu wpadło w
+  sloty persony (niski % = zły plik, spóźnione klaśnięcie albo zepsuty take).
+- **Audio `mix`** (`cams.json`): każdy take niesie tylko głos swojej persony,
+  więc słychać wszystkie kamery naraz; slajdy i fałszywy wide mają ciszę
+  (wide z głosami zdublowałby je i konkurowałby o cięcia).
+- **`cams.json`** pisze `ob-prep-takes` (role i belki z `@persona`, preset,
+  `config: {subtitles: false}` — transkrypcja zostaje dla słów kluczowych, ale
+  bez napisów na kafelkach, które zasłaniałyby belki; `ruleOverrides` — belka
+  przy każdym świeżym cięciu na mówiącego w pierwszym segmencie, bo TALK-owa
+  „belka na nowy głos" chce 1,5 s mowy *poza* programem, a autopilot tnie na
+  nowego mówcę przed pierwszą sylabą). `ob-demo-run` stawia pokój: config → reguły → kamery → sync; z
+  `--live` sam idzie na antenę, przełącza segmenty rundownu w czasie z
+  `timing.json` i wypisuje każdą decyzję obok kwestii, która akurat leci;
+  `--record` nagrywa od pierwszej klatki show, `--check` sprawdza beaty.
+
+**Panel NBA („Full Court Press") + „roll the tape".** Drugi scenariusz panelu
+(`scripts/ob-demo/nba.conductor.txt`): trzy persony (HOST / COACH / STATS)
+dyskutują o transferze LeBrona do Sixers. Nowości względem `panel`:
+
+- **Rola `tape`** — kamera plikowa z wyciszoną rolką highlightów. Preset TALK
+  ma grupę słów kluczowych `tape` („roll the tape", „go to the tape"…) i regułę
+  `tape-kw` (priorytet 85, cooldown 20 s, hold 9 s): na hasło reżyser tnie na
+  PEŁNY EKRAN rolki i po ~9 s wraca. Bez kamery `tape` reguła po prostu się
+  nie odpala (jak `silence-wide` bez wide). Worker nie analizuje tej roli
+  (jak `slides`), a `ob-demo-run` nie czeka na jej sygnały.
+- **`subtitle` na kamerze** — belka z reguł pokazuje `subtitle` zamiast
+  etykiety roli („THE ANALYTICS DESK" zamiast „GUEST"). Pole idzie z
+  `@persona … subtitle="…"` przez `timing.json` → `cams.json` → REST
+  `mp4-cam` / `adopt-input`; od operatora: akcja `cam subtitle` (SETUP →
+  CAMERAS ma pole obok talentu).
+- **Fake take'i (Remotion)** — pełne filmiki-zastępniki, zanim nagrasz
+  prawdziwe: `packages/ob-fake-takes` (stylizowane karty person z waveformem,
+  zegarem show i flashem klapa; wide z trójką przy biurku; rolka „ARCHIVE
+  FOOTAGE"). Audio to WAV-y on-air conductora (klap + TTS własnych kwestii,
+  wide słyszy wszystkich ciszej), więc całość przechodzi normalny pipeline
+  clap-sync. Rolka: wrzuć własne klipy do `data/ob-demo-raw/nba/tape-src/`
+  (albo zostaw wygenerowany `fake-reel.mp4`), a `ob-tape-reel.mjs` sklei z
+  nich JEDEN plik dokładnie o długości show (przymus równych długości).
+
+```bash
+cd server
+node scripts/ob-demo-slides.mjs --deck nba
+node scripts/ob-conductor.mjs scripts/ob-demo/nba.conductor.txt
+node scripts/ob-fake-takes.mjs --timing data/ob-demo-raw/nba/nba.timing.json   # [--half] szybszy render
+node scripts/ob-prep-takes.mjs --timing data/ob-demo-raw/nba/nba.timing.json \
+  --in data/ob-demo-raw/nba/fake/host.mov=host --in data/ob-demo-raw/nba/fake/coach.mov=coach \
+  --in data/ob-demo-raw/nba/fake/stats.mov=stats --in data/ob-demo-raw/nba/fake/wide.mov=wide \
+  --outdir data/mp4s/ob-demo/nba
+node scripts/ob-tape-reel.mjs --timing data/ob-demo-raw/nba/nba.timing.json \
+  --out data/mp4s/ob-demo/nba/tape.mp4
+OB_API=http://localhost:3001 node scripts/ob-demo-run.mjs --dir ob-demo/nba --live --record --check
+```
+
+Prawdziwy materiał podmienia się tą samą drogą: nagrane take'y przez
+`ob-prep-takes` (zamiast `fake/*.mov`), ściągnięte highlighty do `tape-src/`
+i ponowny `ob-tape-reel`. Uwaga na licencję Remotion (bezpłatna do 3 osób w
+firmie) i prawa do klipów NBA — fake-reel jest bezpiecznym domyślnym.
+
+**Koncert solo (GIG).** Trzy telefony wokół jednego występu nagrywają naraz;
+jedno klaśnięcie synchronizuje wszystkie. Bez ścieżki dyrygenta:
+
+```bash
+node scripts/ob-prep-takes.mjs --in a.MOV=wide --in b.MOV=stage-left --in c.MOV=stage-right \
+  --start 1 --outdir data/mp4s/ob-demo/gig
+OB_API=… node scripts/ob-demo-run.mjs --dir ob-demo/gig --live --record
+```
+
+Tu audio to `master` na jednej kamerze (`cams.json`: `"audio": {"mode": "master",
+"cam": "wide"}`) — trzy mikrofony tego samego koncertu w miksie dałyby echo.
+
+**Kamery plikowe a opóźnienie side channelu.** Wszystkie kamery OB Van mają
+to samo opóźnienie, więc `mp4-cam/sync {playFromMs}` przewija klipy dokładnie
+do `playFromMs`: po restarcie program jest czarny przez opóźnienie (8 s z
+napisami), potem klipy lecą od `playFromMs` — nic nie przepada. Restarty idą po
+kolei, ale każdy kolejny klip przewija się o czas poprzednich, więc kamery są
+zgrane co do jednej rejestracji; trasa zwraca `mediaZeroAirMs` (kiedy media 0
+wychodzi na antenę). Klipy równej długości zgrane razem zapętla sam silnik
+(zostają zgrane, klip wraca od 0:00); wspólny restart tylko przy różnych
+długościach albo fazach. **Każde zapętlenie to i tak ~opóźnienie czerni** —
+silnik po zawinięciu klipu na nowo napełnia bufor side channelu — więc na
+nagranie bierz jeden przebieg (`--record` nagrywa od pierwszej klatki show).
+Po restarcie sygnały i zaplanowane decyzje z „przyszłości", która nie wyjdzie
+na antenę, są odrzucane, a pierwsze 0,7 s próbek każdego klipu ignorowane;
+przez pierwsze sekundy po restarcie silnik oddaje side channel szybciej niż w
+czasie rzeczywistym, więc pierwsze cięcie potrafi wypaść ~1 s przed kwestią.
+
+**Autopilot planuje za oczekującym cięciem.** Decyzje lądują na czasie emisji,
+czyli do opóźnienia (8 s) w przód; mózg jest odpytywany co tick także wtedy i
+widzi jako program ostatnie zaplanowane ujęcie (z jego czasem i holdem), więc
+kolejne cięcie planuje po nim (min. hold), a tury mówców do detekcji dialogu
+zbiera bez przerw. Bramka „pending" zostaje tylko na czas przejścia. Reguły z
+warunkiem `segment` widzą segment bieżący na antenie, a oceniają zdarzenia ~8 s
+w przód — pierwsze ~8 s nowego segmentu liczą się jeszcze do poprzedniego.
+
+**Napisy** planuje się na czas emisji: sidecar podaje, kiedy usłyszał segment
+(`heardMs`), Node pokazuje go opóźnienie później, gdy `ts` nie jest na zegarze
+pipeline'u (restartowane klipy liczą pts od siebie). Cały segment (VAD, do ~7 s)
+pojawia się na raz, więc przy szybkiej wymianie widać słowa, które dopiero
+padną; `config.subtitles: false` wyłącza napisy na kamerach (transkrypcja dla
+reguł i LLM zostaje).
 
 ## Pułapki i znane ograniczenia
 

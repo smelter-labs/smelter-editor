@@ -11,6 +11,7 @@ import {
   NULL_ATTENTION,
   ObNullSignals,
   ObVanController,
+  fileCamsLoopTogether,
   type ObControllerDeps,
   type ObFileClock,
 } from '../ObVanController';
@@ -32,8 +33,10 @@ type Transition = {
 class StubBrain implements ObBrain {
   next: ((ctx: ObBrainContext) => ObDecision | null) | null = null;
   calls = 0;
+  lastCtx: ObBrainContext | null = null;
   step(ctx: ObBrainContext): ObDecision | null {
     this.calls++;
+    this.lastCtx = ctx;
     const d = this.next?.(ctx) ?? null;
     this.next = null;
     return d;
@@ -755,6 +758,36 @@ describe('ObVanController · auto pilot', () => {
     expect(h.hud.at(-1)?.lowerThird).toBeNull();
     h.controller.dispose();
   });
+
+  it('cam subtitle: set from the desk, preferred over the role label', async () => {
+    const h = harness();
+    const { c1 } = onAir(h);
+    expect(
+      h.controller.operate({
+        op: 'cam',
+        action: 'subtitle',
+        camId: c1,
+        value: 'Hall of Fame analyst',
+      }),
+    ).toEqual({ ok: true });
+    expect(
+      h.controller.stateSnapshot().cams.find((c) => c.id === c1)?.subtitle,
+    ).toBe('Hall of Fame analyst');
+    h.brain.next = (ctx) => ({
+      atAirMs: ctx.nowAir,
+      lowerThird: { camId: c1, mode: 'talent', holdMs: 3000 },
+      holdMs: 0,
+      reason: 'new speaker',
+      reasons: ['rule lt-new-speaker'],
+      source: 'rule',
+    });
+    await vi.advanceTimersByTimeAsync(150);
+    expect(h.hud.at(-1)?.lowerThird).toMatchObject({
+      name: 'Anna',
+      subtitle: 'Hall of Fame analyst',
+    });
+    h.controller.dispose();
+  });
 });
 
 describe('ObVanController · graphics, rundown, replay, stats', () => {
@@ -940,5 +973,143 @@ describe('ObVanController · graphics, rundown, replay, stats', () => {
     h.controller.dispose();
     expect(h.hud.at(-1)).toBeNull();
     expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+describe('ObVanController · file cam sync and loop', () => {
+  const clip = (
+    anchorWallMs: number,
+    durationMs: number,
+    playFromMs = 0,
+  ): ObFileClock => ({ anchorWallMs, playFromMs, durationMs, delayMs: 8240 });
+  const audio = {
+    kind: 'audio',
+    rms: -20,
+    speechProb: 0.9,
+    speech: true,
+    onset: false,
+    procMs: 4,
+  };
+
+  it('fileCamsLoopTogether: equal clips started together wrap on their own', () => {
+    const now = T0 + 130_000;
+    // Restarted one after another, each seeking as far in as it was late.
+    expect(
+      fileCamsLoopTogether(
+        [clip(T0, 60_000), clip(T0 + 120, 60_020, 120)],
+        now,
+      ),
+    ).toBe(true);
+    expect(
+      fileCamsLoopTogether([clip(T0, 60_000), clip(T0, 60_100)], now),
+    ).toBe(false);
+    // A clip attached later and never synced.
+    expect(
+      fileCamsLoopTogether([clip(T0, 60_000), clip(T0 + 5_000, 60_000)], now),
+    ).toBe(false);
+    // Start phases compare around the loop.
+    expect(
+      fileCamsLoopTogether([clip(T0, 60_000), clip(T0 + 60_100, 60_000)], now),
+    ).toBe(true);
+    // 20 ms of length difference per loop, 150 ms of drift allowed.
+    const pair = [clip(T0, 60_000), clip(T0, 60_020)];
+    expect(fileCamsLoopTogether(pair, T0 + 7.5 * 60_000)).toBe(true);
+    expect(fileCamsLoopTogether(pair, T0 + 8.5 * 60_000)).toBe(false);
+    expect(fileCamsLoopTogether([], now)).toBe(false);
+  });
+
+  it('no joint restart for clips in lockstep; clips out of phase get one', async () => {
+    const h = harness();
+    h.attach(1);
+    h.attach(2, 'wide');
+    const resync = vi.fn(async () => {});
+    h.deps.resyncFileCams = resync;
+    h.fileClocks.set('mp4-1', clip(T0, 10_000));
+    h.fileClocks.set('mp4-2', clip(T0 + 150, 10_000, 150));
+    h.controller.control('go_live');
+    await vi.advanceTimersByTimeAsync(25_000);
+    expect(resync).not.toHaveBeenCalled();
+    h.fileClocks.set('mp4-2', clip(T0 + 3_000, 10_000));
+    await vi.advanceTimersByTimeAsync(500);
+    expect(resync).toHaveBeenCalledTimes(1);
+    h.controller.dispose();
+  });
+
+  it('a resync drops the look-ahead: scheduled auto cuts, then samples until each clip settles', async () => {
+    const h = harness();
+    const c1 = h.attach(1);
+    const c2 = h.attach(2);
+    h.controller.setConfig({ resumeAfterMs: 0 });
+    h.controller.operate({ op: 'shot', shot: solo(c1), mode: 'cut' });
+    h.controller.control('go_live');
+    h.controller.setConfig({ autoPilot: true });
+    h.brain.next = (ctx) => ({
+      atAirMs: ctx.nowAir + 3000,
+      shot: solo(c2),
+      holdMs: 0,
+      reason: '',
+      reasons: [],
+      source: 'score',
+    });
+    await vi.advanceTimersByTimeAsync(200);
+    expect(h.controller.stateSnapshot().autoPilot.next?.shot).toEqual(solo(c2));
+
+    h.controller.fileCamsResyncing();
+    expect(h.controller.stateSnapshot().autoPilot.next).toBeNull();
+    h.controller.onWorkerResult('mp4-1', audio);
+    expect(h.signals.ingested).toHaveLength(0);
+
+    h.controller.fileCamRestarted('mp4-1');
+    await vi.advanceTimersByTimeAsync(600);
+    h.controller.onWorkerResult('mp4-1', audio);
+    expect(h.signals.ingested).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(200);
+    h.controller.onWorkerResult('mp4-1', audio);
+    h.controller.onWorkerResult('mp4-2', audio);
+    expect(h.signals.ingested.map((s) => s.camId)).toEqual([c1]);
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(h.controller.stateSnapshot().program.shot).toEqual(solo(c1));
+    h.controller.dispose();
+  });
+
+  it('the brain keeps planning while a cut is pending: the scheduled shot is its program', async () => {
+    const h = harness();
+    const c1 = h.attach(1);
+    const c2 = h.attach(2);
+    h.controller.setConfig({ resumeAfterMs: 0 });
+    h.controller.operate({ op: 'shot', shot: solo(c1), mode: 'cut' });
+    h.controller.control('go_live');
+    h.controller.setConfig({ autoPilot: true });
+    h.brain.next = (ctx) => ({
+      atAirMs: ctx.nowAir + 5000,
+      shot: solo(c2),
+      holdMs: 4000,
+      reason: '',
+      reasons: [],
+      source: 'rule',
+    });
+    await vi.advanceTimersByTimeAsync(200);
+    const pendingAt = h.controller.stateSnapshot().autoPilot.next?.atMs;
+    expect(pendingAt).toBeDefined();
+    const calls = h.brain.calls;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(h.brain.calls).toBeGreaterThan(calls);
+    expect(h.brain.lastCtx?.program).toMatchObject({
+      shot: solo(c2),
+      sinceAirMs: pendingAt,
+      pending: false,
+      holdUntilAirMs: (pendingAt as number) + 4000,
+    });
+    h.controller.dispose();
+  });
+
+  it('subtitles can be turned off for the cameras; other inputs keep theirs', () => {
+    const h = harness();
+    h.attach(1);
+    expect(h.controller.showsSubtitles('mp4-1')).toBe(true);
+    h.controller.setConfig({ subtitles: false });
+    expect(h.controller.showsSubtitles('mp4-1')).toBe(false);
+    expect(h.controller.showsSubtitles('someone-elses-input')).toBe(true);
+    h.controller.dispose();
   });
 });

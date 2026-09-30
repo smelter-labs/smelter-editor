@@ -148,6 +148,47 @@ describe('TALK', () => {
     expect(cut!.decision.atAirMs - cut!.nowAir).toBeLessThanOrEqual(1000);
   });
 
+  it('keyword "roll the tape" → fullscreen tape cam, hard cut', () => {
+    const talkCams = [...cams, cam(4, 'slides'), cam(5, 'tape')];
+    const show = new Show(obPresetRuleset('talk'), talkCams, {
+      startAir: T0,
+      initial: solo('c1'),
+    });
+    const script: Script = (camId) => ({
+      audio:
+        camId === 'c4' || camId === 'c5' ? null : { speech: camId === 'c1' },
+      video: { persons: [person(0.4)] },
+    });
+    show.run(script, 6000);
+    const before = show.events.length;
+    show.transcript('c1', "Don't take my word for it. Roll the tape.");
+    show.run(script, 1000);
+    const cut = show.events
+      .slice(before)
+      .find((e) => e.decision.ruleId === 'tape-kw');
+    expect(cut?.decision.shot).toEqual({ kind: 'solo', cam: 'c5' });
+    expect(cut?.decision.transition?.type).toBe('cut');
+  });
+
+  it('tape keyword without a tape cam fires nothing', () => {
+    const show = new Show(obPresetRuleset('talk'), cams, {
+      startAir: T0,
+      initial: solo('c1'),
+    });
+    const script: Script = (camId) => ({
+      audio: { speech: camId === 'c1' },
+      video: { persons: [person(0.4)] },
+    });
+    show.run(script, 6000);
+    const before = show.events.length;
+    show.transcript('c1', 'Roll the tape.');
+    show.run(script, 2000);
+    const tapeCut = show.events
+      .slice(before)
+      .find((e) => e.decision.ruleId === 'tape-kw');
+    expect(tapeCut).toBeUndefined();
+  });
+
   it('a new voice gets a lower third on the trigger camera, anticipated, with a readable reason', () => {
     const T = T0 + 20_000;
     const ctx = context({

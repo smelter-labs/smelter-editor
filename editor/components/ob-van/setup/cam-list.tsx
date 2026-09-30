@@ -171,6 +171,17 @@ function CamRow({
             }
           />
         </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <CommitField
+            value={cam.subtitle ?? ''}
+            placeholder='subtitle (lower third)'
+            label={`Camera ${cam.number} lower-third subtitle`}
+            maxLength={40}
+            onCommit={(value) =>
+              onCmd({ op: 'cam', action: 'subtitle', camId: cam.id, value })
+            }
+          />
+        </div>
         <SourceTag cam={cam} />
         <Mono size={9} weight={600} tracking={0.14} color={status.color}>
           {status.text}

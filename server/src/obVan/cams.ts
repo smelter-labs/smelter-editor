@@ -30,6 +30,8 @@ export type ObCamRecord = {
   role: ObCamRole;
   name: string;
   talent: string | null;
+  /** Lower-third subtitle; falls back to the role label when null. */
+  subtitle: string | null;
   kind: ObCamKind;
   /** Picture flowing (WHIP heartbeat / file input connected). */
   live: boolean;
@@ -49,6 +51,7 @@ export type ObCamSeed = {
   role: ObCamRole;
   name: string;
   talent?: string | null;
+  subtitle?: string | null;
   clientId?: string | null;
   camKey?: string;
   inputId?: string | null;
@@ -124,6 +127,7 @@ export class ObCams {
       role: seed.role,
       name: cleanName(seed.name, `Cam ${number}`),
       talent: cleanTalent(seed.talent),
+      subtitle: cleanTalent(seed.subtitle),
       kind: seed.kind,
       live: false,
       width: seed.width ?? null,
@@ -225,6 +229,7 @@ export function toPublicCam(
     role: cam.role,
     name: cam.name,
     talent: cam.talent,
+    subtitle: cam.subtitle,
     kind: cam.kind,
     connected: cam.connected,
     live: cam.live,

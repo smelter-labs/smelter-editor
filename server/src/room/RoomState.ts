@@ -2890,12 +2890,54 @@ export class RoomState {
   }
 
   /** Restart every OB Van file cam from `playFromMs` (see syncBbFileCams). */
+  /**
+   * Wall time at which the OB Van file cams' media 0 is (or was) on air —
+   * the median over the clips' clocks; null without a playing file cam.
+   */
+  public obFileCamsMediaZeroAirMs(): number | null {
+    const zeros = this.obVan
+      .fileCamInputIds()
+      .map(({ inputId }) => this.fileClockOf(inputId))
+      .filter((c) => c !== null)
+      .map((c) => c.anchorWallMs - c.playFromMs + c.delayMs)
+      .sort((a, b) => a - b);
+    return zeros.length ? zeros[Math.floor(zeros.length / 2)] : null;
+  }
+
+  /**
+   * OB Van file cams all carry the same side-channel delay, so unlike the
+   * court / pitch clips nothing has to run ahead: each clip seeks to
+   * `playFromMs` itself and airs it once the delay has passed (nothing is
+   * skipped; the delay window is black). The restarts run one after another;
+   * each seek adds the time the earlier ones took, so every clip plays the
+   * same media time at the same moment, within one registration's jitter.
+   */
   public async syncObFileCams(playFromMs = 0): Promise<string[]> {
-    return this.syncGameFileCams(
-      this.obVan.fileCamInputIds(),
-      'ob',
-      playFromMs,
-    );
+    const cams = this.obVan.fileCamInputIds();
+    if (cams.length === 0) return [];
+    return this.mutex.runExclusive(async () => {
+      this.obVan.fileCamsResyncing();
+      const restarted: string[] = [];
+      const t0 = Date.now();
+      for (const { role, inputId } of cams) {
+        try {
+          await this.inputManager.restartMp4Input(
+            inputId,
+            () => Math.max(0, playFromMs) + (Date.now() - t0),
+            true,
+          );
+          restarted.push(inputId);
+        } catch (err) {
+          console.warn(
+            `[ob] clip sync skipped ${role} cam ${inputId}: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        }
+        this.obVan.fileCamRestarted(inputId);
+      }
+      return restarted;
+    });
   }
 
   /**
@@ -2907,7 +2949,11 @@ export class RoomState {
   public async attachObMp4Cam(
     role: ObCamRole,
     fileName: string,
-    meta: { name?: string; talent?: string | null } = {},
+    meta: {
+      name?: string;
+      talent?: string | null;
+      subtitle?: string | null;
+    } = {},
   ): Promise<{ camId: string; inputId: string }> {
     const opts = this.obVan.camSignalOpts(role);
     const inputId = await this.addNewInput({
@@ -2944,6 +2990,7 @@ export class RoomState {
         : {}),
       ...(meta.name ? { name: meta.name } : {}),
       ...(meta.talent !== undefined ? { talent: meta.talent } : {}),
+      ...(meta.subtitle !== undefined ? { subtitle: meta.subtitle } : {}),
     });
     if (!result.ok) {
       await this.removeInput(inputId).catch(() => {});
@@ -2960,7 +3007,11 @@ export class RoomState {
   public async adoptObInput(
     inputId: string,
     role: ObCamRole,
-    meta: { name?: string; talent?: string | null } = {},
+    meta: {
+      name?: string;
+      talent?: string | null;
+      subtitle?: string | null;
+    } = {},
   ): Promise<{ camId: string }> {
     const input = this.inputManager
       .getInputs()
@@ -2981,6 +3032,7 @@ export class RoomState {
       ...dims,
       name: meta.name ?? input.metadata.title,
       ...(meta.talent !== undefined ? { talent: meta.talent } : {}),
+      ...(meta.subtitle !== undefined ? { subtitle: meta.subtitle } : {}),
     });
     if (!result.ok) throw new Error(result.message);
     // Signals for the auto pilot (a supported stream type only; best-effort:
@@ -3125,7 +3177,7 @@ export class RoomState {
 
   private async syncGameFileCams(
     cams: { role: string; inputId: string }[],
-    tag: 'bb' | 'fb' | 'ob',
+    tag: 'bb' | 'fb',
     playFromMs: number,
   ): Promise<string[]> {
     return this.mutex.runExclusive(async () => {
@@ -3711,10 +3763,6 @@ export class RoomState {
       return;
     }
 
-    const prev = this.transcriptClearTimers.get(event.inputId);
-    if (prev) clearTimeout(prev);
-
-    this.output.store.getState().setTranscript(event.inputId, event.text);
     // OB Van: keywords / LLM transcript window (the line airs now).
     this.obVan.onTranscript(
       event.inputId,
@@ -3722,6 +3770,12 @@ export class RoomState {
       Date.now(),
       event.duration,
     );
+    if (!this.obVan.showsSubtitles(event.inputId)) return;
+
+    const prev = this.transcriptClearTimers.get(event.inputId);
+    if (prev) clearTimeout(prev);
+
+    this.output.store.getState().setTranscript(event.inputId, event.text);
     console.log(
       `[captions] displayed inputId=${event.inputId} for ${event.duration + SUBTITLE_LINGER_MS}ms text="${event.text}"`,
     );

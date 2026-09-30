@@ -180,7 +180,8 @@ export function obVanParamsForRole(
   role: ObCamRole,
   presetId: ObPresetId,
 ): ObVanParams {
-  if (role === 'slides') return { ...VIDEO_OFF, ...AUDIO_OFF };
+  if (role === 'slides' || role === 'tape')
+    return { ...VIDEO_OFF, ...AUDIO_OFF };
   switch (presetId) {
     case 'match':
       if (role === 'wide') return { ...BALL_WIDE };

@@ -1221,9 +1221,14 @@ export class InputManager {
 
   // ── MP4 Restart ───────────────────────────────────────────
 
+  /**
+   * `playFromMs` may be a function: it is evaluated right before the
+   * re-register, so a caller restarting several clips in a row can make each
+   * one seek as far in as the restarts before it took.
+   */
   async restartMp4Input(
     inputId: string,
-    playFromMs: number,
+    playFromMs: number | (() => number),
     loop: boolean,
   ): Promise<void> {
     const input = this.getInput(inputId);
@@ -1243,7 +1248,7 @@ export class InputManager {
     const t0 = Date.now();
     logTimelineEvent(
       this.idPrefix,
-      `[mp4-restart] BEGIN "${name}" from=${playFromMs}ms loop=${loop}`,
+      `[mp4-restart] BEGIN "${name}" from=${typeof playFromMs === 'number' ? `${playFromMs}ms` : 'at register'} loop=${loop}`,
     );
 
     input.restartFading = true;
@@ -1264,7 +1269,8 @@ export class InputManager {
         `[mp4-restart] unregister OK "${name}" ${Date.now() - t0}ms`,
       );
 
-      const requestedPlayFromMs = Number.isFinite(playFromMs) ? playFromMs : 0;
+      const from = typeof playFromMs === 'number' ? playFromMs : playFromMs();
+      const requestedPlayFromMs = Number.isFinite(from) ? from : 0;
       let normalizedPlayFromMs = Math.max(0, requestedPlayFromMs);
       const durationMs = input.mp4DurationMs;
       if (durationMs && durationMs > 0) {
