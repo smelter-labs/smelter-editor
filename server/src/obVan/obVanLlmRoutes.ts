@@ -11,14 +11,23 @@
 import { STATUS_CODES } from 'node:http';
 import { Type, type Static } from '@sinclair/typebox';
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import { OB_CONFIG_LIMITS, type ObLlmStatus } from '@smelter-editor/types';
+import {
+  OB_CONFIG_LIMITS,
+  OB_LLM_MODEL_IDS,
+  type ObLlmModelId,
+  type ObLlmStatus,
+} from '@smelter-editor/types';
 import type { ObBriefResult } from './contracts';
 import { isObLlmError, obLlmErrorStatus } from './llm/errors';
 
 /** What the routes need from a room (RoomState satisfies it structurally). */
 export interface ObLlmRoomApi {
   obLlmBrief(brief: string): Promise<ObBriefResult>;
-  obLlmAnalyst(enabled: boolean, intervalS?: number): ObLlmStatus;
+  obLlmAnalyst(
+    enabled: boolean,
+    intervalS?: number,
+    model?: ObLlmModelId,
+  ): ObLlmStatus;
   obLlmStatus(): ObLlmStatus;
   obLlmWrap(): Promise<string>;
   obLlmKill(): ObLlmStatus;
@@ -41,6 +50,9 @@ const ObLlmAnalystBodySchema = Type.Object({
       minimum: OB_CONFIG_LIMITS.analystIntervalS.min,
       maximum: OB_CONFIG_LIMITS.analystIntervalS.max,
     }),
+  ),
+  model: Type.Optional(
+    Type.Union(OB_LLM_MODEL_IDS.map((id) => Type.Literal(id))),
   ),
 });
 
@@ -90,9 +102,14 @@ export function registerObVanLlmRoutes(
         roomId: req.params.roomId,
         enabled: req.body.enabled,
         intervalS: req.body.intervalS,
+        model: req.body.model,
       });
       try {
-        const status = room.obLlmAnalyst(req.body.enabled, req.body.intervalS);
+        const status = room.obLlmAnalyst(
+          req.body.enabled,
+          req.body.intervalS,
+          req.body.model,
+        );
         return res.status(200).send({ status });
       } catch (err) {
         return sendLlmError(res, err);

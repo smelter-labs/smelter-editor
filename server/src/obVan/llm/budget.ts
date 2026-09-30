@@ -96,7 +96,8 @@ export function obLlmLimitsFromEnv(
 }
 
 export class ObLlmBudget {
-  readonly model: string;
+  /** Prices calls from now on; switched together with the client's model. */
+  model: string;
   readonly limits: ObLlmBudgetLimits;
   runs = 0;
   /** All input tokens (uncached + cache read + cache write). */

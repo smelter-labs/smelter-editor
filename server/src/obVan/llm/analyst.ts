@@ -1,7 +1,7 @@
 /**
  * OB Van LLM — the periodic situation analyst.
  *
- * Every `intervalS` (default 30, min 10) while the show is ON AIR, if the
+ * Every `intervalS` (default 15, min 10) while the show is ON AIR, if the
  * situation changed (segment, program, last cut, roster, new caption words)
  * and no call is in flight, it sends a compact report + the last minute of
  * captions and lets the model nudge the show with ≤ 3 bounded actions (tool
@@ -31,7 +31,7 @@ import {
 import { OB_DIRECT_MAX_ACTIONS, OB_DIRECT_TOOL } from './schema';
 import type { ObTranscriptLine, ObTranscriptRing } from './transcripts';
 
-export const OB_ANALYST_DEFAULT_INTERVAL_S = 30;
+export const OB_ANALYST_DEFAULT_INTERVAL_S = 15;
 export const OB_ANALYST_MIN_INTERVAL_S = OB_CONFIG_LIMITS.analystIntervalS.min;
 export const OB_ANALYST_MAX_INTERVAL_S = OB_CONFIG_LIMITS.analystIntervalS.max;
 export const OB_ANALYST_MAX_BACKOFF_MS = 5 * 60_000;
@@ -45,7 +45,7 @@ export function clampAnalystInterval(s: number | undefined): number {
   );
 }
 
-/** `OB_VAN_LLM_ANALYST_INTERVAL_S` (default 30, clamped 10..300). */
+/** `OB_VAN_LLM_ANALYST_INTERVAL_S` (default 15, clamped 10..300). */
 export function analystIntervalFromEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): number {

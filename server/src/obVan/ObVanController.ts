@@ -9,6 +9,7 @@ import type {
   ObControlAction,
   ObEffects,
   ObErrorCode,
+  ObLlmModelId,
   ObLlmStatus,
   ObLogEntry,
   ObLogKind,
@@ -36,6 +37,7 @@ import {
   OB_RULESET_LIMITS,
   OB_TRANSITION_LIMITS,
   isObCamRole,
+  isObLlmModelId,
   obPresetRuleset,
   obShotCams,
   obShotsEqual,
@@ -566,6 +568,11 @@ export class ObVanController {
         },
         { intervalS: this.config.llm.analystIntervalS },
       ) ?? null;
+    // `OB_VAN_LLM_MODEL` may pick a different initial model than the config
+    // default — reflect it in the config when it is one the UI knows.
+    const liveModel = this.llm?.status().model;
+    if (liveModel && isObLlmModelId(liveModel))
+      this.config.llm.model = liveModel;
   }
 
   private now(): number {
@@ -1141,6 +1148,10 @@ export class ObVanController {
         );
       if (typeof patch.llm.analyst === 'boolean')
         c.llm.analyst = patch.llm.analyst;
+      if (isObLlmModelId(patch.llm.model)) {
+        c.llm.model = patch.llm.model;
+        this.llm?.setModel(c.llm.model);
+      }
       this.llm?.setAnalyst(c.llm.analyst, c.llm.analystIntervalS);
     }
     if (typeof patch.subtitles === 'boolean') c.subtitles = patch.subtitles;
@@ -2750,12 +2761,17 @@ export class ObVanController {
     });
   }
 
-  llmAnalyst(enabled: boolean, intervalS?: number): ObLlmStatus {
+  llmAnalyst(
+    enabled: boolean,
+    intervalS?: number,
+    model?: ObLlmModelId,
+  ): ObLlmStatus {
     const llm = this.requireLlm();
     this.setConfig({
       llm: {
         analyst: enabled,
         ...(intervalS !== undefined ? { analystIntervalS: intervalS } : {}),
+        ...(model !== undefined ? { model } : {}),
       },
     });
     return llm.status();

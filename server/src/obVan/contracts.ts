@@ -31,7 +31,13 @@ import type {
 // ── Signals ────────────────────────────────────────────────────────────
 
 /** Normalised box (0..1 of the frame). */
-export type ObBox = { x: number; y: number; w: number; h: number; conf?: number };
+export type ObBox = {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  conf?: number;
+};
 export type ObTrackedBox = ObBox & { id: number };
 
 /** Worker audio hop (10 Hz). */
@@ -87,11 +93,20 @@ export type ObSignalState = {
   rmsEma: number;
   lastOnsetAirMs: number | null;
   onsetsPerSec: number;
-  beat: { periodMs: number | null; phaseAirMs: number | null; confidence: number };
+  beat: {
+    periodMs: number | null;
+    phaseAirMs: number | null;
+    confidence: number;
+  };
   motion: number;
   motionEma: number;
   motionSpike: boolean;
-  burst: { active: boolean; sinceAirMs: number | null; endedAirMs: number | null; peak: number };
+  burst: {
+    active: boolean;
+    sinceAirMs: number | null;
+    endedAirMs: number | null;
+    peak: number;
+  };
   people: {
     count: number;
     largest: ObTrackedBox | null;
@@ -106,7 +121,10 @@ export type ObSignalState = {
 
 export interface ObClock {
   /** Air time of a worker sample. */
-  airMsOf(camId: string, s: { ptsNanos?: number; arrivalMs: number; procMs: number }): number;
+  airMsOf(
+    camId: string,
+    s: { ptsNanos?: number; arrivalMs: number; procMs: number },
+  ): number;
   nowAir(): number;
   /** How far ahead of `nowAir()` the freshest signals are (≈ delay − procMs). */
   lookaheadMs(): number;
@@ -195,7 +213,10 @@ export interface ObBrain {
 }
 
 /** Where a virtual camera should look on a camera (implemented in `brain.ts`). */
-export type ObAttentionFn = (state: ObSignalState | undefined, target: ObAttentionTarget) => ObBox | null;
+export type ObAttentionFn = (
+  state: ObSignalState | undefined,
+  target: ObAttentionTarget,
+) => ObBox | null;
 
 // ── LLM ────────────────────────────────────────────────────────────────
 
@@ -218,7 +239,12 @@ export type ObSituation = {
     onProgram: boolean;
     onPreview: boolean;
     /** 10 s means. */
-    signals: { speechShare: number; rmsDb: number; motion: number; people: number } | null;
+    signals: {
+      speechShare: number;
+      rmsDb: number;
+      motion: number;
+      people: number;
+    } | null;
   }[];
   program: { shot: ObShot | null; sinceMs: number; source: ObActionSource };
   pacing: { minHoldMs: number; maxHoldMs: number };
@@ -250,9 +276,16 @@ export interface ObLlmModule {
     cams: ObSituation['cams'];
   }): Promise<ObBriefResult>;
   setAnalyst(enabled: boolean, intervalS?: number): void;
+  /** Switch the model for later calls (no-op without an API key). */
+  setModel(model: string): void;
   onTranscript(camNumber: number, text: string, airMs: number): void;
   setPhase(phase: ObPhase): void;
-  wrapNotes(input: { stats: ObStats; log: ObLogEntry[]; brief: string; eventName: string }): Promise<string>;
+  wrapNotes(input: {
+    stats: ObStats;
+    log: ObLogEntry[];
+    brief: string;
+    eventName: string;
+  }): Promise<string>;
   kill(): void;
   dispose(): void;
 }

@@ -16,7 +16,7 @@ paneli, sportu, teatru i koncertów. Kamery to **telefony** (QR → WHIP),
   deterministyczny „brain" tnie według **reguł w małym DSL** (presety TALK /
   MATCH / STAGE / GIG) i scoringu; każda decyzja ma powód w logu WHY;
 - **LLM (opcjonalnie)** — Claude zamienia brief po ludzku w zestaw reguł,
-  co ~30 s czyta raport sytuacyjny (sygnały, transkrypty, ostatnie cięcia) i
+  co ~15 s czyta raport sytuacyjny (sygnały, transkrypty, ostatnie cięcia) i
   wykonuje ograniczone akcje (następny segment, belka, tempo, preferowana
   kamera, notatka), a na koniec pisze „director's notes".
 
@@ -59,7 +59,7 @@ Pliki demo nie są w repo: skopiuj je do `server/data/mp4s/ob-demo/`
 
 **Dwie prędkości.** Szybka ścieżka (co tick kontrolera, 100 ms) jest
 deterministyczna i tania: sygnały → reguły → scoring → decyzja. Wolna ścieżka
-(LLM, co ~30 s, domyślnie wyłączona) nie tnie sama — zmienia *warunki* pracy
+(LLM, co ~15 s, domyślnie wyłączona) nie tnie sama — zmienia *warunki* pracy
 szybkiej ścieżki albo robi rzeczy „redakcyjne" (belki z nazwiskami usłyszanymi
 w transkrypcie, przejście do następnego segmentu rundownu).
 
@@ -172,8 +172,8 @@ WS pokoju (prefiks `ob_`): klient → `ob_spectate`, `ob_operator_join/leave`,
 | zmienna | znaczenie |
 |---|---|
 | `ANTHROPIC_API_KEY` | włącza LLM (bez klucza UI pokazuje „LLM OFF", presety działają) |
-| `OB_VAN_LLM_MODEL` | model (domyślnie `claude-sonnet-5`) |
-| `OB_VAN_LLM_ANALYST_INTERVAL_S` | interwał analityka (30, min 10) |
+| `OB_VAN_LLM_MODEL` | model startowy (domyślnie `claude-haiku-4-5`; panel przełącza HAIKU/SONNET/OPUS w locie) |
+| `OB_VAN_LLM_ANALYST_INTERVAL_S` | interwał analityka (15, min 10) |
 | `OB_VAN_LLM_MAX_RUNS_PER_EVENT`, `OB_VAN_LLM_MAX_INPUT_TOKENS_PER_EVENT` | limity kosztów (240 wywołań, 400k tokenów wejścia) |
 | `OB_VAN_PYTHON_PATH` | interpreter workera (domyślnie venv people-counter + `silero-vad`) |
 | `OB_SIM=1` | trasa `simulate-signal` |

@@ -109,6 +109,7 @@ import type {
   ObConfig,
   ObConfigPatch,
   ObControlAction,
+  ObLlmModelId,
   ObLlmStatus,
   ObOperatorCommand,
   ObRuleset,
@@ -3096,8 +3097,12 @@ export class RoomState {
     return this.obVan.llmBrief(brief);
   }
 
-  public obLlmAnalyst(enabled: boolean, intervalS?: number): ObLlmStatus {
-    return this.obVan.llmAnalyst(enabled, intervalS);
+  public obLlmAnalyst(
+    enabled: boolean,
+    intervalS?: number,
+    model?: ObLlmModelId,
+  ): ObLlmStatus {
+    return this.obVan.llmAnalyst(enabled, intervalS, model);
   }
 
   public obLlmStatus(): ObLlmStatus {

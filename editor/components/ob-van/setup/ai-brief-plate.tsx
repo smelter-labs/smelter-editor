@@ -3,11 +3,12 @@
 import React, { useRef, useState } from 'react';
 import {
   OB_CONFIG_LIMITS,
+  OB_LLM_MODELS,
   type ObLlmStatus,
   type ObRuleset,
 } from '@smelter-editor/types';
-import { generateObRuleset } from '@/app/actions/actions';
-import { Copy, Meta, OB, ObButton, TextArea, WarnPlate } from '../ob-kit';
+import { generateObRuleset, setObLlmAnalyst } from '@/app/actions/actions';
+import { Chip, Copy, Meta, OB, ObButton, TextArea, WarnPlate } from '../ob-kit';
 import { describeObError, type ObRoom } from '../use-ob-room';
 
 const BRIEF_PLACEHOLDER =
@@ -34,11 +35,30 @@ export function AiBriefPlate({
   onRulesetApplied: (ruleset: ObRuleset, origin: 'llm') => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [modelBusy, setModelBusy] = useState(false);
   const [rationale, setRationale] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const busyRef = useRef(false);
   const available = llm?.available === true;
+
+  const pickModel = async (model: (typeof OB_LLM_MODELS)[number]['id']) => {
+    const roomId = room.roomId;
+    if (!roomId || modelBusy || llm?.model === model) return;
+    setModelBusy(true);
+    try {
+      // The analyst route also carries the model; `enabled` is echoed as is.
+      const res = await setObLlmAnalyst(roomId, {
+        enabled: llm?.analyst ?? false,
+        model,
+      });
+      if (!res.ok) setError(describeObError(res.error));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setModelBusy(false);
+    }
+  };
 
   const generate = async () => {
     const roomId = room.roomId;
@@ -102,9 +122,22 @@ export function AiBriefPlate({
               : 'The server has no ANTHROPIC_API_KEY'
           }
         />
+        {available
+          ? OB_LLM_MODELS.map((m) => (
+              <Chip
+                key={m.id}
+                dense
+                active={llm?.model === m.id}
+                label={m.label}
+                title={`${m.id} · ${m.blurb}`}
+                disabled={modelBusy || busy}
+                onClick={() => void pickModel(m.id)}
+              />
+            ))
+          : null}
         <Meta size={9} tracking={0.08} color={available ? OB.dim : OB.amber}>
           {available
-            ? `${llm?.model ?? 'claude'} · ${brief.length}/${OB_CONFIG_LIMITS.brief.max}`
+            ? `${brief.length}/${OB_CONFIG_LIMITS.brief.max}`
             : 'LLM OFF — set ANTHROPIC_API_KEY on the server'}
         </Meta>
       </div>

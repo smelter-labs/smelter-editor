@@ -361,7 +361,7 @@ describe('helpers', () => {
   });
 
   it('reads the interval from the environment, clamped', () => {
-    expect(analystIntervalFromEnv({})).toBe(30);
+    expect(analystIntervalFromEnv({})).toBe(15);
     expect(analystIntervalFromEnv({ OB_VAN_LLM_ANALYST_INTERVAL_S: '5' })).toBe(
       10,
     );
@@ -370,7 +370,7 @@ describe('helpers', () => {
     ).toBe(45);
     expect(
       analystIntervalFromEnv({ OB_VAN_LLM_ANALYST_INTERVAL_S: 'soon' }),
-    ).toBe(30);
+    ).toBe(15);
   });
 });
 

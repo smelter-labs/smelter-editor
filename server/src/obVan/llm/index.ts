@@ -88,6 +88,7 @@ export function createObLlm(
         if (s !== undefined) wantedInterval = clampAnalystInterval(s);
         deps.onStatus(status());
       },
+      setModel: () => undefined,
       onTranscript: () => undefined,
       setPhase: () => undefined,
       wrapNotes: () => Promise.reject(unavailable()),
@@ -192,6 +193,15 @@ export function createObLlm(
 
     setAnalyst(enabled, s) {
       analyst.setEnabled(enabled, s);
+    },
+
+    setModel(model) {
+      const m = model.trim();
+      if (!m || m === llm.model) return;
+      llm.setModel?.(m);
+      // Calls from now on are priced at the new model's rates.
+      budget.model = llm.model;
+      emit();
     },
 
     onTranscript(camNumber, text, airMs) {
