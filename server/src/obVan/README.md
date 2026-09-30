@@ -276,11 +276,14 @@ dyskutują o transferze LeBrona do Sixers. Nowości względem `panel`:
   `mp4-cam` / `adopt-input`; od operatora: akcja `cam subtitle` (SETUP →
   CAMERAS ma pole obok talentu).
 - **Fake take'i (Remotion)** — pełne filmiki-zastępniki, zanim nagrasz
-  prawdziwe: `packages/ob-fake-takes` (stylizowane karty person z waveformem,
-  zegarem show i flashem klapa; wide z trójką przy biurku; rolka „ARCHIVE
-  FOOTAGE"). Audio to WAV-y on-air conductora (klap + TTS własnych kwestii,
-  wide słyszy wszystkich ciszej), więc całość przechodzi normalny pipeline
-  clap-sync. Rolka: wrzuć własne klipy do `data/ob-demo-raw/nba/tape-src/`
+  prawdziwe: `packages/ob-fake-takes` (ilustrowane gadające postacie — jedna
+  twarz, kostium wg roli, usta/brwi/gest ręki ruszają się w slotach kwestii;
+  waveform, zegar show i flash klapa; wide z całym panelem przy biurku; rolka
+  „ARCHIVE FOOTAGE" z akcją rzutową dwójki graczy). Audio to WAV-y on-air
+  conductora (klap + TTS własnych kwestii; **wide = sam klap i cisza** — miks
+  gra wszystkie kamery naraz, więc głosy w wide grałyby podwójnie i jitter
+  startu klipów robił z tego pogłos), więc całość przechodzi normalny
+  pipeline clap-sync. Rolka: wrzuć własne klipy do `data/ob-demo-raw/nba/tape-src/`
   (albo zostaw wygenerowany `fake-reel.mp4`), a `ob-tape-reel.mjs` sklei z
   nich JEDEN plik dokładnie o długości show (przymus równych długości).
 

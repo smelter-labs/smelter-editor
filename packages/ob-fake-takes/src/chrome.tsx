@@ -98,6 +98,38 @@ export const ClapFlash: React.FC<{ clapAtS: number }> = ({ clapAtS }) => {
   );
 };
 
+/** A desk microphone; the head glows in the persona color while they talk. */
+export const DeskMic: React.FC<{
+  x: number;
+  y: number;
+  color: string;
+  active: boolean;
+  scale?: number;
+}> = ({ x, y, color, active, scale = 1 }) => (
+  <svg
+    width={120 * scale}
+    height={150 * scale}
+    viewBox="0 0 120 150"
+    style={{ position: "absolute", left: x, top: y - 150 * scale + 10 }}
+  >
+    <rect x={40} y={130} width={40} height={12} rx={4} fill="rgba(242,244,248,.28)" />
+    <line x1={60} y1={132} x2={60} y2={70} stroke="rgba(242,244,248,.35)" strokeWidth={6} />
+    <rect
+      x={42}
+      y={28}
+      width={36}
+      height={52}
+      rx={18}
+      fill={active ? color : "rgba(242,244,248,.4)"}
+      opacity={active ? 0.95 : 0.8}
+    />
+    {active ? <rect x={36} y={22} width={48} height={64} rx={24} fill={color} opacity={0.25} /> : null}
+    {[42, 52, 62].map((yy) => (
+      <line key={yy} x1={48} y1={yy} x2={72} y2={yy} stroke="rgba(10,12,16,.5)" strokeWidth={3} />
+    ))}
+  </svg>
+);
+
 export const Waveform: React.FC<{
   active: boolean;
   color: string;

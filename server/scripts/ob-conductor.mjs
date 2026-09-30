@@ -13,8 +13,9 @@
 // Writes into --out (default data/ob-demo-raw/<name>/):
 //   <name>.full.wav         everyone's lines (rehearsal, timing check)
 //   <name>.<persona>.wav    per persona: the others' lines + a pip before yours
-//   <name>.onair.*.wav      stand-in room audio (clap + own lines; wide = everyone,
-//                           softer) — the soundtrack of ob-fake-takes.mjs renders
+//   <name>.onair.*.wav      stand-in room audio (clap + own lines; wide = clap only —
+//                           mix mode would double every voice) — the soundtrack of
+//                           ob-fake-takes.mjs renders
 //   <name>.prompter.html    teleprompter playing a persona track (keep it next to the wavs)
 //   <name>.cue.md           cue sheet
 //   <name>.timing.json      timeline for ob-prep-takes.mjs / ob-demo-run.mjs
@@ -685,17 +686,24 @@ async function main() {
   }
 
   // On-air stand-in audio (what each phone would record in the room): room
-  // tone + the clap + the persona's own lines; `WIDE` hears everyone, softer
-  // (distance), like the mock takes. Consumed by ob-fake-takes.mjs.
+  // tone + the clap + the persona's own lines. `WIDE` is the clap ALONE over
+  // digital silence: the demos run audio mode `mix` (every close cam is always
+  // live), so any voice in the wide plays twice and input start/loop jitter
+  // turns that into a slapback echo on air. Silence after the clap also makes
+  // ob-prep-takes skip loudnorm for the wide (nothing to measure in the
+  // trimmed window), so it cannot boost room tone into hiss. Consumed by
+  // ob-fake-takes.mjs.
   const buildOnair = (forKey, seed) => {
+    if (forKey === 'WIDE') {
+      const buf = new Float32Array(Math.ceil(trackS * SR));
+      mixInto(buf, clapSound(3 + seed), cfg.clap, 0.6);
+      return buf;
+    }
     const buf = whiteNoise(Math.ceil(trackS * SR), 0.004, 41 + seed);
-    mixInto(buf, clapSound(3 + seed), cfg.clap, forKey === 'WIDE' ? 0.6 : 1);
+    mixInto(buf, clapSound(3 + seed), cfg.clap);
     for (const e of events) {
       if (e.kind !== 'line' || !pcmOf.get(e)) continue;
-      if (forKey === 'WIDE')
-        mixInto(buf, pcmOf.get(e), showStart + e.startS, 0.45);
-      else if (e.who === forKey)
-        mixInto(buf, pcmOf.get(e), showStart + e.startS);
+      if (e.who === forKey) mixInto(buf, pcmOf.get(e), showStart + e.startS);
     }
     return buf;
   };
