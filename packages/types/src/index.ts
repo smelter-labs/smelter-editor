@@ -453,6 +453,7 @@ export type {
   ObLogTone,
   ObLogEntry,
   ObLlmStatus,
+  ObLlmModelId,
   ObStats,
   ObState,
   ObOperatorCommand,
@@ -494,7 +495,10 @@ export {
   OB_DEFAULT_CONFIG,
   OB_CONFIG_LIMITS,
   OB_CONTROL_ACTIONS,
+  OB_LLM_MODELS,
+  OB_LLM_MODEL_IDS,
   isObCamRole,
+  isObLlmModelId,
 } from "./ob-van-events.js";
 export type { ObPresetMeta } from "./ob-van-presets.js";
 export {

@@ -404,7 +404,7 @@ export type ObConfig = {
   /** The host's natural-language brief (LLM input). */
   brief: string;
   rundown: ObRundownItem[];
-  llm: { analyst: boolean; analystIntervalS: number };
+  llm: { analyst: boolean; analystIntervalS: number; model: ObLlmModelId };
   /**
    * Host recognition (the `follow` preset's core): a new person on a camera
    * is snapshotted and shown to the LLM, which matches the description; a
@@ -413,6 +413,23 @@ export type ObConfig = {
   host: { enabled: boolean; description: string };
   joinUrls?: { cam?: string };
 };
+
+/** Models the LLM layer can run on (UI selector; validated on config/route). */
+export const OB_LLM_MODELS = [
+  { id: "claude-haiku-4-5", label: "HAIKU", blurb: "fastest · cheapest" },
+  { id: "claude-sonnet-5", label: "SONNET", blurb: "balanced" },
+  { id: "claude-opus-5", label: "OPUS", blurb: "deepest · slowest" },
+] as const;
+
+export type ObLlmModelId = (typeof OB_LLM_MODELS)[number]["id"];
+
+export const OB_LLM_MODEL_IDS: readonly ObLlmModelId[] = OB_LLM_MODELS.map(
+  (m) => m.id,
+);
+
+export function isObLlmModelId(v: unknown): v is ObLlmModelId {
+  return typeof v === "string" && OB_LLM_MODEL_IDS.includes(v as ObLlmModelId);
+}
 
 export type ObConfigPatch = {
   eventName?: string;
@@ -451,7 +468,7 @@ export const OB_DEFAULT_CONFIG: ObConfig = {
   subtitles: true,
   brief: "",
   rundown: [],
-  llm: { analyst: false, analystIntervalS: 30 },
+  llm: { analyst: false, analystIntervalS: 15, model: "claude-haiku-4-5" },
   host: { enabled: false, description: "wears a GOLD baseball cap" },
 };
 

@@ -7,7 +7,8 @@
  *   (tools render before system, so the stable tool + system prefix caches);
  * - `tool_choice: auto` (+ `disable_parallel_tool_use`) and ONE retry with an
  *   explicit instruction when the model answers without calling the tool;
- * - `output_config.effort` per call, thinking left at the model default;
+ * - `output_config.effort` per call (omitted on models that reject it, e.g.
+ *   Haiku 4.5), thinking left at the model default;
  * - `maxRetries: 0` by default — the analyst has its own backoff, the brief
  *   opts into one SDK retry;
  * - transport errors are mapped to `ObLlmError` codes `rate | net | api`.
@@ -26,8 +27,16 @@ import Anthropic, {
 import { ObLlmError } from './errors';
 import type { ObLlmToolDef } from './schema';
 
-/** Default model (see `OB_VAN_LLM_MODEL`). */
-export const OB_LLM_DEFAULT_MODEL = 'claude-sonnet-5';
+/** Default model (see `OB_VAN_LLM_MODEL`); the UI can switch it at runtime. */
+export const OB_LLM_DEFAULT_MODEL = 'claude-haiku-4-5';
+
+/**
+ * `output_config.effort` is rejected with a 400 on Haiku 4.5 / Sonnet 4.5
+ * (adaptive-thinking models accept it) — omit the field there.
+ */
+export function obLlmModelSupportsEffort(model: string): boolean {
+  return !/haiku|sonnet-4-5/.test(model);
+}
 
 export type ObLlmEffort = 'low' | 'medium' | 'high';
 
@@ -69,6 +78,8 @@ export type ObLlmCallResult = {
 
 export interface ObLlmClient {
   readonly model: string;
+  /** Switch the model for later calls (calls in flight keep theirs). */
+  setModel?(model: string): void;
   call(input: ObLlmCallInput): Promise<ObLlmCallResult>;
 }
 
@@ -135,14 +146,23 @@ export type ObMessagesApi = {
 };
 
 export class AnthropicObLlmClient implements ObLlmClient {
-  readonly model: string;
+  private currentModel: string;
   private readonly messages: ObMessagesApi;
   /** Set when the API rejected a strict schema; later calls go non-strict. */
   private strictRejected = false;
 
   constructor(opts: { model: string; messages: ObMessagesApi }) {
-    this.model = opts.model;
+    this.currentModel = opts.model;
     this.messages = opts.messages;
+  }
+
+  get model(): string {
+    return this.currentModel;
+  }
+
+  setModel(model: string): void {
+    const m = model.trim();
+    if (m) this.currentModel = m;
   }
 
   async call(input: ObLlmCallInput): Promise<ObLlmCallResult> {
@@ -150,10 +170,11 @@ export class AnthropicObLlmClient implements ObLlmClient {
     let attempts = 0;
     let user = input.user;
     let maxTokens = input.maxTokens;
+    const model = this.currentModel;
     const maxAttempts = input.tool ? 2 : 1;
     for (;;) {
       attempts++;
-      const message = await this.send(input, user, maxTokens);
+      const message = await this.send(model, input, user, maxTokens);
       usage = addObLlmUsage(usage, usageOf(message.usage));
       const text = message.content
         .filter((b): b is Anthropic.TextBlock => b.type === 'text')
@@ -196,6 +217,7 @@ export class AnthropicObLlmClient implements ObLlmClient {
   }
 
   private async send(
+    model: string,
     input: ObLlmCallInput,
     user: string,
     maxTokens: number,
@@ -217,7 +239,7 @@ export class AnthropicObLlmClient implements ObLlmClient {
         ]
       : user;
     const body: Anthropic.MessageCreateParamsNonStreaming = {
-      model: this.model,
+      model,
       max_tokens: maxTokens,
       system: [
         {
@@ -227,7 +249,9 @@ export class AnthropicObLlmClient implements ObLlmClient {
         },
       ],
       messages: [{ role: 'user', content }],
-      output_config: { effort: input.effort },
+      ...(obLlmModelSupportsEffort(model)
+        ? { output_config: { effort: input.effort } }
+        : {}),
     };
     if (input.tool) {
       body.tools = [
@@ -262,7 +286,7 @@ export class AnthropicObLlmClient implements ObLlmClient {
           `[ob-van][llm] strict tool schema rejected, retrying non-strict: ${e.message}`,
         );
         this.strictRejected = true;
-        return this.send(input, user, maxTokens);
+        return this.send(model, input, user, maxTokens);
       }
       throw toObLlmError(e);
     }
@@ -271,8 +295,8 @@ export class AnthropicObLlmClient implements ObLlmClient {
 
 /**
  * The real client, or `null` when `ANTHROPIC_API_KEY` is not set (the UI shows
- * "LLM OFF" and presets keep working). Model: `OB_VAN_LLM_MODEL` or
- * `claude-sonnet-5`.
+ * "LLM OFF" and presets keep working). Initial model: `OB_VAN_LLM_MODEL` or
+ * `claude-haiku-4-5`; the panel can switch it per room.
  */
 export function createObLlmClient(
   env: NodeJS.ProcessEnv = process.env,

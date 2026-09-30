@@ -55,6 +55,7 @@ import type {
   ObConfig,
   ObConfigPatch,
   ObControlAction,
+  ObLlmModelId,
   ObLlmStatus,
   ObOperatorCommand,
   ObRuleset,
@@ -432,7 +433,7 @@ interface SmelterApiClient {
   >;
   setObLlmAnalyst(
     roomId: string,
-    opts: { enabled: boolean; intervalS?: number },
+    opts: { enabled: boolean; intervalS?: number; model?: ObLlmModelId },
   ): Promise<ObResult<ObLlmStatus>>;
   getObLlmStatus(roomId: string): Promise<ObLlmStatus>;
   getObWrapNotes(roomId: string): Promise<ObResult<{ notes: string }>>;

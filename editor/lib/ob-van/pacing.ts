@@ -60,11 +60,11 @@ export function clampResumeAfterMs(ms: unknown): number {
   return Math.min(lim.max, Math.max(lim.min, clamped * 1000));
 }
 
-export const ANALYST_INTERVAL_S = { min: 15, max: 120, step: 15 } as const;
+export const ANALYST_INTERVAL_S = { min: 10, max: 120, step: 5 } as const;
 
 /** Analyst interval in the UI range (inside the server's 10..300 s). */
 export function clampAnalystIntervalS(s: unknown): number {
-  if (typeof s !== 'number' || !Number.isFinite(s)) return 30;
+  if (typeof s !== 'number' || !Number.isFinite(s)) return 15;
   const { min, max } = ANALYST_INTERVAL_S;
   return Math.min(max, Math.max(min, Math.round(s)));
 }

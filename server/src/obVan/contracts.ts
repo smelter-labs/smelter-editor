@@ -295,6 +295,8 @@ export interface ObLlmModule {
     base?: ObRuleset;
   }): Promise<ObBriefResult>;
   setAnalyst(enabled: boolean, intervalS?: number): void;
+  /** Switch the model for later calls (no-op without an API key). */
+  setModel(model: string): void;
   /**
    * Host identification (vision): one snapshot + the host description →
    * `{isHost, confidence, reason}`, or null when the model refused / answered

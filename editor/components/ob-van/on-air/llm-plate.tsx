@@ -1,7 +1,11 @@
 'use client';
 
 import React, { useState } from 'react';
-import type { ObLlmStatus, ObLogEntry } from '@smelter-editor/types';
+import {
+  OB_LLM_MODELS,
+  type ObLlmStatus,
+  type ObLogEntry,
+} from '@smelter-editor/types';
 import { killObLlm, setObLlmAnalyst } from '@/app/actions/actions';
 import { ANALYST_INTERVAL_S, clampAnalystIntervalS } from '@/lib/ob-van/pacing';
 import {
@@ -25,8 +29,8 @@ export function formatTokens(n: number): string {
 
 /**
  * The LLM on air: the analyst's last notes, usage (tokens / cost / runs),
- * the ANALYST switch + interval, and a two-press KILL that stops every LLM
- * call for the rest of the event.
+ * the ANALYST switch + interval, the model picker, and a two-press KILL that
+ * stops every LLM call for the rest of the event.
  */
 export function LlmPlate({
   roomId,
@@ -65,6 +69,9 @@ export function LlmPlate({
     );
 
   const lastNote = notes[0]?.text ?? llm.lastNote;
+  /** `OB_VAN_LLM_MODEL` may pick a model the selector does not list. */
+  const customModel =
+    llm.model && !OB_LLM_MODELS.some((m) => m.id === llm.model);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -111,6 +118,37 @@ export function LlmPlate({
             void call(() => killObLlm(roomId ?? ''));
           }}
         />
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <Meta size={9} tracking={0.08} color={OB.dim}>
+          MODEL
+        </Meta>
+        {OB_LLM_MODELS.map((m) => (
+          <Chip
+            key={m.id}
+            dense
+            active={llm.model === m.id}
+            label={m.label}
+            title={`${m.id} · ${m.blurb}`}
+            disabled={busy}
+            onClick={() =>
+              llm.model === m.id
+                ? undefined
+                : void call(() =>
+                    setObLlmAnalyst(roomId ?? '', {
+                      enabled: llm.analyst,
+                      intervalS: interval,
+                      model: m.id,
+                    }),
+                  )
+            }
+          />
+        ))}
+        {customModel ? (
+          <Mono size={9} tracking={0.04} uppercase={false} color={OB.dim}>
+            {llm.model}
+          </Mono>
+        ) : null}
       </div>
       <Mono size={9} tracking={0.06} color={OB.dim}>
         {llm.busy ? 'THINKING · ' : ''}
