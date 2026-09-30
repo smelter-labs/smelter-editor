@@ -7,7 +7,8 @@ import type {
   ObRuleset,
   ObState,
 } from '@smelter-editor/types';
-import { getObState, setObConfig } from '@/app/actions/actions';
+import { getObState, listObDemos, setObConfig } from '@/app/actions/actions';
+import type { ObDemoInfo } from '@/lib/api-client';
 import { useKbtRecording } from '@/components/kettlebell-tournament/use-kbt-recording';
 import { changedSections } from '@/components/football-game/live-config-diff';
 import { useJoinLinkPush, useJoinLinks } from '@/lib/arcade/use-join-link';
@@ -73,6 +74,8 @@ export function ObVanArcade({ initialRoomId }: { initialRoomId?: string }) {
   );
   const [config, setConfig] = useState<ObUiConfig>(DEFAULT_OB_UI_CONFIG);
   const [recordingSaved, setRecordingSaved] = useState(false);
+  const [demos, setDemos] = useState<ObDemoInfo[]>([]);
+  const [loadingDemo, setLoadingDemo] = useState<string | null>(null);
 
   // The room hook hands REST replies to the feed (no wait for the echo).
   const ingestRef = useRef<((state: ObState) => void) | null>(null);
@@ -137,6 +140,9 @@ export function ObVanArcade({ initialRoomId }: { initialRoomId?: string }) {
 
   useEffect(() => {
     if (!initialRoomId) setConfig(loadConfig());
+    listObDemos()
+      .then((d) => setDemos(d.demos))
+      .catch(() => setDemos([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -220,6 +226,27 @@ export function ObVanArcade({ initialRoomId }: { initialRoomId?: string }) {
     if (created) {
       markSynced(config);
       setScreen('setup');
+    }
+  };
+
+  /** QUICK DEMO: create the room, then let the server replay the demo's
+   * cams.json (config → rules → file cams → sync) and mirror its config. */
+  const newDemoEvent = async (dir: string) => {
+    if (room.creating || loadingDemo) return;
+    setLoadingDemo(dir);
+    try {
+      if (!room.roomId && !(await room.createRoom(config))) return;
+      const state = await room.loadDemo(dir);
+      if (state) {
+        const cfg = serverConfigToUi(state.config, config);
+        setConfig(cfg);
+        markSynced(cfg);
+      } else {
+        markSynced(config);
+      }
+      setScreen('setup');
+    } finally {
+      setLoadingDemo(null);
     }
   };
 
@@ -369,6 +396,9 @@ export function ObVanArcade({ initialRoomId }: { initialRoomId?: string }) {
           }
           eventName={config.eventName}
           onNewEvent={() => void newEvent()}
+          demos={demos.map((d) => ({ dir: d.dir, label: d.eventName }))}
+          loadingDemo={loadingDemo}
+          onDemo={(dir) => void newDemoEvent(dir)}
         />
       ) : null}
       {screen === 'setup' ? (

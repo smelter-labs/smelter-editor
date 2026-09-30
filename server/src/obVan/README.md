@@ -284,6 +284,12 @@ dyskutują o transferze LeBrona do Sixers. Nowości względem `panel`:
   (albo zostaw wygenerowany `fake-reel.mp4`), a `ob-tape-reel.mjs` sklei z
   nich JEDEN plik dokładnie o długości show (przymus równych długości).
 
+Z edytora: ekran tytułowy `/ob-van` ma **QUICK DEMOS** — jeden przycisk na
+każdy `data/mp4s/ob-demo/*/cams.json` (`GET /ob-van/demos`), który tworzy
+pokój i odtwarza całą sekwencję setupu po stronie serwera
+(`POST /room/:id/ob-van/load-demo`: config → override'y reguł → kamery
+plikowe z belkami → sync). Zostaje tylko GO LIVE → restart klipów → AUTO.
+
 ```bash
 cd server
 node scripts/ob-demo-slides.mjs --deck nba

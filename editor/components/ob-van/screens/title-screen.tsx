@@ -58,19 +58,26 @@ function LampRow() {
   );
 }
 
-/** Attract screen: the wordmark, what it does, NEW EVENT. */
+/** Attract screen: the wordmark, what it does, NEW EVENT, QUICK DEMOS. */
 export function TitleScreen({
   creating,
   resolution,
   onResolution,
   eventName,
   onNewEvent,
+  demos = [],
+  loadingDemo = null,
+  onDemo,
 }: {
   creating: boolean;
   resolution: ObResolution;
   onResolution: (r: ObResolution) => void;
   eventName: string;
   onNewEvent: () => void;
+  /** Loadable demo manifests (a cams.json per dir under data/mp4s/ob-demo). */
+  demos?: { dir: string; label: string }[];
+  loadingDemo?: string | null;
+  onDemo?: (dir: string) => void;
 }) {
   useArcadeKeys({ confirm: () => !creating && onNewEvent() });
 
@@ -210,6 +217,33 @@ export function TitleScreen({
           />
         </div>
       </div>
+
+      {demos.length && onDemo ? (
+        <div
+          style={{
+            position: 'absolute',
+            left: 72,
+            top: 652,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+          }}>
+          <Meta size={9}>QUICK DEMOS · ROOM + PRESET + FILE CAMS + SYNC</Meta>
+          <div
+            style={{ display: 'flex', gap: 10, flexWrap: 'wrap', width: 640 }}>
+            {demos.map((d) => (
+              <ObButton
+                key={d.dir}
+                label={
+                  loadingDemo === d.dir ? 'LOADING…' : d.label.toUpperCase()
+                }
+                locked={creating || loadingDemo != null}
+                onClick={() => onDemo(d.dir)}
+              />
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div
         style={{

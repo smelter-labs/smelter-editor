@@ -385,6 +385,10 @@ interface SmelterApiClient {
   ): Promise<ObResult<ObState>>;
   getObState(roomId: string): Promise<ObState>;
   operateOb(roomId: string, cmd: ObOperatorCommand): Promise<ObResult<ObState>>;
+  /** Demo manifests under data/mp4s/ob-demo (one entry per cams.json). */
+  listObDemos(): Promise<{ demos: ObDemoInfo[] }>;
+  /** One-click demo: config + rules + file cams + sync from its cams.json. */
+  loadObDemo(roomId: string, dir: string): Promise<ObResult<ObState>>;
   /** Use a looping mp4 from data/mp4s as a camera with a role. */
   attachObMp4Cam(
     roomId: string,
@@ -542,6 +546,14 @@ async function sendRequest(
   }
   return (await response.json()) as object;
 }
+
+/** One loadable OB Van demo (a cams.json under data/mp4s/ob-demo). */
+export type ObDemoInfo = {
+  dir: string;
+  eventName: string;
+  presetId: string;
+  cams: number;
+};
 
 /** A refused OB Van request: the server's `{code, message}` (+ ruleset errors). */
 export type ObApiError = { code: string; message: string; errors?: string[] };
@@ -1158,6 +1170,24 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
           cmd,
         });
         return data.state as ObState;
+      });
+    },
+
+    async listObDemos() {
+      const data = await req('get', '/ob-van/demos');
+      return { demos: (data as { demos?: ObDemoInfo[] }).demos ?? [] };
+    },
+
+    async loadObDemo(roomId, dir) {
+      return obCall(async () => {
+        const data = await req(
+          'post',
+          `/room/${enc(roomId)}/ob-van/load-demo`,
+          {
+            dir,
+          },
+        );
+        return (data as { state: ObState }).state;
       });
     },
 

@@ -11,7 +11,9 @@
  * TypeBox union of the whole `ObOperatorCommand` vocabulary; the controller
  * re-validates the semantics (cameras exist and are live, phase).
  */
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { STATUS_CODES } from 'node:http';
+import path from 'node:path';
 import { Type, type Static, type TSchema } from '@sinclair/typebox';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import {
@@ -31,6 +33,7 @@ import {
   type ObState,
   isObCamRole,
 } from '@smelter-editor/types';
+import { DATA_DIR } from '../dataDir';
 import { sanitizeFbMp4FileName } from '../football/mp4CamFileName';
 import type { ObCommandResult, ObSimSample } from './ObVanController';
 
@@ -333,6 +336,79 @@ function statusOf(code: ObErrorCode): number {
   }
 }
 
+// ── Demo manifests (data/mp4s/ob-demo/<name>/cams.json) ───────────────────
+// The same manifests scripts/ob-demo-run.mjs uses; `load-demo` replays its
+// setup sequence server-side so the editor can do it with one button.
+
+const OB_DEMO_ROOT = path.join(DATA_DIR, 'mp4s', 'ob-demo');
+
+const LoadDemoSchema = Type.Object({
+  dir: Type.String({ maxLength: 128, pattern: '^ob-demo/[A-Za-z0-9._-]+$' }),
+});
+
+type ObDemoManifest = {
+  eventName?: string;
+  presetId?: string;
+  captions?: boolean;
+  brief?: string;
+  audio?: { mode?: string; cam?: string };
+  ruleOverrides?: Record<string, Record<string, unknown>>;
+  config?: Record<string, unknown>;
+  rundown?: { id?: string; title?: string; atS?: number }[];
+  resumeAfterMs?: number;
+  cams?: {
+    file: string;
+    role: string;
+    name?: string;
+    talent?: string | null;
+    subtitle?: string | null;
+    optional?: boolean;
+  }[];
+};
+
+type ObDemoCam = NonNullable<ObDemoManifest['cams']>[number] & {
+  fileName: string;
+};
+
+function readObDemo(dir: string): {
+  m: ObDemoManifest;
+  cams: ObDemoCam[];
+  skipped: string[];
+  rundown: { id: string; title: string }[];
+} {
+  const abs = path.join(OB_DEMO_ROOT, dir.slice('ob-demo/'.length));
+  const camsPath = path.join(abs, 'cams.json');
+  if (!existsSync(camsPath)) throw new Error(`no cams.json under ${dir}`);
+  const m = JSON.parse(readFileSync(camsPath, 'utf8')) as ObDemoManifest;
+  const timingPath = path.join(abs, 'timing.json');
+  const timing = existsSync(timingPath)
+    ? (JSON.parse(readFileSync(timingPath, 'utf8')) as {
+        rundown?: { id?: string; title?: string }[];
+      })
+    : null;
+  const cams: ObDemoCam[] = [];
+  const skipped: string[] = [];
+  for (const c of m.cams ?? []) {
+    const fileName = sanitizeFbMp4FileName(`${dir}/${c.file}`);
+    if (!fileName) throw new Error(`bad cam file name: ${c.file}`);
+    if (!existsSync(path.join(abs, c.file))) {
+      if (c.optional) {
+        skipped.push(c.file);
+        continue;
+      }
+      throw new Error(`${dir}/${c.file} not found`);
+    }
+    if (!isObCamRole(c.role)) throw new Error(`unknown role: ${c.role}`);
+    cams.push({ ...c, fileName });
+  }
+  if (!cams.length) throw new Error('cams.json lists no cameras');
+  const rundown = (m.rundown ?? timing?.rundown ?? []).map((r, i) => ({
+    id: String(r.id ?? `seg-${i + 1}`).slice(0, 40),
+    title: String(r.title ?? '').slice(0, 60),
+  }));
+  return { m, cams, skipped, rundown };
+}
+
 function sendError(
   res: FastifyReply,
   code: ObErrorCode,
@@ -510,6 +586,116 @@ export function registerObVanRoutes(
       );
       if (!r.ok) return sendError(res, r.code, r.message);
       return res.status(200).send({ ok: true });
+    },
+  );
+
+  // Demo manifests on disk — what the QUICK DEMOS buttons can load.
+  routes.get('/ob-van/demos', async (_req, res) => {
+    const demos: {
+      dir: string;
+      eventName: string;
+      presetId: string;
+      cams: number;
+    }[] = [];
+    if (existsSync(OB_DEMO_ROOT))
+      for (const name of readdirSync(OB_DEMO_ROOT).sort()) {
+        const camsPath = path.join(OB_DEMO_ROOT, name, 'cams.json');
+        if (!existsSync(camsPath)) continue;
+        try {
+          const m = JSON.parse(
+            readFileSync(camsPath, 'utf8'),
+          ) as ObDemoManifest;
+          demos.push({
+            dir: `ob-demo/${name}`,
+            eventName: m.eventName ?? name,
+            presetId: m.presetId ?? 'talk',
+            cams: (m.cams ?? []).length,
+          });
+        } catch {
+          /* skip a broken manifest */
+        }
+      }
+    return res.status(200).send({ demos });
+  });
+
+  // One-click demo: replay ob-demo-run's setup sequence for a cams.json —
+  // config (BEFORE the cams: signal opts bake at attach) → rule overrides →
+  // file cams with talent/subtitle → sync to 0:00.
+  routes.post<Body<typeof LoadDemoSchema>>(
+    '/room/:roomId/ob-van/load-demo',
+    { schema: { params: RoomIdParamsSchema, body: LoadDemoSchema } },
+    async (req, res) => {
+      const room = getRoom(req.params.roomId);
+      console.log('[request] OB Van load-demo', {
+        roomId: req.params.roomId,
+        dir: req.body.dir,
+      });
+      let demo: ReturnType<typeof readObDemo>;
+      try {
+        demo = readObDemo(req.body.dir);
+      } catch (err) {
+        return sendError(res, 'bad_action', errMessage(err));
+      }
+      const { m, cams, skipped, rundown } = demo;
+      try {
+        room.setObConfig({
+          eventName: m.eventName ?? 'OB VAN DEMO',
+          ...(m.presetId
+            ? { presetId: m.presetId as ObConfig['presetId'] }
+            : {}),
+          captions: m.captions ?? true,
+          brief: m.brief ?? '',
+          rundown,
+          autoPilot: false,
+          resumeAfterMs: m.resumeAfterMs ?? 20000,
+          titleBugVisible: true,
+          ...(m.audio?.mode === 'mix' || m.audio?.mode === 'follow'
+            ? { audio: { mode: m.audio.mode } }
+            : {}),
+          ...((m.config ?? {}) as ObConfigPatch),
+        });
+        const overrides = Object.entries(m.ruleOverrides ?? {});
+        if (overrides.length) {
+          const ruleset = structuredClone(room.getObState().ruleset);
+          for (const [id, patch] of overrides) {
+            const rule = ruleset.rules.find((r) => r.id === id);
+            if (rule) Object.assign(rule, patch);
+          }
+          const r = room.setObRuleset(ruleset);
+          if ('errors' in r)
+            return sendError(res, 'invalid_ruleset', r.errors.join('; '), {
+              errors: r.errors,
+            });
+        }
+        const attached: { camId: string; role: string; file: string }[] = [];
+        for (const c of cams) {
+          const { camId } = await room.attachObMp4Cam(
+            c.role as ObCamRole,
+            c.fileName,
+            {
+              ...(c.name ? { name: c.name } : {}),
+              talent: c.talent ?? null,
+              subtitle: c.subtitle ?? null,
+            },
+          );
+          attached.push({ camId, role: c.role, file: c.file });
+        }
+        if (m.audio?.mode === 'master') {
+          const hit =
+            attached.find((c) => c.role === m.audio?.cam) ??
+            attached.find((c) => c.file === m.audio?.cam);
+          if (hit)
+            room.setObConfig({ audio: { mode: 'master', cam: hit.camId } });
+        }
+        await room.syncObFileCams(0);
+        return res.status(200).send({
+          state: room.getObState(),
+          attached: attached.length,
+          skipped,
+        });
+      } catch (err) {
+        return sendError(res, 'bad_action', errMessage(err));
+      }
     },
   );
 }

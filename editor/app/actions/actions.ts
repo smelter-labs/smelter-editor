@@ -850,6 +850,21 @@ export async function operateOb(
   return (await getClient()).operateOb(roomId, cmd);
 }
 
+export async function listObDemos(): Promise<{
+  demos: import('@/lib/api-client').ObDemoInfo[];
+}> {
+  return (await getClient()).listObDemos();
+}
+
+export async function loadObDemo(
+  roomId: string,
+  dir: string,
+): Promise<
+  import('@/lib/api-client').ObResult<import('@smelter-editor/types').ObState>
+> {
+  return (await getClient()).loadObDemo(roomId, dir);
+}
+
 export async function attachObMp4Cam(
   roomId: string,
   cam: {

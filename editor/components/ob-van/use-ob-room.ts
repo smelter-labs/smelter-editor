@@ -16,6 +16,7 @@ import {
   createNewRoom,
   deleteRoom,
   getRoomInfo,
+  loadObDemo,
   operateOb,
   setObConfig,
   setObRuleset,
@@ -45,6 +46,8 @@ export type ObRoom = {
     talent?: string;
     subtitle?: string;
   }): Promise<string | null>;
+  /** One-click demo (cams.json under data/mp4s): config + rules + cams + sync. */
+  loadDemo(dir: string): Promise<ObState | null>;
   /** Restart every file camera from 0:00 together. */
   syncFileCams(): Promise<void>;
   adoptInput(cam: {
@@ -226,6 +229,22 @@ export function useObRoom(
     settle(await syncObFileCams(target, 0));
   }, [settle]);
 
+  const loadDemo = useCallback(
+    async (dir: string) => {
+      const target = roomIdRef.current;
+      if (!target) return null;
+      try {
+        const state = settle(await loadObDemo(target, dir));
+        if (state) onStateRef.current?.(state);
+        return state;
+      } catch (err) {
+        showError(err instanceof Error ? err.message : String(err));
+        return null;
+      }
+    },
+    [settle, showError],
+  );
+
   const adoptInput = useCallback(
     async (cam: {
       inputId: string;
@@ -320,6 +339,7 @@ export function useObRoom(
     pushConfig,
     pushPatch,
     attachFileCam,
+    loadDemo,
     syncFileCams,
     adoptInput,
     control,
