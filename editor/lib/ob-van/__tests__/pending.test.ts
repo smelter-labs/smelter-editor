@@ -35,6 +35,14 @@ function makeState(patch: Partial<ObState> = {}): ObState {
     rundown: { items: [], index: 0 },
     operator: null,
     overrides: { pacing: null, preferCam: null },
+    host: {
+      camId: null,
+      trackId: null,
+      confidence: 0,
+      sinceMs: null,
+      status: 'off',
+      lastGesture: null,
+    },
     llm: {
       available: false,
       model: null,

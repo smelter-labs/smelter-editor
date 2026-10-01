@@ -42,6 +42,8 @@ export type ObUiConfig = {
   captions: boolean;
   titleBugVisible: boolean;
   lowerThirdMs: number;
+  /** Host recognition (the FOLLOW preset): LLM-matched description. */
+  host: { enabled: boolean; description: string };
   /** Start recording on GO LIVE (local: the host's recording hook does it). */
   record: boolean;
   resolution: ObResolution;
@@ -64,6 +66,7 @@ export const DEFAULT_OB_UI_CONFIG: ObUiConfig = {
   captions: OB_DEFAULT_CONFIG.captions,
   titleBugVisible: OB_DEFAULT_CONFIG.titleBugVisible,
   lowerThirdMs: OB_DEFAULT_CONFIG.lowerThirdMs,
+  host: { ...OB_DEFAULT_CONFIG.host },
   record: false,
   resolution: '1080p',
 };
@@ -180,10 +183,22 @@ export function sanitizeObUiConfig(raw: unknown): ObUiConfig {
       OB_CONFIG_LIMITS.lowerThirdMs,
       d.lowerThirdMs,
     ),
+    host: sanitizeHost(raw.host),
     record: bool(raw.record, d.record),
     resolution: (OB_RESOLUTIONS as readonly unknown[]).includes(raw.resolution)
       ? (raw.resolution as ObResolution)
       : d.resolution,
+  };
+}
+
+export function sanitizeHost(v: unknown): ObUiConfig['host'] {
+  const d = DEFAULT_OB_UI_CONFIG.host;
+  if (!isRec(v)) return { ...d };
+  return {
+    enabled: bool(v.enabled, d.enabled),
+    description:
+      str(v.description, OB_CONFIG_LIMITS.hostDescription.max, d.description) ||
+      d.description,
   };
 }
 
@@ -213,6 +228,7 @@ export function serverConfigToUi(
     captions: cfg.captions,
     titleBugVisible: cfg.titleBugVisible,
     lowerThirdMs: cfg.lowerThirdMs,
+    host: sanitizeHost(cfg.host),
     record: local.record,
     resolution: local.resolution,
   };
@@ -238,6 +254,7 @@ export function uiConfigToPatch(ui: ObUiConfig): ObConfigPatch {
     captions: ui.captions,
     titleBugVisible: ui.titleBugVisible,
     lowerThirdMs: ui.lowerThirdMs,
+    host: ui.host,
   };
 }
 

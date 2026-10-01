@@ -119,6 +119,7 @@ const SIGNAL_WORD: Record<ObSignalKind, string> = {
   ball: 'ball in view',
   ballAge: 'ball last seen',
   keyword: 'keyword',
+  host: 'the host seen',
   hold: 'program held',
   segment: 'segment',
   dialogue: 'back-and-forth',
