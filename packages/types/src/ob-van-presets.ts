@@ -486,9 +486,113 @@ const FOLLOW: ObRuleset = {
   ],
 };
 
+const QUIZ: ObRuleset = {
+  id: "preset-quiz",
+  name: "QUIZ · Smelterionaire",
+  preset: "quiz",
+  pacing: { minHoldMs: 2500, maxHoldMs: 30000, transition: "cut" },
+  weights: {
+    speech: 1.2,
+    motion: 0.3,
+    people: 0.2,
+    ball: 0,
+    novelty: 0.2,
+    stay: 0.8,
+    roleBias: {
+      speaker: 0.3,
+      guest: 0.2,
+      audience: -0.3,
+      slides: -0.5,
+      tape: -0.5,
+    },
+  },
+  // Deterministic game show: the quiz state machine sets `quizTurn` on the
+  // contestant being asked, the rules below do the rest. No behaviour magic.
+  behaviours: {},
+  rules: [
+    {
+      // The DSL nests one level only, so "quizTurn AND no host speech" is
+      // inexpressible — priorities carry the ordering instead (87 > 85).
+      id: "quiz-think-solo",
+      name: "Contestant answering, alone",
+      priority: 87,
+      cooldownMs: 6000,
+      holdMs: 3500,
+      when: {
+        all: [
+          { signal: "quizTurn", cam: "any", op: "==", value: true },
+          { signal: "speech", cam: "trigger", forMs: 1200 },
+        ],
+      },
+      then: {
+        shot: { kind: "solo", cam: "trigger" },
+        transition: { type: "cut" },
+      },
+    },
+    {
+      id: "quiz-question-split",
+      name: "Host + contestant on a question",
+      priority: 85,
+      cooldownMs: 2000,
+      holdMs: 4000,
+      when: { signal: "quizTurn", cam: "any", op: "==", value: true },
+      then: {
+        shot: { kind: "split", cams: ["speaker", "trigger"] },
+        transition: { type: "cut" },
+      },
+    },
+    {
+      id: "quiz-banter-split",
+      name: "Split a back-and-forth",
+      priority: 60,
+      cooldownMs: 10000,
+      holdMs: 6000,
+      when: { signal: "dialogue", op: "==", value: true },
+      then: {
+        shot: { kind: "split", cams: ["program", "trigger"] },
+        transition: { type: "dissolve", durationMs: 300 },
+      },
+    },
+    {
+      id: "quiz-host-solo",
+      name: "Host monologue",
+      priority: 40,
+      cooldownMs: 12000,
+      holdMs: 4000,
+      when: { signal: "speech", cam: "speaker", forMs: 2500 },
+      then: {
+        shot: { kind: "solo", cam: "speaker" },
+        transition: { type: "cut" },
+      },
+    },
+    {
+      // Same `hold >= 0` trick as FOLLOW: reliably true, keeps the studio
+      // grid on air between rounds. Requires audio mix — an empty grid
+      // resolves to no on-air cams, so `follow` would mute everyone.
+      id: "default-grid",
+      name: "Studio grid between rounds",
+      priority: 10,
+      cooldownMs: 3000,
+      holdMs: 4000,
+      when: { signal: "hold", op: ">=", value: 0 },
+      then: {
+        shot: { kind: "grid", cams: [] },
+        transition: { type: "dissolve", durationMs: 300 },
+      },
+    },
+  ],
+};
+
 export const OB_PRESET_RULESETS: Readonly<
   Record<Exclude<ObPresetId, "custom">, ObRuleset>
-> = { talk: TALK, match: MATCH, stage: STAGE, gig: GIG, follow: FOLLOW };
+> = {
+  talk: TALK,
+  match: MATCH,
+  stage: STAGE,
+  gig: GIG,
+  follow: FOLLOW,
+  quiz: QUIZ,
+};
 
 export type ObPresetMeta = {
   id: Exclude<ObPresetId, "custom">;
@@ -529,6 +633,13 @@ export const OB_PRESET_META: readonly ObPresetMeta[] = [
     sub: "host · 4 cams",
     blurb:
       "Grid of everything, solo on action; the AI recognises the host and follows, gestures drive effects.",
+  },
+  {
+    id: "quiz",
+    label: "QUIZ",
+    sub: "smelterionaire",
+    blurb:
+      "Millionaire board, split on the contestant answering, solo reveals; the operator judges from the desk.",
   },
 ];
 

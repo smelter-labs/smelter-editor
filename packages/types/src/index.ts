@@ -515,3 +515,26 @@ export {
   obShotsEqual,
   parseObRuleset,
 } from "./ob-van-ruleset.js";
+export type {
+  ObQuizLetter,
+  ObQuizPhase,
+  ObQuizVerdict,
+  ObQuizAction,
+  ObQuizPlayer,
+  ObQuizCurrent,
+  ObQuizHintState,
+  ObQuizState,
+} from "./ob-van-quiz.js";
+export {
+  OB_QUIZ_LETTERS,
+  OB_QUIZ_ACTIONS,
+  OB_QUIZ_START_AMOUNT,
+  OB_QUIZ_MAX_PLAYERS,
+  OB_QUIZ_CELEBRATE_MS,
+  OB_QUIZ_HINT_TIMEOUT_MS,
+  OB_QUIZ_HINT_SHOW_MS,
+  isObQuizLetter,
+  obQuizApplyVerdict,
+  obQuizFormatMoney,
+  obQuizFormatDelta,
+} from "./ob-van-quiz.js";

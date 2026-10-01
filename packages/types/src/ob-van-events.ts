@@ -7,6 +7,13 @@
 // transcript keywords) through a small rules DSL, and an optional LLM turns a
 // natural-language brief into a ruleset and nudges the show every ~30 s.
 
+import type {
+  ObQuizAction,
+  ObQuizLetter,
+  ObQuizState,
+  ObQuizVerdict,
+} from "./ob-van-quiz.js";
+
 // ── Cameras ──────────────────────────────────────────────────────────────
 
 export type ObFixedCamRole =
@@ -184,13 +191,14 @@ export type ObAudioPolicy =
 export type ObPhase = "setup" | "on-air" | "wrap";
 export type ObActionSource = "operator" | "auto" | "llm" | "system";
 export type ObPresetId =
-  "talk" | "match" | "stage" | "gig" | "follow" | "custom";
+  "talk" | "match" | "stage" | "gig" | "follow" | "quiz" | "custom";
 export const OB_PRESET_IDS: readonly Exclude<ObPresetId, "custom">[] = [
   "talk",
   "match",
   "stage",
   "gig",
   "follow",
+  "quiz",
 ];
 /** Operator pacing dial: multiplies the ruleset's min / max hold. */
 export type ObPacingDial = "calm" | "lively" | "frantic";
@@ -239,6 +247,7 @@ export type ObSignalKind =
   | "ballAge"
   | "keyword"
   | "host"
+  | "quizTurn"
   | "hold"
   | "segment"
   | "dialogue";
@@ -257,6 +266,7 @@ export const OB_SIGNAL_KINDS: readonly ObSignalKind[] = [
   "ballAge",
   "keyword",
   "host",
+  "quizTurn",
   "hold",
   "segment",
   "dialogue",
@@ -610,6 +620,8 @@ export type ObState = {
     preferCam: { camId: string; untilMs: number; boost?: number } | null;
   };
   host: ObHostState;
+  /** Quiz layer state — non-null only while the `quiz` preset is selected. */
+  quiz: ObQuizState | null;
   llm: ObLlmStatus;
   stats: ObStats;
   wrapNotes: string | null;
@@ -659,7 +671,17 @@ export type ObOperatorCommand =
     }
   | { op: "pacing"; minHoldMs?: number; maxHoldMs?: number; clear?: boolean }
   | { op: "prefer_cam"; camId: string; forMs: number; boost?: number }
-  | { op: "note"; text: string };
+  | { op: "note"; text: string }
+  | {
+      op: "quiz";
+      action: ObQuizAction;
+      /** `assign`: the contestant's camera. */
+      camId?: string;
+      /** `lock`: the letter the contestant commits to. */
+      letter?: ObQuizLetter;
+      /** `reveal`: manual override for open judgment calls. */
+      verdict?: ObQuizVerdict;
+    };
 export type ObOperatorOp = ObOperatorCommand["op"];
 
 export type ObControlAction =
