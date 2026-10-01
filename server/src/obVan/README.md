@@ -148,6 +148,7 @@ DSL, konfiguracja, stan, komendy, WS), `ob-van-presets.ts`, `ob-van-ruleset.ts`.
 | `host.ts`, `gestures.ts` | rozpoznawanie hosta (FOLLOW): nowa osoba → snapshot → identify → sygnał `host`; mapowanie gestów dłoni na komendy `fx` |
 | `quiz.ts`, `quizQuestions.ts` | Smelterionaire: maszyna stanu teleturnieju (gracze, kwoty ×1.5/×0.5, fazy pytania, koło „Ask the AI", stingery) + bank pytań ABCD; sygnał `quizTurn`, overlaye w `inputs/ObQuizHud.tsx` |
 | `llm/` | klient Anthropic (tekst + obrazy), schemat toola DSL, brief → reguły, analityk, `identify.ts` (host vision), `hint.ts` (koło ratunkowe quizu — odpowiada w ciemno), budżet, notatki końcowe |
+| `puppets/` | żywe ludziki: `PuppetInput.tsx` (renderer postaci/studia zamiast wideo kamery), `anim.ts` (wisemy, mruganie, sway — czysta matematyka), `geometry.ts` (boxy sprite'ów), `types.ts`; sprite'y z `scripts/ob-puppet-assets.mjs`, dataset demo z `scripts/ob-quiz-demo.mjs` |
 | `obVanRoutes.ts`, `obVanLlmRoutes.ts` | REST |
 | `contracts.ts` | kontrakty między kontrolerem, sygnałami, brainem i LLM |
 
@@ -322,6 +323,45 @@ cd server && pnpm vitest run src/obVan     # 288 testów (quiz.ts, kontroler, hi
 OK, do „prawdziwego" teleturnieju trzeba by prywatnego kanału operatora;
 cut LLM-analityka może teoretycznie wpaść w celebrację (chroni `holdMs` +
 cooldowny — nie zaobserwowano w checkach).
+
+### Żywe ludziki (puppets) + QUICK DEMO
+
+Demo quizu nie używa nagrań ani Remotiona: **postacie rysuje sam Smelter,
+na żywo, klatka po klatce** (`src/obVan/puppets/`). Kamera-plik niesie tylko
+głos (czarne wideo 10 fps + TTS z `say`); w scenie, zamiast `InputStream`,
+`ObPuppetInput` maluje ilustrowaną postać z warstwowych sprite'ów
+`imgs/ob/puppet-*.png` (ciało / głowa / oczy / brwi / 6 wisemów ust +
+ściana LED, pulpit, glow — generator `scripts/ob-puppet-assets.mjs`,
+rejestrowane przy boocie jak każdy `ob-*`). Sam `InputStream` zostaje pod
+spodem w 2×2 px, więc audio gra w miksie, a side-channel dalej analizuje
+mowę — **reżyser tnie na prawdziwych sygnałach `speech` z sztucznych ust**.
+
+Lip-sync: `scripts/ob-quiz-demo.mjs` liczy z WAV-ów konduktora kopertę RMS
+50 Hz (`mouth.json`), a renderer mapuje ją przez zegar klip→antena
+(`fileClockOf` + delay side-channelu, pętla modulo długości klipu) na wisemy
+(`anim.ts`: slot 130 ms + hash — usta artykułują, nie kłapią metronomem).
+Do tego mruganie, kołysanie, head-bob przy mowie, złoty glow mówiącego,
+uniesione brwi odpytywanego (`quizTurn` → `players[].active`), a po REVEAL
+ręce w górę + konfetti (correct) albo smutne mrugnięcie (wrong) — stan
+quizu czyta ze store'a po nazwie gracza. Kamera `wide` z `puppet:"studio"`
+renderuje całe studio: host za centralnym pulpitem + czterech graczy,
+każdy animowany własną kopertą.
+
+```bash
+node scripts/ob-puppet-assets.mjs     # sprite'y postaci + studio → imgs/ob/
+node scripts/ob-quiz-demo.mjs         # TTS → mp4 + mouth.json + cams.json
+                                      #   → data/mp4s/ob-demo/quiz/
+```
+
+Dataset pojawia się jako przycisk **SMELTERIONAIRE** w QUICK DEMOS na
+`/ob-van` (generyczny `GET /ob-van/demos` + `load-demo`; `cams.json` niesie
+pole `puppet` per kamera, `load-demo` składa cast dla kamery studio).
+Scenariusz (`scripts/ob-demo/quiz.conductor.txt`, 2:37): przedstawienie
+obsady → Q1 z banku (Nova, lock B, correct) → Q2 (Bit, lifeline ASK AI,
+lock C, correct) → dobranoc; didaskalia `(desk: …)` w nawiasach to ściąga
+operatora, konduktor ich nie czyta. Klipy są równe co do próbki (pętlą się
+razem), wide jest cyfrowo niemy (mix nie dubluje głosów), a room-tone
+konduktora wycina gate — pięć kamer w mixie nie sumuje szumu.
 
 ## Materiał demo w pojedynkę
 

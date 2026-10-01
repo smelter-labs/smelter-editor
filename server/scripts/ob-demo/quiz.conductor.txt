@@ -1,0 +1,37 @@
+# Smelterionaire — the live-puppet quick demo. Two questions straight from
+# the bank (quizQuestions.ts q01 + q02, asked in bank order), one lifeline.
+# Stage directions in (…) are for the operator desk, never spoken; the pauses
+# after "reveal" beats leave room for the stinger + celebration solo.
+@title Smelterionaire
+@persona HOST voice="Daniel" role=speaker talent="Max Smelter" subtitle="YOUR HOST" color=#FFD166
+@persona NOVA voice="Karen" role=guest talent="Nova" subtitle="THE ROOKIE" color=#2fb8a6
+@persona BIT voice="Rishi" role=guest talent="Bit" subtitle="THE HACKER" color=#e6603f
+@persona PROF voice="Fred" role=guest talent="Prof" subtitle="THE PROFESSOR" color=#9c2f2f
+@persona LUX voice="Moira" role=guest talent="Lux" subtitle="THE STAR" color=#c2317e
+@rate 170
+@clap 10
+@start 2
+@tail 8
+@gap 0.4
+
+0:00 SEGMENT Welcome
++0.2 HOST Good evening! Welcome to Who Wants to Be a Smelterionaire — the only quiz show rendered live, frame by frame, by a video compositor. Four contestants. One million dollars each. Let's meet them!
++0.6 NOVA Hi, I'm Nova! First time on television... please be gentle.
++0.4 BIT Bit here. I came for the money. I stayed for the shaders.
++0.4 PROF Good evening. I have read the documentation. Twice.
++0.4 LUX Lux, darling. The camera loves me — it has no choice.
++0.8 SEGMENT Question One
++0.2 HOST Wonderful! Nova, you are first. Operator — the board, please. (desk: Q → assign Nova, B → board)
++2.5 HOST For one and a half million dollars... What does Smelter turn React components into? Is it A — static HTML pages. B — live video frames. C — PDF documents. Or D — mobile apps.
++1.6 NOVA Okay... my web apps have never looked this good, so it can't be A... I'm going with B. Live video frames. Lock it in!
++1.8 HOST She says B... and that is... CORRECT! One point five million dollars for Nova! (desk: lock B on her line, reveal on "correct")
++6.0 HOST The machines render on. Bit — you are next. (desk: assign Bit, board)
++0.6 SEGMENT Question Two
++0.2 HOST Here it comes. What happens to your phone when your camera goes on air? A — the screen turns green. B — it plays a jingle. C — it turns red and vibrates. Or D — it locks itself.
++1.6 BIT Hmm. I would make it vibrate... but red is so dramatic. You know what — I would like to ask the A.I. (desk: H → lifeline)
++1.2 HOST Our silicon friend is thinking! Remember folks — it answers completely blind.
++3.2 BIT Alright. I trust the machine with my life savings. C. Red and vibrating. Final answer. (desk: lock C, reveal on "correct")
++2.0 HOST Locked on C... and that is... CORRECT! The machines are on our side. For now.
++6.0 SEGMENT Good Night
++0.2 HOST And that is all we have time for tonight! Join us next week, when the money doubles and the shaders get weirder. From everyone at Smelterionaire — good night!
++0.5 LUX Good night, darlings!
