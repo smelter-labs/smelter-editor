@@ -230,6 +230,7 @@ function emptyState(camId: string): ObSignalState {
     frame: null,
     keywords: [],
     host: { active: false, trackId: null, confidence: 0, sinceAirMs: null },
+    quizTurn: { active: false, sinceAirMs: null },
   };
 }
 
@@ -588,6 +589,20 @@ export class ObSignals implements ObSignalsApi {
           confidence: 0,
           sinceAirMs: null,
         };
+      }
+    }
+  }
+
+  setQuizTurn(camId: string | null): void {
+    // The camera may not have reported yet (OB_SIM) — make its slot exist.
+    if (camId !== null) this.cam(camId);
+    for (const [id, cam] of this.cams) {
+      const turn = cam.state.quizTurn;
+      if (camId !== null && id === camId) {
+        turn.sinceAirMs = turn.active ? turn.sinceAirMs : this.clock.nowAir();
+        turn.active = true;
+      } else if (turn.active) {
+        cam.state.quizTurn = { active: false, sinceAirMs: null };
       }
     }
   }

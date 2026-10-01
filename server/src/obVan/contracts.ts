@@ -21,6 +21,7 @@ import type {
   ObPacing,
   ObPhase,
   ObPresetId,
+  ObQuizLetter,
   ObRuleset,
   ObShot,
   ObTransition,
@@ -124,6 +125,11 @@ export type ObSignalState = {
     confidence: number;
     sinceAirMs: number | null;
   };
+  /** The quiz contestant being asked is on this camera (quiz machine). */
+  quizTurn: {
+    active: boolean;
+    sinceAirMs: number | null;
+  };
 };
 
 export interface ObClock {
@@ -151,6 +157,8 @@ export interface ObSignalsApi {
     camId: string | null,
     info?: { trackId: number | null; confidence: number },
   ): void;
+  /** Mark the quiz contestant's camera (null clears every camera). */
+  setQuizTurn(camId: string | null): void;
   /**
    * Person tracks that appeared since the last drain, debounced (a track must
    * survive `newPersonMinAgeMs` first). The controller drains once per tick.
@@ -333,6 +341,16 @@ export interface ObLlmModule {
     hostDescription: string;
     camLabel: string;
   }): Promise<{ isHost: boolean; confidence: number; reason: string } | null>;
+  /**
+   * The "Ask the AI" quiz lifeline: the model answers the question BLIND
+   * (it is never told the correct letter — a confidently wrong hint is part
+   * of the show). Null when the model refused / answered without the tool.
+   * Rejects like the other one-shots.
+   */
+  quizHint(input: {
+    question: string;
+    answers: [string, string, string, string];
+  }): Promise<{ letter: ObQuizLetter; text: string } | null>;
   onTranscript(camNumber: number, text: string, airMs: number): void;
   setPhase(phase: ObPhase): void;
   wrapNotes(input: {

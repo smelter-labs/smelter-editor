@@ -962,6 +962,36 @@ export class RoomState {
             );
           }
         },
+        // Quiz stingers: bundled mp4s (black 2x2 video + synth audio) from
+        // server/sfx, registered on demand like replay clips.
+        registerQuizSfx: async (kind, offsetMs) => {
+          if (!/^[a-z-]{1,20}$/.test(kind)) return null;
+          const filePath = path.join(
+            __dirname,
+            '..',
+            '..',
+            'sfx',
+            `quiz-sting-${kind}.mp4`,
+          );
+          if (!(await pathExists(filePath))) return null;
+          const safeRoom = idPrefix.replace(/[^a-zA-Z0-9_-]/g, '_');
+          const inputId = `ob-sfx-${safeRoom}-${kind}-${Date.now() % 1e7}`;
+          try {
+            await SmelterInstance.registerInput(inputId, {
+              type: 'mp4',
+              filePath,
+              loop: false,
+              offsetMs,
+            });
+          } catch (err) {
+            console.warn(`[ob] quiz sfx register failed: ${kind}`, err);
+            return null;
+          }
+          return inputId;
+        },
+        unregisterQuizSfx: (inputId) => {
+          void SmelterInstance.unregisterInput(inputId).catch(() => {});
+        },
         getPipelineTimeMs: () => SmelterInstance.getPipelineTimeMs(),
       },
       {

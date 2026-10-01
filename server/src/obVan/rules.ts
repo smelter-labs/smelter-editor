@@ -286,6 +286,9 @@ export function camSignalValue(
       // Node-owned truth (LLM confirmation), not gated on stream staleness:
       // the controller clears it through its own host-loss lifecycle.
       return s.host.active;
+    case 'quizTurn':
+      // Node-owned truth too: the quiz state machine sets and clears it.
+      return s.quizTurn.active;
     case 'hold':
     case 'segment':
     case 'dialogue':

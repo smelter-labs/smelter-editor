@@ -18,6 +18,7 @@ import {
 } from './analyst';
 import { generateRuleset } from './brief';
 import { identifyHost } from './identify';
+import { quizHint } from './hint';
 import {
   ObLlmBudget,
   obLlmLimitsFromEnv,
@@ -85,6 +86,7 @@ export function createObLlm(
       status,
       generateRuleset: () => Promise.reject(unavailable()),
       identifyHost: () => Promise.reject(unavailable()),
+      quizHint: () => Promise.reject(unavailable()),
       setAnalyst(enabled, s) {
         wanted = enabled;
         if (s !== undefined) wantedInterval = clampAnalystInterval(s);
@@ -197,6 +199,12 @@ export function createObLlm(
     identifyHost(input) {
       return runOneShot((signal, onUsage) =>
         identifyHost(llm, input, { signal, onUsage }),
+      );
+    },
+
+    quizHint(input) {
+      return runOneShot((signal, onUsage) =>
+        quizHint(llm, input, { signal, onUsage }),
       );
     },
 

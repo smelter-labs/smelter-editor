@@ -35,6 +35,8 @@ import {
   OB_PACING_DIAL_FACTOR,
   OB_PRESET_IDS,
   OB_PRESET_META,
+  OB_QUIZ_CELEBRATE_MS,
+  OB_QUIZ_HINT_SHOW_MS,
   OB_RULESET_LIMITS,
   OB_TRANSITION_LIMITS,
   isObCamRole,
@@ -113,6 +115,8 @@ import { OB_VIRTUAL_GLIDE_MS, ObVirtualCam } from './virtualCam';
 import { analystIntervalFromEnv } from './llm/analyst';
 import { ObLlmError } from './llm/errors';
 import { obVanParamsForRole } from '../ai-models/ob-van/manifest';
+import { ObQuizGame, type ObQuizEffect, type ObQuizSfx } from './quiz';
+import { QUIZ_QUESTIONS, type QuizQuestion } from './quizQuestions';
 
 // ── Public contract ────────────────────────────────────────────────────────
 
@@ -188,6 +192,9 @@ export type ObControllerDeps = {
     offsetMs: number,
   ) => Promise<string | null>;
   unregisterReplayClip: (inputId: string, file: string) => void;
+  /** Quiz stinger: register a bundled sfx mp4 (server/sfx) at this offset. */
+  registerQuizSfx?: (kind: string, offsetMs: number) => Promise<string | null>;
+  unregisterQuizSfx?: (inputId: string) => void;
   getPipelineTimeMs: () => number;
   now?: () => number;
 };
@@ -265,6 +272,7 @@ export class ObNullSignals implements ObSignalsApi {
   }
   setKeywordGroups(): void {}
   setHost(): void {}
+  setQuizTurn(): void {}
   drainNewPersons(): { camId: string; trackId: number; airMs: number }[] {
     return [];
   }
@@ -331,6 +339,15 @@ const OB_LLM_PACING_TTL_MS = 60_000;
 const OB_LLM_CUT_COOLDOWN_MS = 5_000;
 /** Bounds for the hold an LLM cut may carry. */
 const OB_LLM_CUT_HOLD_LIMITS = { min: 2_000, max: 15_000 };
+/** Quiz stinger lengths (matches the files `scripts/quiz-render-sfx.mjs` makes). */
+const QUIZ_SFX_MS: Record<ObQuizSfx, number> = {
+  intro: 2400,
+  board: 1400,
+  win: 1800,
+  lose: 1800,
+};
+/** Register a stinger slightly ahead so it starts at frame 0 of its clip. */
+const QUIZ_SFX_LEAD_MS = 250;
 /** Event ticks: speech must be stable this long to count as "the speaker". */
 const OB_LLM_EVENT_SPEECH_STABLE_MS = 700;
 /** Event ticks: everybody quiet this long → one "silence" tick. */
@@ -521,6 +538,14 @@ export class ObVanController {
   private wrapNotes: string | null = null;
   /** Host recognition (the `follow` demo). */
   private readonly hostTracker: ObHostTracker;
+  /** Smelterionaire quiz layer (the `quiz` preset). */
+  private readonly quiz: ObQuizGame;
+  private quizSfx: {
+    inputId: string;
+    kind: ObQuizSfx;
+    startedAtMs: number;
+  } | null = null;
+  private readonly quizSfxTimers = new Set<ReturnType<typeof setTimeout>>();
   private lastGesture: ObHostState['lastGesture'] = null;
   /** Camera whose worker currently runs hand tracking (the host's). */
   private gestureCamId: string | null = null;
@@ -660,6 +685,7 @@ export class ObVanController {
       onChange: () => this.markStateDirty(),
       now: () => this.now(),
     });
+    this.quiz = new ObQuizGame(QUIZ_QUESTIONS, { now: () => this.now() });
   }
 
   private now(): number {
@@ -1197,6 +1223,11 @@ export class ObVanController {
         (OB_PRESET_IDS as readonly string[]).includes(patch.presetId)) &&
       patch.presetId !== c.presetId
     ) {
+      if (c.presetId === 'quiz') {
+        // Leaving the quiz: the game and its signal must not outlive it.
+        this.quiz.reset();
+        this.signals.setQuizTurn(null);
+      }
       c.presetId = patch.presetId;
       if (patch.ruleset === undefined && c.ruleset) {
         c.ruleset = null;
@@ -1426,6 +1457,7 @@ export class ObVanController {
         }
         this.prog = { ...this.prog, sinceMs: now };
         this.setPhase('on-air');
+        if (this.quizOn()) this.playQuizSting('intro');
         break;
       case 'wrap':
         if (this.phase !== 'on-air')
@@ -1451,6 +1483,8 @@ export class ObVanController {
         this.signals.setHost(null);
         this.syncGestureCam(null);
         this.lastGesture = null;
+        this.quiz.reset();
+        this.signals.setQuizTurn(null);
         this.closeReplay();
         this.refreshRuleset('reset');
         this.log.clear();
@@ -1741,7 +1775,225 @@ export class ObVanController {
           ...rs,
         });
         return { ok: true };
+      case 'quiz':
+        return this.quizCommand(cmd, source);
     }
+  }
+
+  // ── Smelterionaire quiz (the `quiz` preset) ─────────────────────────
+
+  private quizOn(): boolean {
+    return this.config.presetId === 'quiz';
+  }
+
+  private quizCommand(
+    cmd: Extract<ObOperatorCommand, { op: 'quiz' }>,
+    source: ObActionSource,
+  ): ObCommandResult {
+    if (!this.quizOn())
+      return {
+        ok: false,
+        code: 'bad_action',
+        message: 'The QUIZ preset is off.',
+      };
+    if (cmd.action !== 'reset' && this.phase !== 'on-air')
+      return { ok: false, code: 'bad_phase', message: 'Not on air.' };
+    const r = this.quiz.command(cmd);
+    if (!r.ok) return { ok: false, code: r.code, message: r.message };
+    this.applyQuizEffects(r.effects, source);
+    if (cmd.action === 'assign') this.llm?.requestTick('quiz question');
+    if (cmd.action === 'reveal') this.llm?.requestTick('quiz reveal');
+    return { ok: true };
+  }
+
+  private applyQuizEffects(
+    effects: ObQuizEffect[],
+    source: ObActionSource,
+  ): void {
+    for (const fx of effects) {
+      switch (fx.type) {
+        case 'turn':
+          this.signals.setQuizTurn(fx.camId);
+          break;
+        case 'celebrate':
+          // The reveal owns the picture: a hard solo on the contestant with
+          // a hold that outlasts the money animation; rules resume after.
+          this.applyDecision(
+            {
+              shot: { kind: 'solo', cam: fx.camId },
+              transition: { type: 'cut', durationMs: 0 },
+              holdMs: OB_QUIZ_CELEBRATE_MS,
+              logKind: 'shot',
+              reasons: [`quiz ${fx.verdict}`],
+            },
+            'auto',
+          );
+          break;
+        case 'hint':
+          this.startQuizHint(fx.question);
+          break;
+        case 'sfx':
+          this.playQuizSting(fx.kind);
+          break;
+        case 'lower-third':
+          this.lowerThirdCommand({ op: 'lower_third', camId: fx.camId }, 'auto');
+          break;
+        case 'log':
+          this.pushLog({
+            source,
+            kind: 'note',
+            tone: fx.tone,
+            label: fx.label,
+            text: fx.text,
+            ...(fx.camId ? { camId: fx.camId } : {}),
+          });
+          break;
+      }
+    }
+  }
+
+  /** "Ask the AI": the model answers BLIND — a wrong hint is part of the show. */
+  private startQuizHint(question: QuizQuestion): void {
+    const llm = this.llm;
+    if (!llm || !llm.status().available) {
+      this.quiz.resolveHint(null);
+      this.afterQuizHint();
+      return;
+    }
+    void llm
+      .quizHint({ question: question.q, answers: question.answers })
+      .then((res) => {
+        if (this.disposed) return;
+        if (this.quiz.resolveHint(res ?? null)) this.afterQuizHint();
+      })
+      .catch(() => {
+        if (this.disposed) return;
+        if (this.quiz.resolveHint(null)) this.afterQuizHint();
+      });
+  }
+
+  private afterQuizHint(): void {
+    const hint = this.quiz.state().hint;
+    if (hint?.status === 'done' && hint.text)
+      this.pushLog({
+        source: 'llm',
+        kind: 'llm',
+        tone: 'ai',
+        label: 'HINT',
+        text: hint.canned
+          ? `(offline) ${hint.text}`
+          : `${hint.letter ?? '?'} · ${hint.text}`,
+        camId: hint.forCamId,
+      });
+    this.publishHud();
+    this.markStateDirty();
+  }
+
+  private playQuizSting(kind: ObQuizSfx): void {
+    const register = this.deps.registerQuizSfx;
+    if (!register) return;
+    const offsetMs = this.deps.getPipelineTimeMs() + QUIZ_SFX_LEAD_MS;
+    void register(kind, offsetMs)
+      .then((inputId) => {
+        if (this.disposed || !inputId) return;
+        const prior = this.quizSfx;
+        if (prior) this.deps.unregisterQuizSfx?.(prior.inputId);
+        this.quizSfx = { inputId, kind, startedAtMs: this.now() };
+        this.publishHud();
+        const t = setTimeout(
+          () => {
+            this.quizSfxTimers.delete(t);
+            if (this.quizSfx?.inputId === inputId) {
+              this.quizSfx = null;
+              if (!this.disposed) this.publishHud();
+            }
+            this.deps.unregisterQuizSfx?.(inputId);
+          },
+          QUIZ_SFX_MS[kind] + QUIZ_SFX_LEAD_MS + 1000,
+        );
+        this.quizSfxTimers.add(t);
+      })
+      .catch((err) => console.warn('[ob] quiz sfx failed', err));
+  }
+
+  /** Per-tick quiz housekeeping: roster sync + celebration / hint expiry. */
+  private quizStep(now: number): void {
+    if (!this.quizOn()) return;
+    const sync = this.quiz.syncPlayers(
+      this.cams.list().map((c) => ({
+        id: c.id,
+        role: c.role,
+        name: c.name,
+        talent: c.talent,
+        live: c.live && c.inputId != null,
+      })),
+    );
+    if (sync.effects.length) this.applyQuizEffects(sync.effects, 'system');
+    const t = this.quiz.tick(now);
+    if (t.effects.length) this.applyQuizEffects(t.effects, 'system');
+    if (sync.changed || t.changed) {
+      this.publishHud();
+      this.markStateDirty();
+    }
+  }
+
+  private quizHud(): ObHudState['quiz'] {
+    if (!this.quizOn() || this.phase !== 'on-air') return null;
+    const s = this.quiz.state();
+    const c = s.current;
+    const forPlayer = c
+      ? s.players.find((p) => p.camId === c.forCamId)
+      : undefined;
+    return {
+      players: s.players.map((p) => ({
+        name: p.name,
+        amount: p.amount,
+        amountFrom: p.amountFrom,
+        changedAtMs: p.amountChangedAtMs,
+        verdict:
+          p.amountChangedAtMs === null
+            ? null
+            : p.amount >= p.amountFrom
+              ? 'correct'
+              : 'wrong',
+        active: c?.forCamId === p.camId,
+        lifelineUsed: p.lifelineUsed,
+      })),
+      board:
+        c && c.shownAtMs !== null
+          ? {
+              q: c.q,
+              answers: c.answers,
+              forName: forPlayer?.name ?? '',
+              number: c.number,
+              shownAtMs: c.shownAtMs,
+              locked: c.lockedLetter,
+              lockedAtMs: c.lockedAtMs,
+              reveal:
+                c.verdict && c.revealedAtMs !== null
+                  ? {
+                      correct: c.correct,
+                      verdict: c.verdict,
+                      atMs: c.revealedAtMs,
+                      delta: c.delta,
+                    }
+                  : null,
+            }
+          : null,
+      hint:
+        s.hint && s.hint.status === 'done' && s.hint.text && s.hint.untilMs
+          ? {
+              text: s.hint.text,
+              letter: s.hint.letter,
+              atMs: s.hint.untilMs - OB_QUIZ_HINT_SHOW_MS,
+              untilMs: s.hint.untilMs,
+            }
+          : null,
+      splash: c === null && s.players.every((p) => p.answered === 0),
+      sfx: this.quizSfx
+        ? { inputId: this.quizSfx.inputId, startedAtMs: this.quizSfx.startedAtMs }
+        : null,
+    };
   }
 
   private lowerThirdCommand(
@@ -3348,6 +3600,7 @@ export class ObVanController {
         ...this.hostTracker.state(),
         lastGesture: this.lastGesture ? { ...this.lastGesture } : null,
       },
+      quiz: this.quizOn() ? this.quiz.state() : null,
       llm: this.llmStatus(),
       stats: this.statsSnapshot(now),
       wrapNotes: this.wrapNotes,
@@ -3471,6 +3724,7 @@ export class ObVanController {
             }
           : null,
       wrap: this.phase === 'wrap' ? this.wrapCard() : null,
+      quiz: this.quizHud(),
     };
   }
 
@@ -3568,6 +3822,7 @@ export class ObVanController {
     this.autoStep(now);
     this.llmEventStep();
     this.hostStep();
+    this.quizStep(now);
     this.broadcastSignals(now);
     this.publishHud();
     this.flushLog();
@@ -3686,6 +3941,12 @@ export class ObVanController {
     this.replayTimer = null;
     for (const t of this.replayUnregisterTimers) clearTimeout(t);
     this.replayUnregisterTimers.clear();
+    for (const t of this.quizSfxTimers) clearTimeout(t);
+    this.quizSfxTimers.clear();
+    if (this.quizSfx) {
+      this.deps.unregisterQuizSfx?.(this.quizSfx.inputId);
+      this.quizSfx = null;
+    }
     const r = this.replay;
     if (r?.inputId && r.file) this.deps.unregisterReplayClip(r.inputId, r.file);
     this.replay = null;

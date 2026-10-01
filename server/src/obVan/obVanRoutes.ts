@@ -22,6 +22,8 @@ import {
   OB_CONTROL_ACTIONS,
   OB_GRADES,
   OB_PRESET_IDS,
+  OB_QUIZ_ACTIONS,
+  OB_QUIZ_LETTERS,
   OB_TRANSITION_TYPES,
   type ObCamRole,
   type ObConfig,
@@ -212,6 +214,13 @@ export const ObOperatorCommandSchema = Type.Union([
   Type.Object({
     op: Type.Literal('note'),
     text: Type.String({ minLength: 1, maxLength: 240 }),
+  }),
+  Type.Object({
+    op: Type.Literal('quiz'),
+    action: literals(OB_QUIZ_ACTIONS),
+    camId: Type.Optional(CamId),
+    letter: Type.Optional(literals(OB_QUIZ_LETTERS)),
+    verdict: Type.Optional(literals(['correct', 'wrong'] as const)),
   }),
 ]);
 
