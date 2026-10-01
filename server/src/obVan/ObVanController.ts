@@ -156,6 +156,12 @@ export type ObControllerDeps = {
   ) => Promise<void>;
   /** Side-channel delay the input was registered with (ms). */
   getSideChannelDelayMs?: (inputId: string) => number;
+  /**
+   * Ask the OB worker for a JPEG snapshot of the input's latest frame; the
+   * answer arrives as a `{kind:'snapshot', requestId}` worker result. False =
+   * worker not connected.
+   */
+  requestObSnapshot?: (inputId: string, requestId: string) => boolean;
   /** Wall time of the engine's pipeline start (pts 0), null before start. */
   smelterStartMs?: () => number | null;
   getFileClock?: (inputId: string) => ObFileClock | null;
@@ -2665,6 +2671,17 @@ export class ObVanController {
     if (this.disposed) return;
     const cam = this.cams.byInput(inputId);
     if (!cam) return;
+    // Snapshot / gesture results carry no signal and must not wait out the
+    // settle window (parseWorkerSample returns null for unknown kinds).
+    const d = data as { kind?: unknown } | null;
+    if (d && d.kind === 'snapshot') {
+      this.onSnapshotResult(cam.id, d as Record<string, unknown>);
+      return;
+    }
+    if (d && d.kind === 'gesture') {
+      this.onGestureResult(cam.id, d as Record<string, unknown>);
+      return;
+    }
     const now = this.now();
     const settle = this.settleUntil.get(cam.id);
     if (settle !== undefined) {
@@ -2675,6 +2692,18 @@ export class ObVanController {
     if (!sample) return;
     cam.lastSignalAt = now;
     this.signals.ingest(cam.id, sample);
+  }
+
+  /** `capture` answer from the worker — handed to the host lifecycle. */
+  private onSnapshotResult(camId: string, d: Record<string, unknown>): void {
+    void camId;
+    void d;
+  }
+
+  /** A recognised hand gesture on a camera — handed to the gesture mapping. */
+  private onGestureResult(camId: string, d: Record<string, unknown>): void {
+    void camId;
+    void d;
   }
 
   /** Subtitles on a transcribed input: always, unless it is a camera and the show turned them off. */

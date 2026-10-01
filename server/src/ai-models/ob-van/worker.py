@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import base64
 import contextlib
 import importlib.util
 import json
@@ -101,6 +102,8 @@ MOTION_GRID = (4, 4)  # cols, rows
 MOTION_DIFF_THRESH = 18
 MOTION_MAX_GAP_S = 1.5
 PROC_EMA_ALPHA = 0.2
+SNAPSHOT_MAX_W = 640
+SNAPSHOT_JPEG_QUALITY = 80
 
 SUBSCRIBE_MAX_RETRIES = 5
 SUBSCRIBE_RETRY_DELAY_S = 1.0
@@ -127,6 +130,8 @@ class InputState:
     proc_ema_s: float | None = None
     audio_samples: int = 0
     video_samples: int = 0
+    # Latest analysed frame, for `capture` snapshots: (pts_nanos, RGB ≤640 px).
+    last_frame: tuple[int, np.ndarray] | None = None
 
     def wants(self, kind: str) -> bool:
         return param_flag(self.params, kind, True)
@@ -526,6 +531,7 @@ async def run_video_once(input_id: str) -> int:
             queue.clear()
             last_at = time.monotonic()
             rgb = np.ascontiguousarray(frame.rgba[:, :, :3])
+            state.last_frame = (int(frame.pts_nanos), snapshot_copy(rgb))
             t0 = time.monotonic()
             data = await loop.run_in_executor(_INFER, analyse_frame, rgb, state.params, meter, t0)
             if sent > 0:  # the first frame pays for the model load — not a pace sample
@@ -679,6 +685,58 @@ async def send_result(input_id: str, pts_nanos: int, data: dict) -> None:
     )
 
 
+# ── Snapshots (the `capture` command) ────────────────────────────────────────
+
+
+def snapshot_copy(rgb: np.ndarray) -> np.ndarray:
+    """A ≤640 px wide copy of the analysed frame, kept per input for
+    `capture` (the full-size frame must not be retained)."""
+    h, w = rgb.shape[:2]
+    if w <= SNAPSHOT_MAX_W:
+        return rgb.copy()
+    if cv2 is None:
+        step = max(1, round(w / SNAPSHOT_MAX_W))
+        return np.ascontiguousarray(rgb[::step, ::step])
+    scale = SNAPSHOT_MAX_W / w
+    size = (SNAPSHOT_MAX_W, max(1, round(h * scale)))
+    return cv2.resize(rgb, size, interpolation=cv2.INTER_AREA)
+
+
+def encode_snapshot_jpeg(rgb: np.ndarray) -> bytes | None:
+    if cv2 is None:
+        return None
+    bgr = np.ascontiguousarray(rgb[:, :, ::-1])
+    ok, buf = cv2.imencode(
+        ".jpg", bgr, [int(cv2.IMWRITE_JPEG_QUALITY), SNAPSHOT_JPEG_QUALITY]
+    )
+    return buf.tobytes() if ok else None
+
+
+async def send_snapshot(input_id: str, request_id) -> None:
+    rid = request_id if isinstance(request_id, str) else ""
+    state = active_inputs.get(input_id)
+    if state is None or state.last_frame is None:
+        await send_result(input_id, 0, {"kind": "snapshot", "requestId": rid, "error": "no_frame"})
+        return
+    pts_nanos, rgb = state.last_frame
+    data = await asyncio.get_running_loop().run_in_executor(None, encode_snapshot_jpeg, rgb)
+    if data is None:
+        await send_result(input_id, pts_nanos, {"kind": "snapshot", "requestId": rid, "error": "encode_failed"})
+        return
+    h, w = rgb.shape[:2]
+    await send_result(
+        input_id,
+        pts_nanos,
+        {
+            "kind": "snapshot",
+            "requestId": rid,
+            "w": int(w),
+            "h": int(h),
+            "jpegB64": base64.b64encode(data).decode("ascii"),
+        },
+    )
+
+
 def handle_command(msg: dict) -> None:
     cmd = msg.get("cmd")
     if cmd == "shutdown":
@@ -707,6 +765,8 @@ def handle_command(msg: dict) -> None:
             start_input(input_id)
     elif cmd == "unsubscribe":
         stop_input(input_id)
+    elif cmd == "capture":
+        asyncio.create_task(send_snapshot(input_id, msg.get("requestId")))
     elif cmd == "side_channel_ready" and state is not None:
         state.side_channel_ready = True
         start_input(input_id)  # no-op while running; revives a finished task

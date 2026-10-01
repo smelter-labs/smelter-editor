@@ -936,6 +936,14 @@ export class RoomState {
         getSideChannelDelayMs: (inputId) =>
           this.inputManager.getInputs().find((i) => i.inputId === inputId)
             ?.registeredSideChannelDelayMs ?? 0,
+        requestObSnapshot: (inputId, requestId) => {
+          void this.aiController
+            .requestObSnapshot(inputId, requestId)
+            .catch((err) =>
+              console.warn(`[ob] snapshot request failed for ${inputId}`, err),
+            );
+          return true;
+        },
         smelterStartMs: () => SmelterInstance.getStartTime(),
         getFileClock: (inputId) => this.fileClockOf(inputId),
         resyncFileCams: async () => {
