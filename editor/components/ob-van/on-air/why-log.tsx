@@ -51,7 +51,12 @@ export function WhyLine({
         minWidth: 0,
       }}>
       <div
-        style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+        style={{
+          display: 'flex',
+          alignItems: compact ? 'center' : 'baseline',
+          gap: 6,
+          minWidth: 0,
+        }}>
         <Mono
           size={9}
           color={OB.dim2}
@@ -80,7 +85,8 @@ export function WhyLine({
             minWidth: 0,
             overflow: 'hidden',
             textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
+            whiteSpace: compact ? 'nowrap' : 'normal',
+            overflowWrap: 'anywhere',
           }}>
           {entry.text}
         </Mono>
@@ -96,6 +102,7 @@ export function WhyLine({
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: compact ? 'nowrap' : 'normal',
+            overflowWrap: 'anywhere',
           }}>
           {reasons}
         </Mono>

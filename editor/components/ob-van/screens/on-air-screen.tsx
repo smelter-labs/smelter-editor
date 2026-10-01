@@ -135,7 +135,7 @@ export function OnAirScreen({
           flex: 1,
           minHeight: 0,
           display: 'grid',
-          gridTemplateColumns: '700px 1fr',
+          gridTemplateColumns: '700px minmax(0, 1fr)',
           gap: 12,
         }}>
         <div
@@ -195,6 +195,7 @@ export function OnAirScreen({
             flexDirection: 'column',
             gap: 8,
             minHeight: 0,
+            minWidth: 0,
           }}>
           <ObPlate title='RUNDOWN' padding={10}>
             <RundownPlate rundown={state.rundown} pending={pending} />
