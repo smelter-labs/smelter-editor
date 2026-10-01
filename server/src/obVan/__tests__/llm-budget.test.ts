@@ -65,10 +65,10 @@ describe('prices', () => {
 });
 
 describe('limits', () => {
-  it('defaults to 240 runs / 400k input tokens and reads the environment', () => {
+  it('defaults to 600 runs / 1.2M input tokens and reads the environment', () => {
     expect(obLlmLimitsFromEnv({})).toEqual({
-      maxRuns: 240,
-      maxInputTokens: 400_000,
+      maxRuns: 600,
+      maxInputTokens: 1_200_000,
     });
     expect(
       obLlmLimitsFromEnv({

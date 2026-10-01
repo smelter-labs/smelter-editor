@@ -49,6 +49,11 @@ export type ObLlmCallInput = {
   images?: ObLlmImage[];
   /** One strict tool; omitted = plain text answer. */
   tool?: ObLlmToolDef;
+  /**
+   * 'required' forces the tool call (no "answered without actions" retry,
+   * so worst-case latency never doubles); default 'auto' + one nudge retry.
+   */
+  toolChoice?: 'auto' | 'required';
   maxTokens: number;
   effort: ObLlmEffort;
   timeoutMs: number;
@@ -262,7 +267,14 @@ export class AnthropicObLlmClient implements ObLlmClient {
           strict,
         },
       ];
-      body.tool_choice = { type: 'auto', disable_parallel_tool_use: true };
+      body.tool_choice =
+        input.toolChoice === 'required'
+          ? {
+              type: 'tool',
+              name: input.tool.name,
+              disable_parallel_tool_use: true,
+            }
+          : { type: 'auto', disable_parallel_tool_use: true };
     }
     const options = {
       timeout: input.timeoutMs,

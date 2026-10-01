@@ -417,6 +417,15 @@ const WHY = str('Why, in a few words (shown in the log).', 80);
 const DIRECT_ACTION: ObJsonSchema = {
   anyOf: [
     obj(
+      {
+        type: { type: 'string', const: 'cut' },
+        cam: int(1, 8, 'Camera number to put on program (solo).'),
+        why: WHY,
+      },
+      ['type', 'cam', 'why'],
+      'Cut the program to this camera now. Use it when the wrong camera is on air or the shot has gone stale.',
+    ),
+    obj(
       { type: { type: 'string', const: 'advance_segment' }, why: WHY },
       ['type', 'why'],
       'Go to the next rundown segment (only when the talk clearly moved on).',
@@ -470,7 +479,7 @@ const DIRECT_ACTION: ObJsonSchema = {
 export const OB_DIRECT_TOOL: ObLlmToolDef = {
   name: 'direct',
   description:
-    'Nudge the show with at most 3 bounded actions. An empty list means "all good, keep going".',
+    'Direct the show with at most 3 bounded actions — a cut when the wrong camera is on air, plus nudges (lower third, pacing, camera bias, note). An empty list means "all good, keep going".',
   inputSchema: toStrictSchema({
     type: 'object',
     properties: {

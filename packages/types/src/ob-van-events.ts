@@ -80,11 +80,7 @@ export type ObPipCorner = "tl" | "tr" | "bl" | "br";
 export type ObPipSize = "S" | "M" | "L";
 /** What a virtual camera (digital pan/zoom of a wide camera) follows. */
 export type ObAttentionTarget =
-  | "speaker"
-  | "largest"
-  | "ball"
-  | "centroid"
-  | "motion";
+  "speaker" | "largest" | "ball" | "centroid" | "motion";
 export type ObZoom = "tight" | "normal" | "wide";
 
 /** A shot over camera references `C` (camera ids on air, selectors in rules). */
@@ -125,12 +121,7 @@ export const OB_SHOT_KINDS: readonly ObShotKind[] = [
  * from an overscan.
  */
 export type ObTransitionType =
-  | "cut"
-  | "fade"
-  | "dissolve"
-  | "wipe"
-  | "dip"
-  | "zoom-punch";
+  "cut" | "fade" | "dissolve" | "wipe" | "dip" | "zoom-punch";
 export const OB_TRANSITION_TYPES: readonly ObTransitionType[] = [
   "cut",
   "dissolve",
@@ -186,15 +177,14 @@ export type ObTitleBug = {
 };
 
 export type ObAudioPolicy =
-  | { mode: "follow" }
-  | { mode: "master"; cam: string }
-  | { mode: "mix" };
+  { mode: "follow" } | { mode: "master"; cam: string } | { mode: "mix" };
 
 // ── Show flow ────────────────────────────────────────────────────────────
 
 export type ObPhase = "setup" | "on-air" | "wrap";
 export type ObActionSource = "operator" | "auto" | "llm" | "system";
-export type ObPresetId = "talk" | "match" | "stage" | "gig" | "follow" | "custom";
+export type ObPresetId =
+  "talk" | "match" | "stage" | "gig" | "follow" | "custom";
 export const OB_PRESET_IDS: readonly Exclude<ObPresetId, "custom">[] = [
   "talk",
   "match",
@@ -633,7 +623,13 @@ export type ObOperatorCommand =
   | { op: "preview"; shot: ObShot }
   | { op: "take"; transition?: ObTransition }
   | { op: "cut" }
-  | { op: "shot"; shot: ObShot; mode: "take" | "cut" | "preview" }
+  | {
+      op: "shot";
+      shot: ObShot;
+      mode: "take" | "cut" | "preview";
+      /** Hold the program after this change (LLM cuts guard their decision). */
+      holdMs?: number;
+    }
   | { op: "transition"; transition: Partial<ObTransition> }
   | { op: "fx"; effects: Partial<ObEffects> }
   | {
@@ -667,11 +663,7 @@ export type ObOperatorCommand =
 export type ObOperatorOp = ObOperatorCommand["op"];
 
 export type ObControlAction =
-  | "setup"
-  | "go_live"
-  | "wrap"
-  | "reset"
-  | "kick_cam";
+  "setup" | "go_live" | "wrap" | "reset" | "kick_cam";
 export const OB_CONTROL_ACTIONS: readonly ObControlAction[] = [
   "setup",
   "go_live",

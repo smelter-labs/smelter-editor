@@ -225,6 +225,8 @@ export type ObDecision = {
 /** Stateful auto pilot (implemented by `brain.ts` → `createObBrain`). */
 export interface ObBrain {
   step(ctx: ObBrainContext): ObDecision | null;
+  /** Camera totals of the latest step (camId → score), null before the first. */
+  lastScores(): Record<string, number> | null;
   setRuleset(ruleset: ObRuleset): void;
   reset(): void;
 }
@@ -255,18 +257,35 @@ export type ObSituation = {
     live: boolean;
     onProgram: boolean;
     onPreview: boolean;
-    /** 10 s means. */
+    /** 10 s means, plus the instantaneous VAD flag. */
     signals: {
+      /** Someone is talking on this camera RIGHT NOW (VAD). */
+      speaking: boolean;
       speechShare: number;
       rmsDb: number;
       motion: number;
       people: number;
     } | null;
   }[];
-  program: { shot: ObShot | null; sinceMs: number; source: ObActionSource };
+  program: {
+    shot: ObShot | null;
+    sinceMs: number;
+    source: ObActionSource;
+    /** Time the current hold still blocks auto cuts, null when free. */
+    holdRemainingMs: number | null;
+    /** The auto pilot paused by an operator cut, for this much longer. */
+    autoPausedForMs: number | null;
+    /** An already-queued shot change (label + when it lands). */
+    scheduledNext: { shot: string; inMs: number } | null;
+  };
   pacing: { minHoldMs: number; maxHoldMs: number };
   lowerThird: { name: string; camNumber: number | null } | null;
+  /** Chronological (oldest first), real program changes only, ≤ 6. */
   lastCuts: ObLogEntry[];
+  /** Auto-pilot camera scores of the latest tick (cam number → score). */
+  scores: Record<number, number> | null;
+  /** How far the signals run ahead of the on-air picture (side-channel delay). */
+  lookaheadMs: number;
 };
 
 export type ObLlmDeps = {
@@ -295,6 +314,12 @@ export interface ObLlmModule {
     base?: ObRuleset;
   }): Promise<ObBriefResult>;
   setAnalyst(enabled: boolean, intervalS?: number): void;
+  /**
+   * Something just happened (speaker change, keyword, cut, long silence):
+   * run an analyst tick soon instead of waiting for the interval. Debounced
+   * and rate-limited inside the analyst; a no-op while off / off-air.
+   */
+  requestTick(reason: string): void;
   /** Switch the model for later calls (no-op without an API key). */
   setModel(model: string): void;
   /**

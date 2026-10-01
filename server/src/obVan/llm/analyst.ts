@@ -26,7 +26,7 @@ import { toObLlmError, type ObLlmClient } from './client';
 import {
   buildAnalystUser,
   OB_LLM_NOTE_MAX_CHARS,
-  OB_LLM_SYSTEM,
+  OB_LLM_SYSTEM_ANALYST,
 } from './prompts';
 import { OB_DIRECT_MAX_ACTIONS, OB_DIRECT_TOOL } from './schema';
 import type { ObTranscriptLine, ObTranscriptRing } from './transcripts';
@@ -36,6 +36,13 @@ export const OB_ANALYST_MIN_INTERVAL_S = OB_CONFIG_LIMITS.analystIntervalS.min;
 export const OB_ANALYST_MAX_INTERVAL_S = OB_CONFIG_LIMITS.analystIntervalS.max;
 export const OB_ANALYST_MAX_BACKOFF_MS = 5 * 60_000;
 export const OB_ANALYST_MAX_API_ERRORS = 3;
+/** Call timeout, decoupled from the interval (a busy tick just skips). */
+export const OB_ANALYST_TIMEOUT_MS = 20_000;
+/** Event-driven ticks: debounce after the event, minimum gap between runs. */
+export const OB_ANALYST_EVENT_DEBOUNCE_MS = 1_000;
+export const OB_ANALYST_MIN_EVENT_GAP_MS = 5_000;
+/** How long an LLM cut holds the program against the auto pilot. */
+export const OB_LLM_CUT_HOLD_MS = 4_000;
 
 export function clampAnalystInterval(s: number | undefined): number {
   if (s === undefined || !Number.isFinite(s))
@@ -58,6 +65,8 @@ export function analystIntervalFromEnv(
 export type ObTimers = {
   setInterval: (fn: () => void, ms: number) => unknown;
   clearInterval: (handle: unknown) => void;
+  setTimeout: (fn: () => void, ms: number) => unknown;
+  clearTimeout: (handle: unknown) => void;
 };
 
 const REAL_TIMERS: ObTimers = {
@@ -67,6 +76,12 @@ const REAL_TIMERS: ObTimers = {
     return h;
   },
   clearInterval: (h) => clearInterval(h as ReturnType<typeof setInterval>),
+  setTimeout: (fn, ms) => {
+    const h = setTimeout(fn, ms);
+    h.unref?.();
+    return h;
+  },
+  clearTimeout: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
 };
 
 export type ObAnalystOptions = {
@@ -105,6 +120,7 @@ export type ObAnalystState = {
 
 /** One validated action from the model. */
 export type ObDirectAction =
+  | { type: 'cut'; cam: number; why: string }
   | { type: 'advance_segment'; why: string }
   | {
       type: 'set_lower_third';
@@ -160,6 +176,11 @@ export function parseDirectActions(input: unknown): {
     const why = text(raw.why, 80) ?? 'analyst';
     let action: ObDirectAction | null = null;
     switch (raw.type) {
+      case 'cut': {
+        const cam = intIn(raw.cam, 1, 99);
+        if (cam !== undefined) action = { type: 'cut', cam, why };
+        break;
+      }
       case 'advance_segment':
         action = { type: 'advance_segment', why };
         break;
@@ -238,12 +259,32 @@ export function situationHash(
   lastTranscriptAt: number | null,
 ): string {
   const lastCut = s.lastCuts.length ? s.lastCuts[s.lastCuts.length - 1] : null;
+  // Dominant speaker (cam number) so a speaker change always busts the hash.
+  // Raw rms / motion stay out: their jitter would bust it every tick.
+  let dominant: number | null = null;
+  let best = -1;
+  for (const c of s.cams) {
+    if (!c.live || !c.signals?.speaking) continue;
+    if (c.signals.speechShare > best) {
+      best = c.signals.speechShare;
+      dominant = c.number;
+    }
+  }
   return JSON.stringify([
     s.phase,
     s.segment?.index ?? null,
     s.program.shot,
     lastCut ? lastCut.id : null,
-    s.cams.map((c) => [c.number, c.role, c.live, c.talent]),
+    s.cams.map((c) => [
+      c.number,
+      c.role,
+      c.live,
+      c.talent,
+      c.signals ? c.signals.speaking : null,
+      c.signals ? Math.round(c.signals.speechShare * 10) : null,
+      c.signals ? c.signals.people : null,
+    ]),
+    dominant,
     s.lowerThird?.name ?? null,
     lastTranscriptAt,
   ]);
@@ -256,6 +297,9 @@ export class ObAnalyst {
   private intervalS: number;
   private phase: ObPhase = 'setup';
   private timer: unknown = null;
+  private eventTimer: unknown = null;
+  private pendingTick: string | null = null;
+  private lastTrigger: string | null = null;
   private inFlight: AbortController | null = null;
   private lastHash: string | null = null;
   private lastRunAtMs: number | null = null;
@@ -295,6 +339,9 @@ export class ObAnalyst {
     }
     this.enabled = enabled;
     this.syncTimer(true);
+    // First look right away — a fresh director should not wait a full interval.
+    if (enabled && this.phase === 'on-air')
+      this.timers.setTimeout(() => void this.tick('enabled'), 0);
     this.o.onChange();
   }
 
@@ -310,7 +357,33 @@ export class ObAnalyst {
     if (phase !== 'on-air') this.abortInFlight();
     this.lastHash = null;
     this.syncTimer(false);
+    if (phase === 'on-air' && this.enabled)
+      this.timers.setTimeout(() => void this.tick('on air'), 0);
     this.o.onChange();
+  }
+
+  /**
+   * Something happened (speaker change, keyword, cut, silence): tick soon.
+   * Debounced 1 s; at most one event tick per `OB_ANALYST_MIN_EVENT_GAP_MS`;
+   * a call in flight queues one follow-up tick instead.
+   */
+  requestTick(reason: string): void {
+    if (!this.enabled || this.phase !== 'on-air') return;
+    if (this.inFlight) {
+      this.pendingTick = reason;
+      return;
+    }
+    if (this.eventTimer !== null) return;
+    this.eventTimer = this.timers.setTimeout(() => {
+      this.eventTimer = null;
+      const now = this.o.now();
+      if (
+        this.lastRunAtMs !== null &&
+        now - this.lastRunAtMs < OB_ANALYST_MIN_EVENT_GAP_MS
+      )
+        return;
+      void this.tick(reason);
+    }, OB_ANALYST_EVENT_DEBOUNCE_MS);
   }
 
   /** Stop now: abort the call in flight, turn the analyst off. */
@@ -328,7 +401,8 @@ export class ObAnalyst {
   }
 
   /** One analyst step (the timer calls it; public for tests). */
-  async tick(): Promise<ObAnalystTickResult> {
+  async tick(trigger?: string): Promise<ObAnalystTickResult> {
+    this.lastTrigger = trigger ?? null;
     if (!this.enabled) return 'disabled';
     if (this.phase !== 'on-air') return 'phase';
     if (this.inFlight) return 'busy';
@@ -351,12 +425,13 @@ export class ObAnalyst {
     this.o.onChange();
     try {
       const res = await this.o.client.call({
-        system: OB_LLM_SYSTEM,
+        system: OB_LLM_SYSTEM_ANALYST,
         user: buildAnalystUser(situation, transcripts),
         tool: OB_DIRECT_TOOL,
+        toolChoice: 'required',
         maxTokens: 1500,
         effort: 'low',
-        timeoutMs: Math.min(25_000, this.intervalS * 1000 - 2000),
+        timeoutMs: OB_ANALYST_TIMEOUT_MS,
         signal: controller.signal,
       });
       this.o.budget.record(res.usage);
@@ -403,6 +478,12 @@ export class ObAnalyst {
       return 'error';
     } finally {
       if (this.inFlight === controller) this.inFlight = null;
+      // An event arrived while we were busy: look once more.
+      if (this.pendingTick !== null) {
+        const reason = this.pendingTick;
+        this.pendingTick = null;
+        this.requestTick(reason);
+      }
       this.o.onChange();
     }
   }
@@ -414,10 +495,38 @@ export class ObAnalyst {
   ): void {
     const { actions, rejected } = parseDirectActions(input);
     const camBy = (n: number) => situation.cams.find((c) => c.number === n);
-    for (const a of actions) {
+    // The cut lands first: nudges in the same turn describe the new program.
+    const ordered = [...actions].sort(
+      (a, b) => (a.type === 'cut' ? 0 : 1) - (b.type === 'cut' ? 0 : 1),
+    );
+    for (const a of ordered) {
       const reasons = ['llm analyst'];
+      if (this.lastTrigger) reasons.push(`on ${this.lastTrigger}`);
       if (a.type !== 'note') reasons.push(a.why);
       switch (a.type) {
+        case 'cut': {
+          const cam = camBy(a.cam);
+          if (!cam || !cam.live) {
+            rejected.push(
+              `cut: camera ${a.cam} ${cam ? 'is not live' : 'does not exist'}`,
+            );
+            break;
+          }
+          if (cam.onProgram) {
+            rejected.push(`cut: camera ${a.cam} is already on program`);
+            break;
+          }
+          this.o.apply(
+            {
+              op: 'shot',
+              shot: { kind: 'solo', cam: cam.camId },
+              mode: 'take',
+              holdMs: OB_LLM_CUT_HOLD_MS,
+            },
+            reasons,
+          );
+          break;
+        }
         case 'advance_segment': {
           const index = situation.segment?.index ?? -1;
           if (index + 1 >= situation.rundown.length) {
@@ -524,9 +633,15 @@ export class ObAnalyst {
   }
 
   private stopTimer(): void {
-    if (this.timer === null) return;
-    this.timers.clearInterval(this.timer);
-    this.timer = null;
+    if (this.timer !== null) {
+      this.timers.clearInterval(this.timer);
+      this.timer = null;
+    }
+    if (this.eventTimer !== null) {
+      this.timers.clearTimeout(this.eventTimer);
+      this.eventTimer = null;
+    }
+    this.pendingTick = null;
   }
 
   /** Timer runs only while enabled AND on air. */

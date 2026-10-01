@@ -90,6 +90,7 @@ export function createObLlm(
         if (s !== undefined) wantedInterval = clampAnalystInterval(s);
         deps.onStatus(status());
       },
+      requestTick: () => undefined,
       setModel: () => undefined,
       onTranscript: () => undefined,
       setPhase: () => undefined,
@@ -201,6 +202,10 @@ export function createObLlm(
 
     setAnalyst(enabled, s) {
       analyst.setEnabled(enabled, s);
+    },
+
+    requestTick(reason) {
+      analyst.requestTick(reason);
     },
 
     setModel(model) {

@@ -24,7 +24,13 @@ export function cam(
     live: true,
     onProgram: false,
     onPreview: false,
-    signals: { speechShare: 0.2, rmsDb: -30, motion: 0.1, people: 1 },
+    signals: {
+      speaking: false,
+      speechShare: 0.2,
+      rmsDb: -30,
+      motion: 0.1,
+      people: 1,
+    },
     ...over,
   };
 }
@@ -47,10 +53,15 @@ export function situation(over: Partial<ObSituation> = {}): ObSituation {
       shot: { kind: 'solo', cam: 'c1' },
       sinceMs: 90_000,
       source: 'auto',
+      holdRemainingMs: null,
+      autoPausedForMs: null,
+      scheduledNext: null,
     },
     pacing: { minHoldMs: 2500, maxHoldMs: 20000 },
     lowerThird: null,
     lastCuts: [],
+    scores: null,
+    lookaheadMs: 3000,
     ...over,
   };
 }
@@ -114,6 +125,8 @@ export function deferred<T>(): {
 export class ManualTimers implements ObTimers {
   active: { fn: () => void; ms: number } | null = null;
   started = 0;
+  /** Pending one-shots (immediate first ticks, event debounces). */
+  timeouts: { fn: () => void; ms: number }[] = [];
   setInterval = (fn: () => void, ms: number): unknown => {
     this.started++;
     this.active = { fn, ms };
@@ -122,8 +135,22 @@ export class ManualTimers implements ObTimers {
   clearInterval = (h: unknown): void => {
     if (h === this.active) this.active = null;
   };
+  setTimeout = (fn: () => void, ms: number): unknown => {
+    const t = { fn, ms };
+    this.timeouts.push(t);
+    return t;
+  };
+  clearTimeout = (h: unknown): void => {
+    this.timeouts = this.timeouts.filter((t) => t !== h);
+  };
   fire(): void {
     this.active?.fn();
+  }
+  /** Run and drain the pending one-shots. */
+  fireTimeouts(): void {
+    const pending = this.timeouts;
+    this.timeouts = [];
+    for (const t of pending) t.fn();
   }
 }
 

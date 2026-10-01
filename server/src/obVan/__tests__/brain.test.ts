@@ -920,6 +920,31 @@ describe('brain core', () => {
     expect(brain.step({ ...ctx, nowAir: T + 400 })?.ruleId).toBe('wide-once');
   });
 
+  it('lastScores reports the camera totals of the latest step', () => {
+    const rs = scoringOnly('talk');
+    const quiet = Object.fromEntries(
+      cams.map((c) => [c.camId, sig(c.camId, T)]),
+    );
+    const brain = createObBrain(rs);
+    expect(brain.lastScores()).toBeNull();
+    brain.step(
+      context({
+        ruleset: rs,
+        nowAir: T,
+        cams,
+        signals: quiet,
+        program: program({ shot: solo('c1'), sinceAirMs: T - 3000 }),
+      }),
+    );
+    const scores = brain.lastScores();
+    expect(scores).not.toBeNull();
+    expect(Object.keys(scores!).sort()).toEqual(
+      cams.map((c) => c.camId).sort(),
+    );
+    brain.reset();
+    expect(brain.lastScores()).toBeNull();
+  });
+
   it('a pacing-only rule changes the pacing the brain holds to', () => {
     const rs = obPresetRuleset('gig');
     const quietBand = Object.fromEntries(

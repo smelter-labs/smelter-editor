@@ -109,6 +109,7 @@ import {
   type ObTransitionPlan,
 } from './scene';
 import { OB_VIRTUAL_GLIDE_MS, ObVirtualCam } from './virtualCam';
+import { analystIntervalFromEnv } from './llm/analyst';
 import { ObLlmError } from './llm/errors';
 import { obVanParamsForRole } from '../ai-models/ob-van/manifest';
 
@@ -240,6 +241,7 @@ export type ObChange = Pick<
 
 export const NULL_BRAIN: ObBrain = {
   step: () => null,
+  lastScores: () => null,
   setRuleset: () => {},
   reset: () => {},
 };
@@ -324,6 +326,14 @@ const SIGNAL_FRESH_MS = 3000;
 const OB_LLM_PREFER_BOOST_MAX = 0.3;
 /** An LLM pacing override expires on its own; only the operator's persists. */
 const OB_LLM_PACING_TTL_MS = 60_000;
+/** At most one LLM cut per this window (the brain handles micro-timing). */
+const OB_LLM_CUT_COOLDOWN_MS = 5_000;
+/** Bounds for the hold an LLM cut may carry. */
+const OB_LLM_CUT_HOLD_LIMITS = { min: 2_000, max: 15_000 };
+/** Event ticks: speech must be stable this long to count as "the speaker". */
+const OB_LLM_EVENT_SPEECH_STABLE_MS = 700;
+/** Event ticks: everybody quiet this long → one "silence" tick. */
+const OB_LLM_EVENT_SILENCE_MS = 7_000;
 const REPLAY_OPEN_GRACE_MS = 8000;
 const REPLAY_CLOSE_LEAD_MS = 350;
 const REPLAY_UNREGISTER_MS = 450;
@@ -487,6 +497,11 @@ export class ObVanController {
   private autoPausedUntil: number | null = null;
   private holdUntil: number | null = null;
   private lastDecisionAt: number | null = null;
+  private lastLlmCutAt: number | null = null;
+  // ── LLM event-tick edge detection ──
+  private lastDominantSpeakerCamId: string | null = null;
+  private lastKeywordSeenAirMs: number | null = null;
+  private silenceEventFired = false;
   private pacingOverride: {
     minHoldMs?: number;
     maxHoldMs?: number;
@@ -577,6 +592,9 @@ export class ObVanController {
           text: note,
         }),
     });
+    // `OB_VAN_LLM_ANALYST_INTERVAL_S` seeds the config (the controller always
+    // passes the config value, so the env would otherwise be dead).
+    this.config.llm.analystIntervalS = analystIntervalFromEnv();
     this.llm =
       factories.createLlm?.(
         {
@@ -1536,9 +1554,24 @@ export class ObVanController {
         const transition =
           cmd.mode === 'cut'
             ? { type: 'cut' as const, durationMs: 0 }
-            : this.config.transition;
+            : source === 'llm'
+              ? this.defaultTransition(source)
+              : this.config.transition;
+        const holdMs =
+          cmd.holdMs && cmd.holdMs > 0
+            ? Math.min(
+                OB_LLM_CUT_HOLD_LIMITS.max,
+                Math.max(OB_LLM_CUT_HOLD_LIMITS.min, cmd.holdMs),
+              )
+            : undefined;
         return this.applyDecision(
-          { shot: cmd.shot, transition, logKind: cmd.mode, ...rs },
+          {
+            shot: cmd.shot,
+            transition,
+            logKind: cmd.mode,
+            ...(holdMs ? { holdMs } : {}),
+            ...rs,
+          },
           source,
         );
       }
@@ -1982,6 +2015,31 @@ export class ObVanController {
         return err;
       }
     }
+    if (source === 'llm' && change.shot) {
+      // The LLM cut may break a rule hold (nothing else can), but it must not
+      // fight a running transition, the operator, or its own last cut.
+      if (this.prog.transition !== null)
+        return {
+          ok: false,
+          code: 'bad_action',
+          message: 'transition in flight',
+        };
+      if (this.autoPausedUntil !== null && now < this.autoPausedUntil)
+        return {
+          ok: false,
+          code: 'bad_action',
+          message: 'auto paused by an operator cut',
+        };
+      if (
+        this.lastLlmCutAt !== null &&
+        now - this.lastLlmCutAt < OB_LLM_CUT_COOLDOWN_MS
+      )
+        return {
+          ok: false,
+          code: 'bad_action',
+          message: `LLM cut cooldown (${Math.round(OB_LLM_CUT_COOLDOWN_MS / 1000)} s)`,
+        };
+    }
     if (source === 'operator' && change.shot) this.pauseAuto(now);
     const reasons = change.reasons ? { reasons: change.reasons } : {};
     if (change.shot) {
@@ -2012,6 +2070,15 @@ export class ObVanController {
           camId: primaryCam(change.shot) || undefined,
           ...reasons,
         });
+        if (source === 'llm') {
+          this.lastLlmCutAt = now;
+          // Drop the brain's queued cut: it was planned for the old program
+          // and would flip the picture right back.
+          this.cancelScheduled((c) => c.source === 'auto');
+        } else {
+          // A cut from anyone else is news — let the analyst take a look.
+          this.llm?.requestTick('cut applied');
+        }
       }
     }
     if (change.effects) {
@@ -2420,6 +2487,74 @@ export class ObVanController {
     if (!decision) return;
     this.lastDecisionAt = now;
     this.schedule(decision, 'auto');
+  }
+
+  /**
+   * Edge-triggered LLM analyst ticks from the live signals: a new dominant
+   * speaker, a fresh keyword hit, or everybody falling silent. The analyst
+   * debounces and rate-limits; this only detects the edges.
+   */
+  private llmEventStep(): void {
+    if (!this.llm || this.phase !== 'on-air') return;
+    const nowAir = this.clock.nowAir();
+    const view = this.signals.view();
+    let dominant: { camId: string; number: number; rms: number } | null = null;
+    let anySpeech = false;
+    let audioCams = 0;
+    let quietSinceAirMs: number | null = null;
+    let maxKeywordAirMs: number | null = null;
+    let freshKeyword: string | null = null;
+    for (const cam of this.cams.list()) {
+      if (!cam.live || cam.inputId == null) continue;
+      const st = view[cam.id];
+      if (!st || st.offline) continue;
+      for (const k of st.keywords) {
+        if (maxKeywordAirMs === null || k.airMs > maxKeywordAirMs)
+          maxKeywordAirMs = k.airMs;
+        if (
+          this.lastKeywordSeenAirMs !== null &&
+          k.airMs > this.lastKeywordSeenAirMs
+        )
+          freshKeyword = k.group;
+      }
+      if (st.staleAudio) continue;
+      audioCams++;
+      if (st.speech) {
+        anySpeech = true;
+        const stable =
+          st.speechSinceAirMs !== null &&
+          nowAir - st.speechSinceAirMs >= OB_LLM_EVENT_SPEECH_STABLE_MS;
+        if (stable && (!dominant || st.rmsEma > dominant.rms))
+          dominant = { camId: cam.id, number: cam.number, rms: st.rmsEma };
+      } else if (st.silenceSinceAirMs !== null) {
+        if (quietSinceAirMs === null || st.silenceSinceAirMs > quietSinceAirMs)
+          quietSinceAirMs = st.silenceSinceAirMs;
+      }
+    }
+    if (dominant && dominant.camId !== this.lastDominantSpeakerCamId) {
+      this.lastDominantSpeakerCamId = dominant.camId;
+      this.llm.requestTick(`speaker CAM ${dominant.number}`);
+    }
+    if (this.lastKeywordSeenAirMs === null) {
+      // First look: take stock of old hits without firing on them.
+      this.lastKeywordSeenAirMs = maxKeywordAirMs ?? 0;
+    } else if (freshKeyword) {
+      this.lastKeywordSeenAirMs = maxKeywordAirMs ?? this.lastKeywordSeenAirMs;
+      this.llm.requestTick(`keyword ${freshKeyword}`);
+    }
+    if (anySpeech) {
+      this.silenceEventFired = false;
+    } else if (
+      !this.silenceEventFired &&
+      audioCams > 0 &&
+      quietSinceAirMs !== null &&
+      nowAir - quietSinceAirMs >= OB_LLM_EVENT_SILENCE_MS
+    ) {
+      this.silenceEventFired = true;
+      this.llm.requestTick(
+        `silence ${Math.round(OB_LLM_EVENT_SILENCE_MS / 1000)}s`,
+      );
+    }
   }
 
   /** The last scheduled shot change: the program the brain plans after. */
@@ -2889,6 +3024,16 @@ export class ObVanController {
     );
     const lt = this.lowerThird;
     const ltCam = lt?.camId ? this.cams.get(lt.camId) : undefined;
+    const plan = this.plannedShot();
+    const rawScores = this.brain.lastScores();
+    let scores: Record<number, number> | null = null;
+    if (rawScores) {
+      scores = {};
+      for (const c of this.cams.list()) {
+        const v = rawScores[c.id];
+        if (v !== undefined) scores[c.number] = v;
+      }
+    }
     return {
       atMs: now,
       phase: this.phase,
@@ -2910,6 +3055,7 @@ export class ObVanController {
           onPreview: onPreview.has(c.id),
           signals: s
             ? {
+                speaking: s.speech,
                 speechShare: s.speechShare10s,
                 rmsDb: s.rmsEma,
                 motion: s.motionEma,
@@ -2922,17 +3068,39 @@ export class ObVanController {
         shot: this.prog.program,
         sinceMs: this.prog.sinceMs,
         source: this.prog.source,
+        holdRemainingMs:
+          this.holdUntil !== null && this.holdUntil > now
+            ? this.holdUntil - now
+            : null,
+        autoPausedForMs:
+          this.autoPausedUntil !== null && this.autoPausedUntil > now
+            ? this.autoPausedUntil - now
+            : null,
+        scheduledNext:
+          plan && plan.change.shot
+            ? {
+                shot: describeShot(plan.change.shot, this.logCams()),
+                inMs: Math.max(0, plan.applyAtMs - now),
+              }
+            : null,
       },
       pacing: this.pacing(),
       lowerThird: lt
         ? { name: lt.name, camNumber: ltCam?.number ?? null }
         : null,
+      // The log is newest-first; hand the analyst the 6 newest real program
+      // changes in chronological order (cut entries carry a camId).
       lastCuts: this.log
         .snapshot()
         .filter(
-          (e) => e.kind === 'take' || e.kind === 'cut' || e.kind === 'auto',
+          (e) =>
+            (e.kind === 'take' || e.kind === 'cut' || e.kind === 'auto') &&
+            e.camId != null,
         )
-        .slice(0, 10),
+        .slice(0, 6)
+        .reverse(),
+      scores,
+      lookaheadMs: this.clock.lookaheadMs(),
     };
   }
 
@@ -3364,6 +3532,7 @@ export class ObVanController {
     this.checkFileCamLoop(now);
     this.stepVirtual(now);
     this.autoStep(now);
+    this.llmEventStep();
     this.hostStep();
     this.broadcastSignals(now);
     this.publishHud();
