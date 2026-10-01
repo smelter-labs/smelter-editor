@@ -43,6 +43,7 @@ import {
   parseObRuleset,
 } from '@smelter-editor/types';
 import type { ObHudState } from '../app/store';
+import { ObHostTracker } from './host';
 import { CAPTIONS_SIDE_CHANNEL_DELAY_MS } from '../captions/constants';
 import { WHIP_SIDE_CHANNEL_DELAY_MS } from '../ai-models/side-channel-config';
 import type {
@@ -392,17 +393,6 @@ function emptyStats(): StatsAcc {
   };
 }
 
-function emptyHostState(): ObHostState {
-  return {
-    camId: null,
-    trackId: null,
-    confidence: 0,
-    sinceMs: null,
-    status: 'off',
-    lastGesture: null,
-  };
-}
-
 /** Worker payload → sample (plan B1: `{kind:'audio'|'video', …, procMs}`). */
 export function parseWorkerSample(
   data: unknown,
@@ -502,8 +492,11 @@ export class ObVanController {
   private scheduleSeq = 0;
   private stats: StatsAcc = emptyStats();
   private wrapNotes: string | null = null;
-  /** Host recognition (the `follow` demo); driven by the host lifecycle. */
-  private hostState: ObHostState = emptyHostState();
+  /** Host recognition (the `follow` demo). */
+  private readonly hostTracker: ObHostTracker;
+  private lastGesture: ObHostState['lastGesture'] = null;
+  /** Camera whose worker currently runs hand tracking (the host's). */
+  private gestureCamId: string | null = null;
 
   // ── stage machinery ──
   private lastTiles: ObStageTile[] = [];
@@ -598,6 +591,38 @@ export class ObVanController {
         },
         { intervalS: this.config.llm.analystIntervalS },
       ) ?? null;
+    this.hostTracker = new ObHostTracker({
+      requestSnapshot: (camId, requestId) => {
+        const cam = this.cams.get(camId);
+        if (!cam?.inputId || !this.deps.requestObSnapshot) return false;
+        return this.deps.requestObSnapshot(cam.inputId, requestId);
+      },
+      identify: (camId, imageB64) => {
+        if (!this.llm) return Promise.resolve(null);
+        const cam = this.cams.get(camId);
+        return this.llm.identifyHost({
+          imageB64,
+          hostDescription: this.config.host.description,
+          camLabel: cam ? `CAM ${cam.number}` : camId,
+        });
+      },
+      setHost: (camId, info) => {
+        this.signals.setHost(camId, info);
+        this.syncGestureCam(camId);
+        this.markStateDirty();
+      },
+      log: (text, opts) =>
+        this.pushLog({
+          source: 'llm',
+          kind: 'llm',
+          tone: opts?.warn ? 'amber' : 'ai',
+          label: 'HOST',
+          text,
+          ...(opts?.camId ? { camId: opts.camId } : {}),
+        }),
+      onChange: () => this.markStateDirty(),
+      now: () => this.now(),
+    });
   }
 
   private now(): number {
@@ -789,7 +814,7 @@ export class ObVanController {
   }
 
   /** Signal-worker registration of a camera with `role` (captions → 8 s everywhere). */
-  camSignalOpts(role: ObCamRole): ObCamSignalOpts {
+  camSignalOpts(role: ObCamRole, camId?: string): ObCamSignalOpts {
     const captions = this.config.captions;
     return {
       enabled: true,
@@ -797,8 +822,29 @@ export class ObVanController {
         ? CAPTIONS_SIDE_CHANNEL_DELAY_MS
         : WHIP_SIDE_CHANNEL_DELAY_MS,
       transcription: captions && TRANSCRIBED_ROLES.has(role),
-      params: obVanParamsForRole(role, this.config.presetId),
+      params: {
+        ...obVanParamsForRole(role, this.config.presetId),
+        // Hand tracking runs only on the confirmed host's camera.
+        ...(camId && camId === this.gestureCamId ? { hands: '1' } : {}),
+      },
     };
+  }
+
+  /** Flip the worker's hand tracking to the (new) host camera. */
+  private syncGestureCam(camId: string | null): void {
+    if (camId === this.gestureCamId) return;
+    const prev = this.gestureCamId;
+    this.gestureCamId = camId;
+    for (const id of [prev, camId]) {
+      if (!id) continue;
+      const cam = this.cams.get(id);
+      if (!cam?.inputId) continue;
+      void this.deps
+        .configureCamSignals?.(cam.inputId, this.camSignalOpts(cam.role, id))
+        .catch((err) =>
+          console.warn(`[ob] gesture reconfigure failed for ${id}`, err),
+        );
+    }
   }
 
   private async startCamera(
@@ -816,7 +862,7 @@ export class ObVanController {
       cam.width = dims.width;
       cam.height = dims.height;
     }
-    const opts = this.camSignalOpts(cam.role);
+    const opts = this.camSignalOpts(cam.role, cam.id);
     let offer: { inputId: string; whipUrl: string; bearerToken: string };
     try {
       offer = await this.deps.registerGameCam(cam.name, dims, opts);
@@ -983,6 +1029,8 @@ export class ObVanController {
     this.retireCamInput(cam);
     this.cams.remove(cam.id);
     this.signals.removeCam(cam.id);
+    this.hostTracker.removeCam(cam.id);
+    if (this.gestureCamId === cam.id) this.gestureCamId = null;
     this.settleUntil.delete(cam.id);
     this.lastTally.delete(cam.id);
     if (this.preferCam?.camId === cam.id) this.preferCam = null;
@@ -1233,7 +1281,7 @@ export class ObVanController {
         continue;
       }
       const inputId = cam.inputId;
-      const opts = this.camSignalOpts(cam.role);
+      const opts = this.camSignalOpts(cam.role, cam.id);
       cam.delayMs = opts.delayMs;
       configure?.(inputId, opts).catch((err) =>
         console.warn(`[ob] signal reconfigure failed for ${inputId}`, err),
@@ -1358,6 +1406,10 @@ export class ObVanController {
         this.pacingOverride = null;
         this.preferCam = null;
         this.wrapNotes = null;
+        this.hostTracker.reset();
+        this.signals.setHost(null);
+        this.syncGestureCam(null);
+        this.lastGesture = null;
         this.closeReplay();
         this.refreshRuleset('reset');
         this.log.clear();
@@ -2694,10 +2746,22 @@ export class ObVanController {
     this.signals.ingest(cam.id, sample);
   }
 
+  /** One host-lifecycle step per tick (new persons → identify → host signal). */
+  private hostStep(): void {
+    // Always drain, so pending events never pile up while detection is off.
+    const events = this.signals.drainNewPersons();
+    const active = this.config.host.enabled && this.phase !== 'wrap';
+    this.hostTracker.tick({
+      active,
+      llmAvailable: this.llm?.status().available === true,
+      events: active ? events : [],
+      view: active ? this.signals.view() : {},
+    });
+  }
+
   /** `capture` answer from the worker — handed to the host lifecycle. */
   private onSnapshotResult(camId: string, d: Record<string, unknown>): void {
-    void camId;
-    void d;
+    this.hostTracker.onSnapshot(camId, d);
   }
 
   /** A recognised hand gesture on a camera — handed to the gesture mapping. */
@@ -3012,10 +3076,8 @@ export class ObVanController {
           : null,
       },
       host: {
-        ...this.hostState,
-        lastGesture: this.hostState.lastGesture
-          ? { ...this.hostState.lastGesture }
-          : null,
+        ...this.hostTracker.state(),
+        lastGesture: this.lastGesture ? { ...this.lastGesture } : null,
       },
       llm: this.llmStatus(),
       stats: this.statsSnapshot(now),
@@ -3235,6 +3297,7 @@ export class ObVanController {
     this.checkFileCamLoop(now);
     this.stepVirtual(now);
     this.autoStep(now);
+    this.hostStep();
     this.broadcastSignals(now);
     this.publishHud();
     this.flushLog();
