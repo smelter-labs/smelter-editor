@@ -2897,6 +2897,11 @@ export class RoomState {
     return this.obVan.simulateSignal(camId, sample);
   }
 
+  /** Dev-only (OB_SIM=1): fake a confirmed host, bypassing snapshot + LLM. */
+  public simulateObHost(camId: string | null): ObCommandResult {
+    return this.obVan.simulateHost(camId);
+  }
+
   /** Restart every OB Van file cam from `playFromMs` (see syncBbFileCams). */
   /**
    * Wall time at which the OB Van file cams' media 0 is (or was) on air —

@@ -264,7 +264,9 @@ describe('TALK', () => {
     show.run(turns(4000), 30_000);
     // The FX rule does keep firing…
     expect(
-      show.events.some((e) => !e.decision.shot && e.decision.effects?.spotlight),
+      show.events.some(
+        (e) => !e.decision.shot && e.decision.effects?.spotlight,
+      ),
     ).toBe(true);
     // …and the speaker cuts still flow.
     expect(show.changes.length).toBeGreaterThanOrEqual(4);
@@ -564,6 +566,90 @@ describe('GIG', () => {
     const loud = show.changes.find((c) => c.decision.ruleId === 'loud-wide');
     expect(loud?.shot).toEqual(solo('c1'));
     expect(loud?.decision.effects).toEqual({ grade: 'neon' });
+  });
+});
+
+// ── FOLLOW (the host demo) ───────────────────────────────────────────────
+
+describe('FOLLOW', () => {
+  const cams = [
+    cam(1, 'wide'),
+    cam(2, 'speaker'),
+    cam(3, 'guest'),
+    cam(4, 'audience'),
+  ];
+  /** Something mild on every camera: a person, barely any motion, no speech. */
+  const ambient: Script = () => ({
+    audio: { speech: false },
+    video: { persons: [person(0.4)], motion: 0.02 },
+  });
+
+  it('with no host and no action the grid goes up and stays up', () => {
+    const show = new Show(obPresetRuleset('follow'), cams, { startAir: T0 });
+    show.run(ambient, 12_000);
+    expect(show.changes.length).toBe(1);
+    expect(show.changes[0].shot).toEqual({ kind: 'grid', cams: [] });
+    expect(show.changes[0].decision.ruleId).toBe('default-grid');
+  });
+
+  it('a confirmed host cuts through to their camera and is held; losing them restores the grid', () => {
+    const show = new Show(obPresetRuleset('follow'), cams, { startAir: T0 });
+    show.run(ambient, 5000); // grid settles
+    show.signals.setHost('c2', { trackId: 7, confidence: 0.9 });
+    show.run(ambient, 4000);
+    const hostCut = show.changes.find(
+      (c) => c.decision.ruleId === 'host-follow',
+    );
+    expect(hostCut?.shot).toEqual(solo('c2'));
+    // p90 ≥ 80 cuts through the fresh grid's min hold. The cut lands on the
+    // AIR clock, which runs ~3 s behind the signals (side-channel lookahead),
+    // so "immediately" means within lookahead + a few ticks of the confirm.
+    expect(hostCut!.atAirMs - (T0 + 5000)).toBeLessThanOrEqual(3600);
+    // While the host stays, nothing else moves.
+    const afterHost = show.changes.filter((c) => c.atAirMs > hostCut!.atAirMs);
+    expect(afterHost).toEqual([]);
+    // Host gone → the grid rule takes the program back.
+    show.signals.setHost(null);
+    show.run(ambient, 8000);
+    const back = show.changes.find((c) => c.atAirMs > hostCut!.atAirMs);
+    expect(back?.shot).toEqual({ kind: 'grid', cams: [] });
+    expect(back?.decision.ruleId).toBe('default-grid');
+  });
+
+  it('host moving c2 → c3 follows with another cut-through', () => {
+    const show = new Show(obPresetRuleset('follow'), cams, { startAir: T0 });
+    show.run(ambient, 5000);
+    show.signals.setHost('c2', { trackId: 7, confidence: 0.9 });
+    show.run(ambient, 4000);
+    show.signals.setHost('c3', { trackId: 2, confidence: 0.8 });
+    show.run(ambient, 4000);
+    const cuts = show.changes.filter(
+      (c) => c.decision.ruleId === 'host-follow',
+    );
+    expect(cuts.map((c) => c.shot)).toEqual([solo('c2'), solo('c3')]);
+  });
+
+  it('without a host, a motion spike on an off-program camera solos it, then the grid returns', () => {
+    const show = new Show(obPresetRuleset('follow'), cams, { startAir: T0 });
+    show.run(ambient, 6000);
+    expect(show.changes.at(-1)?.shot.kind).toBe('grid');
+    // Two seconds of action on CAM 4 (air window after the ambient run —
+    // the feed runs lookahead ahead of the show clock).
+    const action: Script = (camId, airMs) => ({
+      audio: { speech: false },
+      video: {
+        persons: [person(0.4)],
+        motion:
+          camId === 'c4' && airMs - T0 >= 9200 && airMs - T0 < 11_200
+            ? 0.6
+            : 0.02,
+      },
+    });
+    show.run(action, 14_000);
+    const spike = show.changes.find((c) => c.decision.ruleId === 'spike-solo');
+    expect(spike?.shot).toEqual(solo('c4'));
+    const back = show.changes.find((c) => spike && c.atAirMs > spike.atAirMs);
+    expect(back?.shot).toEqual({ kind: 'grid', cams: [] });
   });
 });
 

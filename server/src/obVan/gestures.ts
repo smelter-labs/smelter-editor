@@ -21,8 +21,7 @@ export const OB_GESTURE_COOLDOWN_MS = 2000;
 
 export function isObGestureName(v: unknown): v is ObGestureName {
   return (
-    typeof v === 'string' &&
-    (OB_GESTURE_NAMES as readonly string[]).includes(v)
+    typeof v === 'string' && (OB_GESTURE_NAMES as readonly string[]).includes(v)
   );
 }
 

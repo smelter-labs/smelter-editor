@@ -417,14 +417,18 @@ class CamSignals {
         continue;
       }
       seen.lastSeenAirMs = airMs;
-      if (!seen.announced && airMs - seen.firstSeenAirMs >= o.newPersonMinAgeMs) {
+      if (
+        !seen.announced &&
+        airMs - seen.firstSeenAirMs >= o.newPersonMinAgeMs
+      ) {
         seen.announced = true;
         this.pendingNewPersons.push({ trackId: t.id, airMs });
       }
     }
     const forgetAfterMs = o.personIdentityMs + 2000;
     for (const [id, seen] of this.seenTracks) {
-      if (airMs - seen.lastSeenAirMs > forgetAfterMs) this.seenTracks.delete(id);
+      if (airMs - seen.lastSeenAirMs > forgetAfterMs)
+        this.seenTracks.delete(id);
     }
   }
 
@@ -568,6 +572,8 @@ export class ObSignals implements ObSignalsApi {
     camId: string | null,
     info?: { trackId: number | null; confidence: number },
   ): void {
+    // The camera may not have reported yet (OB_SIM) — make its slot exist.
+    if (camId !== null) this.cam(camId);
     for (const [id, cam] of this.cams) {
       const host = cam.state.host;
       if (camId !== null && id === camId) {

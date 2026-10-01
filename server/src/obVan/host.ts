@@ -249,12 +249,19 @@ export class ObHostTracker {
 
   private maybeStartNext(now: number): void {
     if (this.inFlight) return;
-    while (this.queue.length) {
-      const c = this.queue.shift()!;
-      this.queuedAt.delete(`${c.camId}:${c.trackId}`);
-      if (this.confirmed?.camId === c.camId) continue;
+    for (let i = 0; i < this.queue.length; i++) {
+      const c = this.queue[i];
+      if (this.confirmed?.camId === c.camId) {
+        this.queue.splice(i--, 1);
+        this.queuedAt.delete(`${c.camId}:${c.trackId}`);
+        continue;
+      }
       const last = this.lastIdentifyAt.get(c.camId) ?? -Infinity;
+      // Inside the camera's cooldown the candidate stays queued (its TTL in
+      // `enqueue` still applies) — only one slot is in flight at a time.
       if (now - last < OB_IDENTIFY_MIN_INTERVAL_PER_CAM_MS) continue;
+      this.queue.splice(i, 1);
+      this.queuedAt.delete(`${c.camId}:${c.trackId}`);
       this.start(c.camId, c.trackId, now, false);
       return;
     }
@@ -264,12 +271,7 @@ export class ObHostTracker {
     if (!this.confirmed || this.inFlight) return;
     if (now - this.lastReverifyMs < OB_REVERIFY_MS) return;
     this.lastReverifyMs = now;
-    this.start(
-      this.confirmed.camId,
-      this.confirmed.trackId ?? -1,
-      now,
-      true,
-    );
+    this.start(this.confirmed.camId, this.confirmed.trackId ?? -1, now, true);
   }
 
   private start(
@@ -322,7 +324,10 @@ export class ObHostTracker {
       result = await this.deps.identify(f.camId, jpegB64);
     } catch (e) {
       if (this.inFlight === f) this.inFlight = null;
-      if (isObLlmError(e) && (e.code === 'budget' || e.code === 'llm_unavailable')) {
+      if (
+        isObLlmError(e) &&
+        (e.code === 'budget' || e.code === 'llm_unavailable')
+      ) {
         this.blocked = true;
         this.wasActive = false;
         this.clearConfirmed('LLM unavailable');

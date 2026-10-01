@@ -138,6 +138,7 @@ class InputState:
     # the hold / cooldown gate. Released when the param goes off.
     hands_tracker: object | None = None
     gesture_gate: GestureGate | None = None
+    hands_ts_ms: int = 0
 
     def wants(self, kind: str) -> bool:
         return param_flag(self.params, kind, True)
@@ -699,45 +700,86 @@ async def send_result(input_id: str, pts_nanos: int, data: dict) -> None:
 
 
 # ── Hand gestures (host camera only, param `hands`) ──────────────────────────
+#
+# mediapipe ≥ 0.10.3x ships only the Tasks API (no legacy `mp.solutions`), so
+# gestures use HandLandmarker in VIDEO mode. The ~8 MB `.task` model is not in
+# the pip package — it is fetched once next to this file (or point
+# OB_VAN_HAND_MODEL at it). Everything degrades gracefully, like Silero.
 
 GESTURE_MAX_W = 320
+HAND_MODEL_URL = (
+    "https://storage.googleapis.com/mediapipe-models/hand_landmarker/"
+    "hand_landmarker/float16/latest/hand_landmarker.task"
+)
+HAND_MODEL_PATH = os.environ.get("OB_VAN_HAND_MODEL") or os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "hand_landmarker.task"
+)
 
-_mp_hands_module = None
-_mp_hands_unavailable = False
+_mp_vision = None
+_mp_unavailable = False
 
 
-def _hands_module():
-    """`mediapipe.solutions.hands`, or None when mediapipe is missing —
-    gestures then degrade gracefully, like Silero (motion_detector.py does
-    the same; the shared people-counter venv ships mediapipe)."""
-    global _mp_hands_module, _mp_hands_unavailable
-    if _mp_hands_unavailable:
+def _vision_module():
+    global _mp_vision, _mp_unavailable
+    if _mp_unavailable:
         return None
-    if _mp_hands_module is None:
+    if _mp_vision is None:
         try:
-            import mediapipe as mp
+            from mediapipe.tasks.python import vision
 
-            _mp_hands_module = mp.solutions.hands
+            _mp_vision = vision
         except Exception as err:  # noqa: BLE001
-            _mp_hands_unavailable = True
-            log.warning("mediapipe not available — hand gestures off (%s)", err)
+            _mp_unavailable = True
+            log.warning("mediapipe tasks not available — hand gestures off (%s)", err)
             return None
-    return _mp_hands_module
+    return _mp_vision
+
+
+def _hand_model_path() -> str | None:
+    global _mp_unavailable
+    if os.path.exists(HAND_MODEL_PATH):
+        return HAND_MODEL_PATH
+    try:
+        import urllib.request
+
+        log.info("downloading hand landmarker model → %s", HAND_MODEL_PATH)
+        tmp = HAND_MODEL_PATH + ".tmp"
+        urllib.request.urlretrieve(HAND_MODEL_URL, tmp)
+        os.replace(tmp, HAND_MODEL_PATH)
+        return HAND_MODEL_PATH
+    except Exception as err:  # noqa: BLE001
+        _mp_unavailable = True
+        log.warning("hand model download failed — hand gestures off (%s)", err)
+        return None
 
 
 def _ensure_hands(state: InputState):
     if state.hands_tracker is None:
-        module = _hands_module()
-        if module is None:
+        vision = _vision_module()
+        if vision is None:
             return None
-        state.hands_tracker = module.Hands(
-            static_image_mode=False,
-            max_num_hands=1,
-            model_complexity=0,
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5,
-        )
+        model = _hand_model_path()
+        if model is None:
+            return None
+        from mediapipe.tasks.python import BaseOptions
+
+        try:
+            state.hands_tracker = vision.HandLandmarker.create_from_options(
+                vision.HandLandmarkerOptions(
+                    base_options=BaseOptions(model_asset_path=model),
+                    running_mode=vision.RunningMode.VIDEO,
+                    num_hands=1,
+                    min_hand_detection_confidence=0.5,
+                    min_tracking_confidence=0.5,
+                )
+            )
+        except Exception as err:  # noqa: BLE001
+            global _mp_unavailable
+            _mp_unavailable = True
+            log.warning("hand landmarker failed to load — gestures off (%s)", err)
+            return None
         state.gesture_gate = GestureGate()
+        state.hands_ts_ms = 0
     return state.hands_tracker
 
 
@@ -751,12 +793,14 @@ def release_hands(state: InputState) -> None:
 
 
 def detect_gesture(state: InputState, rgb: np.ndarray, t: float) -> str | None:
-    """MediaPipe Hands on a small copy → classify → hold/cooldown gate.
-    Runs on the inference thread; cost lands in the frame's proc time, so
-    the pacer budgets it like any other analysis."""
+    """MediaPipe HandLandmarker on a small copy → classify → hold/cooldown
+    gate. Runs on the inference thread; cost lands in the frame's proc time,
+    so the pacer budgets it like any other analysis."""
     tracker = _ensure_hands(state)
     if tracker is None or state.gesture_gate is None:
         return None
+    import mediapipe as mp
+
     h, w = rgb.shape[:2]
     small = rgb
     if cv2 is not None and w > GESTURE_MAX_W:
@@ -764,11 +808,15 @@ def detect_gesture(state: InputState, rgb: np.ndarray, t: float) -> str | None:
         small = cv2.resize(
             rgb, (GESTURE_MAX_W, max(1, round(h * scale))), interpolation=cv2.INTER_AREA
         )
-    result = tracker.process(np.ascontiguousarray(small))  # type: ignore[attr-defined]
-    hands = getattr(result, "multi_hand_landmarks", None)
+    # VIDEO mode needs strictly increasing timestamps per tracker.
+    ts_ms = max(int(t * 1000.0), state.hands_ts_ms + 1)
+    state.hands_ts_ms = ts_ms
+    image = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.ascontiguousarray(small))
+    result = tracker.detect_for_video(image, ts_ms)  # type: ignore[attr-defined]
+    hands = getattr(result, "hand_landmarks", None)
     name = None
     if hands:
-        landmarks = [(lm.x, lm.y) for lm in hands[0].landmark]
+        landmarks = [(lm.x, lm.y) for lm in hands[0]]
         name = classify_gesture(landmarks)
     return state.gesture_gate.update(name, t)
 
@@ -1001,11 +1049,47 @@ def _selftest_video(media: str | None, start: float, count: int, params: dict) -
     }
 
 
-def selftest(media: str | None, start: float, seconds: float, frames: int, ball: bool) -> None:
+def _selftest_hands(media: str | None, start: float, count: int) -> dict:
+    """Run the gesture pipeline over media frames (synthetic frames have no
+    hands — use --media with a webcam clip): per-frame classification plus
+    what the gate actually fires."""
+    if cv2 is None:
+        return {"error": "opencv missing"}
+    if _vision_module() is None:
+        return {"error": "mediapipe missing"}
+    frames = _media_frames(media, start, count, DEFAULT_VIDEO_HZ) if media else _synthetic_frames(count)
+    state = InputState(params={"hands": "1"})
+    names: list[str | None] = []
+    fired: list[tuple[float, str]] = []
+    timings: list[float] = []
+    for i, rgb in enumerate(frames):
+        t = i / DEFAULT_VIDEO_HZ
+        t0 = time.perf_counter()
+        gesture = detect_gesture(state, rgb, t)
+        timings.append((time.perf_counter() - t0) * 1000.0)
+        # The raw classification, for tuning (the gate hides most of it).
+        gate = state.gesture_gate
+        names.append(gate._candidate if gate else None)  # noqa: SLF001
+        if gesture:
+            fired.append((round(t, 2), gesture))
+    release_hands(state)
+    warm = timings[1:] or timings
+    return {
+        "source": media or "synthetic",
+        "frames": len(frames),
+        "classified": names,
+        "fired": fired,
+        "meanMs": round(sum(warm) / len(warm), 1) if warm else None,
+    }
+
+
+def selftest(media: str | None, start: float, seconds: float, frames: int, ball: bool, hands: bool) -> None:
     report = {
         "audio": _selftest_audio(media, start, seconds),
         "video": _selftest_video(media, start, frames, {"ball": "1" if ball else "0"}),
     }
+    if hands:
+        report["hands"] = _selftest_hands(media, start, frames)
     print(json.dumps(report, indent=2))
 
 
@@ -1017,9 +1101,10 @@ if __name__ == "__main__":
     parser.add_argument("--seconds", type=float, default=20.0)
     parser.add_argument("--frames", type=int, default=12)
     parser.add_argument("--ball", action="store_true")
+    parser.add_argument("--hands", action="store_true", help="selftest: also run the gesture pipeline")
     args = parser.parse_args()
     if args.selftest:
-        selftest(args.media, args.start, args.seconds, args.frames, args.ball)
+        selftest(args.media, args.start, args.seconds, args.frames, args.ball, args.hands)
     else:
         try:
             asyncio.run(main())

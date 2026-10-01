@@ -263,7 +263,10 @@ export class RoomAIController {
    * result stream as `{kind:'snapshot', requestId}`. Resolves false when the
    * worker is not running / connected.
    */
-  async requestObSnapshot(inputId: string, requestId: string): Promise<boolean> {
+  async requestObSnapshot(
+    inputId: string,
+    requestId: string,
+  ): Promise<boolean> {
     const sidecar = await this.getSidecarForModel(OB_VAN_MODEL_ID);
     return sidecar.requestCapture(inputId, requestId);
   }

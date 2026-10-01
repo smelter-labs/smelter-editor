@@ -435,6 +435,8 @@ const FOLLOW: ObRuleset = {
       },
     },
     {
+      // `any`, not `not-program`: the default grid counts EVERY camera as
+      // on-program, so a not-program selector would never find the spike.
       id: "spike-solo",
       name: "Something happening",
       priority: 45,
@@ -442,7 +444,7 @@ const FOLLOW: ObRuleset = {
       holdMs: 5000,
       when: {
         all: [
-          { signal: "motionSpike", cam: "not-program" },
+          { signal: "motionSpike", cam: "any" },
           { signal: "people", cam: "trigger", op: ">=", value: 1 },
         ],
       },
@@ -459,7 +461,7 @@ const FOLLOW: ObRuleset = {
       holdMs: 6000,
       when: {
         all: [
-          { signal: "burst", cam: "not-program" },
+          { signal: "burst", cam: "any" },
           { signal: "people", cam: "trigger", op: ">=", value: 1 },
         ],
       },

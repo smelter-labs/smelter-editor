@@ -2779,7 +2779,10 @@ export class ObVanController {
     // tracks hands there, but a stale configure could still deliver one).
     if (camId !== this.gestureCamId) return;
     const now = this.now();
-    if (now - (this.lastGestureAt.get(d.name) ?? -Infinity) < OB_GESTURE_COOLDOWN_MS)
+    if (
+      now - (this.lastGestureAt.get(d.name) ?? -Infinity) <
+      OB_GESTURE_COOLDOWN_MS
+    )
       return;
     this.lastGestureAt.set(d.name, now);
     this.lastGesture = { camId, name: d.name, atMs: now };
@@ -2823,6 +2826,24 @@ export class ObVanController {
   }
 
   /** OB_SIM: feed a fabricated sample as if the worker sent it now. */
+  /**
+   * OB_SIM: fake a confirmed host (null clears), bypassing snapshot + LLM.
+   * Only meaningful while the real host lifecycle is inactive (host
+   * detection off or no API key) — the tracker never learns of it.
+   */
+  simulateHost(camId: string | null): ObCommandResult {
+    if (camId !== null && !this.cams.get(camId))
+      return { ok: false, code: 'unknown_cam', message: 'No such camera.' };
+    this.engage();
+    this.signals.setHost(
+      camId,
+      camId ? { trackId: 0, confidence: 1 } : undefined,
+    );
+    this.syncGestureCam(camId);
+    this.markStateDirty();
+    return { ok: true };
+  }
+
   simulateSignal(camId: string, sample: ObSimSample): ObCommandResult {
     const cam = this.cams.get(camId);
     if (!cam)

@@ -47,6 +47,7 @@ export interface ObRoomApi {
     raw: unknown,
   ): { ruleset: ObRuleset; warnings: string[] } | { errors: string[] };
   simulateObSignal(camId: string, sample: ObSimSample): ObCommandResult;
+  simulateObHost(camId: string | null): ObCommandResult;
   attachObMp4Cam(
     role: ObCamRole,
     fileName: string,
@@ -317,6 +318,10 @@ const SimulateSchema = Type.Object({
   ]),
 });
 
+const SimulateHostSchema = Type.Object({
+  camId: Type.Union([CamId, Type.Null()]),
+});
+
 // ── Error mapping ──────────────────────────────────────────────────────────
 
 function statusOf(code: ObErrorCode): number {
@@ -584,6 +589,25 @@ export function registerObVanRoutes(
         req.body.camId,
         req.body.sample,
       );
+      if (!r.ok) return sendError(res, r.code, r.message);
+      return res.status(200).send({ ok: true });
+    },
+  );
+
+  // Dev-only host injector (OB_SIM=1): fake the LLM confirming the host on a
+  // camera (null clears), so the FOLLOW rules can be driven end to end
+  // without a worker or an API key.
+  routes.post<Body<typeof SimulateHostSchema>>(
+    '/room/:roomId/ob-van/simulate-host',
+    { schema: { params: RoomIdParamsSchema, body: SimulateHostSchema } },
+    async (req, res) => {
+      if (process.env.OB_SIM !== '1')
+        return res.status(404).send({
+          statusCode: 404,
+          error: STATUS_CODES[404],
+          message: 'Not found',
+        });
+      const r = getRoom(req.params.roomId).simulateObHost(req.body.camId);
       if (!r.ok) return sendError(res, r.code, r.message);
       return res.status(200).send({ ok: true });
     },

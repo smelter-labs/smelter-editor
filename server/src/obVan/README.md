@@ -137,7 +137,8 @@ DSL, konfiguracja, stan, komendy, WS), `ob-van-presets.ts`, `ob-van-ruleset.ts`.
 | `scene.ts`, `program.ts`, `virtualCam.ts` | ujęcie → kafle, maszyna stanów szyn i przejść, śledzenie wirtualnej kamery (`stepFollow` z Touchline) |
 | `cams.ts`, `commands.ts`, `log.ts` | rekordy kamer (camKey, grace, numery 1–8), parsowanie komend WS, log WHY |
 | `signals.ts`, `rules.ts`, `brain.ts`, `explain.ts`, `attention.ts` | agregacja sygnałów i zegar emisji, wykonanie reguł, brain, opisy decyzji, punkt uwagi dla wirtualnej kamery |
-| `llm/` | klient Anthropic, schemat toola DSL, brief → reguły, analityk, budżet, notatki końcowe |
+| `host.ts`, `gestures.ts` | rozpoznawanie hosta (FOLLOW): nowa osoba → snapshot → identify → sygnał `host`; mapowanie gestów dłoni na komendy `fx` |
+| `llm/` | klient Anthropic (tekst + obrazy), schemat toola DSL, brief → reguły, analityk, `identify.ts` (host vision), budżet, notatki końcowe |
 | `obVanRoutes.ts`, `obVanLlmRoutes.ts` | REST |
 | `contracts.ts` | kontrakty między kontrolerem, sygnałami, brainem i LLM |
 
@@ -176,14 +177,15 @@ WS pokoju (prefiks `ob_`): klient → `ob_spectate`, `ob_operator_join/leave`,
 | `OB_VAN_LLM_ANALYST_INTERVAL_S` | interwał analityka (30, min 10) |
 | `OB_VAN_LLM_MAX_RUNS_PER_EVENT`, `OB_VAN_LLM_MAX_INPUT_TOKENS_PER_EVENT` | limity kosztów (240 wywołań, 400k tokenów wejścia) |
 | `OB_VAN_PYTHON_PATH` | interpreter workera (domyślnie venv people-counter + `silero-vad`) |
-| `OB_SIM=1` | trasa `simulate-signal` |
+| `OB_VAN_HAND_MODEL` | ścieżka do `hand_landmarker.task` (domyślnie auto-pobranie ~8 MB obok workera przy pierwszym użyciu gestów) |
+| `OB_SIM=1` | trasy `simulate-signal` i `simulate-host` |
 
 ## Testy i weryfikacja
 
 ```bash
 pnpm --filter @smelter-editor/types build
-cd server && pnpm vitest run src/obVan                 # 182 testy: scena, program, kontroler, sygnały, brain, reguły, LLM
-python3 src/ai-models/ob-van/test_analysis.py          # 45 testów logiki audio/wideo
+cd server && pnpm vitest run src/obVan                 # 235 testów: scena, program, kontroler, sygnały, brain, reguły, LLM, host, gesty
+python3 src/ai-models/ob-van/test_analysis.py          # 61 testów logiki audio/wideo/gestów
 cd editor && pnpm vitest run components/ob-van lib/ob-van   # 75 testów helperów UI
 ```
 
@@ -198,11 +200,61 @@ OB_SIM=1 SKIP_PYTHON=1 SMELTER_DEMO_API_PORT=3121 SMELTER_API_PORT=8110 CAPTIONS
   SMELTER_PATH=~/.smelter/v0.6.0-scfix/main_process pnpm start
 OB_API=http://localhost:3121 node scripts/ob-van-e2e.mjs          # REST + WS: pulpit, auto na symulowanych sygnałach, replay, nagranie, błędy
 OB_API=http://localhost:3121 node scripts/ob-van-live-check.mjs   # 30 s nagrania z cięciami w znanych T → klatki ffmpeg
+OB_API=http://localhost:3121 node scripts/ob-van-follow-check.mjs # FOLLOW: grid → host-follow (simulate-host) → grid → spike-solo
 # z prawdziwym workerem (bez SKIP_PYTHON):
 OB_API=http://localhost:3121 node scripts/ob-van-auto-check.mjs   # TALK na 2 kamerach, asercje: sygnały z workera + cięcia z powodami
 ANTHROPIC_API_KEY=… OB_API=… node scripts/ob-van-llm-smoke.mjs    # brief → reguły, analityk, notatki
 ffmpeg -ss <T> -i data/recordings/<plik> -frames:v 1 frame.png
 ```
+
+## FOLLOW · podążaj za hostem (demo z rozpoznawaniem prowadzącego)
+
+Najprostszy pokaz "LLM jako reżyser": 4 kamery na żywo, na każdej coś się
+dzieje, program pokazuje **grid wszystkich kamer**. Gdy prowadzący (w **złotej
+czapce z daszkiem** — opis jest konfigurowalny) wejdzie w kadr którejś kamery,
+YOLO zauważa nową osobę, worker robi zrzut klatki, a LLM (vision, Haiku)
+potwierdza: *to host* → cięcie na tę kamerę i podążanie za nim. Gdy host
+zniknie na ~3 s, wraca grid; spike ruchu na dowolnej kamerze robi solo
+"bo coś się dzieje". Host steruje efektami **gestami dłoni** na swojej
+kamerze (MediaPipe, tylko tam): otwarta dłoń = spotlight, kciuk = grade
+neon, wiktoria = vhs, pięść = czyści.
+
+**Przepływ**: `signals.ts` (PeopleTracker, debounce 700 ms, identity 4 s) →
+`host.ts` (`ObHostTracker`: kolejka kandydatów, 1 identify naraz, cooldown
+8 s/kamerę, denied-recheck po 10 s, re-verify co 25 s, host-loss 3 s) →
+`capture` do workera → `llm/identify.ts` (strict tool `identify_host`,
+obraz ≤640 px ≈ 300 tokenów) → sygnał `host` → reguła `host-follow` (p90,
+przebija min-hold). Grid trzyma zawsze-prawdziwa reguła `hold >= 0`
+(`default-grid`, p10); **audio musi być `mix`** — pusty grid nie ma kamer
+"na antenie", więc `follow` wyciszyłby wszystko (karta FOLLOW w setupie
+ustawia mix sama). Gesty: worker liczy MediaPipe Hands tylko na kamerze z
+paramem `hands` (kontroler przełącza go za potwierdzonym hostem),
+klasyfikator + bramka hold 0,5 s/cooldown 2 s w `analysis.py`, mapowanie na
+komendy `fx` w `gestures.ts`.
+
+**Demo na żywo** (4 telefony):
+
+1. `ANTHROPIC_API_KEY=…` na serwerze (bez klucza host-detekcja jest OFF, a
+   grid + spike'i dalej niosą pokaz); na macOS
+   `SMELTER_PATH=~/.smelter/v0.6.0-scfix/main_process`.
+2. W edytorze: nowy event → preset **FOLLOW** (ustawia audio MIX i włącza
+   rozpoznawanie) → w plytce HOST RECOGNITION wpisz opis (np. "wears a GOLD
+   baseball cap").
+3. Dołącz 4 telefony przez `/ob-van/cam?room=…` i porozstawiaj je tam, gdzie
+   coś się rusza. GO LIVE, auto-pilot ON.
+4. Wejdź w kadr w czapce: plytka LLM pokaże `IDENTIFYING…` → `HOST · CAM N`,
+   kafel kamery dostaje złoty badge HOST, program tnie na ciebie. Gesty
+   trzymaj ~pół sekundy w kadrze.
+
+**Sprawdzenie bez workera i klucza**: `OB_SIM=1` + `simulate-host` (trasa
+dev-only) — patrz `scripts/ob-van-follow-check.mjs` wyżej. Worker solo:
+`python3 src/ai-models/ob-van/worker.py --selftest --media klip.mp4 --hands`
+(wypisze klasyfikacje per klatka i odpalone gesty).
+
+**Ograniczenia**: identyfikacja wiąże hosta z trackiem osoby — gdy dwie
+osoby wchodzą naraz, może złapać złą (naprawia się przez re-verify / utratę
+tracku); `maxHold` (60 s) potrafi raz na minutę mrugnąć z gridu na solo i
+wrócić; budżet LLM na event obejmuje też obrazy identify.
 
 ## Materiał demo w pojedynkę
 

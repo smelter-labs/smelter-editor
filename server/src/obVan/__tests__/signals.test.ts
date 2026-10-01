@@ -394,3 +394,80 @@ describe('ObSignals', () => {
     expect(s.view().c1.burst.active).toBe(false);
   });
 });
+
+describe('new persons & host', () => {
+  const person = { x: 0.4, y: 0.2, w: 0.2, h: 0.6 };
+
+  /** Video samples every 200 ms (5 Hz) from `fromMs`, with/without the person. */
+  function feed(
+    s: ObSignals,
+    camId: string,
+    fromMs: number,
+    present: boolean[],
+  ) {
+    present.forEach((p, i) => {
+      s.ingest(camId, video(fromMs + i * 200, { persons: p ? [person] : [] }));
+    });
+  }
+
+  it('announces a track once it survives the debounce, exactly once', () => {
+    const { clock } = fakeClock();
+    const s = new ObSignals(clock);
+    feed(s, 'c1', 60_000, [true, true, true]); // 400 ms old — too young
+    expect(s.drainNewPersons()).toEqual([]);
+    feed(s, 'c1', 60_600, [true, true]); // now ≥ 700 ms old
+    const events = s.drainNewPersons();
+    expect(events).toHaveLength(1);
+    expect(events[0].camId).toBe('c1');
+    expect(events[0].airMs).toBe(START + 60_800);
+    // Drained; the same track never announces again.
+    feed(s, 'c1', 61_000, [true, true, true]);
+    expect(s.drainNewPersons()).toEqual([]);
+  });
+
+  it('a one-frame YOLO flicker never announces', () => {
+    const { clock } = fakeClock();
+    const s = new ObSignals(clock);
+    // Detected once, then coasts for maxMisses (3) samples and hides at
+    // 600 ms of age — under the 700 ms debounce.
+    feed(s, 'c1', 60_000, [true, false, false, false, false, false]);
+    expect(s.drainNewPersons()).toEqual([]);
+  });
+
+  it('identity across a short dropout: no second announcement', () => {
+    const { clock } = fakeClock();
+    const s = new ObSignals(clock);
+    feed(s, 'c1', 60_000, [true, true, true, true, true]);
+    expect(s.drainNewPersons()).toHaveLength(1);
+    // Gone for 1.4 s (coasting + identity memory), then back nearby.
+    feed(s, 'c1', 61_000, [false, false, false, false, false, false, false]);
+    feed(s, 'c1', 62_400, [true, true, true, true, true, true]);
+    expect(s.drainNewPersons()).toEqual([]);
+  });
+
+  it('setHost marks one camera, moves and clears', () => {
+    const { clock } = fakeClock();
+    const s = new ObSignals(clock);
+    s.ingest('c1', video(60_000));
+    s.ingest('c2', video(60_000));
+    s.setHost('c1', { trackId: 5, confidence: 0.9 });
+    expect(s.view().c1.host).toMatchObject({
+      active: true,
+      trackId: 5,
+      confidence: 0.9,
+    });
+    expect(s.view().c1.host.sinceAirMs).not.toBeNull();
+    expect(s.summary().c1.host).toBe(true);
+    expect(s.summary().c2.host).toBe(false);
+    s.setHost('c2', { trackId: 2, confidence: 0.7 });
+    expect(s.view().c1.host.active).toBe(false);
+    expect(s.view().c2.host.active).toBe(true);
+    s.setHost(null);
+    expect(s.view().c2.host).toEqual({
+      active: false,
+      trackId: null,
+      confidence: 0,
+      sinceAirMs: null,
+    });
+  });
+});

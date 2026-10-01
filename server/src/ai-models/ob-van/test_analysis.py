@@ -9,9 +9,11 @@ import math
 
 from analysis import (
     DB_FLOOR,
+    GestureGate,
     HopAggregator,
     OnsetDetector,
     SpeechGate,
+    classify_gesture,
     dbfs_from_mean_square,
     motion_score,
     normalise_bands,
@@ -155,6 +157,45 @@ check("params: flags accept '1'/'0' and numbers", param_flag({"a": "1"}, "a", Fa
 check("params: missing flag uses the default", param_flag({}, "a", True))
 check("params: floats are clamped", param_float({"x": "900"}, "x", 1.0, 0.0, 10.0) == 10.0)
 check("params: junk falls back", param_float({"x": "abc"}, "x", 2.5) == 2.5)
+
+
+# ── hand gestures ────────────────────────────────────────────────────────────
+def make_hand(fingers: list[bool], thumb: str = "curl") -> list[tuple[float, float]]:
+    """Synthetic MediaPipe-style landmarks (x right, y DOWN, wrist at the
+    bottom). `fingers` = extended flags for index/middle/ring/pinky; `thumb`
+    is 'curl', 'up' (clearly above the hand) or 'side' (extended sideways)."""
+    pts: list[tuple[float, float] | None] = [None] * 21
+    pts[0] = (0.5, 0.9)  # wrist
+    thumb_tip = {"curl": (0.4, 0.72), "up": (0.3, 0.45), "side": (0.15, 0.75)}[thumb]
+    pts[1], pts[2], pts[3], pts[4] = (0.4, 0.8), (0.35, 0.75), (0.33, 0.7), thumb_tip
+    for i, extended in enumerate(fingers):
+        x = 0.35 + i * 0.1
+        base = 5 + i * 4
+        pts[base] = (x, 0.6)  # mcp
+        pts[base + 1] = (x, 0.5)  # pip
+        pts[base + 2] = (x, 0.45)  # dip
+        pts[base + 3] = (x, 0.3) if extended else (x, 0.55)  # tip
+    return pts  # type: ignore[return-value]
+
+
+check("gesture: open palm", classify_gesture(make_hand([True] * 4, "side")) == "open_palm")
+check("gesture: fist", classify_gesture(make_hand([False] * 4, "curl")) == "fist")
+check("gesture: thumbs up", classify_gesture(make_hand([False] * 4, "up")) == "thumbs_up")
+check("gesture: peace", classify_gesture(make_hand([True, True, False, False], "curl")) == "peace")
+check("gesture: thumb sideways alone is ambiguous", classify_gesture(make_hand([False] * 4, "side")) is None)
+check("gesture: peace with thumb out is ambiguous", classify_gesture(make_hand([True, True, False, False], "side")) is None)
+check("gesture: three fingers is ambiguous", classify_gesture(make_hand([True, True, True, False], "curl")) is None)
+check("gesture: too few landmarks", classify_gesture([(0.5, 0.5)] * 10) is None and classify_gesture(None) is None)
+
+gate = GestureGate(hold_s=0.5, cooldown_s=2.0)
+check("gate: nothing before the hold", gate.update("open_palm", 0.0) is None and gate.update("open_palm", 0.3) is None)
+check("gate: fires after the hold", gate.update("open_palm", 0.6) == "open_palm")
+check("gate: a held gesture fires once", gate.update("open_palm", 0.9) is None and gate.update("open_palm", 3.5) is None)
+check("gate: release resets", gate.update(None, 3.6) is None)
+check("gate: flicker restarts the hold", gate.update("fist", 3.7) is None and gate.update(None, 3.8) is None and gate.update("fist", 3.9) is None and gate.update("fist", 4.2) is None)
+check("gate: refires after release + hold", gate.update("fist", 4.5) == "fist")
+check("gate: cooldown blocks the next gesture", gate.update("peace", 4.6) is None and gate.update("peace", 5.2) is None)
+check("gate: fires once the cooldown passes", gate.update("peace", 6.6) == "peace")
 
 print(f"\n{passed} passed, {failed} failed")
 raise SystemExit(1 if failed else 0)

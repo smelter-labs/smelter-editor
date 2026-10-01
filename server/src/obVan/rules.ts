@@ -333,7 +333,8 @@ export function compareValue(
   if (Array.isArray(actual)) {
     // Only keyword groups reach the array branch; group names are compared
     // case-insensitively so an LLM-written "Tape" still matches "tape".
-    const wanted = value === undefined ? undefined : String(value).toLowerCase();
+    const wanted =
+      value === undefined ? undefined : String(value).toLowerCase();
     const has =
       wanted !== undefined && actual.some((a) => a.toLowerCase() === wanted);
     if (op === '!=') return !has;
