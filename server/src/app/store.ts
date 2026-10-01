@@ -34,6 +34,7 @@ import { useShallow } from 'zustand/react/shallow';
 
 export type { SnakeGameState } from '../snakeGame/types';
 import type { SnakeGameState } from '../snakeGame/types';
+import type { ObPuppetConfig } from '../obVan/puppets/types';
 
 export type InputConfig = {
   inputId: string;
@@ -51,6 +52,8 @@ export type InputConfig = {
   restartFading?: boolean;
   frozenImageId?: string;
   hidden?: boolean;
+  /** OB Van live puppet: paint this illustrated talent instead of the video. */
+  obPuppet?: ObPuppetConfig;
 } & InputDisplayProperties &
   Partial<TextInputProperties> &
   Partial<BorderProperties> &

@@ -19,6 +19,7 @@ import { ScrollingText } from './scrollingText';
 import { TransitionShaderWrapper } from './transitionWrapper';
 import { BbCamLook } from './BbCamLook';
 import { ObCamLook } from './ObCamLook';
+import { ObPuppetInput } from '../obVan/puppets/PuppetInput';
 import { HandsInput } from './HandsInput';
 import { PacmanBirdsInput } from './PacmanBirdsInput';
 import { HaunterGhostsInput } from './HaunterGhostsInput';
@@ -134,8 +135,9 @@ export function Input({ input }: { input: InputConfig }) {
   const isTextInput = !!input.text;
   const isGame = !!input.snakeGameState;
   const isHands = !!input.handsSourceInputId && !!input.handsStore;
+  const isPuppet = !!input.obPuppet;
   const streamState =
-    showFrozenImage || isImage || isTextInput || isGame || isHands
+    showFrozenImage || isImage || isTextInput || isGame || isHands || isPuppet
       ? 'playing'
       : liveStreamState;
   const resolution = deriveInputResolution(
@@ -266,6 +268,16 @@ export function Input({ input }: { input: InputConfig }) {
       width: contentWidth,
       height: contentHeight,
     })
+  ) : isPuppet ? (
+    // OB Van live puppet: the mp4 is only the voice; the picture is painted
+    // by the compositor (the component keeps a 2×2 px InputStream inside so
+    // the audio stays in the mix and the side channel keeps analysing).
+    <ObPuppetInput
+      cfg={input.obPuppet!}
+      resolution={{ width: contentWidth, height: contentHeight }}
+      inputId={input.inputId}
+      volume={input.volume}
+    />
   ) : isImage ? (
     <Rescaler
       style={{
@@ -576,7 +588,13 @@ export function Input({ input }: { input: InputConfig }) {
     );
   }
 
-  if ((hiddenForRestart || input.restartFading) && !showFrozenImage) {
+  // Puppets stay on screen through a carrier-clip restart: their picture is
+  // painted live, so hiding it would blank a perfectly good scene.
+  if (
+    (hiddenForRestart || input.restartFading) &&
+    !showFrozenImage &&
+    !isPuppet
+  ) {
     mainRendered = (
       <Shader
         shaderId='opacity'

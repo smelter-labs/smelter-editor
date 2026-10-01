@@ -38,6 +38,12 @@ import {
 import { DATA_DIR } from '../dataDir';
 import { sanitizeFbMp4FileName } from '../football/mp4CamFileName';
 import type { ObCommandResult, ObSimSample } from './ObVanController';
+import {
+  isPuppetCharacterId,
+  type ObPuppetSeed,
+  type PuppetCastMember,
+  type PuppetMouthTrack,
+} from './puppets/types';
 
 /** What the routes need from a room (RoomState satisfies it structurally). */
 export interface ObRoomApi {
@@ -53,7 +59,12 @@ export interface ObRoomApi {
   attachObMp4Cam(
     role: ObCamRole,
     fileName: string,
-    meta?: { name?: string; talent?: string | null; subtitle?: string | null },
+    meta?: {
+      name?: string;
+      talent?: string | null;
+      subtitle?: string | null;
+      puppet?: ObPuppetSeed;
+    },
   ): Promise<{ camId: string; inputId: string }>;
   adoptObInput(
     inputId: string,
@@ -377,6 +388,8 @@ type ObDemoManifest = {
     talent?: string | null;
     subtitle?: string | null;
     optional?: boolean;
+    /** Live puppet character for this cam ('studio' = the whole set). */
+    puppet?: string;
   }[];
 };
 
@@ -389,6 +402,7 @@ function readObDemo(dir: string): {
   cams: ObDemoCam[];
   skipped: string[];
   rundown: { id: string; title: string }[];
+  mouth: Record<string, PuppetMouthTrack>;
 } {
   const abs = path.join(OB_DEMO_ROOT, dir.slice('ob-demo/'.length));
   const camsPath = path.join(abs, 'cams.json');
@@ -413,6 +427,12 @@ function readObDemo(dir: string): {
       throw new Error(`${dir}/${c.file} not found`);
     }
     if (!isObCamRole(c.role)) throw new Error(`unknown role: ${c.role}`);
+    if (
+      c.puppet != null &&
+      c.puppet !== 'studio' &&
+      !isPuppetCharacterId(c.puppet)
+    )
+      throw new Error(`unknown puppet character: ${c.puppet}`);
     cams.push({ ...c, fileName });
   }
   if (!cams.length) throw new Error('cams.json lists no cameras');
@@ -420,7 +440,54 @@ function readObDemo(dir: string): {
     id: String(r.id ?? `seg-${i + 1}`).slice(0, 40),
     title: String(r.title ?? '').slice(0, 60),
   }));
-  return { m, cams, skipped, rundown };
+  // Puppet mouth tracks: 50 Hz amplitude per character, written next to the
+  // clips by scripts/ob-quiz-demo.mjs. Missing file = puppets idle silently.
+  const mouthPath = path.join(abs, 'mouth.json');
+  let mouth: Record<string, PuppetMouthTrack> = {};
+  if (cams.some((c) => c.puppet) && existsSync(mouthPath)) {
+    const raw = JSON.parse(readFileSync(mouthPath, 'utf8')) as Record<
+      string,
+      { rateHz?: number; v?: number[] }
+    >;
+    mouth = Object.fromEntries(
+      Object.entries(raw).flatMap(([key, t]) =>
+        t && typeof t.rateHz === 'number' && Array.isArray(t.v)
+          ? [[key, { rateHz: t.rateHz, v: t.v }]]
+          : [],
+      ),
+    );
+  }
+  return { m, cams, skipped, rundown, mouth };
+}
+
+/** The attach meta's puppet seed for a demo cam (null = no puppet). */
+function puppetSeedFor(
+  cam: ObDemoCam,
+  cams: readonly ObDemoCam[],
+  mouth: Record<string, PuppetMouthTrack>,
+): ObPuppetSeed | null {
+  if (!cam.puppet) return null;
+  const name = (c: ObDemoCam) => c.talent?.trim() || c.name || c.puppet || '';
+  if (cam.puppet === 'studio') {
+    const cast: PuppetCastMember[] = cams.flatMap((c) =>
+      c.puppet && c.puppet !== 'studio' && isPuppetCharacterId(c.puppet)
+        ? [
+            {
+              character: c.puppet,
+              name: name(c),
+              mouth: mouth[c.puppet] ?? null,
+            },
+          ]
+        : [],
+    );
+    return { character: 'studio', name: name(cam), mouth: null, cast };
+  }
+  if (!isPuppetCharacterId(cam.puppet)) return null;
+  return {
+    character: cam.puppet,
+    name: name(cam),
+    mouth: mouth[cam.puppet] ?? null,
+  };
 }
 
 function sendError(
@@ -669,7 +736,7 @@ export function registerObVanRoutes(
       } catch (err) {
         return sendError(res, 'bad_action', errMessage(err));
       }
-      const { m, cams, skipped, rundown } = demo;
+      const { m, cams, skipped, rundown, mouth } = demo;
       try {
         room.setObConfig({
           eventName: m.eventName ?? 'OB VAN DEMO',
@@ -702,6 +769,7 @@ export function registerObVanRoutes(
         }
         const attached: { camId: string; role: string; file: string }[] = [];
         for (const c of cams) {
+          const puppet = puppetSeedFor(c, cams, mouth);
           const { camId } = await room.attachObMp4Cam(
             c.role as ObCamRole,
             c.fileName,
@@ -709,6 +777,7 @@ export function registerObVanRoutes(
               ...(c.name ? { name: c.name } : {}),
               talent: c.talent ?? null,
               subtitle: c.subtitle ?? null,
+              ...(puppet ? { puppet } : {}),
             },
           );
           attached.push({ camId, role: c.role, file: c.file });

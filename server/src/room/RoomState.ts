@@ -103,6 +103,7 @@ import { createObBrain } from '../obVan/brain';
 import { attentionFor } from '../obVan/attention';
 import { createObLlm } from '../obVan/llm';
 import type { ObBriefResult } from '../obVan/contracts';
+import type { ObPuppetConfig, ObPuppetSeed } from '../obVan/puppets/types';
 import { OB_VAN_MODEL_ID } from '../ai-models/ob-van/manifest';
 import type {
   ObCamRole,
@@ -382,6 +383,9 @@ export class RoomState {
   private timelinePlayer: TimelinePlayer | null = null;
   private timelineListeners = new Set<TimelineListener>();
   private pausedAttachedInputVolumes = new Map<string, number>();
+
+  /** OB Van live puppets by carrier inputId (see obVan/puppets). */
+  private readonly obPuppets = new Map<string, ObPuppetConfig>();
 
   private frozenImages: Map<string, { imageId: string; jpegPath: string }> =
     new Map();
@@ -1807,6 +1811,7 @@ export class RoomState {
       this.peopleTrackers.delete(inputId);
       this.birdTrackers.delete(`yolo:${inputId}`);
       this.birdTrackers.delete(`marker:${inputId}`);
+      this.obPuppets.delete(inputId);
       this.output.store.getState().setPeopleBoxes(inputId, null);
 
       if (this.pruneInputFromLayers(inputId)) {
@@ -2997,6 +3002,7 @@ export class RoomState {
       name?: string;
       talent?: string | null;
       subtitle?: string | null;
+      puppet?: ObPuppetSeed;
     } = {},
   ): Promise<{ camId: string; inputId: string }> {
     const opts = this.obVan.camSignalOpts(role);
@@ -3039,6 +3045,22 @@ export class RoomState {
     if (!result.ok) {
       await this.removeInput(inputId).catch(() => {});
       throw new Error(result.message);
+    }
+    if (meta.puppet) {
+      this.obPuppets.set(inputId, {
+        ...meta.puppet,
+        getClock: () => {
+          const clock = this.fileClockOf(inputId);
+          return clock
+            ? {
+                zeroAirMs:
+                  clock.anchorWallMs - clock.playFromMs + clock.delayMs,
+                durationMs: clock.durationMs,
+              }
+            : null;
+        },
+      });
+      this.updateStoreWithState();
     }
     return { camId: result.camId, inputId };
   }
@@ -4596,6 +4618,7 @@ export class RoomState {
       restartFading: input.restartFading,
       frozenImageId: this.frozenImages.get(input.inputId)?.imageId,
       hidden: input.hidden,
+      obPuppet: this.obPuppets.get(input.inputId),
     });
 
     const connectedInputs = allInputs.filter(
