@@ -852,6 +852,13 @@ async def send_snapshot(input_id: str, request_id) -> None:
     rid = request_id if isinstance(request_id, str) else ""
     state = active_inputs.get(input_id)
     if state is None or state.last_frame is None:
+        log.warning(
+            "capture %s: no frame (subscribed=%s videoSamples=%s inputs=%s)",
+            input_id,
+            state is not None,
+            getattr(state, "video_samples", None),
+            list(active_inputs)[:8],
+        )
         await send_result(input_id, 0, {"kind": "snapshot", "requestId": rid, "error": "no_frame"})
         return
     pts_nanos, rgb = state.last_frame

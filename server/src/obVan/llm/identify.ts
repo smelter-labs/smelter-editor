@@ -6,7 +6,7 @@
  * the controller's cooldowns own the retry policy).
  */
 import type { ObLlmClient, ObLlmUsage } from './client';
-import type { ObLlmToolDef } from './schema';
+import { toStrictSchema, type ObLlmToolDef } from './schema';
 
 export type ObIdentifyInput = {
   /** JPEG snapshot of the camera frame (base64, no data: prefix). */
@@ -33,7 +33,9 @@ export const OB_IDENTIFY_HOST_TOOL: ObLlmToolDef = {
   name: 'identify_host',
   description:
     'Report whether the show host is visible in the attached camera frame.',
-  inputSchema: {
+  // toStrictSchema: strict tools reject numeric bounds — it moves them into
+  // the description (parseIdentifyResult clamps anyway).
+  inputSchema: toStrictSchema({
     type: 'object',
     additionalProperties: false,
     properties: {
@@ -55,7 +57,7 @@ export const OB_IDENTIFY_HOST_TOOL: ObLlmToolDef = {
       },
     },
     required: ['isHost', 'confidence', 'reason'],
-  },
+  }),
 };
 
 /**

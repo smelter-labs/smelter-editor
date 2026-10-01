@@ -250,12 +250,13 @@ export class AnthropicObLlmClient implements ObLlmClient {
     } catch (e) {
       // A 400 on a strict tool most likely means the schema uses a construct
       // the strict compiler rejects: fall back to a plain tool (we validate
-      // the input ourselves anyway) and remember it for this process.
+      // the input ourselves anyway) and remember it for this process. The
+      // API words these as "…: X is not supported" without saying "schema".
       if (
         e instanceof BadRequestError &&
         strict &&
         input.tool &&
-        /schema|strict/i.test(e.message)
+        /schema|strict|not supported/i.test(e.message)
       ) {
         console.warn(
           `[ob-van][llm] strict tool schema rejected, retrying non-strict: ${e.message}`,

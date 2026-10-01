@@ -281,6 +281,8 @@ export class ObHostTracker {
     reverify: boolean,
   ): void {
     const requestId = `host-${++this.seq}`;
+    if (process.env.OB_HOST_DEBUG === '1')
+      console.log('[ob-host] start', camId, trackId, requestId, { reverify });
     this.lastIdentifyAt.set(camId, now);
     if (!this.deps.requestSnapshot(camId, requestId)) {
       this.deps.log('snapshot request failed (worker not connected)', {
@@ -324,6 +326,8 @@ export class ObHostTracker {
       result = await this.deps.identify(f.camId, jpegB64);
     } catch (e) {
       if (this.inFlight === f) this.inFlight = null;
+      if (process.env.OB_HOST_DEBUG === '1')
+        console.log('[ob-host] identify failed', f.camId, e);
       if (
         isObLlmError(e) &&
         (e.code === 'budget' || e.code === 'llm_unavailable')
@@ -332,6 +336,13 @@ export class ObHostTracker {
         this.wasActive = false;
         this.clearConfirmed('LLM unavailable');
         this.deps.log(`host detection off: ${e.message}`, { warn: true });
+      } else if (isObLlmError(e) && e.code === 'api') {
+        // Not transient (bad request / auth) — surface it, or a broken
+        // identify looks exactly like "the host never showed up".
+        this.deps.log(`identify failed: ${e.message.slice(0, 160)}`, {
+          camId: f.camId,
+          warn: true,
+        });
       }
       // busy / rate / net / aborted: dropped — cooldowns gate the retry.
       this.deps.onChange();

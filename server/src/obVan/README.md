@@ -232,7 +232,14 @@ paramem `hands` (kontroler przełącza go za potwierdzonym hostem),
 klasyfikator + bramka hold 0,5 s/cooldown 2 s w `analysis.py`, mapowanie na
 komendy `fx` w `gestures.ts`.
 
-**Demo na żywo** (4 telefony):
+**Przycisk QUICK DEMOS** (najszybsza droga): raz na maszynę
+`node scripts/ob-follow-demo-setup.mjs` — buduje `data/mp4s/ob-demo/follow/`
+z trzech teł (kopie klipów nba/panel: COURT/STREET/PANEL) i manifestu, który
+ustawia preset `follow`, audio MIX, auto-pilota i host-detekcję. Na title
+screenie pojawia się przycisk **FOLLOW THE HOST**: klik → pokój z tłami →
+dołącz telefon przez QR → GO LIVE → wejdź w kadr w czapce.
+
+**Demo na żywo** (4 telefony, bez teł):
 
 1. `ANTHROPIC_API_KEY=…` na serwerze (bez klucza host-detekcja jest OFF, a
    grid + spike'i dalej niosą pokaz); na macOS
@@ -245,6 +252,13 @@ komendy `fx` w `gestures.ts`.
 4. Wejdź w kadr w czapce: plytka LLM pokaże `IDENTIFYING…` → `HOST · CAM N`,
    kafel kamery dostaje złoty badge HOST, program tnie na ciebie. Gesty
    trzymaj ~pół sekundy w kadrze.
+
+Ścieżka vision jest zweryfikowana na prawdziwym API (demo z tłami: 8 wywołań
+identify / 2 min, ~8k tokenów, $0.03 — model opisuje klatki i odmawia, bo
+nikt nie ma złotej czapki). Odmowy i cooldowny (1 w locie, 8 s/kamerę,
+denied-recheck raz) trzymają tempo ~kilku wywołań na minutę; model bierze
+`OB_VAN_LLM_MODEL`. `OB_HOST_DEBUG=1` wypisuje eventy/starty/błędy identify
+na stdout.
 
 **Sprawdzenie bez workera i klucza**: `OB_SIM=1` + `simulate-host` (trasa
 dev-only) — patrz `scripts/ob-van-follow-check.mjs` wyżej. Worker solo:

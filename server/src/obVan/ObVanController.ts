@@ -2758,6 +2758,8 @@ export class ObVanController {
   private hostStep(): void {
     // Always drain, so pending events never pile up while detection is off.
     const events = this.signals.drainNewPersons();
+    if (events.length && process.env.OB_HOST_DEBUG === '1')
+      console.log('[ob-host] events', JSON.stringify(events));
     const active = this.config.host.enabled && this.phase !== 'wrap';
     this.hostTracker.tick({
       active,
