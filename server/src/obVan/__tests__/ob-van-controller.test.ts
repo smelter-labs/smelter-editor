@@ -790,6 +790,43 @@ describe('ObVanController · auto pilot', () => {
   });
 });
 
+describe('ObVanController · llm overrides', () => {
+  it('clamps an llm prefer_cam boost to 0.3; the operator keeps the full range', () => {
+    const h = harness();
+    const c1 = h.attach(1);
+    expect(
+      h.controller.operate(
+        { op: 'prefer_cam', camId: c1, forMs: 20_000, boost: 2 },
+        'llm',
+      ),
+    ).toEqual({ ok: true });
+    expect(h.controller.stateSnapshot().overrides.preferCam?.boost).toBe(0.3);
+    h.controller.operate({
+      op: 'prefer_cam',
+      camId: c1,
+      forMs: 20_000,
+      boost: 2,
+    });
+    expect(h.controller.stateSnapshot().overrides.preferCam?.boost).toBe(2);
+  });
+
+  it('an llm pacing override expires after 60 s; an operator one persists', async () => {
+    const h = harness();
+    h.attach(1);
+    h.controller.operate({ op: 'pacing', minHoldMs: 5000 }, 'llm');
+    expect(h.controller.stateSnapshot().overrides.pacing).toMatchObject({
+      minHoldMs: 5000,
+    });
+    await vi.advanceTimersByTimeAsync(61_000);
+    expect(h.controller.stateSnapshot().overrides.pacing).toBeNull();
+    h.controller.operate({ op: 'pacing', minHoldMs: 5000 });
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(h.controller.stateSnapshot().overrides.pacing).toMatchObject({
+      minHoldMs: 5000,
+    });
+  });
+});
+
 describe('ObVanController · graphics, rundown, replay, stats', () => {
   it('lower third from the desk expires after its duration', async () => {
     const h = harness();

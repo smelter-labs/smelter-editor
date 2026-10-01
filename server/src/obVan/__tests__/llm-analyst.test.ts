@@ -199,7 +199,7 @@ describe('ObAnalyst actions', () => {
       actions: [
         { type: 'note', text: 'one' },
         { type: 'note', text: 'two' },
-        { type: 'prefer_cam', cam: 1, forMs: 5000, why: 'a' },
+        { type: 'prefer_cam', cam: 2, forMs: 5000, why: 'a' },
         { type: 'set_pacing', minHoldMs: 3000, why: 'b' },
         { type: 'advance_segment', why: 'c' },
       ],
@@ -211,6 +211,17 @@ describe('ObAnalyst actions', () => {
       'pacing',
     ]);
     expect(s.logs.at(-1)?.text).toContain('duplicate note ignored');
+  });
+
+  it('rejects prefer_cam for the camera already on program', async () => {
+    s.client.tool({
+      actions: [{ type: 'prefer_cam', cam: 1, forMs: 20000, why: 'host leads' }],
+    });
+    await s.analyst.tick();
+    expect(s.applied).toEqual([]);
+    expect(s.logs.at(-1)?.reasons).toEqual([
+      'prefer_cam: camera 1 is already on program',
+    ]);
   });
 
   it('rejects unknown cameras, names never heard and a segment past the end', async () => {

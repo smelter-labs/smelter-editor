@@ -248,6 +248,8 @@ export interface ObLlmModule {
     brief: string;
     presetId: ObPresetId;
     cams: ObSituation['cams'];
+    /** Ruleset the model adapts (the room's, overrides included); falls back to the plain preset. */
+    base?: ObRuleset;
   }): Promise<ObBriefResult>;
   setAnalyst(enabled: boolean, intervalS?: number): void;
   onTranscript(camNumber: number, text: string, airMs: number): void;

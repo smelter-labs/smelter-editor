@@ -26,6 +26,8 @@ export type ObBriefInput = {
   presetId: ObPresetId;
   cams: ObSituation['cams'];
   eventName?: string;
+  /** Ruleset the model adapts (the room's, overrides included); falls back to the plain preset. */
+  base?: ObRuleset;
 };
 
 export type ObBriefOptions = {
@@ -106,13 +108,13 @@ export async function generateRuleset(
 ): Promise<ObBriefResult> {
   const brief = input.brief.trim();
   if (!brief) throw new ObLlmError('invalid_ruleset', 'The brief is empty.');
-  const preset = obPresetRuleset(input.presetId);
+  const base = input.base ?? obPresetRuleset(input.presetId);
   const res = await client.call({
     system: OB_LLM_SYSTEM,
     user: buildBriefUser({
       brief,
       presetId: input.presetId,
-      preset,
+      preset: base,
       cams: input.cams,
       eventName: input.eventName,
     }),
@@ -159,7 +161,7 @@ export async function generateRuleset(
     else delete raw.keywords;
   }
 
-  const parsed = parseObRuleset(raw, preset);
+  const parsed = parseObRuleset(raw, base);
   if (!parsed.ruleset) {
     throw new ObLlmError(
       'invalid_ruleset',

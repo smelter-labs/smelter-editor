@@ -469,6 +469,11 @@ export class ObAnalyst {
             );
             break;
           }
+          if (cam.onProgram) {
+            // Boosting the on-air camera would only suppress score cuts.
+            rejected.push(`prefer_cam: camera ${a.cam} is already on program`);
+            break;
+          }
           this.o.apply(
             { op: 'prefer_cam', camId: cam.camId, forMs: a.forMs },
             reasons,

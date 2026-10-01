@@ -300,6 +300,10 @@ const STATE_MIN_INTERVAL_MS = 100;
 const SIGNALS_MIN_INTERVAL_MS = 250;
 const CAM_POLL_MS = 1000;
 const SIGNAL_FRESH_MS = 3000;
+/** The analyst may tip a near-tie, never pin a camera against a speaker. */
+const OB_LLM_PREFER_BOOST_MAX = 0.3;
+/** An LLM pacing override expires on its own; only the operator's persists. */
+const OB_LLM_PACING_TTL_MS = 60_000;
 const REPLAY_OPEN_GRACE_MS = 8000;
 const REPLAY_CLOSE_LEAD_MS = 350;
 const REPLAY_UNREGISTER_MS = 450;
@@ -463,8 +467,12 @@ export class ObVanController {
   private autoPausedUntil: number | null = null;
   private holdUntil: number | null = null;
   private lastDecisionAt: number | null = null;
-  private pacingOverride: { minHoldMs?: number; maxHoldMs?: number } | null =
-    null;
+  private pacingOverride: {
+    minHoldMs?: number;
+    maxHoldMs?: number;
+    /** Set for llm-sourced overrides; cleared by `expire`. */
+    untilMs?: number;
+  } | null = null;
   private preferCam: { camId: string; untilMs: number; boost: number } | null =
     null;
   private history: { shot: ObShot; atAirMs: number }[] = [];
@@ -1081,7 +1089,16 @@ export class ObVanController {
       patch.presetId !== c.presetId
     ) {
       c.presetId = patch.presetId;
-      if (patch.ruleset === undefined) c.ruleset = null;
+      if (patch.ruleset === undefined && c.ruleset) {
+        c.ruleset = null;
+        this.pushLog({
+          source: 'system',
+          kind: 'ruleset',
+          tone: 'amber',
+          label: 'RULES',
+          text: 'custom ruleset discarded (preset changed)',
+        });
+      }
       rulesChanged = true;
     }
     if (patch.ruleset === null) {
@@ -1228,6 +1245,19 @@ export class ObVanController {
     if (!parsed.ruleset) return { errors: parsed.errors };
     this.config.ruleset = parsed.ruleset;
     this.refreshRuleset('applied');
+    if (parsed.warnings.length) {
+      // The panel truncates warnings; the WHY log and the server log keep
+      // the full list of what was repaired or dropped.
+      this.pushLog({
+        source: 'system',
+        kind: 'ruleset',
+        tone: 'amber',
+        label: 'RULES',
+        text: `applied with ${parsed.warnings.length} warning(s)`,
+        reasons: parsed.warnings,
+      });
+      console.warn('[ob] ruleset warnings', parsed.warnings);
+    }
     this.markStateDirty();
     return {
       ruleset: structuredClone(parsed.ruleset),
@@ -1510,13 +1540,15 @@ export class ObVanController {
       case 'pacing': {
         if (cmd.clear) this.pacingOverride = null;
         else {
-          const p: { minHoldMs?: number; maxHoldMs?: number } = {
+          const p: NonNullable<typeof this.pacingOverride> = {
             ...this.pacingOverride,
           };
           if (cmd.minHoldMs !== undefined)
             p.minHoldMs = clamp(cmd.minHoldMs, OB_RULESET_LIMITS.minHoldMs);
           if (cmd.maxHoldMs !== undefined)
             p.maxHoldMs = clamp(cmd.maxHoldMs, OB_RULESET_LIMITS.maxHoldMs);
+          if (source === 'llm') p.untilMs = this.now() + OB_LLM_PACING_TTL_MS;
+          else delete p.untilMs;
           this.pacingOverride = p;
         }
         this.pushLog({
@@ -1525,7 +1557,10 @@ export class ObVanController {
           tone: source === 'llm' ? 'ai' : 'chalk',
           label: 'PACING',
           text: this.pacingOverride
-            ? `hold ${this.pacingOverride.minHoldMs ?? '–'} / ${this.pacingOverride.maxHoldMs ?? '–'} ms`
+            ? `hold ${this.pacingOverride.minHoldMs ?? '–'} / ${this.pacingOverride.maxHoldMs ?? '–'} ms` +
+              (this.pacingOverride.untilMs
+                ? ` · ${Math.round(OB_LLM_PACING_TTL_MS / 1000)}s`
+                : '')
             : 'ruleset pacing',
           ...rs,
         });
@@ -1536,10 +1571,12 @@ export class ObVanController {
         if (!cam)
           return { ok: false, code: 'unknown_cam', message: 'No such camera.' };
         const forMs = clamp(cmd.forMs, { min: 1000, max: 120_000 });
+        const boostCap = source === 'llm' ? OB_LLM_PREFER_BOOST_MAX : 3;
+        const boostDefault = source === 'llm' ? OB_LLM_PREFER_BOOST_MAX : 1;
         this.preferCam = {
           camId: cam.id,
           untilMs: this.now() + forMs,
-          boost: Math.min(3, Math.max(0, cmd.boost ?? 1)),
+          boost: Math.min(boostCap, Math.max(0, cmd.boost ?? boostDefault)),
         };
         this.pushLog({
           source,
@@ -1921,7 +1958,7 @@ export class ObVanController {
         ...reasons,
       });
     if (change.replay) this.startReplay(change.replay.camId, source);
-    if (change.holdMs && change.holdMs > 0)
+    if ((change.shot || change.replay) && change.holdMs && change.holdMs > 0)
       this.holdUntil = now + change.holdMs;
     if (source === 'auto' || source === 'llm') this.lastDecisionAt = now;
     return { ok: true };
@@ -2297,7 +2334,11 @@ export class ObVanController {
         untilAirMs: this.preferCam.untilMs,
         boost: this.preferCam.boost,
       };
-    if (this.pacingOverride) overrides.pacing = { ...this.pacingOverride };
+    if (this.pacingOverride)
+      overrides.pacing = {
+        minHoldMs: this.pacingOverride.minHoldMs,
+        maxHoldMs: this.pacingOverride.maxHoldMs,
+      };
     const plan = this.plannedShot();
     const planHoldUntil = plan?.change.holdMs
       ? plan.applyAtMs + plan.change.holdMs
@@ -2747,6 +2788,9 @@ export class ObVanController {
       brief: text,
       presetId: this.config.presetId,
       cams: this.getSituation().cams,
+      // The room's ruleset in force (demo overrides included), so a brief
+      // adapts what is running instead of resetting to the plain preset.
+      base: structuredClone(this.effectiveRuleset()),
     });
   }
 
@@ -2903,7 +2947,11 @@ export class ObVanController {
       overrides: {
         pacing: this.pacingOverride ? { ...this.pacingOverride } : null,
         preferCam: this.preferCam
-          ? { camId: this.preferCam.camId, untilMs: this.preferCam.untilMs }
+          ? {
+              camId: this.preferCam.camId,
+              untilMs: this.preferCam.untilMs,
+              boost: this.preferCam.boost,
+            }
           : null,
       },
       llm: this.llmStatus(),
@@ -3174,6 +3222,13 @@ export class ObVanController {
     }
     if (this.preferCam && now >= this.preferCam.untilMs) {
       this.preferCam = null;
+      this.markStateDirty();
+    }
+    if (
+      this.pacingOverride?.untilMs != null &&
+      now >= this.pacingOverride.untilMs
+    ) {
+      this.pacingOverride = null;
       this.markStateDirty();
     }
     if (this.holdUntil != null && now >= this.holdUntil) this.holdUntil = null;

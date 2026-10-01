@@ -549,7 +549,13 @@ class BrainTick {
         lowerThird: lowerThird ?? undefined,
         replay: replay ?? undefined,
         pacing: action.pacing ? { ...action.pacing } : undefined,
-        holdMs: rule.holdMs ?? (shot ? this.pacing.minHoldMs : 0),
+        // Only a decision that changes the picture may carry a hold — a
+        // re-firing FX/L3/pacing rule must never keep the program gated.
+        holdMs: shot
+          ? (rule.holdMs ?? this.pacing.minHoldMs)
+          : replay
+            ? (rule.holdMs ?? 0)
+            : 0,
         cutThrough,
       },
     };
@@ -764,7 +770,11 @@ class BrainTick {
       .slice(0, 3)
       .map((c) => `${camLabel(this.env.cams, c.camId)} ${c.total.toFixed(2)}`);
     if (this.ctx.program.shot && this.env.holdMs >= this.pacing.maxHoldMs) {
-      if (this.lock) {
+      // The lock may stretch a shot past max hold, but never indefinitely —
+      // at 2× maxHold the picture cuts even mid-monologue.
+      const lockOverridden =
+        this.lock !== null && this.env.holdMs >= 2 * this.pacing.maxHoldMs;
+      if (this.lock && !lockOverridden) {
         this.note(
           'monologue',
           `monologue lock ${camLabel(this.env.cams, this.lock)} past max hold`,
@@ -779,7 +789,9 @@ class BrainTick {
         holdMs: this.pacing.minHoldMs,
         score: best.total,
         cutThrough: false,
-        extraReasons: ranking,
+        extraReasons: lockOverridden
+          ? [...ranking, 'monologue lock overridden past 2× max hold']
+          : ranking,
       });
     }
     if (heldByRule || this.holdTooShort()) return null;

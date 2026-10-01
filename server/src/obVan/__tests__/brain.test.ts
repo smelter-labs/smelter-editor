@@ -244,6 +244,81 @@ describe('TALK', () => {
     expect(d?.source).toBe('behaviour');
     expect(d?.reason).toMatch(/dialogue over/);
   });
+
+  // LLM hardening: an adversarial ruleset or analyst override must never
+  // stop the switching entirely.
+
+  it('a re-firing shotless FX rule with holdMs does not gate the cuts', () => {
+    const talk = obPresetRuleset('talk');
+    const fxSpam: ObRule = {
+      id: 'fx-spam',
+      name: 'FX on any speech',
+      priority: 95,
+      cooldownMs: 3000,
+      holdMs: 8000, // would gate every tick if shotless holds were honoured
+      when: { signal: 'speech', cam: 'any' },
+      then: { effects: { spotlight: true } },
+    };
+    const ruleset: ObRuleset = { ...talk, rules: [fxSpam, ...talk.rules] };
+    const show = new Show(ruleset, cams, { startAir: T0, initial: solo('c3') });
+    show.run(turns(4000), 30_000);
+    // The FX rule does keep firing…
+    expect(
+      show.events.some((e) => !e.decision.shot && e.decision.effects?.spotlight),
+    ).toBe(true);
+    // …and the speaker cuts still flow.
+    expect(show.changes.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('monologue lock cannot stall the picture past 2× max hold', () => {
+    const talk = obPresetRuleset('talk');
+    const ruleset: ObRuleset = {
+      ...talk,
+      behaviours: { ...talk.behaviours, monologueLock: true },
+    };
+    const show = new Show(ruleset, cams, { startAir: T0, initial: solo('c1') });
+    show.run(
+      (camId) => ({
+        audio: { speech: camId === 'c1' },
+        video: {
+          persons:
+            camId === 'c3' ? [person(0.2), person(0.6)] : [person(0.4, 0.3)],
+        },
+      }),
+      45_000,
+    );
+    const cut = show.changes[0];
+    expect(cut).toBeDefined();
+    expect(cut.decision.source).toBe('maxHold');
+    // TALK max hold is 20 s; the lock stretches it to 2×, never further.
+    expect(cut.atAirMs - T0).toBeGreaterThanOrEqual(40_000);
+    expect(cut.atAirMs - T0).toBeLessThan(40_500);
+    expect(cut.decision.reasons).toContain(
+      'monologue lock overridden past 2× max hold',
+    );
+  });
+
+  it('a 0.3 preferCam boost on the on-air camera does not stop a new speaker taking over', () => {
+    const show = new Show(obPresetRuleset('talk'), cams, {
+      startAir: T0,
+      initial: solo('c1'),
+    });
+    show.run(
+      (camId, airMs) => ({
+        audio: { speech: camId === (airMs - T0 < 6000 ? 'c1' : 'c2') },
+        video: { persons: [person(0.4, 0.3)] },
+      }),
+      16_000,
+      {
+        overrides: {
+          preferCam: { camId: 'c1', untilAirMs: T0 + 60_000, boost: 0.3 },
+        },
+      },
+    );
+    const toC2 = show.changes.find((c) => main(c.shot) === 'c2');
+    expect(toC2).toBeDefined();
+    expect(toC2!.atAirMs - T0).toBeLessThan(9000);
+  });
 });
 
 // ── MATCH ────────────────────────────────────────────────────────────────

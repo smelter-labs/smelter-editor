@@ -322,7 +322,11 @@ function parseRule(raw: unknown, index: number, warn: (m: string) => void): ObRu
   const cd = num(raw.cooldownMs);
   if (cd !== undefined && cd > 0) rule.cooldownMs = Math.round(clamp(cd, OB_RULESET_LIMITS.cooldownMs));
   const hold = num(raw.holdMs);
-  if (hold !== undefined && hold > 0) rule.holdMs = Math.round(clamp(hold, OB_RULESET_LIMITS.holdMs));
+  if (hold !== undefined && hold > 0) {
+    if (then.shot || then.replay)
+      rule.holdMs = Math.round(clamp(hold, OB_RULESET_LIMITS.holdMs));
+    else warn(`${label}: holdMs ignored — the action changes no picture`);
+  }
   if (raw.enabled === false) rule.enabled = false;
   return rule;
 }
@@ -335,7 +339,12 @@ function parseWeights(raw: unknown, fallback: ObWeights): ObWeights {
     if (v !== undefined) out[k] = clamp(v, OB_RULESET_LIMITS.weight);
   }
   if (isRec(raw.roleBias)) {
-    const bias: Partial<Record<ObFixedCamRole, number>> = {};
+    // Overlay on the fallback biases: a partial roleBias from the LLM or the
+    // editor must not wipe the roles it does not mention (slides/tape stay
+    // negative unless changed explicitly).
+    const bias: Partial<Record<ObFixedCamRole, number>> = {
+      ...(fallback.roleBias ?? {}),
+    };
     for (const role of OB_CAM_ROLES) {
       const v = num(raw.roleBias[role]);
       if (v !== undefined) bias[role] = clamp(v, OB_RULESET_LIMITS.weight);
@@ -343,6 +352,60 @@ function parseWeights(raw: unknown, fallback: ObWeights): ObWeights {
     out.roleBias = bias;
   }
   return out;
+}
+
+function conditionLeaves(cond: ObCondition): ObConditionLeaf[] {
+  if ("all" in cond) return cond.all;
+  if ("any" in cond) return cond.any;
+  if ("not" in cond) return [cond.not];
+  return [cond];
+}
+
+/**
+ * Keyword groups replace the fallback's wholesale, so a ruleset (typically
+ * LLM-written) can keep a `keyword has "tape"` rule while dropping or renaming
+ * the `tape` group — the rule then silently never fires. Repair each keyword
+ * leaf: fix the case, restore a missing group from the fallback, or warn.
+ */
+function repairKeywordRules(
+  ruleset: ObRuleset,
+  fallback: ObRuleset,
+  warn: (m: string) => void,
+): void {
+  const fallbackKeywords = fallback.keywords ?? {};
+  const keyFor = (value: string): string | undefined => {
+    const lower = value.toLowerCase();
+    return Object.keys(ruleset.keywords ?? {}).find((k) => k.toLowerCase() === lower);
+  };
+  for (const rule of ruleset.rules) {
+    if (rule.enabled === false) continue;
+    for (const leaf of conditionLeaves(rule.when)) {
+      if (leaf.signal !== "keyword" || typeof leaf.value !== "string") continue;
+      const value = leaf.value;
+      if (ruleset.keywords?.[value]) continue;
+      const existing = keyFor(value);
+      if (existing) {
+        leaf.value = existing;
+        warn(`rule "${rule.id}": keyword group "${value}" matched "${existing}" (case fixed)`);
+        continue;
+      }
+      const restored = Object.keys(fallbackKeywords).find(
+        (k) => k.toLowerCase() === value.toLowerCase(),
+      );
+      if (restored) {
+        ruleset.keywords = {
+          ...ruleset.keywords,
+          [restored]: [...fallbackKeywords[restored]],
+        };
+        if (restored !== value) leaf.value = restored;
+        warn(`rule "${rule.id}": keyword group "${restored}" restored from the preset`);
+        continue;
+      }
+      warn(
+        `rule "${rule.id}": keyword group "${value}" is not defined — this rule may never fire`,
+      );
+    }
+  }
 }
 
 export type ObRulesetParse = {
@@ -403,11 +466,16 @@ export function parseObRuleset(raw: unknown, fallback: ObRuleset): ObRulesetPars
   }
 
   const behaviours = isRec(raw.behaviours)
-    ? Object.fromEntries(
-        ["monologueLock", "dialogueSplit", "onsetCuts", "anticipate", "burstReplay"]
-          .filter((k) => typeof (raw.behaviours as Rec)[k] === "boolean")
-          .map((k) => [k, (raw.behaviours as Rec)[k] as boolean]),
-      )
+    ? {
+        // Merge over the fallback: leaving a behaviour out keeps it; only an
+        // explicit boolean changes it.
+        ...fallback.behaviours,
+        ...Object.fromEntries(
+          ["monologueLock", "dialogueSplit", "onsetCuts", "anticipate", "burstReplay"]
+            .filter((k) => typeof (raw.behaviours as Rec)[k] === "boolean")
+            .map((k) => [k, (raw.behaviours as Rec)[k] as boolean]),
+        ),
+      }
     : fallback.behaviours;
 
   const ruleset: ObRuleset = {
@@ -420,5 +488,6 @@ export function parseObRuleset(raw: unknown, fallback: ObRuleset): ObRulesetPars
   };
   if (behaviours) ruleset.behaviours = behaviours;
   if (keywords) ruleset.keywords = keywords;
+  if (!errors.length) repairKeywordRules(ruleset, fallback, warn);
   return { ruleset: errors.length ? null : ruleset, warnings, errors };
 }

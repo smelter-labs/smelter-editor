@@ -44,6 +44,9 @@ Hard rules:
 - Lower thirds only for names heard in the transcripts or written in a camera's talent field. Keep names exactly as spoken or written, including diacritics (e.g. "Łukasz Wójcik"). Never guess a surname or a job title.
 - At most ${OB_DIRECT_MAX_ACTIONS} actions per analyst turn; an empty list is a good answer when the show runs well. Notes ≤ ${OB_LLM_NOTE_MAX_CHARS} characters, plain and useful to a busy director.
 - Prefer few, clear rules over many; priorities ≥ 80 only for things that must interrupt (a named slide cue, a replay).
+- Keep every keyword group that a "keyword … has <group>" rule references; if you rename a group, rename it in the rule too.
+- Keep the base ruleset's role biases (especially the negative slides / tape biases) and behaviours unless the brief asks otherwise. Never enable monologueLock or onsetCuts unprompted.
+- Slides and tape cameras are not signal-analysed: never write a condition with cam pointing at them (they may appear in shots only).
 - Always answer by calling the tool you are given. Do not answer in plain text unless no tool is provided.`;
 }
 
@@ -80,7 +83,7 @@ Base preset: ${input.presetId}
 Cameras:
 ${cams}
 
-Base preset ruleset (adapt it; keep what fits, change what the brief asks for):
+Current ruleset in force (adapt it; keep what fits, change what the brief asks for):
 ${compactRuleset(input.preset)}
 
 Host's brief:
