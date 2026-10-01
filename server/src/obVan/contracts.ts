@@ -102,6 +102,13 @@ export type ObSignalState = {
   frame: { w: number; h: number } | null;
   /** Keyword hits from transcripts, last 15 s (group = ruleset keyword group). */
   keywords: { word: string; group: string; airMs: number }[];
+  /** The LLM-confirmed host is on this camera (set by the controller). */
+  host: {
+    active: boolean;
+    trackId: number | null;
+    confidence: number;
+    sinceAirMs: number | null;
+  };
 };
 
 export interface ObClock {
@@ -121,6 +128,16 @@ export interface ObSignalsApi {
   /** UI summary per camera (for `ob_signals`). */
   summary(): Record<string, ObSignalSummary>;
   setKeywordGroups(groups: Record<string, string[]> | undefined): void;
+  /** Mark the confirmed host's camera (null clears every camera). */
+  setHost(
+    camId: string | null,
+    info?: { trackId: number | null; confidence: number },
+  ): void;
+  /**
+   * Person tracks that appeared since the last drain, debounced (a track must
+   * survive `newPersonMinAgeMs` first). The controller drains once per tick.
+   */
+  drainNewPersons(): { camId: string; trackId: number; airMs: number }[];
   removeCam(camId: string): void;
   reset(): void;
 }

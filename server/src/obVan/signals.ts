@@ -118,6 +118,10 @@ export const OB_SIGNAL_DEFAULTS = {
   burstLoudDb: 4,
   burstOff: 0.2,
   burstOffMs: 800,
+  /** A person track must survive this long before it counts as a NEW person. */
+  newPersonMinAgeMs: 700,
+  /** Track identity memory: a dropout shorter than this keeps the same id. */
+  personIdentityMs: 4000,
 };
 export type ObSignalsOptions = Partial<typeof OB_SIGNAL_DEFAULTS>;
 
@@ -225,6 +229,7 @@ function emptyState(camId: string): ObSignalState {
     ball: null,
     frame: null,
     keywords: [],
+    host: { active: false, trackId: null, confidence: 0, sinceAirMs: null },
   };
 }
 
@@ -235,10 +240,14 @@ class CamSignals {
   private firstAudioAirMs: number | null = null;
   private hops: { airMs: number; speech: boolean }[] = [];
   private onsets: number[] = [];
-  private readonly tracker = new PeopleTracker({
-    maxMisses: 3,
-    withLead: false,
-  });
+  private readonly tracker: PeopleTracker;
+  /** Per track id: when it appeared, and whether it was announced as new. */
+  private seenTracks = new Map<
+    number,
+    { firstSeenAirMs: number; lastSeenAirMs: number; announced: boolean }
+  >();
+  /** New-person events waiting for `drainNewPersons()`. */
+  pendingNewPersons: { trackId: number; airMs: number }[] = [];
   private lastBall: {
     x: number;
     y: number;
@@ -254,6 +263,11 @@ class CamSignals {
     private readonly opts: typeof OB_SIGNAL_DEFAULTS,
   ) {
     this.state = emptyState(camId);
+    this.tracker = new PeopleTracker({
+      maxMisses: 3,
+      withLead: false,
+      identityMs: opts.personIdentityMs,
+    });
   }
 
   ingestAudio(airMs: number, s: ObAudioSample): void {
@@ -381,6 +395,37 @@ class CamSignals {
             y: tracks.reduce((a, t) => a + center(t).y, 0) / tracks.length,
           };
     this.state.people = { count: tracks.length, largest, centroid, tracks };
+    this.updateNewPersons(airMs, tracks);
+  }
+
+  /**
+   * Announce a track as a NEW person once it has survived `newPersonMinAgeMs`
+   * (kills one-frame YOLO flicker). Seen ids are remembered a little longer
+   * than the tracker's identity window, so a track that drops out and is
+   * re-adopted under the same id is not announced twice.
+   */
+  private updateNewPersons(airMs: number, tracks: ObTrackedBox[]): void {
+    const o = this.opts;
+    for (const t of tracks) {
+      const seen = this.seenTracks.get(t.id);
+      if (!seen) {
+        this.seenTracks.set(t.id, {
+          firstSeenAirMs: airMs,
+          lastSeenAirMs: airMs,
+          announced: false,
+        });
+        continue;
+      }
+      seen.lastSeenAirMs = airMs;
+      if (!seen.announced && airMs - seen.firstSeenAirMs >= o.newPersonMinAgeMs) {
+        seen.announced = true;
+        this.pendingNewPersons.push({ trackId: t.id, airMs });
+      }
+    }
+    const forgetAfterMs = o.personIdentityMs + 2000;
+    for (const [id, seen] of this.seenTracks) {
+      if (airMs - seen.lastSeenAirMs > forgetAfterMs) this.seenTracks.delete(id);
+    }
   }
 
   private updateBall(airMs: number, ball: ObBox | null): void {
@@ -436,6 +481,7 @@ class CamSignals {
       ball: st.ball ? { ...st.ball } : null,
       frame: st.frame ? { ...st.frame } : null,
       keywords: st.keywords.map((k) => ({ ...k })),
+      host: { ...st.host },
     };
   }
 
@@ -455,6 +501,7 @@ class CamSignals {
       motion: video ? st.motion : 0,
       people: video ? st.people.count : 0,
       ball: video && st.ball !== null,
+      host: st.host.active,
       stale: !audio && !video,
     };
   }
@@ -515,6 +562,37 @@ export class ObSignals implements ObSignalsApi {
           .map((word) => ({ group, word, phrase: normaliseWords(word) }))
           .filter((k) => k.phrase.length > 0),
     );
+  }
+
+  setHost(
+    camId: string | null,
+    info?: { trackId: number | null; confidence: number },
+  ): void {
+    for (const [id, cam] of this.cams) {
+      const host = cam.state.host;
+      if (camId !== null && id === camId) {
+        host.sinceAirMs = host.active ? host.sinceAirMs : this.clock.nowAir();
+        host.active = true;
+        host.trackId = info?.trackId ?? null;
+        host.confidence = info?.confidence ?? host.confidence;
+      } else if (host.active) {
+        cam.state.host = {
+          active: false,
+          trackId: null,
+          confidence: 0,
+          sinceAirMs: null,
+        };
+      }
+    }
+  }
+
+  drainNewPersons(): { camId: string; trackId: number; airMs: number }[] {
+    const out: { camId: string; trackId: number; airMs: number }[] = [];
+    for (const [camId, cam] of this.cams) {
+      for (const p of cam.pendingNewPersons) out.push({ camId, ...p });
+      cam.pendingNewPersons = [];
+    }
+    return out;
   }
 
   removeCam(camId: string): void {

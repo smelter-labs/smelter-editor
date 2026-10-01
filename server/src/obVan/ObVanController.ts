@@ -9,6 +9,7 @@ import type {
   ObControlAction,
   ObEffects,
   ObErrorCode,
+  ObHostState,
   ObLlmStatus,
   ObLogEntry,
   ObLogKind,
@@ -245,6 +246,10 @@ export class ObNullSignals implements ObSignalsApi {
     return {};
   }
   setKeywordGroups(): void {}
+  setHost(): void {}
+  drainNewPersons(): { camId: string; trackId: number; airMs: number }[] {
+    return [];
+  }
   removeCam(): void {}
   reset(): void {
     this.ingested.length = 0;
@@ -381,6 +386,17 @@ function emptyStats(): StatsAcc {
   };
 }
 
+function emptyHostState(): ObHostState {
+  return {
+    camId: null,
+    trackId: null,
+    confidence: 0,
+    sinceMs: null,
+    status: 'off',
+    lastGesture: null,
+  };
+}
+
 /** Worker payload → sample (plan B1: `{kind:'audio'|'video', …, procMs}`). */
 export function parseWorkerSample(
   data: unknown,
@@ -480,6 +496,8 @@ export class ObVanController {
   private scheduleSeq = 0;
   private stats: StatsAcc = emptyStats();
   private wrapNotes: string | null = null;
+  /** Host recognition (the `follow` demo); driven by the host lifecycle. */
+  private hostState: ObHostState = emptyHostState();
 
   // ── stage machinery ──
   private lastTiles: ObStageTile[] = [];
@@ -1159,6 +1177,16 @@ export class ObVanController {
       if (typeof patch.llm.analyst === 'boolean')
         c.llm.analyst = patch.llm.analyst;
       this.llm?.setAnalyst(c.llm.analyst, c.llm.analystIntervalS);
+    }
+    if (patch.host) {
+      if (typeof patch.host.enabled === 'boolean')
+        c.host.enabled = patch.host.enabled;
+      if (typeof patch.host.description === 'string') {
+        const description = patch.host.description
+          .trim()
+          .slice(0, OB_CONFIG_LIMITS.hostDescription.max);
+        if (description) c.host.description = description;
+      }
     }
     if (typeof patch.subtitles === 'boolean') c.subtitles = patch.subtitles;
     if (typeof patch.captions === 'boolean' && patch.captions !== c.captions) {
@@ -2952,6 +2980,12 @@ export class ObVanController {
               untilMs: this.preferCam.untilMs,
               boost: this.preferCam.boost,
             }
+          : null,
+      },
+      host: {
+        ...this.hostState,
+        lastGesture: this.hostState.lastGesture
+          ? { ...this.hostState.lastGesture }
           : null,
       },
       llm: this.llmStatus(),

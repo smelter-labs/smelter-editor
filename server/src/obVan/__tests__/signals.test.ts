@@ -364,6 +364,7 @@ describe('ObSignals', () => {
       motion: 0.4,
       people: 1,
       ball: false,
+      host: false,
       stale: false,
     });
     s.expire(START + 60_000 - DELAY + 2000);

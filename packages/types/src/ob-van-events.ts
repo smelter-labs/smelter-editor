@@ -194,12 +194,13 @@ export type ObAudioPolicy =
 
 export type ObPhase = "setup" | "on-air" | "wrap";
 export type ObActionSource = "operator" | "auto" | "llm" | "system";
-export type ObPresetId = "talk" | "match" | "stage" | "gig" | "custom";
+export type ObPresetId = "talk" | "match" | "stage" | "gig" | "follow" | "custom";
 export const OB_PRESET_IDS: readonly Exclude<ObPresetId, "custom">[] = [
   "talk",
   "match",
   "stage",
   "gig",
+  "follow",
 ];
 /** Operator pacing dial: multiplies the ruleset's min / max hold. */
 export type ObPacingDial = "calm" | "lively" | "frantic";
@@ -247,6 +248,7 @@ export type ObSignalKind =
   | "ball"
   | "ballAge"
   | "keyword"
+  | "host"
   | "hold"
   | "segment"
   | "dialogue";
@@ -264,6 +266,7 @@ export const OB_SIGNAL_KINDS: readonly ObSignalKind[] = [
   "ball",
   "ballAge",
   "keyword",
+  "host",
   "hold",
   "segment",
   "dialogue",
@@ -402,6 +405,12 @@ export type ObConfig = {
   brief: string;
   rundown: ObRundownItem[];
   llm: { analyst: boolean; analystIntervalS: number };
+  /**
+   * Host recognition (the `follow` preset's core): a new person on a camera
+   * is snapshotted and shown to the LLM, which matches the description; a
+   * confirmed host sets the per-camera `host` signal and enables gestures.
+   */
+  host: { enabled: boolean; description: string };
   joinUrls?: { cam?: string };
 };
 
@@ -422,6 +431,7 @@ export type ObConfigPatch = {
   brief?: string;
   rundown?: ObRundownItem[];
   llm?: Partial<ObConfig["llm"]>;
+  host?: Partial<ObConfig["host"]>;
   joinUrls?: { cam?: string };
 };
 
@@ -442,6 +452,7 @@ export const OB_DEFAULT_CONFIG: ObConfig = {
   brief: "",
   rundown: [],
   llm: { analyst: false, analystIntervalS: 30 },
+  host: { enabled: false, description: "wears a GOLD baseball cap" },
 };
 
 export const OB_CONFIG_LIMITS = {
@@ -451,7 +462,32 @@ export const OB_CONFIG_LIMITS = {
   eventName: { max: 48 },
   brief: { max: 4000 },
   rundown: { max: 20 },
+  hostDescription: { max: 200 },
 } as const;
+
+// ── Host follow & gestures ───────────────────────────────────────────────
+
+/** Static hand gestures the worker recognises on the host's camera. */
+export type ObGestureName = "open_palm" | "fist" | "thumbs_up" | "peace";
+export const OB_GESTURE_NAMES: readonly ObGestureName[] = [
+  "open_palm",
+  "fist",
+  "thumbs_up",
+  "peace",
+];
+
+export type ObHostStatus = "off" | "idle" | "identifying" | "confirmed";
+export type ObHostState = {
+  /** Camera the confirmed host is on. */
+  camId: string | null;
+  /** Person track the host is bound to on that camera. */
+  trackId: number | null;
+  /** Confidence of the last LLM confirmation (0..1). */
+  confidence: number;
+  sinceMs: number | null;
+  status: ObHostStatus;
+  lastGesture: { camId: string; name: ObGestureName; atMs: number } | null;
+};
 
 // ── Live state ───────────────────────────────────────────────────────────
 
@@ -464,6 +500,8 @@ export type ObSignalSummary = {
   motion: number;
   people: number;
   ball: boolean;
+  /** The confirmed host is on this camera. */
+  host: boolean;
   stale: boolean;
 };
 
@@ -564,6 +602,7 @@ export type ObState = {
     pacing: { minHoldMs?: number; maxHoldMs?: number; untilMs?: number } | null;
     preferCam: { camId: string; untilMs: number; boost?: number } | null;
   };
+  host: ObHostState;
   llm: ObLlmStatus;
   stats: ObStats;
   wrapNotes: string | null;

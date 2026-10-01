@@ -200,6 +200,9 @@ export function obVanParamsForRole(
       // Onsets drive the cuts; the crowd cam only needs motion.
       if (role === 'audience') return { ...AUDIO_OFF };
       return { onsetDb: 5 };
+    case 'follow':
+      // Host recognition keys off new-person tracks — look a little more often.
+      return { videoHz: 6 };
     case 'custom':
       return {};
   }

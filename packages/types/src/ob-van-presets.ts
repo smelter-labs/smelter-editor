@@ -406,9 +406,87 @@ const GIG: ObRuleset = {
   ],
 };
 
+const FOLLOW: ObRuleset = {
+  id: "preset-follow",
+  name: "FOLLOW · host cam",
+  preset: "follow",
+  pacing: { minHoldMs: 2000, maxHoldMs: 60000, transition: "cut" },
+  weights: {
+    speech: 1,
+    motion: 0.6,
+    people: 0.3,
+    ball: 0,
+    novelty: 0.3,
+    stay: 0.6,
+  },
+  // Deterministic demo: no locks / splits — the three rules below carry it.
+  behaviours: {},
+  rules: [
+    {
+      id: "host-follow",
+      name: "Follow the host",
+      priority: 90,
+      cooldownMs: 2000,
+      holdMs: 4000,
+      when: { signal: "host", cam: "any", op: "==", value: true },
+      then: {
+        shot: { kind: "solo", cam: "trigger" },
+        transition: { type: "cut" },
+      },
+    },
+    {
+      id: "spike-solo",
+      name: "Something happening",
+      priority: 45,
+      cooldownMs: 12000,
+      holdMs: 5000,
+      when: {
+        all: [
+          { signal: "motionSpike", cam: "not-program" },
+          { signal: "people", cam: "trigger", op: ">=", value: 1 },
+        ],
+      },
+      then: {
+        shot: { kind: "solo", cam: "trigger" },
+        transition: { type: "cut" },
+      },
+    },
+    {
+      id: "burst-solo",
+      name: "Stay on a burst",
+      priority: 44,
+      cooldownMs: 15000,
+      holdMs: 6000,
+      when: {
+        all: [
+          { signal: "burst", cam: "not-program" },
+          { signal: "people", cam: "trigger", op: ">=", value: 1 },
+        ],
+      },
+      then: { shot: { kind: "solo", cam: "trigger" } },
+    },
+    {
+      // `hold >= 0` is reliably true (holdMs is Infinity with no program
+      // shot), so with no host and no action this keeps the grid on air and
+      // its `held` result blocks score-based cuts. Requires audio mix: an
+      // empty grid resolves to no on-air cams, so `follow` would mute all.
+      id: "default-grid",
+      name: "Grid when nothing stands out",
+      priority: 10,
+      cooldownMs: 3000,
+      holdMs: 4000,
+      when: { signal: "hold", op: ">=", value: 0 },
+      then: {
+        shot: { kind: "grid", cams: [] },
+        transition: { type: "dissolve", durationMs: 300 },
+      },
+    },
+  ],
+};
+
 export const OB_PRESET_RULESETS: Readonly<
   Record<Exclude<ObPresetId, "custom">, ObRuleset>
-> = { talk: TALK, match: MATCH, stage: STAGE, gig: GIG };
+> = { talk: TALK, match: MATCH, stage: STAGE, gig: GIG, follow: FOLLOW };
 
 export type ObPresetMeta = {
   id: Exclude<ObPresetId, "custom">;
@@ -442,6 +520,13 @@ export const OB_PRESET_META: readonly ObPresetMeta[] = [
     label: "GIG",
     sub: "concert",
     blurb: "Cuts on the beat, wide and neon on the loud parts, crowd punches.",
+  },
+  {
+    id: "follow",
+    label: "FOLLOW",
+    sub: "host · 4 cams",
+    blurb:
+      "Grid of everything, solo on action; the AI recognises the host and follows, gestures drive effects.",
   },
 ];
 

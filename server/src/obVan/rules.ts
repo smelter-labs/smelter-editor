@@ -282,6 +282,10 @@ export function camSignalValue(
       return video ? (s.ball?.ageMs ?? Infinity) : null;
     case 'keyword':
       return keywordGroups(env, s);
+    case 'host':
+      // Node-owned truth (LLM confirmation), not gated on stream staleness:
+      // the controller clears it through its own host-loss lifecycle.
+      return s.host.active;
     case 'hold':
     case 'segment':
     case 'dialogue':
