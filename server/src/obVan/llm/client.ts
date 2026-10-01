@@ -31,9 +31,13 @@ export const OB_LLM_DEFAULT_MODEL = 'claude-sonnet-5';
 
 export type ObLlmEffort = 'low' | 'medium' | 'high';
 
+export type ObLlmImage = { mediaType: 'image/jpeg'; dataB64: string };
+
 export type ObLlmCallInput = {
   system: string;
   user: string;
+  /** Images placed before the user text (host identify snapshots). */
+  images?: ObLlmImage[];
   /** One strict tool; omitted = plain text answer. */
   tool?: ObLlmToolDef;
   maxTokens: number;
@@ -197,6 +201,21 @@ export class AnthropicObLlmClient implements ObLlmClient {
     maxTokens: number,
   ): Promise<Anthropic.Message> {
     const strict = !this.strictRejected;
+    const content: string | Anthropic.ContentBlockParam[] = input.images?.length
+      ? [
+          ...input.images.map(
+            (img): Anthropic.ImageBlockParam => ({
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: img.mediaType,
+                data: img.dataB64,
+              },
+            }),
+          ),
+          { type: 'text', text: user },
+        ]
+      : user;
     const body: Anthropic.MessageCreateParamsNonStreaming = {
       model: this.model,
       max_tokens: maxTokens,
@@ -207,7 +226,7 @@ export class AnthropicObLlmClient implements ObLlmClient {
           cache_control: { type: 'ephemeral' },
         },
       ],
-      messages: [{ role: 'user', content: user }],
+      messages: [{ role: 'user', content }],
       output_config: { effort: input.effort },
     };
     if (input.tool) {

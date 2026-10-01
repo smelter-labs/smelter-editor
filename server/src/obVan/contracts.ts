@@ -269,6 +269,17 @@ export interface ObLlmModule {
     base?: ObRuleset;
   }): Promise<ObBriefResult>;
   setAnalyst(enabled: boolean, intervalS?: number): void;
+  /**
+   * Host identification (vision): one snapshot + the host description →
+   * `{isHost, confidence, reason}`, or null when the model refused / answered
+   * without the tool. Rejects like the other one-shots (`busy`, `budget`,
+   * `llm_unavailable`, transport errors).
+   */
+  identifyHost(input: {
+    imageB64: string;
+    hostDescription: string;
+    camLabel: string;
+  }): Promise<{ isHost: boolean; confidence: number; reason: string } | null>;
   onTranscript(camNumber: number, text: string, airMs: number): void;
   setPhase(phase: ObPhase): void;
   wrapNotes(input: { stats: ObStats; log: ObLogEntry[]; brief: string; eventName: string }): Promise<string>;

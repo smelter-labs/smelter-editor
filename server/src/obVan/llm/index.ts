@@ -17,6 +17,7 @@ import {
   type ObTimers,
 } from './analyst';
 import { generateRuleset } from './brief';
+import { identifyHost } from './identify';
 import {
   ObLlmBudget,
   obLlmLimitsFromEnv,
@@ -83,6 +84,7 @@ export function createObLlm(
     return {
       status,
       generateRuleset: () => Promise.reject(unavailable()),
+      identifyHost: () => Promise.reject(unavailable()),
       setAnalyst(enabled, s) {
         wanted = enabled;
         if (s !== undefined) wantedInterval = clampAnalystInterval(s);
@@ -187,6 +189,12 @@ export function createObLlm(
       }
       return runOneShot((signal, onUsage) =>
         generateRuleset(llm, { ...input, eventName }, { signal, onUsage }),
+      );
+    },
+
+    identifyHost(input) {
+      return runOneShot((signal, onUsage) =>
+        identifyHost(llm, input, { signal, onUsage }),
       );
     },
 
