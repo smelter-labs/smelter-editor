@@ -62,6 +62,7 @@ import type {
   ObBriefResult,
   ObClock,
   ObDecision,
+  ObDecisionSource,
   ObLlmDeps,
   ObLlmModule,
   ObSignalSample,
@@ -374,6 +375,9 @@ type ScheduledChange = {
   change: ObChange;
   source: ObActionSource;
   applyAtMs: number;
+  /** Why the brain queued it — rule shots survive an LLM cut, score cuts don't. */
+  decisionSource?: ObDecisionSource;
+  ruleId?: string;
 };
 
 type ReplayState = {
@@ -2039,6 +2043,16 @@ export class ObVanController {
           code: 'bad_action',
           message: `LLM cut cooldown (${Math.round(OB_LLM_CUT_COOLDOWN_MS / 1000)} s)`,
         };
+      // A keyword rule already planned a composed shot (slides, tape, split)
+      // from the same look-ahead transcript the analyst read; its air-synced
+      // cut beats an immediate solo on the same cue.
+      const ruleShot = this.pendingRuleShot();
+      if (ruleShot)
+        return {
+          ok: false,
+          code: 'bad_action',
+          message: `rule shot pending${ruleShot.ruleId ? ` (${ruleShot.ruleId})` : ''}`,
+        };
     }
     if (source === 'operator' && change.shot) this.pauseAuto(now);
     const reasons = change.reasons ? { reasons: change.reasons } : {};
@@ -2072,9 +2086,15 @@ export class ObVanController {
         });
         if (source === 'llm') {
           this.lastLlmCutAt = now;
-          // Drop the brain's queued cut: it was planned for the old program
-          // and would flip the picture right back.
-          this.cancelScheduled((c) => c.source === 'auto');
+          // Drop the brain's queued score cut: it was planned for the old
+          // program and would flip the picture right back. Rule shots and
+          // shotless changes (lower thirds, FX) keep their slot.
+          this.cancelScheduled(
+            (c) =>
+              c.source === 'auto' &&
+              c.change.shot !== undefined &&
+              c.decisionSource !== 'rule',
+          );
         } else {
           // A cut from anyone else is news — let the analyst take a look.
           this.llm?.requestTick('cut applied');
@@ -2664,6 +2684,8 @@ export class ObVanController {
       change,
       source,
       applyAtMs: at.applyAtMs,
+      decisionSource: decision.source,
+      ruleId: decision.ruleId,
     });
     this.prog = { ...this.prog, lastApplyAtMs: at.applyAtMs };
     this.markStateDirty();
@@ -2683,6 +2705,18 @@ export class ObVanController {
     let last = Math.min(this.prog.lastApplyAtMs, this.now());
     for (const c of this.scheduled.values()) last = Math.max(last, c.applyAtMs);
     this.prog = { ...this.prog, lastApplyAtMs: last };
+  }
+
+  /** A queued auto shot that came from a rule (not a score cut), if any. */
+  private pendingRuleShot(): ScheduledChange | null {
+    for (const c of this.scheduled.values())
+      if (
+        c.source === 'auto' &&
+        c.change.shot !== undefined &&
+        c.decisionSource === 'rule'
+      )
+        return c;
+    return null;
   }
 
   private nextScheduled(): ObState['autoPilot']['next'] {

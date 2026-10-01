@@ -901,6 +901,57 @@ describe('ObVanController · llm cuts', () => {
     h.controller.dispose();
   });
 
+  it('a queued rule shot blocks the llm cut and still lands on air', async () => {
+    const h = harness();
+    const { c2 } = onAir(h);
+    h.brain.next = (ctx) => ({
+      atAirMs: ctx.nowAir + 3000,
+      shot: solo(c2),
+      holdMs: 0,
+      reason: 'slides on the keyword',
+      reasons: ['rule slides-kw'],
+      source: 'rule',
+      ruleId: 'slides-kw',
+    });
+    await vi.advanceTimersByTimeAsync(100);
+    h.brain.next = () => null;
+    const refused = h.controller.operate(
+      { op: 'shot', shot: solo(c2), mode: 'take' },
+      'llm',
+    );
+    expect(refused.ok).toBe(false);
+    if (!refused.ok)
+      expect(refused.message).toContain('rule shot pending (slides-kw)');
+    await vi.advanceTimersByTimeAsync(3500);
+    const s = h.controller.stateSnapshot();
+    expect(s.program.shot).toEqual(solo(c2));
+    expect(s.program.source).toBe('auto');
+    h.controller.dispose();
+  });
+
+  it('an llm cut keeps a queued shotless rule change (lower third)', async () => {
+    const h = harness();
+    const { c1, c2 } = onAir(h);
+    h.brain.next = (ctx) => ({
+      atAirMs: ctx.nowAir + 3000,
+      lowerThird: { camId: c1, mode: 'talent' as const },
+      holdMs: 0,
+      reason: 'lower third on the new voice',
+      reasons: ['rule lt-new-voice'],
+      source: 'rule',
+      ruleId: 'lt-new-voice',
+    });
+    await vi.advanceTimersByTimeAsync(100);
+    h.brain.next = () => null;
+    expect(
+      h.controller.operate({ op: 'shot', shot: solo(c2), mode: 'take' }, 'llm'),
+    ).toEqual({ ok: true });
+    await vi.advanceTimersByTimeAsync(3500);
+    const l3 = h.logs().find((e) => e.kind === 'lower_third');
+    expect(l3?.text).toContain('Anna');
+    h.controller.dispose();
+  });
+
   it('getSituation: chronological lastCuts, speaking flag, scores by cam number', async () => {
     const h = harness();
     const { c1, c2 } = onAir(h);
