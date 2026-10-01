@@ -96,6 +96,8 @@ wyjścia LLM.
 | MATCH | 1,5 / 12 s | replay po „burście" ruchu | wirtualna kamera za piłką, kamery bramkowe przy zamieszaniu, plan ogólny po zgubieniu piłki |
 | STAGE | 6 / 45 s, dissolve 900 ms | blokada monologu | najazd na mówiącego aktora + spotlight, wejścia z kulis, plan ogólny na zespół i w ciszy |
 | GIG | 1,2 / 8 s | cięcia na beat | szeroko + neon w głośnych partiach, cięcie na beat do innej kamery, publiczność zoom-punchem, zwolnienie w cichych partiach |
+| FOLLOW | 2 / 60 s, cięcia | — (deterministyczne demo) | podążaj za potwierdzonym hostem (p90), solo na skok ruchu / burst, grid wszystkich domyślnie |
+| QUIZ | 2,5 / 30 s, cięcia | — (steruje maszyna quizu) | split host+odpytywany (`quizTurn`, p85), solo na myślącego na głos (p87), split na dialog, solo hosta, grid studia między rundami |
 
 Gdy żadna reguła nie pasuje, działa **scoring** (wagi presetu: mowa, ruch,
 osoby, piłka, nowość, „stay" dla bieżącej kamery, bias ról) z histerezą 0,15 i
@@ -144,7 +146,8 @@ DSL, konfiguracja, stan, komendy, WS), `ob-van-presets.ts`, `ob-van-ruleset.ts`.
 | `cams.ts`, `commands.ts`, `log.ts` | rekordy kamer (camKey, grace, numery 1–8), parsowanie komend WS, log WHY |
 | `signals.ts`, `rules.ts`, `brain.ts`, `explain.ts`, `attention.ts` | agregacja sygnałów i zegar emisji, wykonanie reguł, brain, opisy decyzji, punkt uwagi dla wirtualnej kamery |
 | `host.ts`, `gestures.ts` | rozpoznawanie hosta (FOLLOW): nowa osoba → snapshot → identify → sygnał `host`; mapowanie gestów dłoni na komendy `fx` |
-| `llm/` | klient Anthropic (tekst + obrazy), schemat toola DSL, brief → reguły, analityk, `identify.ts` (host vision), budżet, notatki końcowe |
+| `quiz.ts`, `quizQuestions.ts` | Smelterionaire: maszyna stanu teleturnieju (gracze, kwoty ×1.5/×0.5, fazy pytania, koło „Ask the AI", stingery) + bank pytań ABCD; sygnał `quizTurn`, overlaye w `inputs/ObQuizHud.tsx` |
+| `llm/` | klient Anthropic (tekst + obrazy), schemat toola DSL, brief → reguły, analityk, `identify.ts` (host vision), `hint.ts` (koło ratunkowe quizu — odpowiada w ciemno), budżet, notatki końcowe |
 | `obVanRoutes.ts`, `obVanLlmRoutes.ts` | REST |
 | `contracts.ts` | kontrakty między kontrolerem, sygnałami, brainem i LLM |
 
@@ -275,6 +278,50 @@ dev-only) — patrz `scripts/ob-van-follow-check.mjs` wyżej. Worker solo:
 osoby wchodzą naraz, może złapać złą (naprawia się przez re-verify / utratę
 tracku); `maxHold` (60 s) potrafi raz na minutę mrugnąć z gridu na solo i
 wrócić; budżet LLM na event obejmuje też obrazy identify.
+
+## QUIZ · Smelterionaire (teleturniej)
+
+„Who Wants to Be a Smelterionaire?" — teleturniej w stylu Milionerów na
+presecie `quiz`: host (rola `speaker`) + do 4 uczestników (rola `guest`),
+każdy startuje z **$1 000 000**; dobra odpowiedź ×1.5, zła ×0.5, kwoty
+wyświetlane co do dolara (dziwna precyzja to część żartu). Pytania ABCD
+(o Smelterze i reżyserze AI) idą z banku `quizQuestions.ts` w kolejności;
+**operator sędziuje z panelu**: ASSIGN (klik na gracza) → BOARD → lock A–D →
+REVEAL (werdykt z banku; `✓`/`✗` to ręczny override bez locka). Jedno koło
+ratunkowe na gracza: **ASK AI** — LLM dostaje pytanie i odpowiada **w
+ciemno** (nie zna poprawnej litery; pewna siebie pomyłka to feature); bez
+klucza API wyświetla się żartobliwa odmowa bez wskazywania litery.
+
+Warstwa gry to czysta maszyna `quiz.ts` (tick z kontrolera, efekty:
+`turn`/`celebrate`/`hint`/`sfx`/`lower-third`/`log`). Sygnał per-kamera
+`quizTurn` (wzór `host`) wskazuje odpytywanego; reguły presetu robią resztę:
+split host+gracz przy pytaniu (p85), solo na myślącego na głos (p87, mowa
+≥1.2 s), split na przepychankę (p60), solo hosta (p40), grid studia między
+rundami (p10, trick `hold>=0` jak w FOLLOW). Po REVEAL kontroler sam tnie
+solo zwycięzcy/przegranego i trzyma 6 s (`applyDecision` + holdMs). Overlaye
+(rail z kwotami, plansza ABCD, flash, licznik, plansza AI) rysuje
+`ObQuizHud.tsx` z plate'ów `imgs/ob/quiz-*.png`; stingery audio to mp4
+z `server/sfx/` (generator `scripts/quiz-render-sfx.mjs`) grane wzorcem
+replay-clipów.
+
+**Wymagania**: audio **mix** (pusty grid = zero kamer „on air", `follow` by
+wszystko wyciszył — SETUP wymusza mix przy wyborze presetu); captions
+niepotrzebne (reguły jadą na sygnałach mowy, opóźnienie zostaje 3 s).
+Klawisze panelu przy aktywnej planszy: `Q` board, `A–D` lock (`A` wraca do
+autopilota poza planszą), `V` reveal, `G`/`W` override, `H` ask AI.
+
+```bash
+# e2e bez workera (symulowane sygnały):
+OB_SIM=1 SKIP_PYTHON=1 pnpm start          # terminal 1
+node scripts/ob-van-quiz-check.mjs         # terminal 2 — ALL CHECKS PASSED
+cd server && pnpm vitest run src/obVan     # 288 testów (quiz.ts, kontroler, hint)
+```
+
+**Ograniczenia**: `ob_state` broadcastuje poprawną literę do klientów roomu
+(desk musi ją widzieć; publiczność ogląda program, nie state) — na workshop
+OK, do „prawdziwego" teleturnieju trzeba by prywatnego kanału operatora;
+cut LLM-analityka może teoretycznie wpaść w celebrację (chroni `holdMs` +
+cooldowny — nie zaobserwowano w checkach).
 
 ## Materiał demo w pojedynkę
 
