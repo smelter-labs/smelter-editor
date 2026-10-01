@@ -120,6 +120,7 @@ const SIGNAL_WORD: Record<ObSignalKind, string> = {
   ballAge: 'ball last seen',
   keyword: 'keyword',
   host: 'the host seen',
+  quizTurn: 'the contestant asked',
   hold: 'program held',
   segment: 'segment',
   dialogue: 'back-and-forth',

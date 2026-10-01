@@ -246,6 +246,10 @@ export function SetupScreen({
                           host: { ...c.host, enabled: true },
                         }
                       : {}),
+                    // QUIZ rests on the same all-cameras grid between rounds.
+                    ...(presetId === 'quiz'
+                      ? { audio: { mode: 'mix' as const } }
+                      : {}),
                   }))
                 }
               />
