@@ -92,6 +92,28 @@ import {
   type FbMatchError,
 } from '../football/FootballGameController';
 import { fbRoleRefusal, readFbClipSession } from '../football/clipSession';
+import {
+  ObVanController,
+  type ObCamSignalOpts,
+  type ObCommandResult,
+  type ObSimSample,
+} from '../obVan/ObVanController';
+import { ObSignals, makeObClock } from '../obVan/signals';
+import { createObBrain } from '../obVan/brain';
+import { attentionFor } from '../obVan/attention';
+import { createObLlm } from '../obVan/llm';
+import type { ObBriefResult } from '../obVan/contracts';
+import { OB_VAN_MODEL_ID } from '../ai-models/ob-van/manifest';
+import type {
+  ObCamRole,
+  ObConfig,
+  ObConfigPatch,
+  ObControlAction,
+  ObLlmStatus,
+  ObOperatorCommand,
+  ObRuleset,
+  ObState,
+} from '@smelter-editor/types';
 import type {
   FbCamRole,
   FbConfig,
@@ -342,6 +364,8 @@ export class RoomState {
   private readonly basketball: BasketballGameController;
   /** Football Game ("Touchline"): dataset file cams + virtual director + AI events. */
   private readonly football: FootballGameController;
+  /** OB Van: multi-camera desk + AI director (phones, file cams, adopted inputs). */
+  private readonly obVan: ObVanController;
 
   /**
    * Per-input wall-clock of the last SCHEDULED kettlebell overlay apply. The
@@ -809,7 +833,13 @@ export class RoomState {
       loadClipTelemetry: (clipFileName) =>
         this.readFbClipTelemetry(clipFileName),
       cutReplayClip: (clipFileName, mediaMs, eventId, crop) =>
-        this.cutReplayClipFrom(clipFileName, mediaMs, 'fb-replays', eventId, crop),
+        this.cutReplayClipFrom(
+          clipFileName,
+          mediaMs,
+          'fb-replays',
+          eventId,
+          crop,
+        ),
       publishHud: (state) => this.output.store.getState().setFbGame(state),
       registerJoinQr: (url) =>
         this.registerJoinQrImage(url, {
@@ -847,6 +877,103 @@ export class RoomState {
       },
       getPipelineTimeMs: () => SmelterInstance.getPipelineTimeMs(),
     });
+
+    // OB Van: phone cams through InputManager (WHIP, side channel per the
+    // event's delay), file cams, the `ob-stage` layer, per-input volume for
+    // the audio policy and fade / wipe shader transitions for A/B mixes.
+    this.obVan = new ObVanController(
+      idPrefix,
+      {
+        broadcast: (event) => roomEventBus.broadcast(idPrefix, event),
+        sendTo: (clientId, event) =>
+          roomEventBus.sendTo(idPrefix, clientId, event),
+        hasActiveRecording: () => this.recordingController.hasActiveRecording(),
+        removeInput: (inputId) => this.removeInput(inputId),
+        layoutTiles: (tiles) =>
+          this.updateLayers([
+            {
+              id: 'ob-stage',
+              inputs: tiles.map((t) => ({
+                inputId: t.inputId,
+                x: t.x,
+                y: t.y,
+                width: t.width,
+                height: t.height,
+                transitionDurationMs: t.transitionDurationMs,
+                transitionEasing: t.transitionEasing,
+              })),
+            },
+          ]),
+        runInputTransition: (inputId, transition) =>
+          this.inputManager.updateInput(inputId, {
+            activeTransition: transition,
+          }),
+        setInputVolume: (inputId, volume) =>
+          this.inputManager.updateInput(inputId, { volume }),
+        isInputConnected: (inputId) =>
+          this.inputManager
+            .getInputs()
+            .some((i) => i.inputId === inputId && i.status === 'connected'),
+        isInputLive: (inputId) => this.inputManager.isWhipInputLive(inputId),
+        getResolution: () => this.output.store.getState().resolution,
+        publishHud: (state) => this.output.store.getState().setObVan(state),
+        registerJoinQr: (url) =>
+          this.registerJoinQrImage(url, {
+            dir: 'ob-qr',
+            imagePrefix: 'ob-qr',
+            dark: '#0a0c10ff',
+            light: '#f2f4f8ff',
+            margin: 0,
+          }),
+        registerGameCam: (name, dims, opts) =>
+          this.registerGameWhipCam(name, dims, {
+            ai: true,
+            transcription: opts.transcription,
+            prepare: (inputId) => this.configureObCamSignals(inputId, opts),
+          }),
+        configureCamSignals: (inputId, opts) =>
+          this.configureObCamSignals(inputId, opts),
+        getSideChannelDelayMs: (inputId) =>
+          this.inputManager.getInputs().find((i) => i.inputId === inputId)
+            ?.registeredSideChannelDelayMs ?? 0,
+        smelterStartMs: () => SmelterInstance.getStartTime(),
+        getFileClock: (inputId) => this.fileClockOf(inputId),
+        resyncFileCams: async () => {
+          await this.syncObFileCams(0);
+        },
+        cutReplayClip: (clipFileName, mediaMs, replayId) =>
+          this.cutReplayClipFrom(clipFileName, mediaMs, 'ob-replays', replayId),
+        registerReplayClip: (file, offsetMs) =>
+          this.registerGameReplayClip('ob', file, offsetMs),
+        unregisterReplayClip: (inputId, file) => {
+          void SmelterInstance.unregisterInput(inputId).catch(() => {});
+          if (/^[A-Za-z0-9._-]+\.mp4$/.test(file)) {
+            void remove(path.join(DATA_DIR, 'ob-replays', file)).catch(
+              () => {},
+            );
+          }
+        },
+        getPipelineTimeMs: () => SmelterInstance.getPipelineTimeMs(),
+      },
+      {
+        createSignals: (clock) => new ObSignals(clock),
+        createClock: (deps) => makeObClock(deps),
+        createBrain: (ruleset, hooks) =>
+          createObBrain(ruleset, { onNote: hooks.onNote }),
+        attention: attentionFor,
+        createLlm: (deps, opts) => createObLlm(deps, undefined, opts),
+      },
+    );
+
+    // OB Van signal worker: audio / video samples keyed by input → the
+    // controller maps them to cameras and the air clock.
+    void this.aiController
+      .wireSidecarListeners(OB_VAN_MODEL_ID, (event) => {
+        this.obVan.onWorkerResult(event.inputId, event.data, event.ptsNanos);
+      })
+      .catch((err) =>
+        console.warn('[ob] signal worker listener not wired', err),
+      );
 
     let motionResultCount = 0;
     void this.aiController.wireSidecarListeners('motion', (event) => {
@@ -1470,6 +1597,7 @@ export class RoomState {
     this.kbTournament.notifyRecordingChanged();
     this.basketball.notifyRecordingChanged();
     this.football.notifyRecordingChanged();
+    this.obVan.notifyRecordingChanged();
     return result;
   }
 
@@ -1480,6 +1608,7 @@ export class RoomState {
     this.kbTournament.notifyRecordingChanged();
     this.basketball.notifyRecordingChanged();
     this.football.notifyRecordingChanged();
+    this.obVan.notifyRecordingChanged();
     return result;
   }
 
@@ -1620,6 +1749,13 @@ export class RoomState {
   }
 
   public async removeInput(inputId: string): Promise<void> {
+    await this.removeInputLocked(inputId);
+    // Outside the mutex (the controller restages through updateLayers): an
+    // OB Van camera whose input the host deleted leaves the program.
+    this.obVan.onInputsRemoved([inputId]);
+  }
+
+  private async removeInputLocked(inputId: string): Promise<void> {
     return this.mutex.runExclusive(async () => {
       this.parkUntilPlaced.delete(inputId);
       await this.inputManager.removeInput(inputId);
@@ -2003,6 +2139,7 @@ export class RoomState {
       this.duckHunter.onInputsRemoved(removed);
       this.basketball.onInputsRemoved(removed);
       this.football.onInputsRemoved(removed);
+      this.obVan.onInputsRemoved(removed);
     }
   }
 
@@ -2447,7 +2584,7 @@ export class RoomState {
   private async cutReplayClipFrom(
     clipFileName: string,
     mediaMs: number,
-    outDirName: 'bb-replays' | 'fb-replays',
+    outDirName: 'bb-replays' | 'fb-replays' | 'ob-replays',
     shotId: string,
     crop?: { x: number; y: number; w: number; h: number },
   ): Promise<{ file: string; durationMs: number } | null> {
@@ -2514,7 +2651,7 @@ export class RoomState {
     ]);
     const durationMs = Math.round(spanS * RoomState.REPLAY_SLOW * 1000);
     console.log(
-      `[${outDirName === 'fb-replays' ? 'fb' : 'bb'}] replay cut from ${clipFileName} @ ${mediaMs} ms → ${file} (${durationMs} ms${crop ? `, crop ${Math.round(crop.w)}×${Math.round(crop.h)}` : ''}, ffmpeg ${Date.now() - t0} ms)`,
+      `[${outDirName.slice(0, 2)}] replay cut from ${clipFileName} @ ${mediaMs} ms → ${file} (${durationMs} ms${crop ? `, crop ${Math.round(crop.w)}×${Math.round(crop.h)}` : ''}, ffmpeg ${Date.now() - t0} ms)`,
     );
     return { file, durationMs };
   }
@@ -2690,7 +2827,12 @@ export class RoomState {
       readJson(`${dir}zones.json`),
       readJson(`${dir}away.json`),
     ]);
-    if (meta === undefined && zxy === undefined && ball === undefined && zones === undefined) {
+    if (
+      meta === undefined &&
+      zxy === undefined &&
+      ball === undefined &&
+      zones === undefined
+    ) {
       return null;
     }
     return {
@@ -2702,9 +2844,281 @@ export class RoomState {
     };
   }
 
+  // ── OB Van (thin delegates, like the football game) ──
+
+  public handleObMessage(clientId: string, raw: unknown): void {
+    this.obVan.handleMessage(clientId, raw);
+  }
+
+  public handleObDisconnect(clientId: string): void {
+    this.obVan.handleDisconnect(clientId);
+  }
+
+  /** True once somebody used OB Van in this room. */
+  public isObEngaged(): boolean {
+    return this.obVan.isEngaged();
+  }
+
+  public getObState(): ObState {
+    return this.obVan.stateSnapshot();
+  }
+
+  public setObConfig(patch: ObConfigPatch): ObConfig {
+    return this.obVan.setConfig(patch);
+  }
+
+  public controlObVan(
+    action: ObControlAction,
+    camId?: string,
+  ): ObCommandResult {
+    return this.obVan.control(action, camId);
+  }
+
+  public operateObVan(cmd: ObOperatorCommand): ObCommandResult {
+    return this.obVan.operate(cmd, 'operator');
+  }
+
+  public setObRuleset(
+    raw: unknown,
+  ): { ruleset: ObRuleset; warnings: string[] } | { errors: string[] } {
+    return this.obVan.setRuleset(raw);
+  }
+
+  /** Dev-only (OB_SIM=1): a fabricated worker sample for a camera. */
+  public simulateObSignal(camId: string, sample: ObSimSample): ObCommandResult {
+    return this.obVan.simulateSignal(camId, sample);
+  }
+
+  /** Restart every OB Van file cam from `playFromMs` (see syncBbFileCams). */
+  /**
+   * Wall time at which the OB Van file cams' media 0 is (or was) on air —
+   * the median over the clips' clocks; null without a playing file cam.
+   */
+  public obFileCamsMediaZeroAirMs(): number | null {
+    const zeros = this.obVan
+      .fileCamInputIds()
+      .map(({ inputId }) => this.fileClockOf(inputId))
+      .filter((c) => c !== null)
+      .map((c) => c.anchorWallMs - c.playFromMs + c.delayMs)
+      .sort((a, b) => a - b);
+    return zeros.length ? zeros[Math.floor(zeros.length / 2)] : null;
+  }
+
+  /**
+   * OB Van file cams all carry the same side-channel delay, so unlike the
+   * court / pitch clips nothing has to run ahead: each clip seeks to
+   * `playFromMs` itself and airs it once the delay has passed (nothing is
+   * skipped; the delay window is black). The restarts run one after another;
+   * each seek adds the time the earlier ones took, so every clip plays the
+   * same media time at the same moment, within one registration's jitter.
+   */
+  public async syncObFileCams(playFromMs = 0): Promise<string[]> {
+    const cams = this.obVan.fileCamInputIds();
+    if (cams.length === 0) return [];
+    return this.mutex.runExclusive(async () => {
+      this.obVan.fileCamsResyncing();
+      const restarted: string[] = [];
+      const t0 = Date.now();
+      for (const { role, inputId } of cams) {
+        try {
+          await this.inputManager.restartMp4Input(
+            inputId,
+            () => Math.max(0, playFromMs) + (Date.now() - t0),
+            true,
+          );
+          restarted.push(inputId);
+        } catch (err) {
+          console.warn(
+            `[ob] clip sync skipped ${role} cam ${inputId}: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        }
+        this.obVan.fileCamRestarted(inputId);
+      }
+      return restarted;
+    });
+  }
+
+  /**
+   * Register a looping local-mp4 (data/mp4s) as an OB Van camera. The signal
+   * model (and transcription) is enabled BEFORE connect: enabling it after
+   * would re-register the mp4 for the side channel. Every OB camera carries
+   * the same side-channel delay, so the pictures stay in sync on air.
+   */
+  public async attachObMp4Cam(
+    role: ObCamRole,
+    fileName: string,
+    meta: {
+      name?: string;
+      talent?: string | null;
+      subtitle?: string | null;
+    } = {},
+  ): Promise<{ camId: string; inputId: string }> {
+    const opts = this.obVan.camSignalOpts(role);
+    const inputId = await this.addNewInput({
+      type: 'local-mp4',
+      source: { fileName },
+      ...(opts.transcription ? { transcription: true } : {}),
+    });
+    if (!inputId) throw new Error('Failed to register local-mp4 input');
+    this.parkUntilPlaced.add(inputId);
+    const input = this.inputManager
+      .getInputs()
+      .find((i) => i.inputId === inputId);
+    if (!input || input.type !== 'local-mp4' || input.mp4AssetMissing) {
+      await this.removeInput(inputId).catch(() => {});
+      throw new Error(`MP4 not found under data/mp4s: ${fileName}`);
+    }
+    try {
+      await this.configureObCamSignals(inputId, opts);
+      await this.connectInput(inputId);
+    } catch (err) {
+      await this.removeInput(inputId).catch(() => {});
+      throw err;
+    }
+    if (input.status !== 'connected') {
+      await this.removeInput(inputId).catch(() => {});
+      throw new Error(`MP4 could not be connected: ${fileName}`);
+    }
+    const result = this.obVan.attachFileCam({
+      role,
+      inputId,
+      fileName,
+      ...(input.mp4VideoWidth && input.mp4VideoHeight
+        ? { width: input.mp4VideoWidth, height: input.mp4VideoHeight }
+        : {}),
+      ...(meta.name ? { name: meta.name } : {}),
+      ...(meta.talent !== undefined ? { talent: meta.talent } : {}),
+      ...(meta.subtitle !== undefined ? { subtitle: meta.subtitle } : {}),
+    });
+    if (!result.ok) {
+      await this.removeInput(inputId).catch(() => {});
+      throw new Error(result.message);
+    }
+    return { camId: result.camId, inputId };
+  }
+
+  /**
+   * Adopt an existing connected room input as an OB Van camera. The van's
+   * `ob-stage` layer then owns it: `updateLayers` replaces the room's layers,
+   * so the input leaves the user's own layout.
+   */
+  public async adoptObInput(
+    inputId: string,
+    role: ObCamRole,
+    meta: {
+      name?: string;
+      talent?: string | null;
+      subtitle?: string | null;
+    } = {},
+  ): Promise<{ camId: string }> {
+    const input = this.inputManager
+      .getInputs()
+      .find((i) => i.inputId === inputId);
+    if (!input) throw new Error(`No input ${inputId}`);
+    if (input.status !== 'connected')
+      throw new Error(`Input ${inputId} is not connected`);
+    this.parkUntilPlaced.add(inputId);
+    const dims =
+      input.type === 'local-mp4' && input.mp4VideoWidth && input.mp4VideoHeight
+        ? { width: input.mp4VideoWidth, height: input.mp4VideoHeight }
+        : input.nativeWidth && input.nativeHeight
+          ? { width: input.nativeWidth, height: input.nativeHeight }
+          : {};
+    const result = this.obVan.adoptInput({
+      role,
+      inputId,
+      ...dims,
+      name: meta.name ?? input.metadata.title,
+      ...(meta.talent !== undefined ? { talent: meta.talent } : {}),
+      ...(meta.subtitle !== undefined ? { subtitle: meta.subtitle } : {}),
+    });
+    if (!result.ok) throw new Error(result.message);
+    // Signals for the auto pilot (a supported stream type only; best-effort:
+    // an mp4 re-registers for the side channel, WHIP keeps its reservation).
+    const opts = this.obVan.camSignalOpts(role);
+    await this.configureObCamSignals(inputId, opts).catch((err) =>
+      console.warn(`[ob] signals not enabled on adopted ${inputId}`, err),
+    );
+    return { camId: result.camId };
+  }
+
+  /** Enable the OB Van signal model (and transcription) on a camera input. */
+  private async configureObCamSignals(
+    inputId: string,
+    opts: ObCamSignalOpts,
+  ): Promise<void> {
+    const input = this.inputManager.getInput(inputId);
+    if (supportsTranscription(input.type))
+      await this.setTranscriptionEnabled(inputId, opts.transcription);
+    const manifest = ModelRegistry.get(OB_VAN_MODEL_ID);
+    if (!manifest || !manifestSupportsInput(manifest, input)) return;
+    await this.setAIModelEnabled(
+      inputId,
+      OB_VAN_MODEL_ID,
+      opts.enabled,
+      opts.delayMs,
+      false,
+      opts.params,
+    );
+  }
+
+  /** Mount a replay clip from data/<tag>-replays as a GLOBAL engine input. */
+  private async registerGameReplayClip(
+    tag: 'ob',
+    file: string,
+    offsetMs: number,
+  ): Promise<string | null> {
+    if (!/^[A-Za-z0-9._-]+\.mp4$/.test(file)) return null;
+    const filePath = path.join(DATA_DIR, `${tag}-replays`, file);
+    if (!(await pathExists(filePath))) return null;
+    const hash = createHash('sha1').update(file).digest('hex').slice(0, 10);
+    const safeRoom = this.idPrefix.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const inputId = `${tag}-replay-${safeRoom}-${hash}`;
+    try {
+      await SmelterInstance.registerInput(inputId, {
+        type: 'mp4',
+        filePath,
+        loop: false,
+        offsetMs,
+      });
+    } catch (err) {
+      console.warn(`[${tag}] replay clip register failed: ${file}`, err);
+      return null;
+    }
+    return inputId;
+  }
+
+  // ── OB Van LLM forwards (obVanLlmRoutes → ObLlmRoomApi) ──
+
+  public obLlmBrief(brief: string): Promise<ObBriefResult> {
+    return this.obVan.llmBrief(brief);
+  }
+
+  public obLlmAnalyst(enabled: boolean, intervalS?: number): ObLlmStatus {
+    return this.obVan.llmAnalyst(enabled, intervalS);
+  }
+
+  public obLlmStatus(): ObLlmStatus {
+    return this.obVan.llmStatus();
+  }
+
+  public obLlmWrap(): Promise<string> {
+    return this.obVan.llmWrap();
+  }
+
+  public obLlmKill(): ObLlmStatus {
+    return this.obVan.llmKill();
+  }
+
   /** Restart every football file cam from `playFromMs` (see syncBbFileCams). */
   public async syncFbFileCams(playFromMs = 0): Promise<string[]> {
-    return this.syncGameFileCams(this.football.fileCamInputIds(), 'fb', playFromMs);
+    return this.syncGameFileCams(
+      this.football.fileCamInputIds(),
+      'fb',
+      playFromMs,
+    );
   }
 
   /**
@@ -2754,7 +3168,11 @@ export class RoomState {
   private static readonly FILE_CAM_DELAY_TRIM_MS = 240;
 
   public async syncBbFileCams(playFromMs = 0): Promise<string[]> {
-    return this.syncGameFileCams(this.basketball.fileCamInputIds(), 'bb', playFromMs);
+    return this.syncGameFileCams(
+      this.basketball.fileCamInputIds(),
+      'bb',
+      playFromMs,
+    );
   }
 
   private async syncGameFileCams(
@@ -3345,6 +3763,15 @@ export class RoomState {
       return;
     }
 
+    // OB Van: keywords / LLM transcript window (the line airs now).
+    this.obVan.onTranscript(
+      event.inputId,
+      event.text,
+      Date.now(),
+      event.duration,
+    );
+    if (!this.obVan.showsSubtitles(event.inputId)) return;
+
     const prev = this.transcriptClearTimers.get(event.inputId);
     if (prev) clearTimeout(prev);
 
@@ -3795,11 +4222,17 @@ export class RoomState {
   private async registerGameWhipCam(
     name: string,
     dims?: { width: number; height: number },
-    opts?: { ai?: boolean },
+    opts?: {
+      ai?: boolean;
+      transcription?: boolean;
+      /** Runs between registration and connect (enable a model at its delay). */
+      prepare?: (inputId: string) => Promise<void>;
+    },
   ): Promise<{ inputId: string; whipUrl: string; bearerToken: string }> {
     const inputId = await this.addNewInput({
       type: 'whip',
       username: `[camera] ${name}`,
+      ...(opts?.transcription ? { transcription: true } : {}),
       // Cams that will never run a model skip the side channel and its 3 s
       // buffering delay.
       noSideChannel: opts?.ai === false,
@@ -3820,6 +4253,14 @@ export class RoomState {
     if (!inputId) throw new Error('WHIP input registration failed');
     // Parked until the controller's first applyStage — never fullscreen.
     this.parkUntilPlaced.add(inputId);
+    // WHIP is never re-registered after connect: a model's delay must be in
+    // place before the side channel is reserved.
+    if (opts?.prepare)
+      await opts
+        .prepare(inputId)
+        .catch((err) =>
+          console.warn(`[whip] camera ${inputId}: prepare failed`, err),
+        );
     const bearerToken = await this.connectInput(inputId);
     return {
       inputId,
@@ -3922,6 +4363,7 @@ export class RoomState {
       this.kbTournament.dispose();
       this.basketball.dispose();
       this.football.dispose();
+      this.obVan.dispose();
 
       if (this.pendingStoreFlushTimer) {
         clearTimeout(this.pendingStoreFlushTimer);
@@ -3968,7 +4410,12 @@ export class RoomState {
 
       // Same sweep for the basketball scorer's make/release stills and the
       // instant-replay clips of both games.
-      for (const dir of ['bb-shot-frames', 'bb-replays', 'fb-replays']) {
+      for (const dir of [
+        'bb-shot-frames',
+        'bb-replays',
+        'fb-replays',
+        'ob-replays',
+      ]) {
         try {
           const frameDir = path.join(DATA_DIR, dir);
           const safeRoom = this.idPrefix.replace(/[^a-zA-Z0-9_-]/g, '_');

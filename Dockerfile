@@ -102,6 +102,13 @@ RUN python3 -m venv "$AI_MODELS_DIR/people-counter/.venv" && \
   "$AI_MODELS_DIR/people-counter/.venv/bin/python3" -c \
     "import cv2; import numpy; import websockets; import smelter; import clip; import ftfy; import ultralytics; assert tuple(map(int, ultralytics.__version__.split('.')[:2])) >= (8, 3)"
 
+# OB Van signal worker shares that venv and only adds Silero VAD (its
+# manifest depsCheck would otherwise pip-install it at the first room).
+RUN "$AI_MODELS_DIR/people-counter/.venv/bin/pip" install --quiet --no-cache-dir \
+    -r "$AI_MODELS_DIR/ob-van/requirements.txt" && \
+  "$AI_MODELS_DIR/people-counter/.venv/bin/python3" -c \
+    "import importlib.util as u; assert u.find_spec('silero_vad')"
+
 # Own venvs: motion is tiny, building-detector pulls its own torch +
 # transformers (SegFormer) and is the other heavy runtime install.
 RUN python3 -m venv "$AI_MODELS_DIR/motion/.venv" && \

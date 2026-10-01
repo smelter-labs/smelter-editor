@@ -51,6 +51,14 @@ import type {
   FbMatchAction,
   FbMatchEvent,
   FbStateEvent,
+  ObCamRole,
+  ObConfig,
+  ObConfigPatch,
+  ObControlAction,
+  ObLlmStatus,
+  ObOperatorCommand,
+  ObRuleset,
+  ObState,
 } from '@smelter-editor/types';
 import { createStorageClient, type StorageClient } from './storage-client';
 
@@ -363,6 +371,73 @@ interface SmelterApiClient {
     }[];
   }>;
 
+  // OB Van (AI director). Commands the server can refuse resolve to an
+  // ObResult instead of throwing: server-action errors are masked in
+  // production builds, and the desk shows the server's own message.
+  setObConfig(
+    roomId: string,
+    patch: ObConfigPatch,
+  ): Promise<ObResult<ObConfig>>;
+  controlObShow(
+    roomId: string,
+    action: ObControlAction,
+    camId?: string,
+  ): Promise<ObResult<ObState>>;
+  getObState(roomId: string): Promise<ObState>;
+  operateOb(roomId: string, cmd: ObOperatorCommand): Promise<ObResult<ObState>>;
+  /** Demo manifests under data/mp4s/ob-demo (one entry per cams.json). */
+  listObDemos(): Promise<{ demos: ObDemoInfo[] }>;
+  /** One-click demo: config + rules + file cams + sync from its cams.json. */
+  loadObDemo(roomId: string, dir: string): Promise<ObResult<ObState>>;
+  /** Use a looping mp4 from data/mp4s as a camera with a role. */
+  attachObMp4Cam(
+    roomId: string,
+    cam: {
+      role: ObCamRole;
+      fileName: string;
+      name?: string;
+      talent?: string;
+      subtitle?: string;
+    },
+  ): Promise<ObResult<{ camId: string; inputId: string }>>;
+  /** Restart every file camera together (from `playFromMs`, default 0). */
+  syncObFileCams(roomId: string, playFromMs?: number): Promise<ObResult<null>>;
+  /** Turn an existing room input into a camera. */
+  adoptObInput(
+    roomId: string,
+    cam: {
+      inputId: string;
+      role: ObCamRole;
+      name?: string;
+      talent?: string;
+      subtitle?: string;
+    },
+  ): Promise<ObResult<{ camId: string }>>;
+  /** Validated server-side (422 → `error.errors`). */
+  setObRuleset(
+    roomId: string,
+    ruleset: unknown,
+  ): Promise<ObResult<{ ruleset: ObRuleset; warnings: string[] }>>;
+  /** Dev only (server `OB_SIM=1`): inject a signal sample for a camera. */
+  simulateObSignal(
+    roomId: string,
+    camId: string,
+    sample: Record<string, unknown>,
+  ): Promise<ObResult<null>>;
+  generateObRuleset(
+    roomId: string,
+    brief: string,
+  ): Promise<
+    ObResult<{ ruleset: ObRuleset; rationale: string; warnings: string[] }>
+  >;
+  setObLlmAnalyst(
+    roomId: string,
+    opts: { enabled: boolean; intervalS?: number },
+  ): Promise<ObResult<ObLlmStatus>>;
+  getObLlmStatus(roomId: string): Promise<ObLlmStatus>;
+  getObWrapNotes(roomId: string): Promise<ObResult<{ notes: string }>>;
+  killObLlm(roomId: string): Promise<ObResult<ObLlmStatus>>;
+
   setHaunterConfig(
     roomId: string,
     config: {
@@ -470,6 +545,48 @@ async function sendRequest(
     throw new SmelterApiError(message, response.status, respBody);
   }
   return (await response.json()) as object;
+}
+
+/** One loadable OB Van demo (a cams.json under data/mp4s/ob-demo). */
+export type ObDemoInfo = {
+  dir: string;
+  eventName: string;
+  presetId: string;
+  cams: number;
+};
+
+/** A refused OB Van request: the server's `{code, message}` (+ ruleset errors). */
+export type ObApiError = { code: string; message: string; errors?: string[] };
+export type ObResult<T> =
+  | { ok: true; value: T }
+  | { ok: false; error: ObApiError };
+
+function toObApiError(err: unknown): ObApiError {
+  if (err instanceof SmelterApiError) {
+    const body: unknown = err.body;
+    const rec =
+      body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
+    const errors = Array.isArray(rec.errors)
+      ? rec.errors.filter((e): e is string => typeof e === 'string')
+      : undefined;
+    return {
+      code: typeof rec.code === 'string' ? rec.code : `http_${err.status}`,
+      message: typeof rec.message === 'string' ? rec.message : err.message,
+      ...(errors && errors.length ? { errors } : {}),
+    };
+  }
+  return {
+    code: 'network',
+    message: err instanceof Error ? err.message : String(err),
+  };
+}
+
+async function obCall<T>(fn: () => Promise<T>): Promise<ObResult<T>> {
+  try {
+    return { ok: true, value: await fn() };
+  } catch (err) {
+    return { ok: false, error: toObApiError(err) };
+  }
 }
 
 export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
@@ -1019,6 +1136,168 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
 
     async getFbClips() {
       return await req('get', '/football-game/clips');
+    },
+
+    async setObConfig(roomId, patch) {
+      return obCall(async () => {
+        const data = await req(
+          'post',
+          `/room/${enc(roomId)}/ob-van/config`,
+          patch,
+        );
+        return data.config as ObConfig;
+      });
+    },
+
+    async controlObShow(roomId, action, camId) {
+      return obCall(async () => {
+        const data = await req('post', `/room/${enc(roomId)}/ob-van/control`, {
+          action,
+          ...(camId ? { camId } : {}),
+        });
+        return data.state as ObState;
+      });
+    },
+
+    async getObState(roomId) {
+      const data = await req('get', `/room/${enc(roomId)}/ob-van/state`);
+      return data.state as ObState;
+    },
+
+    async operateOb(roomId, cmd) {
+      return obCall(async () => {
+        const data = await req('post', `/room/${enc(roomId)}/ob-van/operate`, {
+          cmd,
+        });
+        return data.state as ObState;
+      });
+    },
+
+    async listObDemos() {
+      const data = await req('get', '/ob-van/demos');
+      return { demos: (data as { demos?: ObDemoInfo[] }).demos ?? [] };
+    },
+
+    async loadObDemo(roomId, dir) {
+      return obCall(async () => {
+        const data = await req(
+          'post',
+          `/room/${enc(roomId)}/ob-van/load-demo`,
+          {
+            dir,
+          },
+        );
+        return (data as { state: ObState }).state;
+      });
+    },
+
+    async attachObMp4Cam(roomId, cam) {
+      return obCall(async () => {
+        const data = await req(
+          'post',
+          `/room/${enc(roomId)}/ob-van/mp4-cam`,
+          cam,
+        );
+        return {
+          camId: data.camId as string,
+          inputId: data.inputId as string,
+        };
+      });
+    },
+
+    async syncObFileCams(roomId, playFromMs) {
+      return obCall(async () => {
+        await req('post', `/room/${enc(roomId)}/ob-van/mp4-cam/sync`, {
+          playFromMs: playFromMs ?? 0,
+        });
+        return null;
+      });
+    },
+
+    async adoptObInput(roomId, cam) {
+      return obCall(async () => {
+        const data = await req(
+          'post',
+          `/room/${enc(roomId)}/ob-van/adopt-input`,
+          cam,
+        );
+        return { camId: data.camId as string };
+      });
+    },
+
+    async setObRuleset(roomId, ruleset) {
+      return obCall(async () => {
+        const data = await req('post', `/room/${enc(roomId)}/ob-van/ruleset`, {
+          ruleset,
+        });
+        return {
+          ruleset: data.ruleset as ObRuleset,
+          warnings: (data.warnings ?? []) as string[],
+        };
+      });
+    },
+
+    async simulateObSignal(roomId, camId, sample) {
+      return obCall(async () => {
+        await req('post', `/room/${enc(roomId)}/ob-van/simulate-signal`, {
+          camId,
+          sample,
+        });
+        return null;
+      });
+    },
+
+    async generateObRuleset(roomId, brief) {
+      return obCall(async () => {
+        const data = await req(
+          'post',
+          `/room/${enc(roomId)}/ob-van/llm/brief`,
+          { brief },
+        );
+        return {
+          ruleset: data.ruleset as ObRuleset,
+          rationale: typeof data.rationale === 'string' ? data.rationale : '',
+          warnings: (data.warnings ?? []) as string[],
+        };
+      });
+    },
+
+    async setObLlmAnalyst(roomId, opts) {
+      return obCall(async () => {
+        const data = await req(
+          'post',
+          `/room/${enc(roomId)}/ob-van/llm/analyst`,
+          opts,
+        );
+        return data.status as ObLlmStatus;
+      });
+    },
+
+    async getObLlmStatus(roomId) {
+      const data = await req('get', `/room/${enc(roomId)}/ob-van/llm/status`);
+      return data.status as ObLlmStatus;
+    },
+
+    async getObWrapNotes(roomId) {
+      return obCall(async () => {
+        const data = await req(
+          'post',
+          `/room/${enc(roomId)}/ob-van/llm/wrap`,
+          {},
+        );
+        return { notes: typeof data.notes === 'string' ? data.notes : '' };
+      });
+    },
+
+    async killObLlm(roomId) {
+      return obCall(async () => {
+        const data = await req(
+          'post',
+          `/room/${enc(roomId)}/ob-van/llm/kill`,
+          {},
+        );
+        return data.status as ObLlmStatus;
+      });
     },
 
     async setHaunterConfig(roomId, config) {

@@ -1,6 +1,8 @@
 import Fastify from 'fastify';
 import { readFbClipSession } from '../football/clipSession';
 import { sanitizeFbMp4FileName } from '../football/mp4CamFileName';
+import { registerObVanRoutes } from '../obVan/obVanRoutes';
+import { registerObVanLlmRoutes } from '../obVan/obVanLlmRoutes';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import websocket from '@fastify/websocket';
@@ -120,6 +122,12 @@ const GAME_WS_HANDLERS: ReadonlyArray<{
     prefix: 'fb_',
     handle: (room, clientId, msg) => room.handleFbMessage(clientId, msg),
     disconnect: (room, clientId) => room.handleFbDisconnect(clientId),
+  },
+  {
+    // OB Van messages from camera phones, the operator panel + the host page.
+    prefix: 'ob_',
+    handle: (room, clientId, msg) => room.handleObMessage(clientId, msg),
+    disconnect: (room, clientId) => room.handleObDisconnect(clientId),
   },
 ];
 
@@ -1480,11 +1488,13 @@ function activeGameOf(
   | 'kettlebell-tournament'
   | 'basketball-game'
   | 'football-game'
+  | 'ob-van'
   | null {
   if (room.getDuckHunterMatch().phase !== 'idle') return 'duck-hunter';
   if (room.isKbtEngaged()) return 'kettlebell-tournament';
   if (room.isBbEngaged()) return 'basketball-game';
   if (room.isFbEngaged()) return 'football-game';
+  if (room.isObEngaged()) return 'ob-van';
   return null;
 }
 
@@ -3937,6 +3947,11 @@ routes.get('/football-game/clips', async (_req, res) => {
   );
   res.status(200).send({ clips });
 });
+
+// ── OB Van ─────────────────────────────────────────────────────
+
+registerObVanRoutes(routes, (roomId) => state.getRoom(roomId));
+registerObVanLlmRoutes(routes, (roomId) => state.getRoom(roomId));
 
 // ── Haunting ghosts ────────────────────────────────────────────
 

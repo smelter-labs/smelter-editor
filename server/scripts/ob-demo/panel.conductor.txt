@@ -1,0 +1,63 @@
+# OB Van demo — "Should AI direct live TV?", a panel played by one person.
+# Three takes (one per persona) recorded against the conductor track, then
+# synced as file cams. Format: see the header of scripts/ob-conductor.mjs.
+#
+#   node scripts/ob-demo-slides.mjs
+#   node scripts/ob-conductor.mjs scripts/ob-demo/panel.conductor.txt
+#
+# Every line is placed to exercise one TALK rule (see the right-hand notes).
+# Keep these words OUT of every other line — the director listens for them:
+#   slide, next slide, as you can see, chart, diagram, on the screen   → SLIDES shot
+#   question(s), q and a, q&a, applause                                → audience cam
+
+@title   Should AI direct live TV?
+@persona HOST    voice="Daniel" role=speaker talent="Piotr · the host"          color=#F2B134
+@persona SKEPTIC voice="Karen"  role=guest   talent="Piotr · the TV director"   color=#38BDF8
+@persona NERD    voice="Rishi"  role=guest   talent="Piotr · the ML researcher" color=#F472B6
+@rate 175
+@stretch 1.15
+@clap 10
+@start 2
+@tail 12
+@gap 0.4
+@slides data/ob-demo-raw/panel/slides
+
+SEGMENT Introductions
+SLIDE 01-title.png
++1.5 HOST Good evening, and welcome to the panel. Tonight's topic: should an AI direct live television? I'm your host, and I'm cautiously excited.
+                                                  # cut + lower third on each new voice
++0.6 SKEPTIC Thanks for having me. I've directed live TV for thirty years, so I'm less excited, and a lot more cautious.
++0.6 NERD And I build the models. So I'm probably the reason he's cautious.
++0.5 HOST Before we start, a confession. Tonight's show is being cut by the thing we're talking about.
+                                                  # HOST keeps the floor into the next segment:
+                                                  # no cut there, so no extra name (rules look ~8 s ahead)
+SEGMENT The numbers
+SLIDE 02-numbers.png
++0.5 HOST (turns to the screen) Let me show you why I'm excited. As you can see on the slide, the director doesn't wait for a new voice. It cuts about two hundred milliseconds before the first syllable.
+                                                  # keyword → SPEAKER + SLIDES (holds 8 s)
++0.6 NERD That part isn't magic. It hears the audio three seconds before you do, so it's cheating a little.
++0.5 SKEPTIC (sighs) A little? That's the whole trick!
+
+SEGMENT The debate
+SLIDE 03-debate.png
+# The split needs 3+ turns inside 6 s: keep each jab under ~2 s, no commas
+# (TTS pauses on them), and step on each other's last word.
++0.3 NERD Every good director anticipates.     # quick back-and-forth → SPLIT
++-0.1 SKEPTIC It can't read minds.
++-0.1 NERD It reads audio.
++-0.1 SKEPTIC Audio isn't taste!
++-0.1 NERD Neither is yelling "camera two".
++-0.1 SKEPTIC That's called experience!
++0.7 HOST Okay, okay. Let's slow down. When a conversation gets heated like that, somebody decides what the viewer sees. I think that's the real job.
+                                                  # one voice for 8+ s ends the split
++0.4 HOST So let's just sit with that for a second.
++0.3 ALL ~8.5 [total silence — freeze, look thoughtful, nobody moves]
+                                                  # 6 s of silence → WIDE (needs wide.mp4)
++0.2 SKEPTIC Is it still cutting? It went wide, didn't it.
++0.2 ALL ~2.5 (everyone laughs)
+
+SEGMENT Closing
+SLIDE 04-closing.png
++0.6 NERD My prediction: in five years, every small event has an AI director, and nobody notices.
++0.5 SKEPTIC Mine: in five years, it finally learns not to cut to the guy who sneezed.
++0.5 HOST And mine: if tonight's cut looked any good, it wasn't a human. Thanks for watching.

@@ -76,3 +76,6 @@ weights/clip/
 docs/
 workshops/scenarios/
 
+
+# Local editor settings
+.vscode/

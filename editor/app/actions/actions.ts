@@ -813,6 +813,159 @@ export async function setFbAiEvents(
   return (await getClient()).setFbAiEvents(roomId, enabled);
 }
 
+// ── OB Van (AI director) ────────────────────────────────────────────────
+// Refusable commands resolve to an ObResult (see lib/api-client.ts).
+
+export async function setObConfig(
+  roomId: string,
+  patch: import('@smelter-editor/types').ObConfigPatch,
+): Promise<
+  import('@/lib/api-client').ObResult<import('@smelter-editor/types').ObConfig>
+> {
+  return (await getClient()).setObConfig(roomId, patch);
+}
+
+export async function controlObShow(
+  roomId: string,
+  action: import('@smelter-editor/types').ObControlAction,
+  camId?: string,
+): Promise<
+  import('@/lib/api-client').ObResult<import('@smelter-editor/types').ObState>
+> {
+  return (await getClient()).controlObShow(roomId, action, camId);
+}
+
+export async function getObState(
+  roomId: string,
+): Promise<import('@smelter-editor/types').ObState> {
+  return (await getClient()).getObState(roomId);
+}
+
+export async function operateOb(
+  roomId: string,
+  cmd: import('@smelter-editor/types').ObOperatorCommand,
+): Promise<
+  import('@/lib/api-client').ObResult<import('@smelter-editor/types').ObState>
+> {
+  return (await getClient()).operateOb(roomId, cmd);
+}
+
+export async function listObDemos(): Promise<{
+  demos: import('@/lib/api-client').ObDemoInfo[];
+}> {
+  return (await getClient()).listObDemos();
+}
+
+export async function loadObDemo(
+  roomId: string,
+  dir: string,
+): Promise<
+  import('@/lib/api-client').ObResult<import('@smelter-editor/types').ObState>
+> {
+  return (await getClient()).loadObDemo(roomId, dir);
+}
+
+export async function attachObMp4Cam(
+  roomId: string,
+  cam: {
+    role: import('@smelter-editor/types').ObCamRole;
+    fileName: string;
+    name?: string;
+    talent?: string;
+    subtitle?: string;
+  },
+): Promise<
+  import('@/lib/api-client').ObResult<{ camId: string; inputId: string }>
+> {
+  return (await getClient()).attachObMp4Cam(roomId, cam);
+}
+
+export async function syncObFileCams(
+  roomId: string,
+  playFromMs?: number,
+): Promise<import('@/lib/api-client').ObResult<null>> {
+  return (await getClient()).syncObFileCams(roomId, playFromMs);
+}
+
+export async function adoptObInput(
+  roomId: string,
+  cam: {
+    inputId: string;
+    role: import('@smelter-editor/types').ObCamRole;
+    name?: string;
+    talent?: string;
+    subtitle?: string;
+  },
+): Promise<import('@/lib/api-client').ObResult<{ camId: string }>> {
+  return (await getClient()).adoptObInput(roomId, cam);
+}
+
+export async function setObRuleset(
+  roomId: string,
+  ruleset: unknown,
+): Promise<
+  import('@/lib/api-client').ObResult<{
+    ruleset: import('@smelter-editor/types').ObRuleset;
+    warnings: string[];
+  }>
+> {
+  return (await getClient()).setObRuleset(roomId, ruleset);
+}
+
+export async function simulateObSignal(
+  roomId: string,
+  camId: string,
+  sample: Record<string, unknown>,
+): Promise<import('@/lib/api-client').ObResult<null>> {
+  return (await getClient()).simulateObSignal(roomId, camId, sample);
+}
+
+export async function generateObRuleset(
+  roomId: string,
+  brief: string,
+): Promise<
+  import('@/lib/api-client').ObResult<{
+    ruleset: import('@smelter-editor/types').ObRuleset;
+    rationale: string;
+    warnings: string[];
+  }>
+> {
+  return (await getClient()).generateObRuleset(roomId, brief);
+}
+
+export async function setObLlmAnalyst(
+  roomId: string,
+  opts: { enabled: boolean; intervalS?: number },
+): Promise<
+  import('@/lib/api-client').ObResult<
+    import('@smelter-editor/types').ObLlmStatus
+  >
+> {
+  return (await getClient()).setObLlmAnalyst(roomId, opts);
+}
+
+export async function getObLlmStatus(
+  roomId: string,
+): Promise<import('@smelter-editor/types').ObLlmStatus> {
+  return (await getClient()).getObLlmStatus(roomId);
+}
+
+export async function getObWrapNotes(
+  roomId: string,
+): Promise<import('@/lib/api-client').ObResult<{ notes: string }>> {
+  return (await getClient()).getObWrapNotes(roomId);
+}
+
+export async function killObLlm(
+  roomId: string,
+): Promise<
+  import('@/lib/api-client').ObResult<
+    import('@smelter-editor/types').ObLlmStatus
+  >
+> {
+  return (await getClient()).killObLlm(roomId);
+}
+
 export async function setHaunterConfig(
   roomId: string,
   config: {

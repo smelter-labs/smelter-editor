@@ -15,11 +15,13 @@ import {
   useShooterOverlay,
   useBbGame,
   useFbGame,
+  useObVan,
 } from './store';
 import { Input } from '../inputs/inputs';
 import { KbtMatchHud } from '../inputs/KbtHud';
 import { BbMatchHud } from '../inputs/BbHud';
 import { FbMatchHud } from '../inputs/FbHud';
+import { ObBackdrop, ObMatchHud } from '../inputs/ObHud';
 import { ShooterLobbyScene } from '../inputs/ShooterLobbyScene';
 import { ShooterResultsScene } from '../inputs/ShooterResultsScene';
 import { wrapWithShaders } from '../utils/shaderUtils';
@@ -279,6 +281,9 @@ function OutputScene() {
         overflow: 'visible',
       }}>
       <CaptionsSideChannelDecode />
+      {/* OB Van: blurred copy of the main camera under split / PiP shots
+          (drawn before the layers, so the tiles sit on top of it). */}
+      <ObBackdropSlot resolution={resolution} />
       {layersReversed.map((layer) => {
         const layerOffsetTransition = {
           durationMs: layer.offsetTransitionDurationMs ?? 300,
@@ -406,6 +411,9 @@ function OutputScene() {
       {/* Football game chrome (score bug, event banners, minimap, replay
           window, lobby and final cards) — same slot pattern. */}
       <FbHudSlot resolution={resolution} />
+      {/* OB Van chrome (title bug, lower thirds, dip, replay, setup slate,
+          wrap card) — same slot pattern. */}
+      <ObHudSlot resolution={resolution} />
       {/* Duck-hunter GAME OVER scene — full-frame retro results over the
           ended match (the in-tile HUD hides itself for that phase). */}
       <ShooterHudSlot resolution={resolution} />
@@ -455,7 +463,8 @@ function BbHudSlot({
   const shooter = useShooterOverlay();
   const kbTournament = useKbTournament();
   const fbGame = useFbGame();
-  if (!bbGame || shooter || kbTournament || fbGame) return null;
+  const obVan = useObVan();
+  if (!bbGame || shooter || kbTournament || fbGame || obVan) return null;
   return <BbMatchHud hud={bbGame} resolution={resolution} />;
 }
 
@@ -468,8 +477,35 @@ function FbHudSlot({
   const fbGame = useFbGame();
   const shooter = useShooterOverlay();
   const kbTournament = useKbTournament();
-  if (!fbGame || shooter || kbTournament) return null;
+  const obVan = useObVan();
+  if (!fbGame || shooter || kbTournament || obVan) return null;
   return <FbMatchHud hud={fbGame} resolution={resolution} />;
+}
+
+/** OB Van HUD slot — the newest game wins the output (BB / FB yield to it). */
+function ObHudSlot({
+  resolution,
+}: {
+  resolution: { width: number; height: number };
+}) {
+  const obVan = useObVan();
+  const shooter = useShooterOverlay();
+  const kbTournament = useKbTournament();
+  if (!obVan || shooter || kbTournament) return null;
+  return <ObMatchHud hud={obVan} resolution={resolution} />;
+}
+
+/** OB Van backdrop — only while the van is on the output and a shot asks for it. */
+function ObBackdropSlot({
+  resolution,
+}: {
+  resolution: { width: number; height: number };
+}) {
+  const inputId = useObVan()?.stage.backdrop?.inputId ?? null;
+  const shooter = useShooterOverlay();
+  const kbTournament = useKbTournament();
+  if (!inputId || shooter || kbTournament) return null;
+  return <ObBackdrop inputId={inputId} resolution={resolution} />;
 }
 
 /** Same subscription isolation for the duck-hunter full-frame scenes (~30 Hz).

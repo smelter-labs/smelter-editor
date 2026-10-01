@@ -17,6 +17,9 @@ import type {
   BbPipFx,
   FbMinimapSize,
   KbtViewTransitionStyle,
+  ObActionSource,
+  ObGrade,
+  ObPhase,
   ShooterTopScoreEntry,
 } from '@smelter-editor/types';
 import type { HandsStore } from '../hands/handStore';
@@ -84,6 +87,7 @@ export type RoomStore = {
   kbTournament: KbtHudState | null;
   bbGame: BbHudState | null;
   fbGame: FbHudState | null;
+  obVan: ObHudState | null;
   updateState: (state: RoomStoreState & { layers: Layer[] }) => void;
   setOutputShaders: (shaders: ShaderConfig[]) => void;
   setInputFrozenImage: (inputId: string, imageId: string | null) => void;
@@ -101,6 +105,7 @@ export type RoomStore = {
   setKbTournament: (state: KbtHudState | null) => void;
   setBbGame: (state: BbHudState | null) => void;
   setFbGame: (state: FbHudState | null) => void;
+  setObVan: (state: ObHudState | null) => void;
   /** Interval (ms) for the JS-driven overlay animation tickers (skeleton rig,
    * rep floaters, milestone shake). Scene pushes are throttled to 30 ms by the
    * reconciler anyway, so values below ~30 buy nothing visually. */
@@ -896,6 +901,71 @@ export type FbHudState = {
   } | null;
 };
 
+// ── OB Van HUD ───────────────────────────────────────────────────────────
+
+/** Per-camera picture treatment (grade + spotlight), keyed by inputId. */
+export type ObHudLook = {
+  grade: ObGrade;
+  spotlight: boolean;
+  /** Spotlight centre (−1..1) and size factor on a virtual shot's window. */
+  focus?: { cx: number; cy: number; scale: number };
+};
+
+/**
+ * OB Van broadcast chrome burned into the program. Published by
+ * ObVanController on every change (no side-channel hold: decisions are
+ * already scheduled on the air clock). `stage` follows the layout; the dip
+ * envelope is evaluated in the render body (dipOpacity) so the first frame of
+ * a dip is never a stale opacity.
+ */
+export type ObHudState = {
+  stage: {
+    phase: ObPhase;
+    /** Dip to black (fade / dip transitions, standalone DIP). */
+    dip: {
+      startedAtMs: number;
+      inMs: number;
+      holdMs: number;
+      outMs: number;
+    } | null;
+    /** Instant replay clip window (a global engine input). */
+    replay: { inputId: string; camName: string } | null;
+    /** Blurred full-frame copy of the main camera behind split / PiP shots. */
+    backdrop: { inputId: string } | null;
+    /** Look per camera input (all cameras, so the wrapper never remounts). */
+    tiles: Record<string, ObHudLook>;
+  };
+  lowerThird: {
+    name: string;
+    subtitle: string | null;
+    startedAtMs: number;
+    untilMs: number | null;
+  } | null;
+  titleBug: { event: string; segment: string | null } | null;
+  /** Setup slate (phase `setup`): QR for the phones + the roster. */
+  setup: {
+    eventName: string;
+    presetLabel: string;
+    qr: { imageId: string | null; label: string | null };
+    cams: {
+      number: number;
+      name: string;
+      role: string;
+      kind: 'whip' | 'file' | 'adopted';
+      live: boolean;
+    }[];
+  } | null;
+  /** Wrap card (phase `wrap`). */
+  wrap: {
+    eventName: string;
+    durationMs: number;
+    cuts: number;
+    avgHoldMs: number;
+    bySource: Record<ObActionSource, number>;
+    shares: { number: number; name: string; pct: number }[];
+  } | null;
+};
+
 /** Tracking minimap plate: 336×218 at 1080p for size 1, anchored bottom-left. */
 export function fbMinimapRect(
   resolution: { width: number; height: number },
@@ -1049,6 +1119,7 @@ export function createRoomStore(
     kbTournament: null,
     bbGame: null,
     fbGame: null,
+    obVan: null,
     updateState: (incoming) => {
       const {
         inputs,
@@ -1216,6 +1287,19 @@ export function createRoomStore(
       }
       set(() => ({ fbGame }));
     },
+    setObVan: (obVan: ObHudState | null) => {
+      // Same rationale as setFbGame: most publishes are identical.
+      const prev = get().obVan;
+      if (
+        prev === obVan ||
+        (prev != null &&
+          obVan != null &&
+          JSON.stringify(prev) === JSON.stringify(obVan))
+      ) {
+        return;
+      }
+      set(() => ({ obVan }));
+    },
     animTickMs: 16,
     setAnimTickMs: (ms: number) => {
       set(() => ({ animTickMs: Math.max(16, Math.round(ms)) }));
@@ -1299,6 +1383,12 @@ export function useBbGame() {
 export function useFbGame() {
   const store = useContext(StoreContext);
   return useStore(store, (state) => state.fbGame);
+}
+
+/** OB Van burned-in HUD state (null while the module is not engaged). */
+export function useObVan() {
+  const store = useContext(StoreContext);
+  return useStore(store, (state) => state.obVan);
 }
 
 /** Isolates the shooter overlay subscription (same rationale as KBT's). */

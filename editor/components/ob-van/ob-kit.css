@@ -1,0 +1,259 @@
+/* OB Van kit — CSS side: the control-room desk. Lit keys, hairline plates,
+ * one blue accent for the AI, red = program, green = preview. Mirrors the
+ * structure of the Touchline kit's CSS so behaviour parity is easy to check;
+ * the two never load on the same page. */
+
+@keyframes ob-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.ob-pulse {
+  animation: ob-pulse 1.4s ease-in-out infinite;
+}
+
+/* Keys that want pressing: a brightness breath, never a dim. */
+@keyframes ob-breathe {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.22);
+  }
+}
+
+.ob-breathe {
+  animation: ob-breathe 1.4s ease-in-out infinite;
+}
+
+@keyframes ob-blink {
+  0%,
+  54% {
+    opacity: 1;
+  }
+  55%,
+  100% {
+    opacity: 0.25;
+  }
+}
+
+.ob-blink {
+  animation: ob-blink 1.1s steps(1, end) infinite;
+}
+
+/* Screen entry: quick fade + settle. */
+@keyframes ob-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.ob-enter {
+  animation: ob-enter 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* A new log line slides in from the left. */
+@keyframes ob-slide {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.ob-slide {
+  animation: ob-slide 0.24s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Indeterminate progress sweep. */
+@keyframes ob-sweep-bar {
+  from {
+    left: -45%;
+  }
+  to {
+    left: 100%;
+  }
+}
+
+.ob-sweep-bar {
+  animation: ob-sweep-bar 1.2s linear infinite;
+}
+
+/* Pending press: a thin bar runs along the key's bottom edge. */
+@keyframes ob-pending {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.ob-pending-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: currentColor;
+  opacity: 0.8;
+  transform-origin: left;
+  animation: ob-pending 1.5s linear forwards;
+  pointer-events: none;
+}
+
+.ob-btn {
+  cursor: pointer;
+  border: none;
+  background: none;
+  padding: 0;
+  text-align: center;
+  position: relative;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    filter 0.12s ease,
+    opacity 0.12s ease,
+    transform 0.08s ease,
+    background-color 0.12s ease,
+    border-color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+/* Hover wash in the text colour, so it reads on every variant. */
+.ob-btn:not([data-variant='solid'])::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+@media (hover: hover) {
+  .ob-btn:not([data-variant='solid']):hover:not(:disabled):not(
+      [data-locked]
+    )::after {
+    opacity: 0.07;
+  }
+
+  .ob-btn[data-variant='solid']:hover:not(:disabled):not([data-locked]) {
+    filter: brightness(1.1);
+  }
+}
+
+.ob-btn:active:not(:disabled):not([data-locked]) {
+  transform: translateY(1px);
+}
+
+.ob-btn:not([data-variant='solid']):active:not(:disabled):not(
+    [data-locked]
+  )::after {
+  opacity: 0.14;
+}
+
+.ob-btn[data-variant='solid']:active:not(:disabled) {
+  filter: brightness(0.88);
+}
+
+.ob-btn:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.ob-btn[data-locked] {
+  cursor: default;
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+/* Keyboard focus: accent ring. */
+.ob-btn:focus-visible,
+.ob-input:focus-visible {
+  outline: 2px solid #38bdf8;
+  outline-offset: 2px;
+}
+
+.ob-input {
+  border-radius: 3px;
+  transition:
+    border-color 0.12s ease,
+    background-color 0.12s ease;
+}
+
+.ob-input::placeholder {
+  color: rgba(230, 233, 239, 0.28);
+}
+
+@media (hover: hover) {
+  .ob-input:hover:not(:focus) {
+    border-color: rgba(230, 233, 239, 0.4) !important;
+  }
+}
+
+.ob-input:focus {
+  border-color: #38bdf8 !important;
+  outline: none;
+}
+
+select.ob-input option {
+  background: #12151b;
+  color: #e6e9ef;
+}
+
+/* Meter bars glide instead of jumping between 4 Hz samples. */
+.ob-meter-fill {
+  transition: width 0.22s linear;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ob-pulse,
+  .ob-breathe,
+  .ob-blink,
+  .ob-enter,
+  .ob-slide,
+  .ob-sweep-bar,
+  .ob-pending-bar {
+    animation: none;
+  }
+
+  .ob-btn,
+  .ob-btn::after,
+  .ob-input,
+  .ob-meter-fill {
+    transition: none;
+  }
+}
+
+/* Scrollable region inside the scaled stage: keep the scroll, thin bar. */
+.ob-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(230, 233, 239, 0.14) transparent;
+}
+.ob-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.ob-scroll::-webkit-scrollbar-thumb {
+  background: rgba(230, 233, 239, 0.14);
+  border-radius: 3px;
+}
+.ob-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}

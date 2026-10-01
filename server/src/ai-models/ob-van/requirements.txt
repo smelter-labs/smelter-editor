@@ -1,0 +1,8 @@
+# Shares the people-counter venv (ultralytics / torch / opencv are already
+# there); this file only matters on a box where that venv is fresh.
+smelter-sdk
+opencv-python-headless
+numpy
+websockets
+ultralytics>=8.3.0     # YOLO persons + sports ball — pulls in torch
+silero-vad             # speech detection; the worker loads its TorchScript file directly

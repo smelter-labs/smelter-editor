@@ -52,6 +52,13 @@ SIDE_CHANNEL_DELAY_S = _SIDE_CHANNEL_DELAY_MS / 1000
 # Fallback when Node does not send side_channel_ready (manual sidecar / SKIP_PYTHON).
 _DEFAULT_WARMUP_S = SIDE_CHANNEL_DELAY_S + 10
 CAPTIONS_WARMUP_S = float(os.environ.get("CAPTIONS_WARMUP_S", str(_DEFAULT_WARMUP_S)))
+# Under Node every transcription input gets side_channel_ready (replayed on
+# reconnect), and other audio side channels (WHIP phones, the OB Van signal
+# worker's cameras) must NOT be transcribed. The warm-up fallback therefore
+# only applies to a manually started sidecar or when CAPTIONS_WARMUP_S is set.
+WARMUP_FALLBACK = (
+    "CAPTIONS_WARMUP_S" in os.environ or not os.environ.get("NODE_WS_URL")
+)
 WORKER_RECONNECT_S = float(os.environ.get("CAPTIONS_RECONNECT_S", "5"))
 
 DEBUG = os.environ.get("CAPTIONS_DEBUG") == "1"
@@ -78,6 +85,8 @@ def should_start_worker(
     """
     if input_id in side_channel_ready_at:
         return True
+    if not WARMUP_FALLBACK:
+        return False
     first_seen = channel_first_seen.get(input_id)
     if first_seen is None:
         return False
@@ -284,6 +293,7 @@ async def _transcribe_and_emit(
     audio: np.ndarray,
     ts_ms: int,
     duration_ms: int,
+    heard_ms: int,
 ) -> None:
     def _run() -> str:
         segments, _info = model.transcribe(
@@ -308,6 +318,10 @@ async def _transcribe_and_emit(
             "text": text,
             "ts": ts_ms,
             "duration": duration_ms,
+            # Wall clock when the segment's first window arrived: Node airs
+            # the caption a side-channel delay later when `ts` is not on the
+            # pipeline clock (restarted mp4 clips count pts from their start).
+            "heardMs": heard_ms,
         }
     )
 
@@ -329,6 +343,7 @@ async def run_whisper(
         pre_buffer: deque[np.ndarray] = deque(maxlen=VAD_PREROLL_WINDOWS)
         speech_windows: list[np.ndarray] = []
         speech_start_pts_ms: int | None = None
+        speech_start_wall_ms = 0
 
         try:
             async for window, window_pts_ms in stream_16k_windows(input_id):
@@ -338,6 +353,7 @@ async def run_whisper(
                 match vad_iter(torch.from_numpy(window), return_seconds=True):
                     case {"start": start}:
                         speech_start_pts_ms = window_pts_ms
+                        speech_start_wall_ms = int(time.time() * 1000)
                         speech_windows = list(pre_buffer)
                         debug("[%s] VAD speech start @ %d ms", input_id, window_pts_ms)
 
@@ -356,7 +372,12 @@ async def run_whisper(
                         )
                         asyncio.create_task(
                             _transcribe_and_emit(
-                                whisper_model, input_id, audio, ts_ms, duration_ms
+                                whisper_model,
+                                input_id,
+                                audio,
+                                ts_ms,
+                                duration_ms,
+                                speech_start_wall_ms,
                             )
                         )
 
@@ -369,12 +390,14 @@ async def run_whisper(
                 ):
                     duration_ms = window_pts_ms - speech_start_pts_ms
                     ts_ms = speech_start_pts_ms
+                    heard_ms = speech_start_wall_ms
                     audio = np.concatenate(speech_windows)
                     speech_start_pts_ms = window_pts_ms
+                    speech_start_wall_ms = int(time.time() * 1000)
                     speech_windows = list(pre_buffer)
                     asyncio.create_task(
                         _transcribe_and_emit(
-                            whisper_model, input_id, audio, ts_ms, duration_ms
+                            whisper_model, input_id, audio, ts_ms, duration_ms, heard_ms
                         )
                     )
         except Exception as err:  # noqa: BLE001

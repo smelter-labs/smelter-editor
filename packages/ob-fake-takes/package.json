@@ -1,0 +1,21 @@
+{
+  "name": "ob-fake-takes",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Remotion stand-in takes for the OB Van demo (rendered by server/scripts/ob-fake-takes.mjs)",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "render": "remotion render src/index.ts"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.0",
+    "@remotion/fonts": "^4.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "remotion": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "typescript": "^5.5.4"
+  }
+}

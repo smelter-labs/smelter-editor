@@ -11,6 +11,8 @@ import { captionDebug } from './captionsDebug';
 import { CAPTIONS_SIDE_CHANNEL_DELAY_MS } from './constants';
 
 const execFileAsync = promisify(execFile);
+/** A pts-based air time further than this from heard + delay is not trusted. */
+const PTS_TRUST_MS = 2000;
 
 // The python sidecar + its venv live next to the motion detector's, under
 // server/captions (mirrors the layout of server/motion used by MotionManager).
@@ -55,6 +57,7 @@ export type TranscriptEvent = {
   text: string;
   ts: number; // stream pts in ms
   duration: number; // ms of audio the text covers
+  heardMs?: number; // wall clock when the sidecar got the segment's first audio
 };
 
 export type CaptionBridgeOptions = {
@@ -69,6 +72,7 @@ type IncomingMessage = {
   text?: unknown;
   ts?: unknown;
   duration?: unknown;
+  heardMs?: unknown;
 };
 
 type OutgoingSideChannelMessage = {
@@ -251,6 +255,9 @@ export class CaptionBridge {
       text: parsed.text,
       ts: parsed.ts,
       duration: parsed.duration,
+      ...(typeof parsed.heardMs === 'number'
+        ? { heardMs: parsed.heardMs }
+        : {}),
     });
     console.log(
       `[captions] transcript from python inputId=${parsed.inputId} ts=${parsed.ts}ms duration=${parsed.duration}ms text="${parsed.text}"`,
@@ -259,7 +266,19 @@ export class CaptionBridge {
 
   private scheduleTranscript(event: TranscriptEvent): void {
     const start = SmelterInstance.getStartTime();
-    const wait = start === null ? 0 : start + event.ts - Date.now();
+    // `ts` is an air time only on the pipeline clock; a restarted mp4 clip
+    // counts pts from its own start. Then: heard + the side-channel delay.
+    const byPts = start === null ? null : start + event.ts;
+    const byHeard =
+      event.heardMs === undefined
+        ? null
+        : event.heardMs + CAPTIONS_SIDE_CHANNEL_DELAY_MS;
+    const airAt =
+      byHeard !== null &&
+      (byPts === null || Math.abs(byPts - byHeard) > PTS_TRUST_MS)
+        ? byHeard
+        : byPts;
+    const wait = airAt === null ? 0 : airAt - Date.now();
     captionDebug('scheduleTranscript', {
       inputId: event.inputId,
       ts: event.ts,

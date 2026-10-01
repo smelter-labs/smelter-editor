@@ -5,6 +5,7 @@ import { BUILDING_DETECTOR_MANIFEST } from './building-detector/manifest';
 import { CAR_ADS_MANIFESTS } from './car-ads/manifest';
 import { KETTLEBELL_COACH_MANIFEST } from './kettlebell-coach/manifest';
 import { BASKETBALL_SCORER_MANIFEST } from './basketball-scorer/manifest';
+import { OB_VAN_MANIFEST } from './ob-van/manifest';
 
 export function registerAIModels(): void {
   ModelRegistry.register(MOTION_MANIFEST);
@@ -17,6 +18,7 @@ export function registerAIModels(): void {
   }
   ModelRegistry.register(KETTLEBELL_COACH_MANIFEST);
   ModelRegistry.register(BASKETBALL_SCORER_MANIFEST);
+  ModelRegistry.register(OB_VAN_MANIFEST);
 }
 
 export {
@@ -49,6 +51,12 @@ export {
   BASKETBALL_SCORER_ID,
   isBasketballScorerModel,
 } from './basketball-scorer/manifest';
+export {
+  OB_VAN_MANIFEST,
+  OB_VAN_MODEL_ID,
+  isObVanModel,
+  obVanParamsForRole,
+} from './ob-van/manifest';
 export { ModelRegistry } from './registry';
 export {
   computeSideChannelConfig,
