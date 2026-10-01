@@ -470,4 +470,20 @@ describe('new persons & host', () => {
       sinceAirMs: null,
     });
   });
+
+  it('setQuizTurn mirrors setHost: exclusive, moves, clears, creates the slot', () => {
+    const { clock } = fakeClock();
+    const s = new ObSignals(clock);
+    s.ingest('c1', video(60_000));
+    // c2 has never reported (OB_SIM case) — the slot must still be created.
+    s.setQuizTurn('c2');
+    expect(s.view().c2.quizTurn.active).toBe(true);
+    expect(s.view().c2.quizTurn.sinceAirMs).not.toBeNull();
+    expect(s.view().c1.quizTurn.active).toBe(false);
+    s.setQuizTurn('c1');
+    expect(s.view().c2.quizTurn.active).toBe(false);
+    expect(s.view().c1.quizTurn.active).toBe(true);
+    s.setQuizTurn(null);
+    expect(s.view().c1.quizTurn).toEqual({ active: false, sinceAirMs: null });
+  });
 });

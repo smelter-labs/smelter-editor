@@ -43,6 +43,7 @@ function makeState(patch: Partial<ObState> = {}): ObState {
       status: 'off',
       lastGesture: null,
     },
+    quiz: null,
     llm: {
       available: false,
       model: null,
@@ -180,5 +181,102 @@ describe('echo detection', () => {
     expect(
       commandEchoed({ op: 'lower_third', clear: true }, withLt, before),
     ).toBe(true);
+  });
+
+  it('quiz: each action waits for its own echo in state.quiz', () => {
+    const quiz = (patch: Partial<NonNullable<ObState['quiz']>> = {}) =>
+      makeState({
+        quiz: {
+          phase: 'idle',
+          players: [],
+          questionsLeft: 3,
+          current: null,
+          hint: null,
+          ...patch,
+        },
+      });
+    const current = {
+      questionId: 'q1',
+      number: 1,
+      forCamId: 'g1',
+      q: 'Q?',
+      answers: ['a', 'b', 'c', 'd'] as [string, string, string, string],
+      correct: 'B' as const,
+      shownAtMs: null as number | null,
+      lockedLetter: null as 'A' | 'B' | 'C' | 'D' | null,
+      lockedAtMs: null,
+      verdict: null,
+      revealedAtMs: null,
+      delta: 0,
+    };
+    const assign = { op: 'quiz', action: 'assign', camId: 'g1' } as const;
+    expect(commandEchoed(assign, before, quiz())).toBe(false);
+    expect(
+      commandEchoed(assign, before, quiz({ phase: 'assigned', current })),
+    ).toBe(true);
+    expect(
+      commandEchoed({ op: 'quiz', action: 'show_board' }, before, quiz()),
+    ).toBe(false);
+    expect(
+      commandEchoed(
+        { op: 'quiz', action: 'show_board' },
+        before,
+        quiz({ phase: 'board', current: { ...current, shownAtMs: 5 } }),
+      ),
+    ).toBe(true);
+    expect(
+      commandEchoed(
+        { op: 'quiz', action: 'lock', letter: 'C' },
+        before,
+        quiz({
+          phase: 'locked',
+          current: { ...current, shownAtMs: 5, lockedLetter: 'C' },
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      commandEchoed(
+        { op: 'quiz', action: 'reveal' },
+        before,
+        quiz({ phase: 'revealed', current }),
+      ),
+    ).toBe(true);
+    expect(
+      commandEchoed(
+        { op: 'quiz', action: 'lifeline' },
+        before,
+        quiz({
+          phase: 'board',
+          current,
+          hint: {
+            forCamId: 'g1',
+            questionId: 'q1',
+            status: 'pending',
+            letter: null,
+            text: null,
+            requestedAtMs: 1,
+            untilMs: null,
+            canned: false,
+          },
+        }),
+      ),
+    ).toBe(true);
+    expect(commandEchoed({ op: 'quiz', action: 'skip' }, before, quiz())).toBe(
+      true,
+    );
+    // Off-preset state (quiz null): clear immediately, nothing to wait for.
+    expect(
+      commandEchoed({ op: 'quiz', action: 'reveal' }, before, before),
+    ).toBe(true);
+  });
+
+  it('quiz pending keys: one per action, letters are distinct presses', () => {
+    expect(pendingKeyOf({ op: 'quiz', action: 'lock', letter: 'A' })).not.toBe(
+      pendingKeyOf({ op: 'quiz', action: 'lock', letter: 'B' }),
+    );
+    expect(pendingKeyOf({ op: 'quiz', action: 'assign', camId: 'x' })).toBe(
+      pendingKeyOf({ op: 'quiz', action: 'assign', camId: 'y' }),
+    );
+    expect(pendingKeyOf({ op: 'quiz', action: 'reveal' })).toBe('quiz:reveal');
   });
 });

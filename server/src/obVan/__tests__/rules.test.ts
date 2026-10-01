@@ -341,6 +341,24 @@ describe('conditions', () => {
     );
   });
 
+  it('quizTurn binds the contestant camera as trigger, even on a stale stream', () => {
+    const cond: ObCondition = {
+      signal: 'quizTurn',
+      cam: 'any',
+      op: '==',
+      value: true,
+    };
+    const turned = { active: true, sinceAirMs: T - 500 };
+    const e = env(CAMS, [
+      sig('c1', T),
+      sig('c2', T, { staleAudio: true, staleVideo: true, quizTurn: turned }),
+    ]);
+    expect(evaluate(e, cond)).toEqual({ ok: true, trigger: 'c2' });
+    expect(evaluate(env(CAMS, [sig('c1', T), sig('c2', T)]), cond).ok).toBe(
+      false,
+    );
+  });
+
   it('host is not gated on a stale stream (the controller owns its truth)', () => {
     const e = env(CAMS, [
       sig('c2', T, {
