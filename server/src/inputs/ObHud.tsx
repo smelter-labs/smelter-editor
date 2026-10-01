@@ -12,6 +12,7 @@ import type { Api } from '@swmansion/smelter';
 import type { ObHudState } from '../app/store';
 import { KBT_VIEW_TRANSITION_MS } from '../app/store';
 import { dipOpacity } from '../obVan/program';
+import { ObQuizOverlay } from './ObQuizHud';
 import { TransitionShaderWrapper } from './transitionWrapper';
 
 type TextWeight = Api.TextWeight;
@@ -736,8 +737,11 @@ function SceneChrome({
       {phase !== 'setup' && replay ? (
         <ReplayWindow replay={replay} k={k} resolution={resolution} />
       ) : null}
+      {phase === 'on-air' && hud.quiz && !replay ? (
+        <ObQuizOverlay quiz={hud.quiz} k={k} resolution={resolution} />
+      ) : null}
       {hud.titleBug ? <TitleBug bug={hud.titleBug} k={k} /> : null}
-      {hud.lowerThird && !replay ? (
+      {hud.lowerThird && !replay && !hud.quiz?.board ? (
         <LowerThird
           key={hud.lowerThird.startedAtMs}
           lt={hud.lowerThird}
