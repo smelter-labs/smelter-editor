@@ -44,6 +44,12 @@ import {
 } from '@smelter-editor/types';
 import type { ObHudState } from '../app/store';
 import { ObHostTracker } from './host';
+import {
+  OB_GESTURE_COOLDOWN_MS,
+  describeObGestureCommand,
+  isObGestureName,
+  obGestureCommand,
+} from './gestures';
 import { CAPTIONS_SIDE_CHANNEL_DELAY_MS } from '../captions/constants';
 import { WHIP_SIDE_CHANNEL_DELAY_MS } from '../ai-models/side-channel-config';
 import type {
@@ -497,6 +503,8 @@ export class ObVanController {
   private lastGesture: ObHostState['lastGesture'] = null;
   /** Camera whose worker currently runs hand tracking (the host's). */
   private gestureCamId: string | null = null;
+  /** Per-gesture cooldown over the worker's own gate. */
+  private readonly lastGestureAt = new Map<string, number>();
 
   // ── stage machinery ──
   private lastTiles: ObStageTile[] = [];
@@ -2764,10 +2772,30 @@ export class ObVanController {
     this.hostTracker.onSnapshot(camId, d);
   }
 
-  /** A recognised hand gesture on a camera — handed to the gesture mapping. */
+  /** A recognised hand gesture on a camera → an FX command on the show. */
   private onGestureResult(camId: string, d: Record<string, unknown>): void {
-    void camId;
-    void d;
+    if (!isObGestureName(d.name)) return;
+    // Only the confirmed host's camera may drive effects (the worker only
+    // tracks hands there, but a stale configure could still deliver one).
+    if (camId !== this.gestureCamId) return;
+    const now = this.now();
+    if (now - (this.lastGestureAt.get(d.name) ?? -Infinity) < OB_GESTURE_COOLDOWN_MS)
+      return;
+    this.lastGestureAt.set(d.name, now);
+    this.lastGesture = { camId, name: d.name, atMs: now };
+    const cmd = obGestureCommand(d.name, this.effects);
+    const r = this.operate(cmd, 'operator', [`gesture: ${d.name}`]);
+    this.pushLog({
+      source: 'operator',
+      kind: 'fx',
+      tone: r.ok ? 'ai' : 'bad',
+      label: 'GESTURE',
+      text: r.ok
+        ? `${d.name.replace('_', ' ')} → ${describeObGestureCommand(cmd)}`
+        : `${d.name} refused · ${r.message}`,
+      camId,
+    });
+    this.markStateDirty();
   }
 
   /** Subtitles on a transcribed input: always, unless it is a camera and the show turned them off. */

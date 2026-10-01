@@ -56,9 +56,11 @@ else:
 
 from analysis import (
     BAND_EDGES_HZ,
+    GestureGate,
     HopAggregator,
     OnsetDetector,
     SpeechGate,
+    classify_gesture,
     dbfs_from_mean_square,
     ema,
     motion_score,
@@ -132,6 +134,10 @@ class InputState:
     video_samples: int = 0
     # Latest analysed frame, for `capture` snapshots: (pts_nanos, RGB ≤640 px).
     last_frame: tuple[int, np.ndarray] | None = None
+    # Hand tracking (host camera only, param `hands`): MediaPipe instance +
+    # the hold / cooldown gate. Released when the param goes off.
+    hands_tracker: object | None = None
+    gesture_gate: GestureGate | None = None
 
     def wants(self, kind: str) -> bool:
         return param_flag(self.params, kind, True)
@@ -534,6 +540,12 @@ async def run_video_once(input_id: str) -> int:
             state.last_frame = (int(frame.pts_nanos), snapshot_copy(rgb))
             t0 = time.monotonic()
             data = await loop.run_in_executor(_INFER, analyse_frame, rgb, state.params, meter, t0)
+            if param_flag(state.params, "hands", False):
+                gesture = await loop.run_in_executor(_INFER, detect_gesture, state, rgb, t0)
+                if gesture:
+                    await send_result(input_id, frame.pts_nanos, {"kind": "gesture", "name": gesture, "conf": 1.0})
+            elif state.hands_tracker is not None:
+                release_hands(state)
             if sent > 0:  # the first frame pays for the model load — not a pace sample
                 state.proc_ema_s = ema(state.proc_ema_s, time.monotonic() - t0, PROC_EMA_ALPHA)
             data["procMs"] = round((time.monotonic() - received_at) * 1000.0, 1)
@@ -668,6 +680,7 @@ def stop_input(input_id: str) -> None:
     state = active_inputs.pop(input_id, None)
     if state is not None:
         stop_task(state)
+        release_hands(state)
 
 
 def _loops_changed(old: dict, new: dict) -> bool:
@@ -683,6 +696,81 @@ async def send_result(input_id: str, pts_nanos: int, data: dict) -> None:
     await ws_connection.send(
         json.dumps({"type": "result", "inputId": input_id, "ptsNanos": int(pts_nanos), "data": data})
     )
+
+
+# ── Hand gestures (host camera only, param `hands`) ──────────────────────────
+
+GESTURE_MAX_W = 320
+
+_mp_hands_module = None
+_mp_hands_unavailable = False
+
+
+def _hands_module():
+    """`mediapipe.solutions.hands`, or None when mediapipe is missing —
+    gestures then degrade gracefully, like Silero (motion_detector.py does
+    the same; the shared people-counter venv ships mediapipe)."""
+    global _mp_hands_module, _mp_hands_unavailable
+    if _mp_hands_unavailable:
+        return None
+    if _mp_hands_module is None:
+        try:
+            import mediapipe as mp
+
+            _mp_hands_module = mp.solutions.hands
+        except Exception as err:  # noqa: BLE001
+            _mp_hands_unavailable = True
+            log.warning("mediapipe not available — hand gestures off (%s)", err)
+            return None
+    return _mp_hands_module
+
+
+def _ensure_hands(state: InputState):
+    if state.hands_tracker is None:
+        module = _hands_module()
+        if module is None:
+            return None
+        state.hands_tracker = module.Hands(
+            static_image_mode=False,
+            max_num_hands=1,
+            model_complexity=0,
+            min_detection_confidence=0.5,
+            min_tracking_confidence=0.5,
+        )
+        state.gesture_gate = GestureGate()
+    return state.hands_tracker
+
+
+def release_hands(state: InputState) -> None:
+    tracker = state.hands_tracker
+    state.hands_tracker = None
+    state.gesture_gate = None
+    if tracker is not None:
+        with contextlib.suppress(Exception):
+            tracker.close()  # type: ignore[attr-defined]
+
+
+def detect_gesture(state: InputState, rgb: np.ndarray, t: float) -> str | None:
+    """MediaPipe Hands on a small copy → classify → hold/cooldown gate.
+    Runs on the inference thread; cost lands in the frame's proc time, so
+    the pacer budgets it like any other analysis."""
+    tracker = _ensure_hands(state)
+    if tracker is None or state.gesture_gate is None:
+        return None
+    h, w = rgb.shape[:2]
+    small = rgb
+    if cv2 is not None and w > GESTURE_MAX_W:
+        scale = GESTURE_MAX_W / w
+        small = cv2.resize(
+            rgb, (GESTURE_MAX_W, max(1, round(h * scale))), interpolation=cv2.INTER_AREA
+        )
+    result = tracker.process(np.ascontiguousarray(small))  # type: ignore[attr-defined]
+    hands = getattr(result, "multi_hand_landmarks", None)
+    name = None
+    if hands:
+        landmarks = [(lm.x, lm.y) for lm in hands[0].landmark]
+        name = classify_gesture(landmarks)
+    return state.gesture_gate.update(name, t)
 
 
 # ── Snapshots (the `capture` command) ────────────────────────────────────────

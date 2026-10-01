@@ -6,3 +6,4 @@ numpy
 websockets
 ultralytics>=8.3.0     # YOLO persons + sports ball — pulls in torch
 silero-vad             # speech detection; the worker loads its TorchScript file directly
+mediapipe              # hand gestures on the host camera (not in depsCheck — degrades gracefully)

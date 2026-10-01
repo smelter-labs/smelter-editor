@@ -277,6 +277,103 @@ def motion_score(
     return min(1.0, gain * sum(top) / k), False
 
 
+# ── Hand gestures (MediaPipe landmarks → named static gestures) ──────────
+#
+# The worker runs MediaPipe Hands only on the confirmed host's camera and
+# feeds the 21 landmarks here. Coordinates are MediaPipe-normalised: x right,
+# y DOWN, so "above" means a smaller y.
+
+# Landmark indices (MediaPipe Hands).
+_WRIST = 0
+_THUMB_IP, _THUMB_TIP = 3, 4
+_FINGERS = (  # (pip, tip) per finger: index, middle, ring, pinky
+    (6, 8),
+    (10, 12),
+    (14, 16),
+    (18, 20),
+)
+# A finger is extended when its tip is this much farther from the wrist
+# than its PIP joint (scale-free, works at any hand size).
+_EXTENDED_RATIO = 1.25
+
+GESTURE_NAMES = ("open_palm", "fist", "thumbs_up", "peace")
+
+
+def _dist(a, b) -> float:
+    return math.hypot(a[0] - b[0], a[1] - b[1])
+
+
+def _extended_fingers(landmarks) -> list[bool]:
+    wrist = landmarks[_WRIST]
+    return [
+        _dist(landmarks[tip], wrist) > _EXTENDED_RATIO * _dist(landmarks[pip], wrist)
+        for pip, tip in _FINGERS
+    ]
+
+
+def _thumb_extended(landmarks) -> bool:
+    wrist = landmarks[_WRIST]
+    return _dist(landmarks[_THUMB_TIP], wrist) > 1.1 * _dist(landmarks[_THUMB_IP], wrist)
+
+
+def classify_gesture(landmarks) -> str | None:
+    """One of GESTURE_NAMES from 21 (x, y[, z]) landmarks, or None when the
+    pose is ambiguous. Deliberately strict — a missed gesture costs a retry,
+    a false positive fires an effect on air."""
+    if landmarks is None or len(landmarks) < 21:
+        return None
+    fingers = _extended_fingers(landmarks)  # index, middle, ring, pinky
+    thumb = _thumb_extended(landmarks)
+    count = sum(fingers)
+    if count == 4:
+        return "open_palm"
+    if count == 0:
+        if not thumb:
+            return "fist"
+        # Thumb only: thumbs-up when it clearly points up (y grows downward).
+        tip = landmarks[_THUMB_TIP]
+        wrist = landmarks[_WRIST]
+        index_pip = landmarks[_FINGERS[0][0]]
+        if tip[1] < wrist[1] and tip[1] < index_pip[1]:
+            return "thumbs_up"
+        return None
+    if count == 2 and fingers[0] and fingers[1] and not thumb:
+        return "peace"
+    return None
+
+
+@dataclass
+class GestureGate:
+    """Fire a gesture only after it is held steadily, then cool down.
+
+    `update(name, t)` returns the gesture name exactly once per firing:
+    `name` must stay the same for `hold_s` of consecutive updates, nothing
+    fires for `cooldown_s` after a fire, and a held gesture fires only once —
+    it must be released (None / another name) before it can fire again. A
+    None / different name resets the hold."""
+
+    hold_s: float = 0.5
+    cooldown_s: float = 2.0
+    _candidate: str | None = None
+    _candidate_since: float = 0.0
+    _blocked_until: float = 0.0
+    _fired: bool = False
+
+    def update(self, name: str | None, t: float) -> str | None:
+        if name != self._candidate:
+            self._candidate = name
+            self._candidate_since = t
+            self._fired = False
+            return None
+        if name is None or self._fired or t < self._blocked_until:
+            return None
+        if t - self._candidate_since < self.hold_s:
+            return None
+        self._blocked_until = t + self.cooldown_s
+        self._fired = True
+        return name
+
+
 # ── Adaptive pacing ───────────────────────────────────────────────────────
 
 
