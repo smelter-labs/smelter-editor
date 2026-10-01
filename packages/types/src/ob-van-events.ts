@@ -578,8 +578,8 @@ export type ObState = {
   rundown: { items: ObRundownItem[]; index: number };
   operator: { name: string } | null;
   overrides: {
-    pacing: { minHoldMs?: number; maxHoldMs?: number } | null;
-    preferCam: { camId: string; untilMs: number } | null;
+    pacing: { minHoldMs?: number; maxHoldMs?: number; untilMs?: number } | null;
+    preferCam: { camId: string; untilMs: number; boost?: number } | null;
   };
   llm: ObLlmStatus;
   stats: ObStats;

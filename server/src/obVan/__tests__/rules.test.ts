@@ -331,9 +331,109 @@ describe('compareValue', () => {
     expect(compareValue(true, undefined, undefined)).toBe(true);
     expect(compareValue(false, '==', 'false')).toBe(true);
     expect(compareValue(['slides'], 'has', 'slides')).toBe(true);
+    expect(compareValue(['slides'], 'has', 'Slides')).toBe(true);
     expect(compareValue(['slides'], '!=', 'slides')).toBe(false);
     expect(compareValue(2, 'has', 2)).toBe(false);
     expect(compareValue(2, '>', 'abc')).toBe(false);
+  });
+});
+
+describe('parseObRuleset repairs (LLM-style input)', () => {
+  const talk = obPresetRuleset('talk');
+
+  it('a partial roleBias overlays the fallback instead of replacing it', () => {
+    const parsed = parseObRuleset(
+      { rules: [], weights: { roleBias: { speaker: 0.5 } } },
+      talk,
+    );
+    expect(parsed.ruleset?.weights.roleBias).toMatchObject({
+      speaker: 0.5,
+      slides: talk.weights.roleBias?.slides,
+      tape: talk.weights.roleBias?.tape,
+    });
+  });
+
+  it('behaviours merge over the fallback', () => {
+    const parsed = parseObRuleset(
+      { rules: [], behaviours: { monologueLock: true } },
+      talk,
+    );
+    expect(parsed.ruleset?.behaviours).toEqual({
+      ...talk.behaviours,
+      monologueLock: true,
+    });
+  });
+
+  it('a keyword rule whose group changed case is re-pointed at the group', () => {
+    const parsed = parseObRuleset(
+      {
+        rules: [
+          {
+            id: 'tape-kw',
+            priority: 85,
+            when: { all: [{ signal: 'keyword', op: 'has', value: 'tape' }] },
+            then: { shot: { kind: 'solo', cam: 'tape' } },
+          },
+        ],
+        keywords: { Tape: ['roll the tape'] },
+      },
+      talk,
+    );
+    const rule = parsed.ruleset?.rules[0];
+    const leaf = rule && 'all' in rule.when ? rule.when.all[0] : null;
+    expect(leaf?.value).toBe('Tape');
+    expect(parsed.warnings.some((w) => w.includes('case fixed'))).toBe(true);
+  });
+
+  it('a dropped keyword group still referenced by a rule is restored from the fallback', () => {
+    const raw = structuredClone(OB_PRESET_RULESETS.talk) as {
+      keywords?: Record<string, string[]>;
+    };
+    raw.keywords = { slides: ['slide'] }; // the LLM "forgot" tape and audience
+    const parsed = parseObRuleset(raw, talk);
+    expect(parsed.ruleset?.keywords?.tape).toEqual(talk.keywords?.tape);
+    expect(
+      parsed.warnings.some((w) => w.includes('restored from the preset')),
+    ).toBe(true);
+  });
+
+  it('warns when a keyword group cannot be restored from anywhere', () => {
+    const parsed = parseObRuleset(
+      {
+        rules: [
+          {
+            id: 'ghost',
+            when: { signal: 'keyword', op: 'has', value: 'zzz' },
+            then: { shot: { kind: 'solo', cam: 'wide' } },
+          },
+        ],
+      },
+      talk,
+    );
+    expect(parsed.ruleset?.rules).toHaveLength(1);
+    expect(
+      parsed.warnings.some((w) => w.includes('may never fire')),
+    ).toBe(true);
+  });
+
+  it('holdMs on a rule that changes no picture is dropped with a warning', () => {
+    const parsed = parseObRuleset(
+      {
+        rules: [
+          {
+            id: 'fx-spam',
+            when: { signal: 'speech', cam: 'any' },
+            then: { effects: { spotlight: true } },
+            holdMs: 8000,
+          },
+        ],
+      },
+      talk,
+    );
+    expect(parsed.ruleset?.rules[0]?.holdMs).toBeUndefined();
+    expect(parsed.warnings.some((w) => w.includes('holdMs ignored'))).toBe(
+      true,
+    );
   });
 });
 

@@ -86,6 +86,8 @@ export function registerObVanLlmRoutes(
         const { ruleset, rationale, warnings } = await room.obLlmBrief(
           req.body.brief,
         );
+        if (warnings.length)
+          console.warn('[request] OB Van LLM brief warnings', warnings);
         return res.status(200).send({ ruleset, rationale, warnings });
       } catch (err) {
         return sendLlmError(res, err);

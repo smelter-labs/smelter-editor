@@ -327,7 +327,11 @@ export function compareValue(
   value: number | string | boolean | undefined,
 ): boolean {
   if (Array.isArray(actual)) {
-    const has = value !== undefined && actual.includes(String(value));
+    // Only keyword groups reach the array branch; group names are compared
+    // case-insensitively so an LLM-written "Tape" still matches "tape".
+    const wanted = value === undefined ? undefined : String(value).toLowerCase();
+    const has =
+      wanted !== undefined && actual.some((a) => a.toLowerCase() === wanted);
     if (op === '!=') return !has;
     return op === undefined || op === 'has' || op === '==' ? has : false;
   }

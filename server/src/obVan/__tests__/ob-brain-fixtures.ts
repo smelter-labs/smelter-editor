@@ -269,7 +269,9 @@ export class Show {
       this.scheduled = decision;
       this.prog = { ...this.prog, pending: true };
       this.land();
-    } else {
+    } else if (decision.replay && decision.holdMs > 0) {
+      // Like the controller: only decisions that change the picture may
+      // extend the hold gate.
       this.prog = {
         ...this.prog,
         holdUntilAirMs: decision.atAirMs + decision.holdMs,
