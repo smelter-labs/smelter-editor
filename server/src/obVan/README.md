@@ -59,9 +59,15 @@ Pliki demo nie są w repo: skopiuj je do `server/data/mp4s/ob-demo/`
 
 **Dwie prędkości.** Szybka ścieżka (co tick kontrolera, 100 ms) jest
 deterministyczna i tania: sygnały → reguły → scoring → decyzja. Wolna ścieżka
-(LLM, co ~15 s, domyślnie wyłączona) nie tnie sama — zmienia *warunki* pracy
-szybkiej ścieżki albo robi rzeczy „redakcyjne" (belki z nazwiskami usłyszanymi
-w transkrypcie, przejście do następnego segmentu rundownu).
+(LLM, domyślnie wyłączona) to reżyser nadrzędny: poza akcjami „redakcyjnymi"
+(belki z nazwiskami usłyszanymi w transkrypcie, pacing, `prefer_cam`, następny
+segment rundownu) ma własną akcję `cut` — solo przez tę samą ścieżkę programu
+(źródło `llm`, hold 4 s, cooldown 5 s; odrzucany w trakcie przejścia i gdy
+operator spauzował auto; jako jedyny może przebić hold reguły, a udany cut
+kasuje zakolejkowane cięcie braina). Analityk nie czeka biernie na interwał
+(floor, domyślnie 15 s): tick odpala się od razu po włączeniu i zdarzeniowo —
+nowy dominujący mówca, świeży keyword, cięcie spoza LLM, 7 s ciszy — z
+debounce 1 s i minimalnym odstępem 5 s między wywołaniami.
 
 **Reżyser widzi 3 sekundy w przyszłość.** Side channel oddaje workerowi klatki i
 audio `delayMs` (3 s dla WHIP; 8 s z napisami) *przed* emisją. Każda próbka
