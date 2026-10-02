@@ -35,7 +35,12 @@ export type ObRoom = {
   lastError: string | null;
   showError: (message: string) => void;
   /** Resolves with the new room id (null when refused or failed). */
-  createRoom(cfg: ObUiConfig): Promise<string | null>;
+  createRoom(
+    cfg: ObUiConfig,
+    opts?: { deferUrlRewrite?: boolean },
+  ): Promise<string | null>;
+  /** Rewrite the URL to /ob-van/[roomId] (after a deferred create). */
+  commitRoomUrl(room?: string): void;
   pushConfig(cfg: ObUiConfig): Promise<void>;
   /** Push only some sections (the live diff). */
   pushPatch(patch: ObConfigPatch): Promise<boolean>;
@@ -47,7 +52,7 @@ export type ObRoom = {
     subtitle?: string;
   }): Promise<string | null>;
   /** One-click demo (cams.json under data/mp4s): config + rules + cams + sync. */
-  loadDemo(dir: string): Promise<ObState | null>;
+  loadDemo(dir: string, room?: string): Promise<ObState | null>;
   /** Restart every file camera from 0:00 together. */
   syncFileCams(): Promise<void>;
   adoptInput(cam: {
@@ -171,8 +176,31 @@ export function useObRoom(
     [pushPatch],
   );
 
+  /** Rewrite the URL to /ob-van/[roomId] so a refresh rejoins the room. */
+  const commitRoomUrl = useCallback((room?: string) => {
+    const target = room ?? roomIdRef.current;
+    if (!target) return;
+    window.history.replaceState(
+      null,
+      '',
+      `/ob-van/${encodeURIComponent(target)}`,
+    );
+  }, []);
+
   const createRoom = useCallback(
-    async (cfg: ObUiConfig): Promise<string | null> => {
+    async (
+      cfg: ObUiConfig,
+      opts: {
+        /**
+         * Skip the URL rewrite; the caller commits it later (commitRoomUrl).
+         * The FIRST server action sent after the rewrite triggers the router's
+         * page-segment swap and gets aborted mid-flight (the Duck Hunter
+         * lesson) — a flow that must call another action right after creating
+         * the room (QUICK DEMO's load-demo) defers the rewrite past it.
+         */
+        deferUrlRewrite?: boolean;
+      } = {},
+    ): Promise<string | null> => {
       if (creatingRef.current || roomIdRef.current) return null;
       creatingRef.current = true;
       setCreating(true);
@@ -186,11 +214,13 @@ export function useObRoom(
         setWhepUrl(created.whepUrl);
         setRoomId(created.roomId);
         setRoomStatus('ok');
-        window.history.replaceState(
-          null,
-          '',
-          `/ob-van/${encodeURIComponent(created.roomId)}`,
-        );
+        if (!opts.deferUrlRewrite) {
+          window.history.replaceState(
+            null,
+            '',
+            `/ob-van/${encodeURIComponent(created.roomId)}`,
+          );
+        }
         return created.roomId;
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Event setup failed');
@@ -230,8 +260,11 @@ export function useObRoom(
   }, [settle]);
 
   const loadDemo = useCallback(
-    async (dir: string) => {
-      const target = roomIdRef.current;
+    async (dir: string, room?: string) => {
+      // `room` covers the just-created room: roomIdRef syncs on the NEXT
+      // render, so right after `await createRoom(...)` it is still null and
+      // the demo would silently never load.
+      const target = room ?? roomIdRef.current;
       if (!target) return null;
       try {
         const state = settle(await loadObDemo(target, dir));
@@ -336,6 +369,7 @@ export function useObRoom(
     lastError,
     showError,
     createRoom,
+    commitRoomUrl,
     pushConfig,
     pushPatch,
     attachFileCam,
