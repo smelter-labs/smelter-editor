@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  advanceFigure,
   blinkClosed,
   clipAirMs,
   confettiPiece,
+  createFigureDynamics,
+  figureVisual,
   glowLevel,
   mouthScale,
   pickViseme,
@@ -49,10 +52,129 @@ describe('sampleMouth', () => {
 
 describe('smoothAmp', () => {
   it('attacks faster than it releases', () => {
-    const up = smoothAmp(0, 1);
-    const down = 1 - smoothAmp(1, 0);
+    const up = smoothAmp(0, 1, 33);
+    const down = 1 - smoothAmp(1, 0, 33);
     expect(up).toBeGreaterThan(0.5);
     expect(down).toBeLessThan(up);
+  });
+
+  it('is time-consistent: two small steps equal one big step', () => {
+    const twoSteps = smoothAmp(smoothAmp(0.1, 1, 33), 1, 33);
+    expect(twoSteps).toBeCloseTo(smoothAmp(0.1, 1, 66), 6);
+  });
+
+  it('does nothing over zero time', () => {
+    expect(smoothAmp(0.4, 1, 0)).toBe(0.4);
+  });
+});
+
+describe('advanceFigure', () => {
+  const loud = track(Array(500).fill(1));
+
+  it('approaches the target over time and tracks voicing', () => {
+    const st = createFigureDynamics();
+    const a = advanceFigure(st, loud, 100, 1000);
+    const b = advanceFigure(st, loud, 133, 1033);
+    expect(a.amp).toBeGreaterThan(0.9); // first call integrates a full MAX_DT
+    expect(b.amp).toBeGreaterThan(a.amp);
+    expect(b.silenceMs).toBe(0);
+    // The bob envelope trails the fast one (slower tau).
+    expect(b.bobAmp).toBeGreaterThan(a.bobAmp);
+    expect(b.bobAmp).toBeLessThan(b.amp);
+  });
+
+  it('re-advancing at the same instant is a no-op (shared output roots)', () => {
+    const st = createFigureDynamics();
+    advanceFigure(st, loud, 100, 1000);
+    const a = advanceFigure(st, loud, 133, 1033);
+    const b = advanceFigure(st, loud, 133, 1033);
+    expect(b.amp).toBe(a.amp);
+    expect(b.silenceMs).toBe(a.silenceMs);
+  });
+
+  it('reports silence without a clock or a voiced sample', () => {
+    const st = createFigureDynamics();
+    const quiet = advanceFigure(st, loud, null, 1000);
+    expect(quiet.amp).toBe(0);
+    expect(quiet.silenceMs).toBe(10_000); // never voiced
+    advanceFigure(st, loud, 100, 2000); // voiced
+    const later = advanceFigure(st, null, 100, 2500);
+    expect(later.silenceMs).toBe(500);
+  });
+});
+
+describe('figureVisual', () => {
+  const seed = puppetSeed('nova');
+  const base = {
+    seed,
+    amp: 0,
+    bobAmp: 0,
+    airMs: 1000,
+    silenceMs: 1000,
+    wallMs: 5000,
+    kOut: 1,
+    active: false,
+    cheer: false,
+    sad: false,
+  };
+
+  it('is deterministic and the key fingerprints the drawn values', () => {
+    const a = figureVisual(base);
+    const b = figureVisual(base);
+    expect(a).toEqual(b);
+    // Same key ⇒ same drawn pose (sway comes out pre-quantized).
+    expect(a.key).toBe(b.key);
+    expect(a.sway).toEqual(b.sway);
+  });
+
+  it('varies with the viseme slot when loud', () => {
+    const keys = new Set<string>();
+    for (let airMs = 0; airMs < 1300; airMs += 130)
+      keys.add(
+        figureVisual({ ...base, amp: 0.8, bobAmp: 0.8, silenceMs: 0, airMs })
+          .key,
+      );
+    expect(keys.size).toBeGreaterThan(1);
+  });
+
+  // An instant where the seeded blink keeps the eyes open for a while, so
+  // the fx/sway assertions below are not confounded by a blink edge.
+  let openEyesMs = 5000;
+  while (blinkClosed(openEyesMs, seed) || blinkClosed(openEyesMs + 20, seed))
+    openEyesMs += 50;
+  const openBase = { ...base, wallMs: openEyesMs };
+
+  it('flips on the fx that change the drawing', () => {
+    expect(figureVisual({ ...openBase, sad: true }).key).not.toBe(
+      figureVisual(openBase).key,
+    );
+    expect(figureVisual({ ...openBase, cheer: true }).key).not.toBe(
+      figureVisual(openBase).key,
+    );
+    expect(figureVisual({ ...openBase, active: true }).key).not.toBe(
+      figureVisual(openBase).key,
+    );
+  });
+
+  it('ignores sway finer than the output-px quantum', () => {
+    // A tiny figure (kOut→0) collapses all sway buckets to 0: between two
+    // nearby blink-free instants nothing in the key moves.
+    const a = figureVisual({ ...openBase, kOut: 0.001 });
+    const b = figureVisual({
+      ...openBase,
+      kOut: 0.001,
+      wallMs: openEyesMs + 20,
+    });
+    expect(a.key).toBe(b.key);
+    expect(a.sway).toEqual(b.sway);
+  });
+
+  it('moves in coarser steps while idle than while speaking', () => {
+    // Same instant: idle buckets are IDLE_SWAY_QUANT_PX (2), speaking 0.75.
+    const idle = figureVisual(openBase);
+    const talking = figureVisual({ ...openBase, amp: 0.8, bobAmp: 0.8 });
+    expect(idle.key.includes('|i')).toBe(true);
+    expect(talking.key.includes('|s')).toBe(true);
   });
 });
 

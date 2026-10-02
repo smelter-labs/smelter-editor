@@ -6,24 +6,28 @@
  * puppet is purely the picture.
  *
  * Every animation is computed in the render pass from the wall clock and the
- * clip→air clock (cfg.getClock()), so a 30 fps ticker is the only state.
+ * clip→air clock (cfg.getClock()). A shared 50 ms checker ticks pure math
+ * only and forces a re-render just when the quantized pose key changes —
+ * every scene update makes the engine rebuild its whole render graph, so
+ * updates are rationed, not scheduled. Parked (off-air, 1×1 px) puppets
+ * render only the audio keeper and do not tick at all.
  */
 import React, { useContext, useRef } from 'react';
 import { Image, InputStream, Rescaler, View } from '@swmansion/smelter';
-import { useStore } from 'zustand';
+import { useStoreWithEqualityFn } from 'zustand/traditional';
 import { StoreContext } from '../../app/store';
 import {
-  blinkClosed,
+  advanceFigure,
   clipAirMs,
   confettiPiece,
-  glowLevel,
+  createFigureDynamics,
+  type FigureDynamicsState,
+  figureVisual,
+  type FigureVisual,
   mouthScale,
-  pickViseme,
   puppetSeed,
-  puppetSway,
-  sampleMouth,
-  smoothAmp,
 } from './anim';
+import { subscribePuppetTick } from './ticker';
 import {
   PUPPET_BODY_BOX,
   PUPPET_BROWS_BOX,
@@ -44,12 +48,29 @@ import type {
 
 type Resolution = { width: number; height: number };
 
-const TICK_MS = 33;
 const CELEBRATE_MS = 5800;
 const CONFETTI_PIECES = 36;
 
-/** Per-figure smoothing carried across ticks (mutated in render, like a ref). */
-type FigureState = { amp: number; lastVoicedMs: number };
+/**
+ * Smoothing state per input+figure, outside the component: it survives the
+ * remounts a TransitionShaderWrapper causes, and the program + recording
+ * output roots share one state (advanceFigure is a no-op at the same
+ * instant, so double-advancing is safe).
+ */
+const dynamicsByFigure = new Map<string, FigureDynamicsState>();
+
+function dynamicsFor(
+  inputId: string,
+  character: PuppetCharacterId,
+): FigureDynamicsState {
+  const key = `${inputId}:${character}`;
+  let st = dynamicsByFigure.get(key);
+  if (!st) {
+    st = createFigureDynamics();
+    dynamicsByFigure.set(key, st);
+  }
+  return st;
+}
 
 function Sprite({
   id,
@@ -67,15 +88,15 @@ function Sprite({
   return (
     <View
       style={{
-        top: Math.round(y),
-        left: Math.round(x),
-        width: Math.max(1, Math.round(w)),
-        height: Math.max(1, Math.round(h)),
+        top: y,
+        left: x,
+        width: Math.max(1, w),
+        height: Math.max(1, h),
       }}>
       <Rescaler
         style={{
-          width: Math.max(1, Math.round(w)),
-          height: Math.max(1, Math.round(h)),
+          width: Math.max(1, w),
+          height: Math.max(1, h),
           rescaleMode: 'fit',
         }}>
         <Image imageId={id} />
@@ -90,39 +111,23 @@ type FigurePose = {
   k: number;
   originX: number;
   originY: number;
-  amp: number;
-  airMs: number;
-  silenceMs: number;
-  wallMs: number;
+  /** Pre-quantized visual state — drawing anything not fingerprinted by
+   * `visual.key` would make poses drift between key changes. */
+  visual: FigureVisual;
   cheer: boolean;
-  sadBlink: boolean;
-  browsUp: boolean;
 };
 
 /** One puppet, layer by layer. All rects derive from the shared geometry. */
 function PuppetFigure(pose: FigurePose) {
-  const {
-    character,
-    k,
-    originX,
-    originY,
-    amp,
-    airMs,
-    silenceMs,
-    wallMs,
-    cheer,
-  } = pose;
-  const seed = puppetSeed(character);
-  const sway = puppetSway(wallMs, seed, amp);
+  const { character, k, originX, originY, visual, cheer } = pose;
+  const { sway, viseme } = visual;
   const box = (b: PuppetBox, dx = 0, dy = 0) => ({
     x: originX + (b.x + dx) * k,
     y: originY + (b.y + dy) * k,
     w: b.w * k,
     h: b.h * k,
   });
-  const viseme = pickViseme(amp, airMs, seed, silenceMs);
-  const mk = mouthScale(viseme, amp);
-  const eyesClosed = pose.sadBlink || blinkClosed(wallMs, seed);
+  const mk = mouthScale(viseme, visual.bob);
   const id = (layer: string) => `ob-puppet-${character}-${layer}`;
 
   const body = box(PUPPET_BODY_BOX, sway.bodyX, 0);
@@ -143,11 +148,11 @@ function PuppetFigure(pose: FigurePose) {
     <>
       <Sprite id={id(cheer ? 'body-cheer' : 'body')} {...body} />
       <Sprite id={id('head')} {...head} />
+      <Sprite id={id(visual.browsUp ? 'brows-up' : 'brows')} {...brows} />
       <Sprite
-        id={id(pose.browsUp || cheer ? 'brows-up' : 'brows')}
-        {...brows}
+        id={id(visual.eyesClosed ? 'eyes-closed' : 'eyes-open')}
+        {...eyes}
       />
-      <Sprite id={id(eyesClosed ? 'eyes-closed' : 'eyes-open')} {...eyes} />
       <Sprite id={id(`mouth-${viseme}`)} {...mouth} />
     </>
   );
@@ -261,25 +266,6 @@ function quizFxFor(
   };
 }
 
-/** Advance a figure's smoothed amplitude for this tick (ref-backed). */
-function figureDynamics(
-  states: Record<string, FigureState>,
-  character: PuppetCharacterId,
-  mouth: PuppetMouthTrack | null,
-  airMs: number | null,
-  now: number,
-): { amp: number; airMs: number; silenceMs: number } {
-  const st = (states[character] ??= { amp: 0, lastVoicedMs: 0 });
-  const raw = airMs == null ? 0 : sampleMouth(mouth, airMs);
-  if (raw >= 0.05) st.lastVoicedMs = now;
-  st.amp = smoothAmp(st.amp, raw);
-  return {
-    amp: st.amp,
-    airMs: airMs ?? 0,
-    silenceMs: st.lastVoicedMs === 0 ? 10_000 : now - st.lastVoicedMs,
-  };
-}
-
 type FigureSlot = {
   character: PuppetCharacterId;
   name: string;
@@ -290,30 +276,12 @@ type FigureSlot = {
   deskW: number;
 };
 
-export function ObPuppetInput({
-  cfg,
-  resolution,
-  inputId,
-  volume,
-}: {
-  cfg: ObPuppetConfig;
-  resolution: Resolution;
-  inputId: string;
-  volume?: number;
-}) {
-  const [, force] = React.useState(0);
-  React.useEffect(() => {
-    const timer = setInterval(() => force((n) => (n + 1) % 1e9), TICK_MS);
-    return () => clearInterval(timer);
-  }, []);
-  const states = useRef<Record<string, FigureState>>({});
-  const store = useContext(StoreContext);
-  const players = useStore(store, (s) => s.obVan?.quiz?.players);
-
-  const now = Date.now();
-  const airMs = clipAirMs(cfg.getClock(), now);
+/** Where each figure sits: the solo close-up, or the studio with the cast. */
+function figureSlots(
+  cfg: ObPuppetConfig,
+  resolution: Resolution,
+): FigureSlot[] {
   const { width, height } = resolution;
-
   const figures: FigureSlot[] = [];
   if (cfg.character === 'studio') {
     const cast = cfg.cast ?? [];
@@ -356,12 +324,55 @@ export function ObPuppetInput({
       deskW: PUPPET_CANVAS.w * k * 1.3,
     });
   }
+  return figures;
+}
 
-  const posed = figures.map((f) => ({
-    f,
-    fig: figureDynamics(states.current, f.character, f.mouth, airMs, now),
-    fx: quizFxFor(players, f.name, now),
-  }));
+type PuppetPose = {
+  /** Quantized fingerprint of everything drawn — re-render only on change. */
+  key: string;
+  posed: {
+    f: FigureSlot;
+    visual: FigureVisual;
+    fx: QuizFx;
+  }[];
+  confetti: { sinceMs: number; seed: number } | null;
+};
+
+/**
+ * Advance every figure's dynamics to `now` and fingerprint the pose. Used by
+ * the shared ticker (key check only) and by the render pass (full pose) —
+ * re-running at the same instant is a no-op for the dynamics.
+ */
+function computePuppetPose(
+  cfg: ObPuppetConfig,
+  resolution: Resolution,
+  inputId: string,
+  players: QuizPlayerRow[] | undefined,
+  now: number,
+): PuppetPose {
+  const airMs = clipAirMs(cfg.getClock(), now);
+  const posed = figureSlots(cfg, resolution).map((f) => {
+    const fig = advanceFigure(
+      dynamicsFor(inputId, f.character),
+      f.mouth,
+      airMs,
+      now,
+    );
+    const fx = quizFxFor(players, f.name, now);
+    const visual = figureVisual({
+      seed: puppetSeed(f.character),
+      amp: fig.amp,
+      bobAmp: fig.bobAmp,
+      airMs: fig.airMs,
+      silenceMs: fig.silenceMs,
+      wallMs: now,
+      kOut: f.k,
+      active: fx.active,
+      cheer: fx.cheer,
+      sad: fx.sad,
+    });
+    return { f, visual, fx };
+  });
   const celebrating = posed.find((p) => p.fx.celebrateSinceMs != null);
   const confetti =
     celebrating?.fx.celebrateSinceMs != null
@@ -370,7 +381,95 @@ export function ObPuppetInput({
           seed: puppetSeed(celebrating.f.name),
         }
       : null;
-  const drawn = posed.map(({ f, fig, fx }) => {
+  const key = [
+    airMs == null ? 'x' : 'a',
+    confetti ? `c${Math.floor(confetti.sinceMs / 100)}` : 'c-',
+    ...posed.map((p) => p.visual.key),
+  ].join('/');
+  return { key, posed, confetti };
+}
+
+export function ObPuppetInput({
+  cfg,
+  resolution,
+  inputId,
+  volume,
+  parked = false,
+}: {
+  cfg: ObPuppetConfig;
+  resolution: Resolution;
+  inputId: string;
+  volume?: number;
+  /** Laid out at the 1×1 park rect (off-air): keep only the audio keeper. */
+  parked?: boolean;
+}) {
+  const [, force] = React.useState(0);
+  const lastKey = useRef('');
+  const lastForceMs = useRef(0);
+  const store = useContext(StoreContext);
+  // Content equality: publishHud mints a fresh obVan object whenever ANY
+  // part of the HUD changed, and an identity-based subscription here would
+  // re-render every puppet (→ full-scene engine update) at the HUD rate.
+  const players = useStoreWithEqualityFn(
+    store,
+    (s) => s.obVan?.quiz?.players,
+    (a, b) =>
+      a === b ||
+      (a != null && b != null && JSON.stringify(a) === JSON.stringify(b)),
+  );
+  const playersRef = useRef(players);
+  playersRef.current = players;
+  const { width, height } = resolution;
+
+  React.useEffect(() => {
+    if (parked) return;
+    // Every forced render is a full engine render-graph rebuild, and the
+    // studio tile rebuilds ~30 native-size sprites — cap how often one
+    // puppet may force an update. The mouth runs on 130 ms viseme slots, so
+    // the studio cap still lands on every slot; skipped changes catch up on
+    // the next allowed tick (the key comparison keeps them pending).
+    const minGapMs = cfg.character === 'studio' ? 140 : 95;
+    return subscribePuppetTick(() => {
+      const nowMs = Date.now();
+      if (nowMs - lastForceMs.current < minGapMs) return;
+      const pose = computePuppetPose(
+        cfg,
+        { width, height },
+        inputId,
+        playersRef.current,
+        nowMs,
+      );
+      if (pose.key !== lastKey.current) {
+        lastKey.current = pose.key;
+        lastForceMs.current = nowMs;
+        force((n) => (n + 1) % 1e9);
+      }
+    });
+  }, [parked, cfg, inputId, width, height]);
+
+  if (parked) {
+    return (
+      <View style={{ top: 0, left: 0, width, height, overflow: 'hidden' }}>
+        <View
+          style={{ top: 0, left: 0, width: 2, height: 2, overflow: 'hidden' }}>
+          <InputStream inputId={inputId} volume={volume} />
+        </View>
+      </View>
+    );
+  }
+
+  const now = Date.now();
+  const { key, posed, confetti } = computePuppetPose(
+    cfg,
+    resolution,
+    inputId,
+    players,
+    now,
+  );
+  // Record what was actually drawn, so a store-driven render (quiz fx) does
+  // not earn a redundant forced render on the next tick.
+  lastKey.current = key;
+  const drawn = posed.map(({ f, visual, fx }) => {
     const originX = f.cx - 450 * f.k;
     const originY = f.feetY - PUPPET_CANVAS.h * f.k;
     const deskTop = originY + 985 * f.k;
@@ -379,7 +478,7 @@ export function ObPuppetInput({
         key={f.character}
         style={{ top: 0, left: 0, width, height, overflow: 'hidden' }}>
         <FigureGlow
-          level={glowLevel(fig.amp)}
+          level={visual.glow}
           k={f.k}
           originX={originX}
           originY={originY}
@@ -389,13 +488,8 @@ export function ObPuppetInput({
           k={f.k}
           originX={originX}
           originY={originY}
-          amp={fig.amp}
-          airMs={fig.airMs}
-          silenceMs={fig.silenceMs}
-          wallMs={now}
+          visual={visual}
           cheer={fx.cheer}
-          sadBlink={fx.sad}
-          browsUp={fx.active && fig.amp < 0.08}
         />
         <Desk cx={f.cx} topY={deskTop} w={f.deskW} />
       </View>

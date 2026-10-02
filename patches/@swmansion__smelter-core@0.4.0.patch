@@ -1,0 +1,48 @@
+diff --git a/dist/cjs/index.cjs b/dist/cjs/index.cjs
+index 5c2f51634cf0ae02e70d804fa308b367511359e1..6ee98541d1a0a8c85300849a30f52abd0ecb0316 100644
+--- a/dist/cjs/index.cjs
++++ b/dist/cjs/index.cjs
+@@ -23726,7 +23726,18 @@ class Output {
+     }
+     async ready() {
+         this.throttledUpdate.setFn(async () => {
+-            await this.api.updateScene(this.outputId, this.scene());
++            // Patched (smelter-editor): skip updates whose serialized scene is
++            // identical to the last one sent. The engine rebuilds its whole
++            // render graph on every update, so redundant updates (second
++            // onUpdate in a commit burst, ticks that changed nothing visible)
++            // cost real output frames.
++            const scene = this.scene();
++            const sceneJson = JSON.stringify(scene);
++            if (sceneJson === this.lastSentSceneJson) {
++                return;
++            }
++            await this.api.updateScene(this.outputId, scene);
++            this.lastSentSceneJson = sceneJson;
+         });
+         if (this.shouldUpdateWhenReady) {
+             this.throttledUpdate.scheduleCall();
+diff --git a/dist/esm/index.mjs b/dist/esm/index.mjs
+index 88bedf3c2508dffe74a08e5d6adc83b006f95c0d..e75bf3f99b18d5929d41bd87d9ce2086983ab67c 100644
+--- a/dist/esm/index.mjs
++++ b/dist/esm/index.mjs
+@@ -23725,7 +23725,18 @@ class Output {
+     }
+     async ready() {
+         this.throttledUpdate.setFn(async () => {
+-            await this.api.updateScene(this.outputId, this.scene());
++            // Patched (smelter-editor): skip updates whose serialized scene is
++            // identical to the last one sent. The engine rebuilds its whole
++            // render graph on every update, so redundant updates (second
++            // onUpdate in a commit burst, ticks that changed nothing visible)
++            // cost real output frames.
++            const scene = this.scene();
++            const sceneJson = JSON.stringify(scene);
++            if (sceneJson === this.lastSentSceneJson) {
++                return;
++            }
++            await this.api.updateScene(this.outputId, scene);
++            this.lastSentSceneJson = sceneJson;
+         });
+         if (this.shouldUpdateWhenReady) {
+             this.throttledUpdate.scheduleCall();

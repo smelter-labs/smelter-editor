@@ -5,3 +5,6 @@ packages:
   - mobile_app
 allowBuilds:
   esbuild: set this to true or false
+patchedDependencies:
+  '@swmansion/smelter-core@0.4.0': patches/@swmansion__smelter-core@0.4.0.patch
+allowUnusedPatches: true
