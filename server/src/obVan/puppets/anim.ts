@@ -45,9 +45,15 @@ export function sampleMouth(
   return a + (b - a) * t;
 }
 
-/** One smoothing step: fast attack, slower release (per ~33 ms tick). */
-export function smoothAmp(prev: number, target: number): number {
-  const k = target > prev ? 0.55 : 0.3;
+const ATTACK_TAU_MS = 41;
+const RELEASE_TAU_MS = 92;
+
+/** One smoothing step: fast attack, slower release. Time-based so the result
+ * is the same whatever the tick rate; dt 0 is a no-op (the second output
+ * root re-advancing at the same instant must not double the step). */
+export function smoothAmp(prev: number, target: number, dtMs: number): number {
+  const tau = target > prev ? ATTACK_TAU_MS : RELEASE_TAU_MS;
+  const k = 1 - Math.exp(-Math.max(0, dtMs) / tau);
   return prev + (target - prev) * k;
 }
 
@@ -103,13 +109,12 @@ export function puppetSway(
   const t = (wallMs + (seed % 10000)) / 1000;
   const TAU = Math.PI * 2;
   return {
-    bodyX: Math.round(Math.sin(t * TAU * 0.11) * 5),
-    headX: Math.round(Math.sin(t * TAU * 0.165 + 1.7) * 6),
-    headY: Math.round(
+    bodyX: Math.sin(t * TAU * 0.11) * 5,
+    headX: Math.sin(t * TAU * 0.165 + 1.7) * 6,
+    headY:
       Math.sin(t * TAU * 0.13 + 0.6) * 3 -
-        amp * 9 +
-        Math.sin(t * TAU * 1.9) * amp * 3,
-    ),
+      amp * 9 +
+      Math.sin(t * TAU * 1.9) * amp * 3,
   };
 }
 
@@ -137,6 +142,119 @@ export function clipAirMs(
     return null;
   }
   return pos;
+}
+
+/** Longest step the dynamics will integrate in one go: a figure waking up
+ * after a stall (or after being parked off-air) snaps near its current
+ * target instead of replaying the gap. */
+const MAX_DT_MS = 500;
+
+/** Slow envelope for sway/bob/glow: the fast `amp` flaps per syllable and
+ * would churn the pose key (→ scene updates) at the tick rate. */
+const BOB_TAU_MS = 200;
+
+/** Per-figure smoothing state carried across ticks (and across remounts —
+ * the renderer keys it by input + character in a module-level map). */
+export type FigureDynamicsState = {
+  amp: number;
+  bobAmp: number;
+  lastVoicedMs: number;
+  lastTickMs: number;
+};
+
+export function createFigureDynamics(): FigureDynamicsState {
+  return { amp: 0, bobAmp: 0, lastVoicedMs: 0, lastTickMs: 0 };
+}
+
+/**
+ * Advance a figure's smoothed amplitude to `nowMs`. Re-advancing at the same
+ * instant is a no-op, so the two output roots (program + recording) can share
+ * one state without doubling the smoothing step.
+ */
+export function advanceFigure(
+  st: FigureDynamicsState,
+  track: PuppetMouthTrack | null,
+  airMs: number | null,
+  nowMs: number,
+): { amp: number; bobAmp: number; airMs: number; silenceMs: number } {
+  const dtMs =
+    st.lastTickMs === 0
+      ? MAX_DT_MS
+      : Math.min(Math.max(0, nowMs - st.lastTickMs), MAX_DT_MS);
+  st.lastTickMs = nowMs;
+  const raw = airMs == null ? 0 : sampleMouth(track, airMs);
+  if (raw >= 0.05) st.lastVoicedMs = nowMs;
+  st.amp = smoothAmp(st.amp, raw, dtMs);
+  st.bobAmp += (raw - st.bobAmp) * (1 - Math.exp(-dtMs / BOB_TAU_MS));
+  return {
+    amp: st.amp,
+    bobAmp: st.bobAmp,
+    airMs: airMs ?? 0,
+    silenceMs: st.lastVoicedMs === 0 ? 10_000 : nowMs - st.lastVoicedMs,
+  };
+}
+
+/** Sway finer than this many output px does not warrant a scene update. */
+const SWAY_QUANT_PX = 0.75;
+/** A silent figure only drifts; it can move in coarser steps. The studio
+ * holds 5 figures × 3 sway axes, and every fine quantum crossing on any of
+ * them costs a full engine render-graph rebuild. */
+const IDLE_SWAY_QUANT_PX = 2;
+
+/** Everything a drawn figure depends on, pre-quantized, plus the pose key.
+ * The renderer draws exactly these values, so ticks that leave the key
+ * unchanged are guaranteed to leave the picture unchanged too. */
+export type FigureVisual = {
+  viseme: PuppetViseme;
+  eyesClosed: boolean;
+  glow: 0 | 1 | 2 | 3;
+  /** Slow envelope bucket used for mouth scale and head bob. */
+  bob: number;
+  /** Sway in canvas px, snapped to the output-px grid. */
+  sway: PuppetSway;
+  browsUp: boolean;
+  key: string;
+};
+
+export function figureVisual(args: {
+  seed: number;
+  /** Fast envelope: picks the viseme (syllable flapping). */
+  amp: number;
+  /** Slow envelope: sway, bob, glow, brows — see BOB_TAU_MS. */
+  bobAmp: number;
+  airMs: number;
+  silenceMs: number;
+  wallMs: number;
+  /** Canvas→output px scale of this figure (studio guests are smaller). */
+  kOut: number;
+  active: boolean;
+  cheer: boolean;
+  sad: boolean;
+}): FigureVisual {
+  const { seed, amp, bobAmp, airMs, silenceMs, wallMs, kOut } = args;
+  const viseme = pickViseme(amp, airMs, seed, silenceMs);
+  const eyesClosed = args.sad || blinkClosed(wallMs, seed);
+  const bobQ = Math.round(bobAmp / 0.15);
+  const bob = Math.min(1, bobQ * 0.15);
+  const glow = glowLevel(bob);
+  const idle = bobAmp < 0.05;
+  const quantCanvas =
+    (idle ? IDLE_SWAY_QUANT_PX : SWAY_QUANT_PX) / Math.max(kOut, 1e-6);
+  const raw = puppetSway(wallMs, seed, bob);
+  const qBody = Math.round(raw.bodyX / quantCanvas);
+  const qHeadX = Math.round(raw.headX / quantCanvas);
+  const qHeadY = Math.round(raw.headY / quantCanvas);
+  const sway: PuppetSway = {
+    bodyX: qBody * quantCanvas,
+    headX: qHeadX * quantCanvas,
+    headY: qHeadY * quantCanvas,
+  };
+  const browsUp = (args.active && bobAmp < 0.08) || args.cheer;
+  const key =
+    `${viseme}|${eyesClosed ? 1 : 0}|${glow}|${bobQ}|` +
+    `${idle ? 'i' : 's'}${qBody}|${qHeadX}|${qHeadY}|` +
+    `${browsUp ? 1 : 0}|${args.cheer ? 1 : 0}`;
+  return { viseme, eyesClosed, glow, bob, sway, browsUp, key };
 }
 
 /** Confetti piece layout for the celebration, deterministic per index. */

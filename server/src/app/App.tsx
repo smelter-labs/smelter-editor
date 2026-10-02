@@ -325,7 +325,12 @@ function OutputScene() {
 
                     const input = inputMap.get(item.inputId);
                     if (!input || input.hidden) return null;
-                    let inner = <Input input={input} />;
+                    // Parked on the 1×1 keeper rect (OB Van off-air cams):
+                    // the content is invisible, so heavy renderers (puppets)
+                    // can skip their picture. Flips in the same commit as
+                    // the rect, so the first on-air frame is already drawn.
+                    const parked = item.width <= 1 || item.height <= 1;
+                    let inner = <Input input={input} parked={parked} />;
 
                     if (hasCrop) {
                       inner = (

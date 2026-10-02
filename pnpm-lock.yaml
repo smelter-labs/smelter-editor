@@ -4,6 +4,11 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  '@swmansion/smelter-core@0.4.0':
+    hash: 7d627375889eb77d6698533275c0581b589de6238a707f9ec52b2768d7c18d12
+    path: patches/@swmansion__smelter-core@0.4.0.patch
+
 importers:
 
   .:

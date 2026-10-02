@@ -124,7 +124,14 @@ function useFrozenImageHandoff(
   };
 }
 
-export function Input({ input }: { input: InputConfig }) {
+export function Input({
+  input,
+  parked = false,
+}: {
+  input: InputConfig;
+  /** Laid out at an invisible (≤1 px) rect — see App.tsx. */
+  parked?: boolean;
+}) {
   const { hiddenForRestart, liveStreamState, showFrozenImage } =
     useFrozenImageHandoff(
       input.inputId,
@@ -277,6 +284,7 @@ export function Input({ input }: { input: InputConfig }) {
       resolution={{ width: contentWidth, height: contentHeight }}
       inputId={input.inputId}
       volume={input.volume}
+      parked={parked}
     />
   ) : isImage ? (
     <Rescaler
@@ -391,7 +399,10 @@ export function Input({ input }: { input: InputConfig }) {
 
   // OB Van camera look (grade + spotlight): a picture treatment like the
   // Blacktop one, mounted for as long as the camera belongs to the van.
-  if (obLook) {
+  // Parked puppet cams skip it: their picture is invisible, and the two
+  // full-frame shader passes get reallocated by the engine on every scene
+  // update. Real cameras keep the wrapper even when parked.
+  if (obLook && !(isPuppet && parked)) {
     videoContent = (
       <ObCamLook
         look={obLook}
