@@ -16,7 +16,7 @@ paneli, sportu, teatru i koncertów. Kamery to **telefony** (QR → WHIP),
   deterministyczny „brain" tnie według **reguł w małym DSL** (presety TALK /
   MATCH / STAGE / GIG) i scoringu; każda decyzja ma powód w logu WHY;
 - **LLM (opcjonalnie)** — Claude zamienia brief po ludzku w zestaw reguł,
-  co ~30 s czyta raport sytuacyjny (sygnały, transkrypty, ostatnie cięcia) i
+  co ~15 s czyta raport sytuacyjny (sygnały, transkrypty, ostatnie cięcia) i
   wykonuje ograniczone akcje (następny segment, belka, tempo, preferowana
   kamera, notatka), a na koniec pisze „director's notes".
 
@@ -59,9 +59,15 @@ Pliki demo nie są w repo: skopiuj je do `server/data/mp4s/ob-demo/`
 
 **Dwie prędkości.** Szybka ścieżka (co tick kontrolera, 100 ms) jest
 deterministyczna i tania: sygnały → reguły → scoring → decyzja. Wolna ścieżka
-(LLM, co ~30 s, domyślnie wyłączona) nie tnie sama — zmienia *warunki* pracy
-szybkiej ścieżki albo robi rzeczy „redakcyjne" (belki z nazwiskami usłyszanymi
-w transkrypcie, przejście do następnego segmentu rundownu).
+(LLM, domyślnie wyłączona) to reżyser nadrzędny: poza akcjami „redakcyjnymi"
+(belki z nazwiskami usłyszanymi w transkrypcie, pacing, `prefer_cam`, następny
+segment rundownu) ma własną akcję `cut` — solo przez tę samą ścieżkę programu
+(źródło `llm`, hold 4 s, cooldown 5 s; odrzucany w trakcie przejścia i gdy
+operator spauzował auto; jako jedyny może przebić hold reguły, a udany cut
+kasuje zakolejkowane cięcie braina). Analityk nie czeka biernie na interwał
+(floor, domyślnie 15 s): tick odpala się od razu po włączeniu i zdarzeniowo —
+nowy dominujący mówca, świeży keyword, cięcie spoza LLM, 7 s ciszy — z
+debounce 1 s i minimalnym odstępem 5 s między wywołaniami.
 
 **Reżyser widzi 3 sekundy w przyszłość.** Side channel oddaje workerowi klatki i
 audio `delayMs` (3 s dla WHIP; 8 s z napisami) *przed* emisją. Każda próbka
@@ -90,6 +96,8 @@ wyjścia LLM.
 | MATCH | 1,5 / 12 s | replay po „burście" ruchu | wirtualna kamera za piłką, kamery bramkowe przy zamieszaniu, plan ogólny po zgubieniu piłki |
 | STAGE | 6 / 45 s, dissolve 900 ms | blokada monologu | najazd na mówiącego aktora + spotlight, wejścia z kulis, plan ogólny na zespół i w ciszy |
 | GIG | 1,2 / 8 s | cięcia na beat | szeroko + neon w głośnych partiach, cięcie na beat do innej kamery, publiczność zoom-punchem, zwolnienie w cichych partiach |
+| FOLLOW | 2 / 60 s, cięcia | — (deterministyczne demo) | podążaj za potwierdzonym hostem (p90), solo na skok ruchu / burst, grid wszystkich domyślnie |
+| QUIZ | 2,5 / 30 s, cięcia | — (steruje maszyna quizu) | split host+odpytywany (`quizTurn`, p85), solo na myślącego na głos (p87), split na dialog, solo hosta, grid studia między rundami |
 
 Gdy żadna reguła nie pasuje, działa **scoring** (wagi presetu: mowa, ruch,
 osoby, piłka, nowość, „stay" dla bieżącej kamery, bias ról) z histerezą 0,15 i
@@ -137,7 +145,10 @@ DSL, konfiguracja, stan, komendy, WS), `ob-van-presets.ts`, `ob-van-ruleset.ts`.
 | `scene.ts`, `program.ts`, `virtualCam.ts` | ujęcie → kafle, maszyna stanów szyn i przejść, śledzenie wirtualnej kamery (`stepFollow` z Touchline) |
 | `cams.ts`, `commands.ts`, `log.ts` | rekordy kamer (camKey, grace, numery 1–8), parsowanie komend WS, log WHY |
 | `signals.ts`, `rules.ts`, `brain.ts`, `explain.ts`, `attention.ts` | agregacja sygnałów i zegar emisji, wykonanie reguł, brain, opisy decyzji, punkt uwagi dla wirtualnej kamery |
-| `llm/` | klient Anthropic, schemat toola DSL, brief → reguły, analityk, budżet, notatki końcowe |
+| `host.ts`, `gestures.ts` | rozpoznawanie hosta (FOLLOW): nowa osoba → snapshot → identify → sygnał `host`; mapowanie gestów dłoni na komendy `fx` |
+| `quiz.ts`, `quizQuestions.ts` | Smelterionaire: maszyna stanu teleturnieju (gracze, kwoty ×1.5/×0.5, fazy pytania, koło „Ask the AI", stingery) + bank pytań ABCD; sygnał `quizTurn`, overlaye w `inputs/ObQuizHud.tsx` |
+| `llm/` | klient Anthropic (tekst + obrazy), schemat toola DSL, brief → reguły, analityk, `identify.ts` (host vision), `hint.ts` (koło ratunkowe quizu — odpowiada w ciemno), budżet, notatki końcowe |
+| `puppets/` | żywe ludziki: `PuppetInput.tsx` (renderer postaci/studia zamiast wideo kamery), `anim.ts` (wisemy, mruganie, sway — czysta matematyka), `geometry.ts` (boxy sprite'ów), `types.ts`; sprite'y z `scripts/ob-puppet-assets.mjs`, dataset demo z `scripts/ob-quiz-demo.mjs` |
 | `obVanRoutes.ts`, `obVanLlmRoutes.ts` | REST |
 | `contracts.ts` | kontrakty między kontrolerem, sygnałami, brainem i LLM |
 
@@ -172,18 +183,19 @@ WS pokoju (prefiks `ob_`): klient → `ob_spectate`, `ob_operator_join/leave`,
 | zmienna | znaczenie |
 |---|---|
 | `ANTHROPIC_API_KEY` | włącza LLM (bez klucza UI pokazuje „LLM OFF", presety działają) |
-| `OB_VAN_LLM_MODEL` | model (domyślnie `claude-sonnet-5`) |
-| `OB_VAN_LLM_ANALYST_INTERVAL_S` | interwał analityka (30, min 10) |
+| `OB_VAN_LLM_MODEL` | model startowy (domyślnie `claude-haiku-4-5`; panel przełącza HAIKU/SONNET/OPUS w locie) |
+| `OB_VAN_LLM_ANALYST_INTERVAL_S` | interwał analityka (15, min 10) |
 | `OB_VAN_LLM_MAX_RUNS_PER_EVENT`, `OB_VAN_LLM_MAX_INPUT_TOKENS_PER_EVENT` | limity kosztów (240 wywołań, 400k tokenów wejścia) |
 | `OB_VAN_PYTHON_PATH` | interpreter workera (domyślnie venv people-counter + `silero-vad`) |
-| `OB_SIM=1` | trasa `simulate-signal` |
+| `OB_VAN_HAND_MODEL` | ścieżka do `hand_landmarker.task` (domyślnie auto-pobranie ~8 MB obok workera przy pierwszym użyciu gestów) |
+| `OB_SIM=1` | trasy `simulate-signal` i `simulate-host` |
 
 ## Testy i weryfikacja
 
 ```bash
 pnpm --filter @smelter-editor/types build
-cd server && pnpm vitest run src/obVan                 # 182 testy: scena, program, kontroler, sygnały, brain, reguły, LLM
-python3 src/ai-models/ob-van/test_analysis.py          # 45 testów logiki audio/wideo
+cd server && pnpm vitest run src/obVan                 # 235 testów: scena, program, kontroler, sygnały, brain, reguły, LLM, host, gesty
+python3 src/ai-models/ob-van/test_analysis.py          # 61 testów logiki audio/wideo/gestów
 cd editor && pnpm vitest run components/ob-van lib/ob-van   # 75 testów helperów UI
 ```
 
@@ -198,11 +210,158 @@ OB_SIM=1 SKIP_PYTHON=1 SMELTER_DEMO_API_PORT=3121 SMELTER_API_PORT=8110 CAPTIONS
   SMELTER_PATH=~/.smelter/v0.6.0-scfix/main_process pnpm start
 OB_API=http://localhost:3121 node scripts/ob-van-e2e.mjs          # REST + WS: pulpit, auto na symulowanych sygnałach, replay, nagranie, błędy
 OB_API=http://localhost:3121 node scripts/ob-van-live-check.mjs   # 30 s nagrania z cięciami w znanych T → klatki ffmpeg
+OB_API=http://localhost:3121 node scripts/ob-van-follow-check.mjs # FOLLOW: grid → host-follow (simulate-host) → grid → spike-solo
 # z prawdziwym workerem (bez SKIP_PYTHON):
 OB_API=http://localhost:3121 node scripts/ob-van-auto-check.mjs   # TALK na 2 kamerach, asercje: sygnały z workera + cięcia z powodami
 ANTHROPIC_API_KEY=… OB_API=… node scripts/ob-van-llm-smoke.mjs    # brief → reguły, analityk, notatki
 ffmpeg -ss <T> -i data/recordings/<plik> -frames:v 1 frame.png
 ```
+
+## FOLLOW · podążaj za hostem (demo z rozpoznawaniem prowadzącego)
+
+Najprostszy pokaz "LLM jako reżyser": 4 kamery na żywo, na każdej coś się
+dzieje, program pokazuje **grid wszystkich kamer**. Gdy prowadzący (w **złotej
+czapce z daszkiem** — opis jest konfigurowalny) wejdzie w kadr którejś kamery,
+YOLO zauważa nową osobę, worker robi zrzut klatki, a LLM (vision, Haiku)
+potwierdza: *to host* → cięcie na tę kamerę i podążanie za nim. Gdy host
+zniknie na ~3 s, wraca grid; spike ruchu na dowolnej kamerze robi solo
+"bo coś się dzieje". Host steruje efektami **gestami dłoni** na swojej
+kamerze (MediaPipe, tylko tam): otwarta dłoń = spotlight, kciuk = grade
+neon, wiktoria = vhs, pięść = czyści.
+
+**Przepływ**: `signals.ts` (PeopleTracker, debounce 700 ms, identity 4 s) →
+`host.ts` (`ObHostTracker`: kolejka kandydatów, 1 identify naraz, cooldown
+8 s/kamerę, denied-recheck po 10 s, re-verify co 25 s, host-loss 3 s) →
+`capture` do workera → `llm/identify.ts` (strict tool `identify_host`,
+obraz ≤640 px ≈ 300 tokenów) → sygnał `host` → reguła `host-follow` (p90,
+przebija min-hold). Grid trzyma zawsze-prawdziwa reguła `hold >= 0`
+(`default-grid`, p10); **audio musi być `mix`** — pusty grid nie ma kamer
+"na antenie", więc `follow` wyciszyłby wszystko (karta FOLLOW w setupie
+ustawia mix sama). Gesty: worker liczy MediaPipe Hands tylko na kamerze z
+paramem `hands` (kontroler przełącza go za potwierdzonym hostem),
+klasyfikator + bramka hold 0,5 s/cooldown 2 s w `analysis.py`, mapowanie na
+komendy `fx` w `gestures.ts`.
+
+**Przycisk QUICK DEMOS** (najszybsza droga): raz na maszynę
+`node scripts/ob-follow-demo-setup.mjs` — buduje `data/mp4s/ob-demo/follow/`
+z trzech teł (kopie klipów nba/panel: COURT/STREET/PANEL) i manifestu, który
+ustawia preset `follow`, audio MIX, auto-pilota i host-detekcję. Na title
+screenie pojawia się przycisk **FOLLOW THE HOST**: klik → pokój z tłami →
+dołącz telefon przez QR → GO LIVE → wejdź w kadr w czapce.
+
+**Demo na żywo** (4 telefony, bez teł):
+
+1. `ANTHROPIC_API_KEY=…` na serwerze (bez klucza host-detekcja jest OFF, a
+   grid + spike'i dalej niosą pokaz); na macOS
+   `SMELTER_PATH=~/.smelter/v0.6.0-scfix/main_process`.
+2. W edytorze: nowy event → preset **FOLLOW** (ustawia audio MIX i włącza
+   rozpoznawanie) → w plytce HOST RECOGNITION wpisz opis (np. "wears a GOLD
+   baseball cap").
+3. Dołącz 4 telefony przez `/ob-van/cam?room=…` i porozstawiaj je tam, gdzie
+   coś się rusza. GO LIVE, auto-pilot ON.
+4. Wejdź w kadr w czapce: plytka LLM pokaże `IDENTIFYING…` → `HOST · CAM N`,
+   kafel kamery dostaje złoty badge HOST, program tnie na ciebie. Gesty
+   trzymaj ~pół sekundy w kadrze.
+
+Ścieżka vision jest zweryfikowana na prawdziwym API (demo z tłami: 8 wywołań
+identify / 2 min, ~8k tokenów, $0.03 — model opisuje klatki i odmawia, bo
+nikt nie ma złotej czapki). Odmowy i cooldowny (1 w locie, 8 s/kamerę,
+denied-recheck raz) trzymają tempo ~kilku wywołań na minutę; model bierze
+`OB_VAN_LLM_MODEL`. `OB_HOST_DEBUG=1` wypisuje eventy/starty/błędy identify
+na stdout.
+
+**Sprawdzenie bez workera i klucza**: `OB_SIM=1` + `simulate-host` (trasa
+dev-only) — patrz `scripts/ob-van-follow-check.mjs` wyżej. Worker solo:
+`python3 src/ai-models/ob-van/worker.py --selftest --media klip.mp4 --hands`
+(wypisze klasyfikacje per klatka i odpalone gesty).
+
+**Ograniczenia**: identyfikacja wiąże hosta z trackiem osoby — gdy dwie
+osoby wchodzą naraz, może złapać złą (naprawia się przez re-verify / utratę
+tracku); `maxHold` (60 s) potrafi raz na minutę mrugnąć z gridu na solo i
+wrócić; budżet LLM na event obejmuje też obrazy identify.
+
+## QUIZ · Smelterionaire (teleturniej)
+
+„Who Wants to Be a Smelterionaire?" — teleturniej w stylu Milionerów na
+presecie `quiz`: host (rola `speaker`) + do 4 uczestników (rola `guest`),
+każdy startuje z **$1 000 000**; dobra odpowiedź ×1.5, zła ×0.5, kwoty
+wyświetlane co do dolara (dziwna precyzja to część żartu). Pytania ABCD
+(o Smelterze i reżyserze AI) idą z banku `quizQuestions.ts` w kolejności;
+**operator sędziuje z panelu**: ASSIGN (klik na gracza) → BOARD → lock A–D →
+REVEAL (werdykt z banku; `✓`/`✗` to ręczny override bez locka). Jedno koło
+ratunkowe na gracza: **ASK AI** — LLM dostaje pytanie i odpowiada **w
+ciemno** (nie zna poprawnej litery; pewna siebie pomyłka to feature); bez
+klucza API wyświetla się żartobliwa odmowa bez wskazywania litery.
+
+Warstwa gry to czysta maszyna `quiz.ts` (tick z kontrolera, efekty:
+`turn`/`celebrate`/`hint`/`sfx`/`lower-third`/`log`). Sygnał per-kamera
+`quizTurn` (wzór `host`) wskazuje odpytywanego; reguły presetu robią resztę:
+split host+gracz przy pytaniu (p85), solo na myślącego na głos (p87, mowa
+≥1.2 s), split na przepychankę (p60), solo hosta (p40), grid studia między
+rundami (p10, trick `hold>=0` jak w FOLLOW). Po REVEAL kontroler sam tnie
+solo zwycięzcy/przegranego i trzyma 6 s (`applyDecision` + holdMs). Overlaye
+(rail z kwotami, plansza ABCD, flash, licznik, plansza AI) rysuje
+`ObQuizHud.tsx` z plate'ów `imgs/ob/quiz-*.png`; stingery audio to mp4
+z `server/sfx/` (generator `scripts/quiz-render-sfx.mjs`) grane wzorcem
+replay-clipów.
+
+**Wymagania**: audio **mix** (pusty grid = zero kamer „on air", `follow` by
+wszystko wyciszył — SETUP wymusza mix przy wyborze presetu); captions
+niepotrzebne (reguły jadą na sygnałach mowy, opóźnienie zostaje 3 s).
+Klawisze panelu przy aktywnej planszy: `Q` board, `A–D` lock (`A` wraca do
+autopilota poza planszą), `V` reveal, `G`/`W` override, `H` ask AI.
+
+```bash
+# e2e bez workera (symulowane sygnały):
+OB_SIM=1 SKIP_PYTHON=1 pnpm start          # terminal 1
+node scripts/ob-van-quiz-check.mjs         # terminal 2 — ALL CHECKS PASSED
+cd server && pnpm vitest run src/obVan     # 288 testów (quiz.ts, kontroler, hint)
+```
+
+**Ograniczenia**: `ob_state` broadcastuje poprawną literę do klientów roomu
+(desk musi ją widzieć; publiczność ogląda program, nie state) — na workshop
+OK, do „prawdziwego" teleturnieju trzeba by prywatnego kanału operatora;
+cut LLM-analityka może teoretycznie wpaść w celebrację (chroni `holdMs` +
+cooldowny — nie zaobserwowano w checkach).
+
+### Żywe ludziki (puppets) + QUICK DEMO
+
+Demo quizu nie używa nagrań ani Remotiona: **postacie rysuje sam Smelter,
+na żywo, klatka po klatce** (`src/obVan/puppets/`). Kamera-plik niesie tylko
+głos (czarne wideo 10 fps + TTS z `say`); w scenie, zamiast `InputStream`,
+`ObPuppetInput` maluje ilustrowaną postać z warstwowych sprite'ów
+`imgs/ob/puppet-*.png` (ciało / głowa / oczy / brwi / 6 wisemów ust +
+ściana LED, pulpit, glow — generator `scripts/ob-puppet-assets.mjs`,
+rejestrowane przy boocie jak każdy `ob-*`). Sam `InputStream` zostaje pod
+spodem w 2×2 px, więc audio gra w miksie, a side-channel dalej analizuje
+mowę — **reżyser tnie na prawdziwych sygnałach `speech` z sztucznych ust**.
+
+Lip-sync: `scripts/ob-quiz-demo.mjs` liczy z WAV-ów konduktora kopertę RMS
+50 Hz (`mouth.json`), a renderer mapuje ją przez zegar klip→antena
+(`fileClockOf` + delay side-channelu, pętla modulo długości klipu) na wisemy
+(`anim.ts`: slot 130 ms + hash — usta artykułują, nie kłapią metronomem).
+Do tego mruganie, kołysanie, head-bob przy mowie, złoty glow mówiącego,
+uniesione brwi odpytywanego (`quizTurn` → `players[].active`), a po REVEAL
+ręce w górę + konfetti (correct) albo smutne mrugnięcie (wrong) — stan
+quizu czyta ze store'a po nazwie gracza. Kamera `wide` z `puppet:"studio"`
+renderuje całe studio: host za centralnym pulpitem + czterech graczy,
+każdy animowany własną kopertą.
+
+```bash
+node scripts/ob-puppet-assets.mjs     # sprite'y postaci + studio → imgs/ob/
+node scripts/ob-quiz-demo.mjs         # TTS → mp4 + mouth.json + cams.json
+                                      #   → data/mp4s/ob-demo/quiz/
+```
+
+Dataset pojawia się jako przycisk **SMELTERIONAIRE** w QUICK DEMOS na
+`/ob-van` (generyczny `GET /ob-van/demos` + `load-demo`; `cams.json` niesie
+pole `puppet` per kamera, `load-demo` składa cast dla kamery studio).
+Scenariusz (`scripts/ob-demo/quiz.conductor.txt`, 2:37): przedstawienie
+obsady → Q1 z banku (Nova, lock B, correct) → Q2 (Bit, lifeline ASK AI,
+lock C, correct) → dobranoc; didaskalia `(desk: …)` w nawiasach to ściąga
+operatora, konduktor ich nie czyta. Klipy są równe co do próbki (pętlą się
+razem), wide jest cyfrowo niemy (mix nie dubluje głosów), a room-tone
+konduktora wycina gate — pięć kamer w mixie nie sumuje szumu.
 
 ## Materiał demo w pojedynkę
 

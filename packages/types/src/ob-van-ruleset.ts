@@ -55,7 +55,15 @@ const ATTENTION: readonly ObAttentionTarget[] = [
 const ZOOMS: readonly ObZoom[] = ["tight", "normal", "wide"];
 const CORNERS: readonly ObPipCorner[] = ["tl", "tr", "bl", "br"];
 const SIZES: readonly ObPipSize[] = ["S", "M", "L"];
-const PRESETS: readonly ObPresetId[] = ["talk", "match", "stage", "gig", "custom"];
+const PRESETS: readonly ObPresetId[] = [
+  "talk",
+  "match",
+  "stage",
+  "gig",
+  "follow",
+  "quiz",
+  "custom",
+];
 
 export function isObCamSelector(v: unknown): v is ObCamSelector {
   if (typeof v !== "string") return false;

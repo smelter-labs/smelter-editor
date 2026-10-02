@@ -76,6 +76,27 @@ const wordmark = (size) => `
     <span>VAN</span>
   </div>`;
 
+// ── Smelterionaire quiz plates (ObQuizHud.tsx) ─────────────────────────────
+// Millionaire look: deep navy hexagonal lozenges with gold hairlines.
+const QGOLD = '#FFD166';
+const QNAVY = 'rgba(7,11,24,.95)';
+const QNAVY2 = 'rgba(14,21,44,.96)';
+
+/** Classic Millionaire hexagon via clip-path; `c` = chamfer px. */
+const hex = (c) =>
+  `polygon(${c}px 0, calc(100% - ${c}px) 0, 100% 50%, calc(100% - ${c}px) 100%, ${c}px 100%, 0 50%)`;
+
+/** Bordered hexagon: a gold hexagon with an inset fill hexagon on top. */
+const hexPlate = (w, h, c, fill, border = QGOLD, bw = 2) => `
+    <div style="position:absolute;inset:0;background:${border};clip-path:${hex(c)}"></div>
+    <div style="position:absolute;left:${bw}px;top:${bw}px;right:${bw}px;bottom:${bw}px;background:${fill};clip-path:${hex(Math.max(2, c - bw))}"></div>`;
+
+const smelterionaire = (size) => `
+  <div class="bs" style="display:flex;align-items:center;gap:${Math.round(size * 0.22)}px;font-weight:900;font-size:${size}px;line-height:.9;white-space:nowrap">
+    <span style="display:inline-block;width:${Math.round(size * 0.42)}px;height:${Math.round(size * 0.42)}px;background:${QGOLD};transform:rotate(45deg);box-shadow:0 0 ${Math.round(size * 0.5)}px rgba(255,209,102,.55)"></span>
+    <span style="background:linear-gradient(180deg,#FFE9B0 0%,${QGOLD} 45%,#B8860B 100%);-webkit-background-clip:text;background-clip:text;color:transparent">SMELTERIONAIRE</span>
+  </div>`;
+
 const ASSETS = {
   // Title bug 640×64 at (56,44): ON AIR chip 0–104; event text from x=120,
   // segment right-aligned in 380–616.
@@ -150,6 +171,105 @@ const ASSETS = {
     <div style="position:absolute;left:0;top:42px;width:8px;height:722px;background:${PLATE}"></div>
     <div style="position:absolute;left:1288px;top:42px;width:8px;height:722px;background:${PLATE}"></div>
     <div style="position:absolute;left:0;top:762px;width:1296px;height:2px;background:${PLATE}"></div>`,
+  ],
+  // ── Smelterionaire quiz (ObQuizHud.tsx) ──────────────────────────────
+  // Title splash 760×200, centered at (580,340).
+  'quiz-logo': [
+    760,
+    200,
+    `
+    <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px">
+      <div class="mono" style="font-weight:600;font-size:18px;letter-spacing:.42em;color:${DIM}">WHO WANTS TO BE A</div>
+      ${smelterionaire(72)}
+      <div class="mono" style="font-weight:600;font-size:13px;letter-spacing:.34em;color:${SKY}">DIRECTED BY AI · SMELTER</div>
+    </div>`,
+  ],
+  // Compact chip 380×64 at (1484,44), above the money rail.
+  'quiz-logo-chip': [
+    380,
+    64,
+    `
+    ${hexPlate(380, 64, 18, QNAVY)}
+    <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">
+      ${smelterionaire(27)}
+    </div>`,
+  ],
+  // Question lozenge 1504×132 at (208,690); the question text is drawn by
+  // ObQuizHud centered in the plate.
+  'quiz-question-plate': [
+    1504,
+    132,
+    `${hexPlate(1504, 132, 40, QNAVY)}
+     <div style="position:absolute;left:44px;top:4px;right:44px;height:1px;background:rgba(255,209,102,.25)"></div>`,
+  ],
+  // Answer lozenges 740×96 at (208/972, 846/956): idle navy, locked orange,
+  // correct green, wrong red. Letter + text drawn by ObQuizHud.
+  'quiz-answer-idle': [740, 96, hexPlate(740, 96, 30, QNAVY2)],
+  'quiz-answer-locked': [
+    740,
+    96,
+    hexPlate(
+      740,
+      96,
+      30,
+      'linear-gradient(180deg,#FFB347 0%,#FF8A00 60%,#D96D00 100%)',
+      '#FFE9B0',
+    ),
+  ],
+  'quiz-answer-correct': [
+    740,
+    96,
+    hexPlate(
+      740,
+      96,
+      30,
+      'linear-gradient(180deg,#34D399 0%,#16A34A 60%,#0E7A37 100%)',
+      '#B9F5D0',
+    ),
+  ],
+  'quiz-answer-wrong': [
+    740,
+    96,
+    hexPlate(
+      740,
+      96,
+      30,
+      'linear-gradient(180deg,#FF5A5A 0%,#E11D1D 60%,#A31212 100%)',
+      '#FFC2C2',
+    ),
+  ],
+  // Money rail chips 380×64 at (1484, 120 + i*76): name left, amount right.
+  'quiz-money-chip': [
+    380,
+    64,
+    `${hexPlate(380, 64, 18, QNAVY, 'rgba(255,209,102,.4)', 1)}`,
+  ],
+  'quiz-money-chip-active': [
+    380,
+    64,
+    `<div style="position:absolute;inset:0;filter:drop-shadow(0 0 10px rgba(255,209,102,.45))">${hexPlate(380, 64, 18, QNAVY2)}</div>`,
+  ],
+  // Ask-the-AI plate 980×150 at (56,132): sky bar + baked lifeline tag;
+  // headline at (48,16), quip at (48,58) drawn by ObQuizHud.
+  'quiz-hint-plate': [
+    980,
+    150,
+    `
+    <div style="position:absolute;left:0;top:0;width:14px;height:150px;background:${SKY}"></div>
+    <div style="position:absolute;left:14px;top:0;right:0;height:150px;background:${PLATE};border-top:2px solid ${RULE}"></div>
+    <div class="tag" style="position:absolute;right:10px;top:10px;background:rgba(56,189,248,.16);color:${SKY}">LIFELINE · ASK THE AI</div>`,
+  ],
+  // Full-frame reveal flashes (rendered at 960×540, rescaled to the output):
+  // transparent middle, coloured edge glow; opacity is driven by a shader.
+  'quiz-flash-win': [
+    960,
+    540,
+    `<div style="position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 52%,rgba(255,209,102,.5) 82%,rgba(255,209,102,.95) 100%)"></div>`,
+  ],
+  'quiz-flash-lose': [
+    960,
+    540,
+    `<div style="position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 52%,rgba(255,45,45,.5) 82%,rgba(255,45,45,.95) 100%)"></div>`,
   ],
   // Wrap panel 1200×780 at (360,150): heading baked; event at (56,150);
   // stat values from (56,226) in 370 px columns; shares from (60,490).

@@ -1792,6 +1792,25 @@ export function CamTile({
       ) : (
         <CamSignals signals={signals} compact={compact} />
       )}
+      {signals?.host ? (
+        <span
+          aria-label='host on this camera'
+          style={{
+            position: 'absolute',
+            top: compact ? 5 : 8,
+            right: compact ? 5 : 8,
+            padding: '2px 5px',
+            borderRadius: 2,
+            background: OB.amber,
+            color: OB.dark,
+            fontFamily: obMono,
+            fontWeight: 800,
+            fontSize: 8,
+            letterSpacing: '0.12em',
+          }}>
+          HOST
+        </span>
+      ) : null}
       {footer}
     </>
   );

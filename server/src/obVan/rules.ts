@@ -282,6 +282,13 @@ export function camSignalValue(
       return video ? (s.ball?.ageMs ?? Infinity) : null;
     case 'keyword':
       return keywordGroups(env, s);
+    case 'host':
+      // Node-owned truth (LLM confirmation), not gated on stream staleness:
+      // the controller clears it through its own host-loss lifecycle.
+      return s.host.active;
+    case 'quizTurn':
+      // Node-owned truth too: the quiz state machine sets and clears it.
+      return s.quizTurn.active;
     case 'hold':
     case 'segment':
     case 'dialogue':
@@ -329,7 +336,8 @@ export function compareValue(
   if (Array.isArray(actual)) {
     // Only keyword groups reach the array branch; group names are compared
     // case-insensitively so an LLM-written "Tape" still matches "tape".
-    const wanted = value === undefined ? undefined : String(value).toLowerCase();
+    const wanted =
+      value === undefined ? undefined : String(value).toLowerCase();
     const has =
       wanted !== undefined && actual.some((a) => a.toLowerCase() === wanted);
     if (op === '!=') return !has;

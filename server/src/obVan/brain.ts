@@ -150,6 +150,8 @@ export type ObBrainStep = {
   memory: ObBrainMemory;
   /** Throttled diagnostics (monologue lock, unresolvable rules). */
   notes: string[];
+  /** Camera totals of this step (camId → score), for the LLM situation report. */
+  scores: Record<string, number>;
 };
 
 // ── Small pure helpers ───────────────────────────────────────────────────
@@ -990,7 +992,12 @@ export function stepBrain(
 ): ObBrainStep {
   const tick = new BrainTick(ctx, cloneMemory(memory), seed);
   const decision = tick.run();
-  return { decision, memory: tick.memory, notes: tick.notes };
+  return {
+    decision,
+    memory: tick.memory,
+    notes: tick.notes,
+    scores: tick.env.scores,
+  };
 }
 
 // ── Stateful adapter ─────────────────────────────────────────────────────
@@ -1013,6 +1020,7 @@ export function createObBrain(
   let current = ruleset;
   let currentKey = JSON.stringify(ruleset);
   let memory = createBrainMemory();
+  let lastScores: Record<string, number> | null = null;
   const adopt = (next: ObRuleset) => {
     if (next === current) return;
     const key = JSON.stringify(next);
@@ -1027,14 +1035,19 @@ export function createObBrain(
       adopt(ctx.ruleset);
       const out = stepBrain(ctx, memory, opts.seed ?? 0);
       memory = out.memory;
+      lastScores = out.scores;
       for (const note of out.notes) opts.onNote?.(note);
       return out.decision;
+    },
+    lastScores() {
+      return lastScores;
     },
     setRuleset(next) {
       adopt(next);
     },
     reset() {
       memory = createBrainMemory();
+      lastScores = null;
     },
   };
 }

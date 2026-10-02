@@ -445,11 +445,15 @@ export type {
   ObRuleset,
   ObConfig,
   ObConfigPatch,
+  ObGestureName,
+  ObHostStatus,
+  ObHostState,
   ObSignalSummary,
   ObLogKind,
   ObLogTone,
   ObLogEntry,
   ObLlmStatus,
+  ObLlmModelId,
   ObStats,
   ObState,
   ObOperatorCommand,
@@ -486,11 +490,15 @@ export {
   OB_PACING_DIAL_FACTOR,
   OB_SIGNAL_KINDS,
   OB_OPS,
+  OB_GESTURE_NAMES,
   OB_RULESET_LIMITS,
   OB_DEFAULT_CONFIG,
   OB_CONFIG_LIMITS,
   OB_CONTROL_ACTIONS,
+  OB_LLM_MODELS,
+  OB_LLM_MODEL_IDS,
   isObCamRole,
+  isObLlmModelId,
 } from "./ob-van-events.js";
 export type { ObPresetMeta } from "./ob-van-presets.js";
 export {
@@ -507,3 +515,26 @@ export {
   obShotsEqual,
   parseObRuleset,
 } from "./ob-van-ruleset.js";
+export type {
+  ObQuizLetter,
+  ObQuizPhase,
+  ObQuizVerdict,
+  ObQuizAction,
+  ObQuizPlayer,
+  ObQuizCurrent,
+  ObQuizHintState,
+  ObQuizState,
+} from "./ob-van-quiz.js";
+export {
+  OB_QUIZ_LETTERS,
+  OB_QUIZ_ACTIONS,
+  OB_QUIZ_START_AMOUNT,
+  OB_QUIZ_MAX_PLAYERS,
+  OB_QUIZ_CELEBRATE_MS,
+  OB_QUIZ_HINT_TIMEOUT_MS,
+  OB_QUIZ_HINT_SHOW_MS,
+  isObQuizLetter,
+  obQuizApplyVerdict,
+  obQuizFormatMoney,
+  obQuizFormatDelta,
+} from "./ob-van-quiz.js";

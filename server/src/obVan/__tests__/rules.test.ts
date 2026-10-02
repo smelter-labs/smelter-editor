@@ -320,6 +320,70 @@ describe('conditions', () => {
     ).toBe(true);
     expect(evaluate(e, { signal: 'ball', cam: 'wide' }).ok).toBe(false);
   });
+
+  it('host binds the host camera as trigger; false when nobody is the host', () => {
+    const hostOn = {
+      active: true,
+      trackId: 7,
+      confidence: 0.9,
+      sinceAirMs: T - 1000,
+    };
+    const cond: ObCondition = {
+      signal: 'host',
+      cam: 'any',
+      op: '==',
+      value: true,
+    };
+    const e = env(CAMS, [sig('c1', T), sig('c2', T, { host: hostOn })]);
+    expect(evaluate(e, cond)).toEqual({ ok: true, trigger: 'c2' });
+    expect(evaluate(env(CAMS, [sig('c1', T), sig('c2', T)]), cond).ok).toBe(
+      false,
+    );
+  });
+
+  it('quizTurn binds the contestant camera as trigger, even on a stale stream', () => {
+    const cond: ObCondition = {
+      signal: 'quizTurn',
+      cam: 'any',
+      op: '==',
+      value: true,
+    };
+    const turned = { active: true, sinceAirMs: T - 500 };
+    const e = env(CAMS, [
+      sig('c1', T),
+      sig('c2', T, { staleAudio: true, staleVideo: true, quizTurn: turned }),
+    ]);
+    expect(evaluate(e, cond)).toEqual({ ok: true, trigger: 'c2' });
+    expect(evaluate(env(CAMS, [sig('c1', T), sig('c2', T)]), cond).ok).toBe(
+      false,
+    );
+  });
+
+  it('host is not gated on a stale stream (the controller owns its truth)', () => {
+    const e = env(CAMS, [
+      sig('c2', T, {
+        staleVideo: true,
+        staleAudio: true,
+        host: { active: true, trackId: 1, confidence: 0.8, sinceAirMs: T },
+      }),
+    ]);
+    expect(
+      evaluate(e, { signal: 'host', cam: 'any', op: '==', value: true }),
+    ).toEqual({ ok: true, trigger: 'c2' });
+  });
+
+  it('`hold >= 0` is reliably true (the FOLLOW default-grid rule)', () => {
+    const cond: ObCondition = { signal: 'hold', op: '>=', value: 0 };
+    // No program shot: holdMs is Infinity.
+    expect(evaluate(env(CAMS, [sig('c1', T)]), cond).ok).toBe(true);
+    // A fresh program: holdMs 0.
+    expect(evaluate(env(CAMS, [sig('c1', T)], { holdMs: 0 }), cond).ok).toBe(
+      true,
+    );
+    expect(
+      evaluate(env(CAMS, [sig('c1', T)], { holdMs: 12345 }), cond).ok,
+    ).toBe(true);
+  });
 });
 
 describe('compareValue', () => {
@@ -411,9 +475,9 @@ describe('parseObRuleset repairs (LLM-style input)', () => {
       talk,
     );
     expect(parsed.ruleset?.rules).toHaveLength(1);
-    expect(
-      parsed.warnings.some((w) => w.includes('may never fire')),
-    ).toBe(true);
+    expect(parsed.warnings.some((w) => w.includes('may never fire'))).toBe(
+      true,
+    );
   });
 
   it('holdMs on a rule that changes no picture is dropped with a warning', () => {

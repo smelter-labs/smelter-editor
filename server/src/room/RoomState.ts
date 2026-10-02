@@ -103,12 +103,14 @@ import { createObBrain } from '../obVan/brain';
 import { attentionFor } from '../obVan/attention';
 import { createObLlm } from '../obVan/llm';
 import type { ObBriefResult } from '../obVan/contracts';
+import type { ObPuppetConfig, ObPuppetSeed } from '../obVan/puppets/types';
 import { OB_VAN_MODEL_ID } from '../ai-models/ob-van/manifest';
 import type {
   ObCamRole,
   ObConfig,
   ObConfigPatch,
   ObControlAction,
+  ObLlmModelId,
   ObLlmStatus,
   ObOperatorCommand,
   ObRuleset,
@@ -381,6 +383,9 @@ export class RoomState {
   private timelinePlayer: TimelinePlayer | null = null;
   private timelineListeners = new Set<TimelineListener>();
   private pausedAttachedInputVolumes = new Map<string, number>();
+
+  /** OB Van live puppets by carrier inputId (see obVan/puppets). */
+  private readonly obPuppets = new Map<string, ObPuppetConfig>();
 
   private frozenImages: Map<string, { imageId: string; jpegPath: string }> =
     new Map();
@@ -936,6 +941,14 @@ export class RoomState {
         getSideChannelDelayMs: (inputId) =>
           this.inputManager.getInputs().find((i) => i.inputId === inputId)
             ?.registeredSideChannelDelayMs ?? 0,
+        requestObSnapshot: (inputId, requestId) => {
+          void this.aiController
+            .requestObSnapshot(inputId, requestId)
+            .catch((err) =>
+              console.warn(`[ob] snapshot request failed for ${inputId}`, err),
+            );
+          return true;
+        },
         smelterStartMs: () => SmelterInstance.getStartTime(),
         getFileClock: (inputId) => this.fileClockOf(inputId),
         resyncFileCams: async () => {
@@ -952,6 +965,36 @@ export class RoomState {
               () => {},
             );
           }
+        },
+        // Quiz stingers: bundled mp4s (black 2x2 video + synth audio) from
+        // server/sfx, registered on demand like replay clips.
+        registerQuizSfx: async (kind, offsetMs) => {
+          if (!/^[a-z-]{1,20}$/.test(kind)) return null;
+          const filePath = path.join(
+            __dirname,
+            '..',
+            '..',
+            'sfx',
+            `quiz-sting-${kind}.mp4`,
+          );
+          if (!(await pathExists(filePath))) return null;
+          const safeRoom = idPrefix.replace(/[^a-zA-Z0-9_-]/g, '_');
+          const inputId = `ob-sfx-${safeRoom}-${kind}-${Date.now() % 1e7}`;
+          try {
+            await SmelterInstance.registerInput(inputId, {
+              type: 'mp4',
+              filePath,
+              loop: false,
+              offsetMs,
+            });
+          } catch (err) {
+            console.warn(`[ob] quiz sfx register failed: ${kind}`, err);
+            return null;
+          }
+          return inputId;
+        },
+        unregisterQuizSfx: (inputId) => {
+          void SmelterInstance.unregisterInput(inputId).catch(() => {});
         },
         getPipelineTimeMs: () => SmelterInstance.getPipelineTimeMs(),
       },
@@ -1768,6 +1811,7 @@ export class RoomState {
       this.peopleTrackers.delete(inputId);
       this.birdTrackers.delete(`yolo:${inputId}`);
       this.birdTrackers.delete(`marker:${inputId}`);
+      this.obPuppets.delete(inputId);
       this.output.store.getState().setPeopleBoxes(inputId, null);
 
       if (this.pruneInputFromLayers(inputId)) {
@@ -2889,6 +2933,11 @@ export class RoomState {
     return this.obVan.simulateSignal(camId, sample);
   }
 
+  /** Dev-only (OB_SIM=1): fake a confirmed host, bypassing snapshot + LLM. */
+  public simulateObHost(camId: string | null): ObCommandResult {
+    return this.obVan.simulateHost(camId);
+  }
+
   /** Restart every OB Van file cam from `playFromMs` (see syncBbFileCams). */
   /**
    * Wall time at which the OB Van file cams' media 0 is (or was) on air —
@@ -2953,6 +3002,7 @@ export class RoomState {
       name?: string;
       talent?: string | null;
       subtitle?: string | null;
+      puppet?: ObPuppetSeed;
     } = {},
   ): Promise<{ camId: string; inputId: string }> {
     const opts = this.obVan.camSignalOpts(role);
@@ -2995,6 +3045,22 @@ export class RoomState {
     if (!result.ok) {
       await this.removeInput(inputId).catch(() => {});
       throw new Error(result.message);
+    }
+    if (meta.puppet) {
+      this.obPuppets.set(inputId, {
+        ...meta.puppet,
+        getClock: () => {
+          const clock = this.fileClockOf(inputId);
+          return clock
+            ? {
+                zeroAirMs:
+                  clock.anchorWallMs - clock.playFromMs + clock.delayMs,
+                durationMs: clock.durationMs,
+              }
+            : null;
+        },
+      });
+      this.updateStoreWithState();
     }
     return { camId: result.camId, inputId };
   }
@@ -3096,8 +3162,12 @@ export class RoomState {
     return this.obVan.llmBrief(brief);
   }
 
-  public obLlmAnalyst(enabled: boolean, intervalS?: number): ObLlmStatus {
-    return this.obVan.llmAnalyst(enabled, intervalS);
+  public obLlmAnalyst(
+    enabled: boolean,
+    intervalS?: number,
+    model?: ObLlmModelId,
+  ): ObLlmStatus {
+    return this.obVan.llmAnalyst(enabled, intervalS, model);
   }
 
   public obLlmStatus(): ObLlmStatus {
@@ -4548,6 +4618,7 @@ export class RoomState {
       restartFading: input.restartFading,
       frozenImageId: this.frozenImages.get(input.inputId)?.imageId,
       hidden: input.hidden,
+      obPuppet: this.obPuppets.get(input.inputId),
     });
 
     const connectedInputs = allInputs.filter(

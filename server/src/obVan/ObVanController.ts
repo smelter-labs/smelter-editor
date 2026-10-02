@@ -9,6 +9,8 @@ import type {
   ObControlAction,
   ObEffects,
   ObErrorCode,
+  ObHostState,
+  ObLlmModelId,
   ObLlmStatus,
   ObLogEntry,
   ObLogKind,
@@ -33,15 +35,25 @@ import {
   OB_PACING_DIAL_FACTOR,
   OB_PRESET_IDS,
   OB_PRESET_META,
+  OB_QUIZ_CELEBRATE_MS,
+  OB_QUIZ_HINT_SHOW_MS,
   OB_RULESET_LIMITS,
   OB_TRANSITION_LIMITS,
   isObCamRole,
+  isObLlmModelId,
   obPresetRuleset,
   obShotCams,
   obShotsEqual,
   parseObRuleset,
 } from '@smelter-editor/types';
 import type { ObHudState } from '../app/store';
+import { ObHostTracker } from './host';
+import {
+  OB_GESTURE_COOLDOWN_MS,
+  describeObGestureCommand,
+  isObGestureName,
+  obGestureCommand,
+} from './gestures';
 import { CAPTIONS_SIDE_CHANNEL_DELAY_MS } from '../captions/constants';
 import { WHIP_SIDE_CHANNEL_DELAY_MS } from '../ai-models/side-channel-config';
 import type {
@@ -52,6 +64,7 @@ import type {
   ObBriefResult,
   ObClock,
   ObDecision,
+  ObDecisionSource,
   ObLlmDeps,
   ObLlmModule,
   ObSignalSample,
@@ -99,8 +112,11 @@ import {
   type ObTransitionPlan,
 } from './scene';
 import { OB_VIRTUAL_GLIDE_MS, ObVirtualCam } from './virtualCam';
+import { analystIntervalFromEnv } from './llm/analyst';
 import { ObLlmError } from './llm/errors';
 import { obVanParamsForRole } from '../ai-models/ob-van/manifest';
+import { ObQuizGame, type ObQuizEffect, type ObQuizSfx } from './quiz';
+import { QUIZ_QUESTIONS, type QuizQuestion } from './quizQuestions';
 
 // ── Public contract ────────────────────────────────────────────────────────
 
@@ -155,6 +171,12 @@ export type ObControllerDeps = {
   ) => Promise<void>;
   /** Side-channel delay the input was registered with (ms). */
   getSideChannelDelayMs?: (inputId: string) => number;
+  /**
+   * Ask the OB worker for a JPEG snapshot of the input's latest frame; the
+   * answer arrives as a `{kind:'snapshot', requestId}` worker result. False =
+   * worker not connected.
+   */
+  requestObSnapshot?: (inputId: string, requestId: string) => boolean;
   /** Wall time of the engine's pipeline start (pts 0), null before start. */
   smelterStartMs?: () => number | null;
   getFileClock?: (inputId: string) => ObFileClock | null;
@@ -170,6 +192,9 @@ export type ObControllerDeps = {
     offsetMs: number,
   ) => Promise<string | null>;
   unregisterReplayClip: (inputId: string, file: string) => void;
+  /** Quiz stinger: register a bundled sfx mp4 (server/sfx) at this offset. */
+  registerQuizSfx?: (kind: string, offsetMs: number) => Promise<string | null>;
+  unregisterQuizSfx?: (inputId: string) => void;
   getPipelineTimeMs: () => number;
   now?: () => number;
 };
@@ -224,6 +249,7 @@ export type ObChange = Pick<
 
 export const NULL_BRAIN: ObBrain = {
   step: () => null,
+  lastScores: () => null,
   setRuleset: () => {},
   reset: () => {},
 };
@@ -245,6 +271,11 @@ export class ObNullSignals implements ObSignalsApi {
     return {};
   }
   setKeywordGroups(): void {}
+  setHost(): void {}
+  setQuizTurn(): void {}
+  drainNewPersons(): { camId: string; trackId: number; airMs: number }[] {
+    return [];
+  }
   removeCam(): void {}
   reset(): void {
     this.ingested.length = 0;
@@ -304,6 +335,23 @@ const SIGNAL_FRESH_MS = 3000;
 const OB_LLM_PREFER_BOOST_MAX = 0.3;
 /** An LLM pacing override expires on its own; only the operator's persists. */
 const OB_LLM_PACING_TTL_MS = 60_000;
+/** At most one LLM cut per this window (the brain handles micro-timing). */
+const OB_LLM_CUT_COOLDOWN_MS = 5_000;
+/** Bounds for the hold an LLM cut may carry. */
+const OB_LLM_CUT_HOLD_LIMITS = { min: 2_000, max: 15_000 };
+/** Quiz stinger lengths (matches the files `scripts/quiz-render-sfx.mjs` makes). */
+const QUIZ_SFX_MS: Record<ObQuizSfx, number> = {
+  intro: 2400,
+  board: 1400,
+  win: 1800,
+  lose: 1800,
+};
+/** Register a stinger slightly ahead so it starts at frame 0 of its clip. */
+const QUIZ_SFX_LEAD_MS = 250;
+/** Event ticks: speech must be stable this long to count as "the speaker". */
+const OB_LLM_EVENT_SPEECH_STABLE_MS = 700;
+/** Event ticks: everybody quiet this long → one "silence" tick. */
+const OB_LLM_EVENT_SILENCE_MS = 7_000;
 const REPLAY_OPEN_GRACE_MS = 8000;
 const REPLAY_CLOSE_LEAD_MS = 350;
 const REPLAY_UNREGISTER_MS = 450;
@@ -344,6 +392,9 @@ type ScheduledChange = {
   change: ObChange;
   source: ObActionSource;
   applyAtMs: number;
+  /** Why the brain queued it — rule shots survive an LLM cut, score cuts don't. */
+  decisionSource?: ObDecisionSource;
+  ruleId?: string;
 };
 
 type ReplayState = {
@@ -467,6 +518,11 @@ export class ObVanController {
   private autoPausedUntil: number | null = null;
   private holdUntil: number | null = null;
   private lastDecisionAt: number | null = null;
+  private lastLlmCutAt: number | null = null;
+  // ── LLM event-tick edge detection ──
+  private lastDominantSpeakerCamId: string | null = null;
+  private lastKeywordSeenAirMs: number | null = null;
+  private silenceEventFired = false;
   private pacingOverride: {
     minHoldMs?: number;
     maxHoldMs?: number;
@@ -480,6 +536,21 @@ export class ObVanController {
   private scheduleSeq = 0;
   private stats: StatsAcc = emptyStats();
   private wrapNotes: string | null = null;
+  /** Host recognition (the `follow` demo). */
+  private readonly hostTracker: ObHostTracker;
+  /** Smelterionaire quiz layer (the `quiz` preset). */
+  private readonly quiz: ObQuizGame;
+  private quizSfx: {
+    inputId: string;
+    kind: ObQuizSfx;
+    startedAtMs: number;
+  } | null = null;
+  private readonly quizSfxTimers = new Set<ReturnType<typeof setTimeout>>();
+  private lastGesture: ObHostState['lastGesture'] = null;
+  /** Camera whose worker currently runs hand tracking (the host's). */
+  private gestureCamId: string | null = null;
+  /** Per-gesture cooldown over the worker's own gate. */
+  private readonly lastGestureAt = new Map<string, number>();
 
   // ── stage machinery ──
   private lastTiles: ObStageTile[] = [];
@@ -550,6 +621,9 @@ export class ObVanController {
           text: note,
         }),
     });
+    // `OB_VAN_LLM_ANALYST_INTERVAL_S` seeds the config (the controller always
+    // passes the config value, so the env would otherwise be dead).
+    this.config.llm.analystIntervalS = analystIntervalFromEnv();
     this.llm =
       factories.createLlm?.(
         {
@@ -574,6 +648,44 @@ export class ObVanController {
         },
         { intervalS: this.config.llm.analystIntervalS },
       ) ?? null;
+    // `OB_VAN_LLM_MODEL` may pick a different initial model than the config
+    // default — reflect it in the config when it is one the UI knows.
+    const liveModel = this.llm?.status().model;
+    if (liveModel && isObLlmModelId(liveModel))
+      this.config.llm.model = liveModel;
+    this.hostTracker = new ObHostTracker({
+      requestSnapshot: (camId, requestId) => {
+        const cam = this.cams.get(camId);
+        if (!cam?.inputId || !this.deps.requestObSnapshot) return false;
+        return this.deps.requestObSnapshot(cam.inputId, requestId);
+      },
+      identify: (camId, imageB64) => {
+        if (!this.llm) return Promise.resolve(null);
+        const cam = this.cams.get(camId);
+        return this.llm.identifyHost({
+          imageB64,
+          hostDescription: this.config.host.description,
+          camLabel: cam ? `CAM ${cam.number}` : camId,
+        });
+      },
+      setHost: (camId, info) => {
+        this.signals.setHost(camId, info);
+        this.syncGestureCam(camId);
+        this.markStateDirty();
+      },
+      log: (text, opts) =>
+        this.pushLog({
+          source: 'llm',
+          kind: 'llm',
+          tone: opts?.warn ? 'amber' : 'ai',
+          label: 'HOST',
+          text,
+          ...(opts?.camId ? { camId: opts.camId } : {}),
+        }),
+      onChange: () => this.markStateDirty(),
+      now: () => this.now(),
+    });
+    this.quiz = new ObQuizGame(QUIZ_QUESTIONS, { now: () => this.now() });
   }
 
   private now(): number {
@@ -765,7 +877,7 @@ export class ObVanController {
   }
 
   /** Signal-worker registration of a camera with `role` (captions → 8 s everywhere). */
-  camSignalOpts(role: ObCamRole): ObCamSignalOpts {
+  camSignalOpts(role: ObCamRole, camId?: string): ObCamSignalOpts {
     const captions = this.config.captions;
     return {
       enabled: true,
@@ -773,8 +885,29 @@ export class ObVanController {
         ? CAPTIONS_SIDE_CHANNEL_DELAY_MS
         : WHIP_SIDE_CHANNEL_DELAY_MS,
       transcription: captions && TRANSCRIBED_ROLES.has(role),
-      params: obVanParamsForRole(role, this.config.presetId),
+      params: {
+        ...obVanParamsForRole(role, this.config.presetId),
+        // Hand tracking runs only on the confirmed host's camera.
+        ...(camId && camId === this.gestureCamId ? { hands: '1' } : {}),
+      },
     };
+  }
+
+  /** Flip the worker's hand tracking to the (new) host camera. */
+  private syncGestureCam(camId: string | null): void {
+    if (camId === this.gestureCamId) return;
+    const prev = this.gestureCamId;
+    this.gestureCamId = camId;
+    for (const id of [prev, camId]) {
+      if (!id) continue;
+      const cam = this.cams.get(id);
+      if (!cam?.inputId) continue;
+      void this.deps
+        .configureCamSignals?.(cam.inputId, this.camSignalOpts(cam.role, id))
+        .catch((err) =>
+          console.warn(`[ob] gesture reconfigure failed for ${id}`, err),
+        );
+    }
   }
 
   private async startCamera(
@@ -792,7 +925,7 @@ export class ObVanController {
       cam.width = dims.width;
       cam.height = dims.height;
     }
-    const opts = this.camSignalOpts(cam.role);
+    const opts = this.camSignalOpts(cam.role, cam.id);
     let offer: { inputId: string; whipUrl: string; bearerToken: string };
     try {
       offer = await this.deps.registerGameCam(cam.name, dims, opts);
@@ -959,6 +1092,8 @@ export class ObVanController {
     this.retireCamInput(cam);
     this.cams.remove(cam.id);
     this.signals.removeCam(cam.id);
+    this.hostTracker.removeCam(cam.id);
+    if (this.gestureCamId === cam.id) this.gestureCamId = null;
     this.settleUntil.delete(cam.id);
     this.lastTally.delete(cam.id);
     if (this.preferCam?.camId === cam.id) this.preferCam = null;
@@ -1088,6 +1223,11 @@ export class ObVanController {
         (OB_PRESET_IDS as readonly string[]).includes(patch.presetId)) &&
       patch.presetId !== c.presetId
     ) {
+      if (c.presetId === 'quiz') {
+        // Leaving the quiz: the game and its signal must not outlive it.
+        this.quiz.reset();
+        this.signals.setQuizTurn(null);
+      }
       c.presetId = patch.presetId;
       if (patch.ruleset === undefined && c.ruleset) {
         c.ruleset = null;
@@ -1158,7 +1298,21 @@ export class ObVanController {
         );
       if (typeof patch.llm.analyst === 'boolean')
         c.llm.analyst = patch.llm.analyst;
+      if (isObLlmModelId(patch.llm.model)) {
+        c.llm.model = patch.llm.model;
+        this.llm?.setModel(c.llm.model);
+      }
       this.llm?.setAnalyst(c.llm.analyst, c.llm.analystIntervalS);
+    }
+    if (patch.host) {
+      if (typeof patch.host.enabled === 'boolean')
+        c.host.enabled = patch.host.enabled;
+      if (typeof patch.host.description === 'string') {
+        const description = patch.host.description
+          .trim()
+          .slice(0, OB_CONFIG_LIMITS.hostDescription.max);
+        if (description) c.host.description = description;
+      }
     }
     if (typeof patch.subtitles === 'boolean') c.subtitles = patch.subtitles;
     if (typeof patch.captions === 'boolean' && patch.captions !== c.captions) {
@@ -1199,7 +1353,7 @@ export class ObVanController {
         continue;
       }
       const inputId = cam.inputId;
-      const opts = this.camSignalOpts(cam.role);
+      const opts = this.camSignalOpts(cam.role, cam.id);
       cam.delayMs = opts.delayMs;
       configure?.(inputId, opts).catch((err) =>
         console.warn(`[ob] signal reconfigure failed for ${inputId}`, err),
@@ -1303,6 +1457,7 @@ export class ObVanController {
         }
         this.prog = { ...this.prog, sinceMs: now };
         this.setPhase('on-air');
+        if (this.quizOn()) this.playQuizSting('intro');
         break;
       case 'wrap':
         if (this.phase !== 'on-air')
@@ -1324,6 +1479,12 @@ export class ObVanController {
         this.pacingOverride = null;
         this.preferCam = null;
         this.wrapNotes = null;
+        this.hostTracker.reset();
+        this.signals.setHost(null);
+        this.syncGestureCam(null);
+        this.lastGesture = null;
+        this.quiz.reset();
+        this.signals.setQuizTurn(null);
         this.closeReplay();
         this.refreshRuleset('reset');
         this.log.clear();
@@ -1431,9 +1592,24 @@ export class ObVanController {
         const transition =
           cmd.mode === 'cut'
             ? { type: 'cut' as const, durationMs: 0 }
-            : this.config.transition;
+            : source === 'llm'
+              ? this.defaultTransition(source)
+              : this.config.transition;
+        const holdMs =
+          cmd.holdMs && cmd.holdMs > 0
+            ? Math.min(
+                OB_LLM_CUT_HOLD_LIMITS.max,
+                Math.max(OB_LLM_CUT_HOLD_LIMITS.min, cmd.holdMs),
+              )
+            : undefined;
         return this.applyDecision(
-          { shot: cmd.shot, transition, logKind: cmd.mode, ...rs },
+          {
+            shot: cmd.shot,
+            transition,
+            logKind: cmd.mode,
+            ...(holdMs ? { holdMs } : {}),
+            ...rs,
+          },
           source,
         );
       }
@@ -1599,7 +1775,225 @@ export class ObVanController {
           ...rs,
         });
         return { ok: true };
+      case 'quiz':
+        return this.quizCommand(cmd, source);
     }
+  }
+
+  // ── Smelterionaire quiz (the `quiz` preset) ─────────────────────────
+
+  private quizOn(): boolean {
+    return this.config.presetId === 'quiz';
+  }
+
+  private quizCommand(
+    cmd: Extract<ObOperatorCommand, { op: 'quiz' }>,
+    source: ObActionSource,
+  ): ObCommandResult {
+    if (!this.quizOn())
+      return {
+        ok: false,
+        code: 'bad_action',
+        message: 'The QUIZ preset is off.',
+      };
+    if (cmd.action !== 'reset' && this.phase !== 'on-air')
+      return { ok: false, code: 'bad_phase', message: 'Not on air.' };
+    const r = this.quiz.command(cmd);
+    if (!r.ok) return { ok: false, code: r.code, message: r.message };
+    this.applyQuizEffects(r.effects, source);
+    if (cmd.action === 'assign') this.llm?.requestTick('quiz question');
+    if (cmd.action === 'reveal') this.llm?.requestTick('quiz reveal');
+    return { ok: true };
+  }
+
+  private applyQuizEffects(
+    effects: ObQuizEffect[],
+    source: ObActionSource,
+  ): void {
+    for (const fx of effects) {
+      switch (fx.type) {
+        case 'turn':
+          this.signals.setQuizTurn(fx.camId);
+          break;
+        case 'celebrate':
+          // The reveal owns the picture: a hard solo on the contestant with
+          // a hold that outlasts the money animation; rules resume after.
+          this.applyDecision(
+            {
+              shot: { kind: 'solo', cam: fx.camId },
+              transition: { type: 'cut', durationMs: 0 },
+              holdMs: OB_QUIZ_CELEBRATE_MS,
+              logKind: 'shot',
+              reasons: [`quiz ${fx.verdict}`],
+            },
+            'auto',
+          );
+          break;
+        case 'hint':
+          this.startQuizHint(fx.question);
+          break;
+        case 'sfx':
+          this.playQuizSting(fx.kind);
+          break;
+        case 'lower-third':
+          this.lowerThirdCommand({ op: 'lower_third', camId: fx.camId }, 'auto');
+          break;
+        case 'log':
+          this.pushLog({
+            source,
+            kind: 'note',
+            tone: fx.tone,
+            label: fx.label,
+            text: fx.text,
+            ...(fx.camId ? { camId: fx.camId } : {}),
+          });
+          break;
+      }
+    }
+  }
+
+  /** "Ask the AI": the model answers BLIND — a wrong hint is part of the show. */
+  private startQuizHint(question: QuizQuestion): void {
+    const llm = this.llm;
+    if (!llm || !llm.status().available) {
+      this.quiz.resolveHint(null);
+      this.afterQuizHint();
+      return;
+    }
+    void llm
+      .quizHint({ question: question.q, answers: question.answers })
+      .then((res) => {
+        if (this.disposed) return;
+        if (this.quiz.resolveHint(res ?? null)) this.afterQuizHint();
+      })
+      .catch(() => {
+        if (this.disposed) return;
+        if (this.quiz.resolveHint(null)) this.afterQuizHint();
+      });
+  }
+
+  private afterQuizHint(): void {
+    const hint = this.quiz.state().hint;
+    if (hint?.status === 'done' && hint.text)
+      this.pushLog({
+        source: 'llm',
+        kind: 'llm',
+        tone: 'ai',
+        label: 'HINT',
+        text: hint.canned
+          ? `(offline) ${hint.text}`
+          : `${hint.letter ?? '?'} · ${hint.text}`,
+        camId: hint.forCamId,
+      });
+    this.publishHud();
+    this.markStateDirty();
+  }
+
+  private playQuizSting(kind: ObQuizSfx): void {
+    const register = this.deps.registerQuizSfx;
+    if (!register) return;
+    const offsetMs = this.deps.getPipelineTimeMs() + QUIZ_SFX_LEAD_MS;
+    void register(kind, offsetMs)
+      .then((inputId) => {
+        if (this.disposed || !inputId) return;
+        const prior = this.quizSfx;
+        if (prior) this.deps.unregisterQuizSfx?.(prior.inputId);
+        this.quizSfx = { inputId, kind, startedAtMs: this.now() };
+        this.publishHud();
+        const t = setTimeout(
+          () => {
+            this.quizSfxTimers.delete(t);
+            if (this.quizSfx?.inputId === inputId) {
+              this.quizSfx = null;
+              if (!this.disposed) this.publishHud();
+            }
+            this.deps.unregisterQuizSfx?.(inputId);
+          },
+          QUIZ_SFX_MS[kind] + QUIZ_SFX_LEAD_MS + 1000,
+        );
+        this.quizSfxTimers.add(t);
+      })
+      .catch((err) => console.warn('[ob] quiz sfx failed', err));
+  }
+
+  /** Per-tick quiz housekeeping: roster sync + celebration / hint expiry. */
+  private quizStep(now: number): void {
+    if (!this.quizOn()) return;
+    const sync = this.quiz.syncPlayers(
+      this.cams.list().map((c) => ({
+        id: c.id,
+        role: c.role,
+        name: c.name,
+        talent: c.talent,
+        live: c.live && c.inputId != null,
+      })),
+    );
+    if (sync.effects.length) this.applyQuizEffects(sync.effects, 'system');
+    const t = this.quiz.tick(now);
+    if (t.effects.length) this.applyQuizEffects(t.effects, 'system');
+    if (sync.changed || t.changed) {
+      this.publishHud();
+      this.markStateDirty();
+    }
+  }
+
+  private quizHud(): ObHudState['quiz'] {
+    if (!this.quizOn() || this.phase !== 'on-air') return null;
+    const s = this.quiz.state();
+    const c = s.current;
+    const forPlayer = c
+      ? s.players.find((p) => p.camId === c.forCamId)
+      : undefined;
+    return {
+      players: s.players.map((p) => ({
+        name: p.name,
+        amount: p.amount,
+        amountFrom: p.amountFrom,
+        changedAtMs: p.amountChangedAtMs,
+        verdict:
+          p.amountChangedAtMs === null
+            ? null
+            : p.amount >= p.amountFrom
+              ? 'correct'
+              : 'wrong',
+        active: c?.forCamId === p.camId,
+        lifelineUsed: p.lifelineUsed,
+      })),
+      board:
+        c && c.shownAtMs !== null
+          ? {
+              q: c.q,
+              answers: c.answers,
+              forName: forPlayer?.name ?? '',
+              number: c.number,
+              shownAtMs: c.shownAtMs,
+              locked: c.lockedLetter,
+              lockedAtMs: c.lockedAtMs,
+              reveal:
+                c.verdict && c.revealedAtMs !== null
+                  ? {
+                      correct: c.correct,
+                      verdict: c.verdict,
+                      atMs: c.revealedAtMs,
+                      delta: c.delta,
+                    }
+                  : null,
+            }
+          : null,
+      hint:
+        s.hint && s.hint.status === 'done' && s.hint.text && s.hint.untilMs
+          ? {
+              text: s.hint.text,
+              letter: s.hint.letter,
+              atMs: s.hint.untilMs - OB_QUIZ_HINT_SHOW_MS,
+              untilMs: s.hint.untilMs,
+            }
+          : null,
+      splash: c === null && s.players.every((p) => p.answered === 0),
+      sfx: this.quizSfx
+        ? { inputId: this.quizSfx.inputId, startedAtMs: this.quizSfx.startedAtMs }
+        : null,
+    };
   }
 
   private lowerThirdCommand(
@@ -1877,6 +2271,41 @@ export class ObVanController {
         return err;
       }
     }
+    if (source === 'llm' && change.shot) {
+      // The LLM cut may break a rule hold (nothing else can), but it must not
+      // fight a running transition, the operator, or its own last cut.
+      if (this.prog.transition !== null)
+        return {
+          ok: false,
+          code: 'bad_action',
+          message: 'transition in flight',
+        };
+      if (this.autoPausedUntil !== null && now < this.autoPausedUntil)
+        return {
+          ok: false,
+          code: 'bad_action',
+          message: 'auto paused by an operator cut',
+        };
+      if (
+        this.lastLlmCutAt !== null &&
+        now - this.lastLlmCutAt < OB_LLM_CUT_COOLDOWN_MS
+      )
+        return {
+          ok: false,
+          code: 'bad_action',
+          message: `LLM cut cooldown (${Math.round(OB_LLM_CUT_COOLDOWN_MS / 1000)} s)`,
+        };
+      // A keyword rule already planned a composed shot (slides, tape, split)
+      // from the same look-ahead transcript the analyst read; its air-synced
+      // cut beats an immediate solo on the same cue.
+      const ruleShot = this.pendingRuleShot();
+      if (ruleShot)
+        return {
+          ok: false,
+          code: 'bad_action',
+          message: `rule shot pending${ruleShot.ruleId ? ` (${ruleShot.ruleId})` : ''}`,
+        };
+    }
     if (source === 'operator' && change.shot) this.pauseAuto(now);
     const reasons = change.reasons ? { reasons: change.reasons } : {};
     if (change.shot) {
@@ -1907,6 +2336,21 @@ export class ObVanController {
           camId: primaryCam(change.shot) || undefined,
           ...reasons,
         });
+        if (source === 'llm') {
+          this.lastLlmCutAt = now;
+          // Drop the brain's queued score cut: it was planned for the old
+          // program and would flip the picture right back. Rule shots and
+          // shotless changes (lower thirds, FX) keep their slot.
+          this.cancelScheduled(
+            (c) =>
+              c.source === 'auto' &&
+              c.change.shot !== undefined &&
+              c.decisionSource !== 'rule',
+          );
+        } else {
+          // A cut from anyone else is news — let the analyst take a look.
+          this.llm?.requestTick('cut applied');
+        }
       }
     }
     if (change.effects) {
@@ -2317,6 +2761,74 @@ export class ObVanController {
     this.schedule(decision, 'auto');
   }
 
+  /**
+   * Edge-triggered LLM analyst ticks from the live signals: a new dominant
+   * speaker, a fresh keyword hit, or everybody falling silent. The analyst
+   * debounces and rate-limits; this only detects the edges.
+   */
+  private llmEventStep(): void {
+    if (!this.llm || this.phase !== 'on-air') return;
+    const nowAir = this.clock.nowAir();
+    const view = this.signals.view();
+    let dominant: { camId: string; number: number; rms: number } | null = null;
+    let anySpeech = false;
+    let audioCams = 0;
+    let quietSinceAirMs: number | null = null;
+    let maxKeywordAirMs: number | null = null;
+    let freshKeyword: string | null = null;
+    for (const cam of this.cams.list()) {
+      if (!cam.live || cam.inputId == null) continue;
+      const st = view[cam.id];
+      if (!st || st.offline) continue;
+      for (const k of st.keywords) {
+        if (maxKeywordAirMs === null || k.airMs > maxKeywordAirMs)
+          maxKeywordAirMs = k.airMs;
+        if (
+          this.lastKeywordSeenAirMs !== null &&
+          k.airMs > this.lastKeywordSeenAirMs
+        )
+          freshKeyword = k.group;
+      }
+      if (st.staleAudio) continue;
+      audioCams++;
+      if (st.speech) {
+        anySpeech = true;
+        const stable =
+          st.speechSinceAirMs !== null &&
+          nowAir - st.speechSinceAirMs >= OB_LLM_EVENT_SPEECH_STABLE_MS;
+        if (stable && (!dominant || st.rmsEma > dominant.rms))
+          dominant = { camId: cam.id, number: cam.number, rms: st.rmsEma };
+      } else if (st.silenceSinceAirMs !== null) {
+        if (quietSinceAirMs === null || st.silenceSinceAirMs > quietSinceAirMs)
+          quietSinceAirMs = st.silenceSinceAirMs;
+      }
+    }
+    if (dominant && dominant.camId !== this.lastDominantSpeakerCamId) {
+      this.lastDominantSpeakerCamId = dominant.camId;
+      this.llm.requestTick(`speaker CAM ${dominant.number}`);
+    }
+    if (this.lastKeywordSeenAirMs === null) {
+      // First look: take stock of old hits without firing on them.
+      this.lastKeywordSeenAirMs = maxKeywordAirMs ?? 0;
+    } else if (freshKeyword) {
+      this.lastKeywordSeenAirMs = maxKeywordAirMs ?? this.lastKeywordSeenAirMs;
+      this.llm.requestTick(`keyword ${freshKeyword}`);
+    }
+    if (anySpeech) {
+      this.silenceEventFired = false;
+    } else if (
+      !this.silenceEventFired &&
+      audioCams > 0 &&
+      quietSinceAirMs !== null &&
+      nowAir - quietSinceAirMs >= OB_LLM_EVENT_SILENCE_MS
+    ) {
+      this.silenceEventFired = true;
+      this.llm.requestTick(
+        `silence ${Math.round(OB_LLM_EVENT_SILENCE_MS / 1000)}s`,
+      );
+    }
+  }
+
   /** The last scheduled shot change: the program the brain plans after. */
   private plannedShot(): ScheduledChange | null {
     let last: ScheduledChange | null = null;
@@ -2424,6 +2936,8 @@ export class ObVanController {
       change,
       source,
       applyAtMs: at.applyAtMs,
+      decisionSource: decision.source,
+      ruleId: decision.ruleId,
     });
     this.prog = { ...this.prog, lastApplyAtMs: at.applyAtMs };
     this.markStateDirty();
@@ -2443,6 +2957,18 @@ export class ObVanController {
     let last = Math.min(this.prog.lastApplyAtMs, this.now());
     for (const c of this.scheduled.values()) last = Math.max(last, c.applyAtMs);
     this.prog = { ...this.prog, lastApplyAtMs: last };
+  }
+
+  /** A queued auto shot that came from a rule (not a score cut), if any. */
+  private pendingRuleShot(): ScheduledChange | null {
+    for (const c of this.scheduled.values())
+      if (
+        c.source === 'auto' &&
+        c.change.shot !== undefined &&
+        c.decisionSource === 'rule'
+      )
+        return c;
+    return null;
   }
 
   private nextScheduled(): ObState['autoPilot']['next'] {
@@ -2637,6 +3163,17 @@ export class ObVanController {
     if (this.disposed) return;
     const cam = this.cams.byInput(inputId);
     if (!cam) return;
+    // Snapshot / gesture results carry no signal and must not wait out the
+    // settle window (parseWorkerSample returns null for unknown kinds).
+    const d = data as { kind?: unknown } | null;
+    if (d && d.kind === 'snapshot') {
+      this.onSnapshotResult(cam.id, d as Record<string, unknown>);
+      return;
+    }
+    if (d && d.kind === 'gesture') {
+      this.onGestureResult(cam.id, d as Record<string, unknown>);
+      return;
+    }
     const now = this.now();
     const settle = this.settleUntil.get(cam.id);
     if (settle !== undefined) {
@@ -2647,6 +3184,55 @@ export class ObVanController {
     if (!sample) return;
     cam.lastSignalAt = now;
     this.signals.ingest(cam.id, sample);
+  }
+
+  /** One host-lifecycle step per tick (new persons → identify → host signal). */
+  private hostStep(): void {
+    // Always drain, so pending events never pile up while detection is off.
+    const events = this.signals.drainNewPersons();
+    if (events.length && process.env.OB_HOST_DEBUG === '1')
+      console.log('[ob-host] events', JSON.stringify(events));
+    const active = this.config.host.enabled && this.phase !== 'wrap';
+    this.hostTracker.tick({
+      active,
+      llmAvailable: this.llm?.status().available === true,
+      events: active ? events : [],
+      view: active ? this.signals.view() : {},
+    });
+  }
+
+  /** `capture` answer from the worker — handed to the host lifecycle. */
+  private onSnapshotResult(camId: string, d: Record<string, unknown>): void {
+    this.hostTracker.onSnapshot(camId, d);
+  }
+
+  /** A recognised hand gesture on a camera → an FX command on the show. */
+  private onGestureResult(camId: string, d: Record<string, unknown>): void {
+    if (!isObGestureName(d.name)) return;
+    // Only the confirmed host's camera may drive effects (the worker only
+    // tracks hands there, but a stale configure could still deliver one).
+    if (camId !== this.gestureCamId) return;
+    const now = this.now();
+    if (
+      now - (this.lastGestureAt.get(d.name) ?? -Infinity) <
+      OB_GESTURE_COOLDOWN_MS
+    )
+      return;
+    this.lastGestureAt.set(d.name, now);
+    this.lastGesture = { camId, name: d.name, atMs: now };
+    const cmd = obGestureCommand(d.name, this.effects);
+    const r = this.operate(cmd, 'operator', [`gesture: ${d.name}`]);
+    this.pushLog({
+      source: 'operator',
+      kind: 'fx',
+      tone: r.ok ? 'ai' : 'bad',
+      label: 'GESTURE',
+      text: r.ok
+        ? `${d.name.replace('_', ' ')} → ${describeObGestureCommand(cmd)}`
+        : `${d.name} refused · ${r.message}`,
+      camId,
+    });
+    this.markStateDirty();
   }
 
   /** Subtitles on a transcribed input: always, unless it is a camera and the show turned them off. */
@@ -2674,6 +3260,24 @@ export class ObVanController {
   }
 
   /** OB_SIM: feed a fabricated sample as if the worker sent it now. */
+  /**
+   * OB_SIM: fake a confirmed host (null clears), bypassing snapshot + LLM.
+   * Only meaningful while the real host lifecycle is inactive (host
+   * detection off or no API key) — the tracker never learns of it.
+   */
+  simulateHost(camId: string | null): ObCommandResult {
+    if (camId !== null && !this.cams.get(camId))
+      return { ok: false, code: 'unknown_cam', message: 'No such camera.' };
+    this.engage();
+    this.signals.setHost(
+      camId,
+      camId ? { trackId: 0, confidence: 1 } : undefined,
+    );
+    this.syncGestureCam(camId);
+    this.markStateDirty();
+    return { ok: true };
+  }
+
   simulateSignal(camId: string, sample: ObSimSample): ObCommandResult {
     const cam = this.cams.get(camId);
     if (!cam)
@@ -2706,6 +3310,16 @@ export class ObVanController {
     );
     const lt = this.lowerThird;
     const ltCam = lt?.camId ? this.cams.get(lt.camId) : undefined;
+    const plan = this.plannedShot();
+    const rawScores = this.brain.lastScores();
+    let scores: Record<number, number> | null = null;
+    if (rawScores) {
+      scores = {};
+      for (const c of this.cams.list()) {
+        const v = rawScores[c.id];
+        if (v !== undefined) scores[c.number] = v;
+      }
+    }
     return {
       atMs: now,
       phase: this.phase,
@@ -2727,6 +3341,7 @@ export class ObVanController {
           onPreview: onPreview.has(c.id),
           signals: s
             ? {
+                speaking: s.speech,
                 speechShare: s.speechShare10s,
                 rmsDb: s.rmsEma,
                 motion: s.motionEma,
@@ -2739,17 +3354,39 @@ export class ObVanController {
         shot: this.prog.program,
         sinceMs: this.prog.sinceMs,
         source: this.prog.source,
+        holdRemainingMs:
+          this.holdUntil !== null && this.holdUntil > now
+            ? this.holdUntil - now
+            : null,
+        autoPausedForMs:
+          this.autoPausedUntil !== null && this.autoPausedUntil > now
+            ? this.autoPausedUntil - now
+            : null,
+        scheduledNext:
+          plan && plan.change.shot
+            ? {
+                shot: describeShot(plan.change.shot, this.logCams()),
+                inMs: Math.max(0, plan.applyAtMs - now),
+              }
+            : null,
       },
       pacing: this.pacing(),
       lowerThird: lt
         ? { name: lt.name, camNumber: ltCam?.number ?? null }
         : null,
+      // The log is newest-first; hand the analyst the 6 newest real program
+      // changes in chronological order (cut entries carry a camId).
       lastCuts: this.log
         .snapshot()
         .filter(
-          (e) => e.kind === 'take' || e.kind === 'cut' || e.kind === 'auto',
+          (e) =>
+            (e.kind === 'take' || e.kind === 'cut' || e.kind === 'auto') &&
+            e.camId != null,
         )
-        .slice(0, 10),
+        .slice(0, 6)
+        .reverse(),
+      scores,
+      lookaheadMs: this.clock.lookaheadMs(),
     };
   }
 
@@ -2794,12 +3431,17 @@ export class ObVanController {
     });
   }
 
-  llmAnalyst(enabled: boolean, intervalS?: number): ObLlmStatus {
+  llmAnalyst(
+    enabled: boolean,
+    intervalS?: number,
+    model?: ObLlmModelId,
+  ): ObLlmStatus {
     const llm = this.requireLlm();
     this.setConfig({
       llm: {
         analyst: enabled,
         ...(intervalS !== undefined ? { analystIntervalS: intervalS } : {}),
+        ...(model !== undefined ? { model } : {}),
       },
     });
     return llm.status();
@@ -2954,6 +3596,11 @@ export class ObVanController {
             }
           : null,
       },
+      host: {
+        ...this.hostTracker.state(),
+        lastGesture: this.lastGesture ? { ...this.lastGesture } : null,
+      },
+      quiz: this.quizOn() ? this.quiz.state() : null,
       llm: this.llmStatus(),
       stats: this.statsSnapshot(now),
       wrapNotes: this.wrapNotes,
@@ -3077,6 +3724,7 @@ export class ObVanController {
             }
           : null,
       wrap: this.phase === 'wrap' ? this.wrapCard() : null,
+      quiz: this.quizHud(),
     };
   }
 
@@ -3172,6 +3820,9 @@ export class ObVanController {
     this.checkFileCamLoop(now);
     this.stepVirtual(now);
     this.autoStep(now);
+    this.llmEventStep();
+    this.hostStep();
+    this.quizStep(now);
     this.broadcastSignals(now);
     this.publishHud();
     this.flushLog();
@@ -3290,6 +3941,12 @@ export class ObVanController {
     this.replayTimer = null;
     for (const t of this.replayUnregisterTimers) clearTimeout(t);
     this.replayUnregisterTimers.clear();
+    for (const t of this.quizSfxTimers) clearTimeout(t);
+    this.quizSfxTimers.clear();
+    if (this.quizSfx) {
+      this.deps.unregisterQuizSfx?.(this.quizSfx.inputId);
+      this.quizSfx = null;
+    }
     const r = this.replay;
     if (r?.inputId && r.file) this.deps.unregisterReplayClip(r.inputId, r.file);
     this.replay = null;

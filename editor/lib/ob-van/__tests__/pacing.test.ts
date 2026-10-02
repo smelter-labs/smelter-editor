@@ -42,9 +42,9 @@ describe('pacing', () => {
     expect(clampResumeAfterMs(90000)).toBe(60000);
     expect(clampResumeAfterMs(12400)).toBe(12000);
     expect(clampResumeAfterMs('x')).toBe(20000);
-    expect(clampAnalystIntervalS(5)).toBe(15);
+    expect(clampAnalystIntervalS(5)).toBe(10);
     expect(clampAnalystIntervalS(500)).toBe(120);
-    expect(clampAnalystIntervalS(null)).toBe(30);
+    expect(clampAnalystIntervalS(null)).toBe(15);
   });
 
   it('countdowns and labels', () => {

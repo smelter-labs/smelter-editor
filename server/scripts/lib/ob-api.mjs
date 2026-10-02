@@ -63,6 +63,8 @@ export const ob = {
     api('POST', `/room/${roomId}/ob-van/mp4-cam/sync`, { playFromMs }),
   simulate: (roomId, camId, sample) =>
     api('POST', `/room/${roomId}/ob-van/simulate-signal`, { camId, sample }),
+  simulateHost: (roomId, camId) =>
+    api('POST', `/room/${roomId}/ob-van/simulate-host`, { camId }),
 };
 
 /** Open the room socket; `onEvent` gets every parsed event. */

@@ -223,17 +223,20 @@ export function TitleScreen({
           style={{
             position: 'absolute',
             left: 72,
-            top: 652,
+            // The stage is a fixed 1280×720: md buttons at the old top (652)
+            // ran under the footer bar, which swallowed their clicks.
+            top: 628,
             display: 'flex',
             flexDirection: 'column',
             gap: 8,
           }}>
           <Meta size={9}>QUICK DEMOS · ROOM + PRESET + FILE CAMS + SYNC</Meta>
           <div
-            style={{ display: 'flex', gap: 10, flexWrap: 'wrap', width: 640 }}>
+            style={{ display: 'flex', gap: 10, flexWrap: 'wrap', width: 960 }}>
             {demos.map((d) => (
               <ObButton
                 key={d.dir}
+                size='sm'
                 label={
                   loadingDemo === d.dir ? 'LOADING…' : d.label.toUpperCase()
                 }
@@ -293,6 +296,8 @@ export function TitleScreen({
           alignItems: 'center',
           padding: '0 72px',
           borderTop: `1px solid ${OB.rule}`,
+          // Purely informational — never steal clicks from what it overlaps.
+          pointerEvents: 'none',
         }}>
         <FooterHints
           hints={[{ key: 'ENTER', label: 'NEW EVENT' }]}

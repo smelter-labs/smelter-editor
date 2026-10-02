@@ -200,6 +200,13 @@ export function obVanParamsForRole(
       // Onsets drive the cuts; the crowd cam only needs motion.
       if (role === 'audience') return { ...AUDIO_OFF };
       return { onsetDb: 5 };
+    case 'follow':
+      // Host recognition keys off new-person tracks — look a little more often.
+      return { videoHz: 6 };
+    case 'quiz':
+      // Speech decides the cuts, like TALK: host and contestants talk heads.
+      if (role === 'speaker' || role === 'guest') return { videoHz: 2 };
+      return {};
     case 'custom':
       return {};
   }

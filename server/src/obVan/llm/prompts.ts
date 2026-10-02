@@ -53,6 +53,25 @@ Hard rules:
 /** Stable system prompt (built once). */
 export const OB_LLM_SYSTEM = buildSystem();
 
+function buildAnalystSystem(): string {
+  return `You are the live director in "OB Van", a multi-camera production desk (phones and video files as cameras, one program output on air). A deterministic auto pilot handles micro-timing: every 100 ms it scores the live cameras from signals (speech, loudness, motion, people, keywords) and cuts to the best one. YOU fix what it gets wrong. You read a compact situation report + the last minute of captions and answer with at most ${OB_DIRECT_MAX_ACTIONS} actions (tool direct), most important first.
+
+Your main lever is "cut": put a camera on program NOW. Issue a cut whenever the program is stale or wrong — the current shot has held long past the pacing, the person talking is on another camera, the program sits on silence while a conversation runs elsewhere, or a slide/tape moment passed and nobody cut back. Cut to whoever is speaking NOW (the per-camera "speaking" flag and the score ranking are your freshest evidence). Do not cut just to be busy: an empty actions list means the program is right — it never means you are unsure.
+
+Clocks: the per-camera signals (speaking, scores) run AHEAD of the captions by the lookahead given in the report — captions describe what is on air now, signals describe what is about to air. Trust the signals for "who talks", the captions for "what was said".
+
+Other actions: set_lower_third (names only as heard in captions or written in a talent field, diacritics kept — never guess), set_pacing (when the whole rhythm is off, not for one cut), prefer_cam (a soft bias when you want the auto pilot to favour a camera but the moment to cut is not now), advance_segment (only when the talk clearly moved on), note (≤ ${OB_LLM_NOTE_MAX_CHARS} chars, plain and useful to a busy director).
+
+Hard rules:
+- Use only camera numbers from the report; never invent cameras.
+- Never cut to the camera already on program.
+- Respect the operator: if auto is paused by a manual cut, nudge, don't fight.
+- Always answer by calling the direct tool, even for an empty actions list.`;
+}
+
+/** Stable analyst-only system prompt (no rules DSL — the analyst never writes rules). */
+export const OB_LLM_SYSTEM_ANALYST = buildAnalystSystem();
+
 type Cam = ObSituation['cams'][number];
 
 function camLine(c: Cam): string {
@@ -125,13 +144,29 @@ export function buildAnalystUser(
     preview: c.onPreview,
     ...(c.signals
       ? {
+          speakingNow: c.signals.speaking,
           speech: Math.round(c.signals.speechShare * 100) / 100,
           dB: Math.round(c.signals.rmsDb),
           motion: Math.round(c.signals.motion * 100) / 100,
           people: c.signals.people,
+          ...(situation.scores && situation.scores[c.number] !== undefined
+            ? { score: Math.round(situation.scores[c.number] * 100) / 100 }
+            : {}),
         }
       : { signals: 'none' }),
   }));
+  const p = situation.program;
+  const programBits = [
+    `${shotLabel(p.shot, numberOf)} for ${secs(now - p.sinceMs)} (${p.source})`,
+  ];
+  if (p.holdRemainingMs !== null && p.holdRemainingMs > 0)
+    programBits.push(`hold ${secs(p.holdRemainingMs)} left`);
+  if (p.autoPausedForMs !== null && p.autoPausedForMs > 0)
+    programBits.push(`auto paused ${secs(p.autoPausedForMs)} (operator cut)`);
+  if (p.scheduledNext)
+    programBits.push(
+      `next: ${p.scheduledNext.shot} in ${secs(p.scheduledNext.inMs)}`,
+    );
   const report = {
     event: situation.eventName,
     preset: situation.presetId,
@@ -139,15 +174,16 @@ export function buildAnalystUser(
       ? `${situation.segment.index + 1}/${situation.rundown.length} ${situation.segment.title}`
       : null,
     rundown: situation.rundown,
-    program: `${shotLabel(situation.program.shot, numberOf)} for ${secs(now - situation.program.sinceMs)} (${situation.program.source})`,
+    program: programBits.join(' · '),
     pacing: situation.pacing,
+    signalsRunAheadOfCaptionsMs: situation.lookaheadMs,
     lowerThird: situation.lowerThird
       ? `${situation.lowerThird.name}${situation.lowerThird.camNumber ? ` on cam ${situation.lowerThird.camNumber}` : ''}`
       : null,
     cams,
-    lastCuts: situation.lastCuts
-      .slice(-6)
-      .map((e) => `-${secs(now - e.atMs)} ${e.source}: ${e.text}`),
+    lastCuts: situation.lastCuts.map(
+      (e) => `-${secs(now - e.atMs)} ${e.source}: ${e.text}`,
+    ),
   };
   const lines = transcripts.length
     ? transcripts
@@ -165,7 +201,7 @@ ${lines}
 
 Brief (for context): ${situation.brief ? situation.brief.slice(0, 600) : '(none)'}
 
-Decide whether the show needs a nudge and call direct (0–${OB_DIRECT_MAX_ACTIONS} actions).`;
+Direct the show: call direct (0–${OB_DIRECT_MAX_ACTIONS} actions). Cut if the program camera is stale or the speaker is elsewhere; empty list if the program is right.`;
 }
 
 export function buildWrapUser(input: {

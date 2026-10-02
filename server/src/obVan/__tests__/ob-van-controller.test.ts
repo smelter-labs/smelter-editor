@@ -43,6 +43,10 @@ class StubBrain implements ObBrain {
   }
   setRuleset(_r: ObRuleset): void {}
   reset(): void {}
+  scores: Record<string, number> | null = null;
+  lastScores(): Record<string, number> | null {
+    return this.scores;
+  }
 }
 
 function harness() {
@@ -824,6 +828,149 @@ describe('ObVanController · llm overrides', () => {
     expect(h.controller.stateSnapshot().overrides.pacing).toMatchObject({
       minHoldMs: 5000,
     });
+  });
+});
+
+describe('ObVanController · llm cuts', () => {
+  function onAir(h: ReturnType<typeof harness>) {
+    const c1 = h.attach(1);
+    const c2 = h.attach(2);
+    h.controller.operate({ op: 'shot', shot: solo(c1), mode: 'cut' });
+    h.controller.control('go_live');
+    h.controller.setConfig({ autoPilot: true });
+    return { c1, c2 };
+  }
+
+  it('an llm cut lands now, carries its hold and cancels the pending auto cut', async () => {
+    const h = harness();
+    const { c1, c2 } = onAir(h);
+    h.brain.next = (ctx) => ({
+      atAirMs: ctx.nowAir + 3000,
+      shot: solo(c1),
+      holdMs: 0,
+      reason: 'planned',
+      reasons: [],
+      source: 'score',
+    });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(h.controller.stateSnapshot().autoPilot.next).not.toBeNull();
+    expect(
+      h.controller.operate(
+        { op: 'shot', shot: solo(c2), mode: 'take', holdMs: 4000 },
+        'llm',
+        ['llm analyst', 'speaker is on cam 2'],
+      ),
+    ).toEqual({ ok: true });
+    const s = h.controller.stateSnapshot();
+    expect(s.program.shot).toEqual(solo(c2));
+    expect(s.program.source).toBe('llm');
+    // The queued brain cut back to c1 is gone.
+    expect(s.autoPilot.next).toBeNull();
+    // The hold shows up for the analyst.
+    expect(h.controller.getSituation().program.holdRemainingMs).toBeGreaterThan(
+      3000,
+    );
+    await vi.advanceTimersByTimeAsync(200); // flush the log broadcast
+    const entry = h.logs().find((e) => e.source === 'llm' && e.camId === c2);
+    expect(entry?.reasons).toContain('speaker is on cam 2');
+    h.controller.dispose();
+  });
+
+  it('rejects an llm cut inside the cooldown and while auto is operator-paused', async () => {
+    const h = harness();
+    const { c1, c2 } = onAir(h);
+    expect(
+      h.controller.operate({ op: 'shot', shot: solo(c2), mode: 'take' }, 'llm'),
+    ).toEqual({ ok: true });
+    const again = h.controller.operate(
+      { op: 'shot', shot: solo(c1), mode: 'take' },
+      'llm',
+    );
+    expect(again.ok).toBe(false);
+    if (!again.ok) expect(again.message).toContain('cooldown');
+    await vi.advanceTimersByTimeAsync(6000);
+    // Operator takes over: the pilot pauses and the llm must not fight it.
+    h.controller.setConfig({ resumeAfterMs: 20_000 });
+    h.controller.operate({ op: 'shot', shot: solo(c1), mode: 'cut' });
+    const paused = h.controller.operate(
+      { op: 'shot', shot: solo(c2), mode: 'take' },
+      'llm',
+    );
+    expect(paused.ok).toBe(false);
+    if (!paused.ok) expect(paused.message).toContain('operator');
+    h.controller.dispose();
+  });
+
+  it('a queued rule shot blocks the llm cut and still lands on air', async () => {
+    const h = harness();
+    const { c2 } = onAir(h);
+    h.brain.next = (ctx) => ({
+      atAirMs: ctx.nowAir + 3000,
+      shot: solo(c2),
+      holdMs: 0,
+      reason: 'slides on the keyword',
+      reasons: ['rule slides-kw'],
+      source: 'rule',
+      ruleId: 'slides-kw',
+    });
+    await vi.advanceTimersByTimeAsync(100);
+    h.brain.next = () => null;
+    const refused = h.controller.operate(
+      { op: 'shot', shot: solo(c2), mode: 'take' },
+      'llm',
+    );
+    expect(refused.ok).toBe(false);
+    if (!refused.ok)
+      expect(refused.message).toContain('rule shot pending (slides-kw)');
+    await vi.advanceTimersByTimeAsync(3500);
+    const s = h.controller.stateSnapshot();
+    expect(s.program.shot).toEqual(solo(c2));
+    expect(s.program.source).toBe('auto');
+    h.controller.dispose();
+  });
+
+  it('an llm cut keeps a queued shotless rule change (lower third)', async () => {
+    const h = harness();
+    const { c1, c2 } = onAir(h);
+    h.brain.next = (ctx) => ({
+      atAirMs: ctx.nowAir + 3000,
+      lowerThird: { camId: c1, mode: 'talent' as const },
+      holdMs: 0,
+      reason: 'lower third on the new voice',
+      reasons: ['rule lt-new-voice'],
+      source: 'rule',
+      ruleId: 'lt-new-voice',
+    });
+    await vi.advanceTimersByTimeAsync(100);
+    h.brain.next = () => null;
+    expect(
+      h.controller.operate({ op: 'shot', shot: solo(c2), mode: 'take' }, 'llm'),
+    ).toEqual({ ok: true });
+    await vi.advanceTimersByTimeAsync(3500);
+    const l3 = h.logs().find((e) => e.kind === 'lower_third');
+    expect(l3?.text).toContain('Anna');
+    h.controller.dispose();
+  });
+
+  it('getSituation: chronological lastCuts, speaking flag, scores by cam number', async () => {
+    const h = harness();
+    const { c1, c2 } = onAir(h);
+    await vi.advanceTimersByTimeAsync(1000);
+    h.controller.operate({ op: 'shot', shot: solo(c2), mode: 'cut' });
+    await vi.advanceTimersByTimeAsync(1000);
+    h.controller.operate({ op: 'shot', shot: solo(c1), mode: 'cut' });
+    const sit = h.controller.getSituation();
+    expect(sit.lastCuts.length).toBeGreaterThanOrEqual(3);
+    expect(sit.lastCuts.every((e) => e.camId != null)).toBe(true);
+    // Chronological: newest last.
+    const times = sit.lastCuts.map((e) => e.atMs);
+    expect([...times].sort((a, b) => a - b)).toEqual(times);
+    expect(sit.lastCuts[sit.lastCuts.length - 1].camId).toBe(c1);
+    h.brain.scores = { [c1]: 1.25, [c2]: 0.4 };
+    const sit2 = h.controller.getSituation();
+    expect(sit2.scores).toEqual({ 1: 1.25, 2: 0.4 });
+    expect(sit2.lookaheadMs).toBeGreaterThanOrEqual(0);
+    h.controller.dispose();
   });
 });
 

@@ -67,6 +67,8 @@ export function sig(
     ball: null,
     frame: { w: 1280, h: 720 },
     keywords: [],
+    host: { active: false, trackId: null, confidence: 0, sinceAirMs: null },
+    quizTurn: { active: false, sinceAirMs: null },
     ...patch,
   };
 }

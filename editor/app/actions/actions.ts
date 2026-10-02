@@ -935,7 +935,11 @@ export async function generateObRuleset(
 
 export async function setObLlmAnalyst(
   roomId: string,
-  opts: { enabled: boolean; intervalS?: number },
+  opts: {
+    enabled: boolean;
+    intervalS?: number;
+    model?: import('@smelter-editor/types').ObLlmModelId;
+  },
 ): Promise<
   import('@/lib/api-client').ObResult<
     import('@smelter-editor/types').ObLlmStatus

@@ -20,7 +20,7 @@ import {
   isBasketballScorerModel,
 } from './basketball-scorer/manifest';
 import { ensureObVanSidecarStarted } from './ob-van/ob-van-sidecar';
-import { isObVanModel } from './ob-van/manifest';
+import { OB_VAN_MODEL_ID, isObVanModel } from './ob-van/manifest';
 
 export type ResultListener = (event: ModelResultEvent) => void;
 
@@ -255,6 +255,20 @@ export class RoomAIController {
   ): Promise<boolean> {
     const sidecar = await this.getSidecarForModel(BASKETBALL_SCORER_ID);
     return sidecar.requestReplay(inputId, shotId, t);
+  }
+
+  /**
+   * OB Van: ask the signal worker for a JPEG snapshot of `inputId`'s latest
+   * frame (see BaseSidecar.requestCapture). The answer arrives on the worker
+   * result stream as `{kind:'snapshot', requestId}`. Resolves false when the
+   * worker is not running / connected.
+   */
+  async requestObSnapshot(
+    inputId: string,
+    requestId: string,
+  ): Promise<boolean> {
+    const sidecar = await this.getSidecarForModel(OB_VAN_MODEL_ID);
+    return sidecar.requestCapture(inputId, requestId);
   }
 
   /** Push updated model params to the running worker without re-subscribing. */

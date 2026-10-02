@@ -7,6 +7,13 @@
 // transcript keywords) through a small rules DSL, and an optional LLM turns a
 // natural-language brief into a ruleset and nudges the show every ~30 s.
 
+import type {
+  ObQuizAction,
+  ObQuizLetter,
+  ObQuizState,
+  ObQuizVerdict,
+} from "./ob-van-quiz.js";
+
 // ── Cameras ──────────────────────────────────────────────────────────────
 
 export type ObFixedCamRole =
@@ -80,11 +87,7 @@ export type ObPipCorner = "tl" | "tr" | "bl" | "br";
 export type ObPipSize = "S" | "M" | "L";
 /** What a virtual camera (digital pan/zoom of a wide camera) follows. */
 export type ObAttentionTarget =
-  | "speaker"
-  | "largest"
-  | "ball"
-  | "centroid"
-  | "motion";
+  "speaker" | "largest" | "ball" | "centroid" | "motion";
 export type ObZoom = "tight" | "normal" | "wide";
 
 /** A shot over camera references `C` (camera ids on air, selectors in rules). */
@@ -125,12 +128,7 @@ export const OB_SHOT_KINDS: readonly ObShotKind[] = [
  * from an overscan.
  */
 export type ObTransitionType =
-  | "cut"
-  | "fade"
-  | "dissolve"
-  | "wipe"
-  | "dip"
-  | "zoom-punch";
+  "cut" | "fade" | "dissolve" | "wipe" | "dip" | "zoom-punch";
 export const OB_TRANSITION_TYPES: readonly ObTransitionType[] = [
   "cut",
   "dissolve",
@@ -186,20 +184,21 @@ export type ObTitleBug = {
 };
 
 export type ObAudioPolicy =
-  | { mode: "follow" }
-  | { mode: "master"; cam: string }
-  | { mode: "mix" };
+  { mode: "follow" } | { mode: "master"; cam: string } | { mode: "mix" };
 
 // ── Show flow ────────────────────────────────────────────────────────────
 
 export type ObPhase = "setup" | "on-air" | "wrap";
 export type ObActionSource = "operator" | "auto" | "llm" | "system";
-export type ObPresetId = "talk" | "match" | "stage" | "gig" | "custom";
+export type ObPresetId =
+  "talk" | "match" | "stage" | "gig" | "follow" | "quiz" | "custom";
 export const OB_PRESET_IDS: readonly Exclude<ObPresetId, "custom">[] = [
   "talk",
   "match",
   "stage",
   "gig",
+  "follow",
+  "quiz",
 ];
 /** Operator pacing dial: multiplies the ruleset's min / max hold. */
 export type ObPacingDial = "calm" | "lively" | "frantic";
@@ -247,6 +246,8 @@ export type ObSignalKind =
   | "ball"
   | "ballAge"
   | "keyword"
+  | "host"
+  | "quizTurn"
   | "hold"
   | "segment"
   | "dialogue";
@@ -264,6 +265,8 @@ export const OB_SIGNAL_KINDS: readonly ObSignalKind[] = [
   "ball",
   "ballAge",
   "keyword",
+  "host",
+  "quizTurn",
   "hold",
   "segment",
   "dialogue",
@@ -401,9 +404,32 @@ export type ObConfig = {
   /** The host's natural-language brief (LLM input). */
   brief: string;
   rundown: ObRundownItem[];
-  llm: { analyst: boolean; analystIntervalS: number };
+  llm: { analyst: boolean; analystIntervalS: number; model: ObLlmModelId };
+  /**
+   * Host recognition (the `follow` preset's core): a new person on a camera
+   * is snapshotted and shown to the LLM, which matches the description; a
+   * confirmed host sets the per-camera `host` signal and enables gestures.
+   */
+  host: { enabled: boolean; description: string };
   joinUrls?: { cam?: string };
 };
+
+/** Models the LLM layer can run on (UI selector; validated on config/route). */
+export const OB_LLM_MODELS = [
+  { id: "claude-haiku-4-5", label: "HAIKU", blurb: "fastest · cheapest" },
+  { id: "claude-sonnet-5", label: "SONNET", blurb: "balanced" },
+  { id: "claude-opus-5", label: "OPUS", blurb: "deepest · slowest" },
+] as const;
+
+export type ObLlmModelId = (typeof OB_LLM_MODELS)[number]["id"];
+
+export const OB_LLM_MODEL_IDS: readonly ObLlmModelId[] = OB_LLM_MODELS.map(
+  (m) => m.id,
+);
+
+export function isObLlmModelId(v: unknown): v is ObLlmModelId {
+  return typeof v === "string" && OB_LLM_MODEL_IDS.includes(v as ObLlmModelId);
+}
 
 export type ObConfigPatch = {
   eventName?: string;
@@ -422,6 +448,7 @@ export type ObConfigPatch = {
   brief?: string;
   rundown?: ObRundownItem[];
   llm?: Partial<ObConfig["llm"]>;
+  host?: Partial<ObConfig["host"]>;
   joinUrls?: { cam?: string };
 };
 
@@ -441,7 +468,8 @@ export const OB_DEFAULT_CONFIG: ObConfig = {
   subtitles: true,
   brief: "",
   rundown: [],
-  llm: { analyst: false, analystIntervalS: 30 },
+  llm: { analyst: false, analystIntervalS: 15, model: "claude-haiku-4-5" },
+  host: { enabled: false, description: "wears a GOLD baseball cap" },
 };
 
 export const OB_CONFIG_LIMITS = {
@@ -451,7 +479,32 @@ export const OB_CONFIG_LIMITS = {
   eventName: { max: 48 },
   brief: { max: 4000 },
   rundown: { max: 20 },
+  hostDescription: { max: 200 },
 } as const;
+
+// ── Host follow & gestures ───────────────────────────────────────────────
+
+/** Static hand gestures the worker recognises on the host's camera. */
+export type ObGestureName = "open_palm" | "fist" | "thumbs_up" | "peace";
+export const OB_GESTURE_NAMES: readonly ObGestureName[] = [
+  "open_palm",
+  "fist",
+  "thumbs_up",
+  "peace",
+];
+
+export type ObHostStatus = "off" | "idle" | "identifying" | "confirmed";
+export type ObHostState = {
+  /** Camera the confirmed host is on. */
+  camId: string | null;
+  /** Person track the host is bound to on that camera. */
+  trackId: number | null;
+  /** Confidence of the last LLM confirmation (0..1). */
+  confidence: number;
+  sinceMs: number | null;
+  status: ObHostStatus;
+  lastGesture: { camId: string; name: ObGestureName; atMs: number } | null;
+};
 
 // ── Live state ───────────────────────────────────────────────────────────
 
@@ -464,6 +517,8 @@ export type ObSignalSummary = {
   motion: number;
   people: number;
   ball: boolean;
+  /** The confirmed host is on this camera. */
+  host: boolean;
   stale: boolean;
 };
 
@@ -564,6 +619,9 @@ export type ObState = {
     pacing: { minHoldMs?: number; maxHoldMs?: number; untilMs?: number } | null;
     preferCam: { camId: string; untilMs: number; boost?: number } | null;
   };
+  host: ObHostState;
+  /** Quiz layer state — non-null only while the `quiz` preset is selected. */
+  quiz: ObQuizState | null;
   llm: ObLlmStatus;
   stats: ObStats;
   wrapNotes: string | null;
@@ -577,7 +635,13 @@ export type ObOperatorCommand =
   | { op: "preview"; shot: ObShot }
   | { op: "take"; transition?: ObTransition }
   | { op: "cut" }
-  | { op: "shot"; shot: ObShot; mode: "take" | "cut" | "preview" }
+  | {
+      op: "shot";
+      shot: ObShot;
+      mode: "take" | "cut" | "preview";
+      /** Hold the program after this change (LLM cuts guard their decision). */
+      holdMs?: number;
+    }
   | { op: "transition"; transition: Partial<ObTransition> }
   | { op: "fx"; effects: Partial<ObEffects> }
   | {
@@ -607,15 +671,21 @@ export type ObOperatorCommand =
     }
   | { op: "pacing"; minHoldMs?: number; maxHoldMs?: number; clear?: boolean }
   | { op: "prefer_cam"; camId: string; forMs: number; boost?: number }
-  | { op: "note"; text: string };
+  | { op: "note"; text: string }
+  | {
+      op: "quiz";
+      action: ObQuizAction;
+      /** `assign`: the contestant's camera. */
+      camId?: string;
+      /** `lock`: the letter the contestant commits to. */
+      letter?: ObQuizLetter;
+      /** `reveal`: manual override for open judgment calls. */
+      verdict?: ObQuizVerdict;
+    };
 export type ObOperatorOp = ObOperatorCommand["op"];
 
 export type ObControlAction =
-  | "setup"
-  | "go_live"
-  | "wrap"
-  | "reset"
-  | "kick_cam";
+  "setup" | "go_live" | "wrap" | "reset" | "kick_cam";
 export const OB_CONTROL_ACTIONS: readonly ObControlAction[] = [
   "setup",
   "go_live",

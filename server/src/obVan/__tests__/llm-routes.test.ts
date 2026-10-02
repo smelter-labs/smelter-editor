@@ -27,10 +27,11 @@ function room(over: Partial<ObLlmRoomApi> = {}): ObLlmRoomApi {
       rationale: 'r',
       warnings: ['w'],
     }),
-    obLlmAnalyst: (enabled, intervalS) => ({
+    obLlmAnalyst: (enabled, intervalS, model) => ({
       ...STATUS,
       analyst: enabled,
       intervalS: intervalS ?? 30,
+      ...(model ? { model } : {}),
     }),
     obLlmStatus: () => STATUS,
     obLlmWrap: async () => 'Nice show.',
@@ -130,6 +131,20 @@ describe('OB Van LLM routes', () => {
       payload: { enabled: true, intervalS: 2 },
     });
     expect(tooFast.statusCode).toBe(400);
+    const withModel = await s.inject({
+      method: 'POST',
+      url: '/room/r1/ob-van/llm/analyst',
+      payload: { enabled: true, model: 'claude-haiku-4-5' },
+    });
+    expect(withModel.json()).toMatchObject({
+      status: { model: 'claude-haiku-4-5' },
+    });
+    const badModel = await s.inject({
+      method: 'POST',
+      url: '/room/r1/ob-van/llm/analyst',
+      payload: { enabled: true, model: 'gpt-5' },
+    });
+    expect(badModel.statusCode).toBe(400);
     expect(
       (
         await s.inject({ method: 'GET', url: '/room/r1/ob-van/llm/status' })

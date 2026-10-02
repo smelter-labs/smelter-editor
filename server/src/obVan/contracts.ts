@@ -21,6 +21,7 @@ import type {
   ObPacing,
   ObPhase,
   ObPresetId,
+  ObQuizLetter,
   ObRuleset,
   ObShot,
   ObTransition,
@@ -31,7 +32,13 @@ import type {
 // ── Signals ────────────────────────────────────────────────────────────
 
 /** Normalised box (0..1 of the frame). */
-export type ObBox = { x: number; y: number; w: number; h: number; conf?: number };
+export type ObBox = {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  conf?: number;
+};
 export type ObTrackedBox = ObBox & { id: number };
 
 /** Worker audio hop (10 Hz). */
@@ -87,11 +94,20 @@ export type ObSignalState = {
   rmsEma: number;
   lastOnsetAirMs: number | null;
   onsetsPerSec: number;
-  beat: { periodMs: number | null; phaseAirMs: number | null; confidence: number };
+  beat: {
+    periodMs: number | null;
+    phaseAirMs: number | null;
+    confidence: number;
+  };
   motion: number;
   motionEma: number;
   motionSpike: boolean;
-  burst: { active: boolean; sinceAirMs: number | null; endedAirMs: number | null; peak: number };
+  burst: {
+    active: boolean;
+    sinceAirMs: number | null;
+    endedAirMs: number | null;
+    peak: number;
+  };
   people: {
     count: number;
     largest: ObTrackedBox | null;
@@ -102,11 +118,26 @@ export type ObSignalState = {
   frame: { w: number; h: number } | null;
   /** Keyword hits from transcripts, last 15 s (group = ruleset keyword group). */
   keywords: { word: string; group: string; airMs: number }[];
+  /** The LLM-confirmed host is on this camera (set by the controller). */
+  host: {
+    active: boolean;
+    trackId: number | null;
+    confidence: number;
+    sinceAirMs: number | null;
+  };
+  /** The quiz contestant being asked is on this camera (quiz machine). */
+  quizTurn: {
+    active: boolean;
+    sinceAirMs: number | null;
+  };
 };
 
 export interface ObClock {
   /** Air time of a worker sample. */
-  airMsOf(camId: string, s: { ptsNanos?: number; arrivalMs: number; procMs: number }): number;
+  airMsOf(
+    camId: string,
+    s: { ptsNanos?: number; arrivalMs: number; procMs: number },
+  ): number;
   nowAir(): number;
   /** How far ahead of `nowAir()` the freshest signals are (≈ delay − procMs). */
   lookaheadMs(): number;
@@ -121,6 +152,18 @@ export interface ObSignalsApi {
   /** UI summary per camera (for `ob_signals`). */
   summary(): Record<string, ObSignalSummary>;
   setKeywordGroups(groups: Record<string, string[]> | undefined): void;
+  /** Mark the confirmed host's camera (null clears every camera). */
+  setHost(
+    camId: string | null,
+    info?: { trackId: number | null; confidence: number },
+  ): void;
+  /** Mark the quiz contestant's camera (null clears every camera). */
+  setQuizTurn(camId: string | null): void;
+  /**
+   * Person tracks that appeared since the last drain, debounced (a track must
+   * survive `newPersonMinAgeMs` first). The controller drains once per tick.
+   */
+  drainNewPersons(): { camId: string; trackId: number; airMs: number }[];
   removeCam(camId: string): void;
   reset(): void;
 }
@@ -190,12 +233,17 @@ export type ObDecision = {
 /** Stateful auto pilot (implemented by `brain.ts` → `createObBrain`). */
 export interface ObBrain {
   step(ctx: ObBrainContext): ObDecision | null;
+  /** Camera totals of the latest step (camId → score), null before the first. */
+  lastScores(): Record<string, number> | null;
   setRuleset(ruleset: ObRuleset): void;
   reset(): void;
 }
 
 /** Where a virtual camera should look on a camera (implemented in `brain.ts`). */
-export type ObAttentionFn = (state: ObSignalState | undefined, target: ObAttentionTarget) => ObBox | null;
+export type ObAttentionFn = (
+  state: ObSignalState | undefined,
+  target: ObAttentionTarget,
+) => ObBox | null;
 
 // ── LLM ────────────────────────────────────────────────────────────────
 
@@ -217,13 +265,35 @@ export type ObSituation = {
     live: boolean;
     onProgram: boolean;
     onPreview: boolean;
-    /** 10 s means. */
-    signals: { speechShare: number; rmsDb: number; motion: number; people: number } | null;
+    /** 10 s means, plus the instantaneous VAD flag. */
+    signals: {
+      /** Someone is talking on this camera RIGHT NOW (VAD). */
+      speaking: boolean;
+      speechShare: number;
+      rmsDb: number;
+      motion: number;
+      people: number;
+    } | null;
   }[];
-  program: { shot: ObShot | null; sinceMs: number; source: ObActionSource };
+  program: {
+    shot: ObShot | null;
+    sinceMs: number;
+    source: ObActionSource;
+    /** Time the current hold still blocks auto cuts, null when free. */
+    holdRemainingMs: number | null;
+    /** The auto pilot paused by an operator cut, for this much longer. */
+    autoPausedForMs: number | null;
+    /** An already-queued shot change (label + when it lands). */
+    scheduledNext: { shot: string; inMs: number } | null;
+  };
   pacing: { minHoldMs: number; maxHoldMs: number };
   lowerThird: { name: string; camNumber: number | null } | null;
+  /** Chronological (oldest first), real program changes only, ≤ 6. */
   lastCuts: ObLogEntry[];
+  /** Auto-pilot camera scores of the latest tick (cam number → score). */
+  scores: Record<number, number> | null;
+  /** How far the signals run ahead of the on-air picture (side-channel delay). */
+  lookaheadMs: number;
 };
 
 export type ObLlmDeps = {
@@ -252,9 +322,43 @@ export interface ObLlmModule {
     base?: ObRuleset;
   }): Promise<ObBriefResult>;
   setAnalyst(enabled: boolean, intervalS?: number): void;
+  /**
+   * Something just happened (speaker change, keyword, cut, long silence):
+   * run an analyst tick soon instead of waiting for the interval. Debounced
+   * and rate-limited inside the analyst; a no-op while off / off-air.
+   */
+  requestTick(reason: string): void;
+  /** Switch the model for later calls (no-op without an API key). */
+  setModel(model: string): void;
+  /**
+   * Host identification (vision): one snapshot + the host description →
+   * `{isHost, confidence, reason}`, or null when the model refused / answered
+   * without the tool. Rejects like the other one-shots (`busy`, `budget`,
+   * `llm_unavailable`, transport errors).
+   */
+  identifyHost(input: {
+    imageB64: string;
+    hostDescription: string;
+    camLabel: string;
+  }): Promise<{ isHost: boolean; confidence: number; reason: string } | null>;
+  /**
+   * The "Ask the AI" quiz lifeline: the model answers the question BLIND
+   * (it is never told the correct letter — a confidently wrong hint is part
+   * of the show). Null when the model refused / answered without the tool.
+   * Rejects like the other one-shots.
+   */
+  quizHint(input: {
+    question: string;
+    answers: [string, string, string, string];
+  }): Promise<{ letter: ObQuizLetter; text: string } | null>;
   onTranscript(camNumber: number, text: string, airMs: number): void;
   setPhase(phase: ObPhase): void;
-  wrapNotes(input: { stats: ObStats; log: ObLogEntry[]; brief: string; eventName: string }): Promise<string>;
+  wrapNotes(input: {
+    stats: ObStats;
+    log: ObLogEntry[];
+    brief: string;
+    eventName: string;
+  }): Promise<string>;
   kill(): void;
   dispose(): void;
 }

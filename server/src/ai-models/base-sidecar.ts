@@ -47,12 +47,15 @@ type OutgoingMessage = {
     | 'side_channel_ready'
     | 'side_channel_stopped'
     | 'replay'
+    | 'capture'
     | 'shutdown';
   inputId?: string;
   params?: Record<string, number | string>;
   /** `replay`: ledger entry the clip belongs to, and its frame time. */
   shotId?: string;
   t?: number;
+  /** `capture`: echoed back on the snapshot result. */
+  requestId?: string;
 };
 
 export abstract class BaseSidecar extends EventEmitter {
@@ -149,6 +152,16 @@ export abstract class BaseSidecar extends EventEmitter {
       shotId,
       ...(t != null ? { t } : {}),
     });
+  }
+
+  /**
+   * Ask the worker for a JPEG snapshot of `inputId`'s latest analysed frame.
+   * The worker answers with a `{kind:'snapshot', requestId, ...}` result.
+   * Only the OB Van worker implements it; others ignore the command.
+   * Returns false when the worker is not connected.
+   */
+  requestCapture(inputId: string, requestId: string): boolean {
+    return this.sendToPython({ cmd: 'capture', inputId, requestId });
   }
 
   async shutdown(): Promise<void> {

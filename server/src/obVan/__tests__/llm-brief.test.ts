@@ -358,6 +358,22 @@ describe('AnthropicObLlmClient', () => {
     expect(t.options[0]).toMatchObject({ timeout: 20_000, maxRetries: 0 });
   });
 
+  it('omits output_config on Haiku and switches models via setModel', async () => {
+    const t = fakeMessages(toolMsg({ actions: [] }), toolMsg({ actions: [] }));
+    const client = new AnthropicObLlmClient({
+      model: 'claude-haiku-4-5',
+      messages: t.api,
+    });
+    await client.call(callInput);
+    expect(t.bodies[0].model).toBe('claude-haiku-4-5');
+    expect(t.bodies[0].output_config).toBeUndefined();
+    client.setModel('claude-sonnet-5');
+    expect(client.model).toBe('claude-sonnet-5');
+    await client.call(callInput);
+    expect(t.bodies[1].model).toBe('claude-sonnet-5');
+    expect(t.bodies[1].output_config).toEqual({ effort: 'low' });
+  });
+
   it('retries once with an explicit instruction when the tool is not called, summing usage', async () => {
     const t = fakeMessages(textMsg('Looks fine.'), toolMsg({ actions: [] }));
     const client = new AnthropicObLlmClient({
@@ -451,7 +467,7 @@ describe('AnthropicObLlmClient', () => {
     expect(createObLlmClient({})).toBeNull();
     expect(createObLlmClient({ ANTHROPIC_API_KEY: '  ' })).toBeNull();
     expect(createObLlmClient({ ANTHROPIC_API_KEY: 'sk-test' })?.model).toBe(
-      'claude-sonnet-5',
+      'claude-haiku-4-5',
     );
     expect(
       createObLlmClient({

@@ -8,8 +8,8 @@
  * high.
  *
  * Limits (per event — reset when a new event starts):
- * - `OB_VAN_LLM_MAX_RUNS_PER_EVENT` (default 240) API calls;
- * - `OB_VAN_LLM_MAX_INPUT_TOKENS_PER_EVENT` (default 400 000) input tokens,
+ * - `OB_VAN_LLM_MAX_RUNS_PER_EVENT` (default 600) API calls;
+ * - `OB_VAN_LLM_MAX_INPUT_TOKENS_PER_EVENT` (default 1 200 000) input tokens,
  *   counting uncached + cache-read + cache-write tokens alike (conservative).
  */
 import type { ObLlmUsage } from './client';
@@ -69,9 +69,11 @@ export function obLlmCostUsd(model: string, usage: ObLlmUsage): number {
 
 export type ObLlmBudgetLimits = { maxRuns: number; maxInputTokens: number };
 
+// Sized for event-driven ticks (~4-6 calls/min worst case) over a 2 h event
+// on the Haiku default; env vars trim it down for pricier models.
 export const OB_LLM_DEFAULT_LIMITS: ObLlmBudgetLimits = {
-  maxRuns: 240,
-  maxInputTokens: 400_000,
+  maxRuns: 600,
+  maxInputTokens: 1_200_000,
 };
 
 function positiveInt(raw: string | undefined, fallback: number): number {
@@ -96,7 +98,8 @@ export function obLlmLimitsFromEnv(
 }
 
 export class ObLlmBudget {
-  readonly model: string;
+  /** Prices calls from now on; switched together with the client's model. */
+  model: string;
   readonly limits: ObLlmBudgetLimits;
   runs = 0;
   /** All input tokens (uncached + cache read + cache write). */

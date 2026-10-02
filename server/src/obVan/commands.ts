@@ -10,12 +10,15 @@ import type {
   ObEffects,
   ObGrade,
   ObOperatorCommand,
+  ObQuizAction,
   ObTransition,
   ObTransitionType,
 } from '@smelter-editor/types';
 import {
   OB_GRADES,
+  OB_QUIZ_ACTIONS,
   OB_TRANSITION_TYPES,
+  isObQuizLetter,
   parseObShot,
 } from '@smelter-editor/types';
 
@@ -215,6 +218,23 @@ export function parseObCommand(raw: unknown): ObOperatorCommand | null {
     case 'note': {
       const text = str(raw.text, 240);
       return text ? { op: 'note', text } : null;
+    }
+    case 'quiz': {
+      const action = raw.action;
+      if (
+        !(OB_QUIZ_ACTIONS as readonly unknown[]).includes(action)
+      )
+        return null;
+      const cmd: ObOperatorCommand = {
+        op: 'quiz',
+        action: action as ObQuizAction,
+      };
+      const camId = str(raw.camId, 80);
+      if (camId) cmd.camId = camId;
+      if (isObQuizLetter(raw.letter)) cmd.letter = raw.letter;
+      if (raw.verdict === 'correct' || raw.verdict === 'wrong')
+        cmd.verdict = raw.verdict;
+      return cmd;
     }
     default:
       return null;

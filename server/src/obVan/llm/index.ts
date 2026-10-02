@@ -17,6 +17,8 @@ import {
   type ObTimers,
 } from './analyst';
 import { generateRuleset } from './brief';
+import { identifyHost } from './identify';
+import { quizHint } from './hint';
 import {
   ObLlmBudget,
   obLlmLimitsFromEnv,
@@ -83,11 +85,15 @@ export function createObLlm(
     return {
       status,
       generateRuleset: () => Promise.reject(unavailable()),
+      identifyHost: () => Promise.reject(unavailable()),
+      quizHint: () => Promise.reject(unavailable()),
       setAnalyst(enabled, s) {
         wanted = enabled;
         if (s !== undefined) wantedInterval = clampAnalystInterval(s);
         deps.onStatus(status());
       },
+      requestTick: () => undefined,
+      setModel: () => undefined,
       onTranscript: () => undefined,
       setPhase: () => undefined,
       wrapNotes: () => Promise.reject(unavailable()),
@@ -190,8 +196,33 @@ export function createObLlm(
       );
     },
 
+    identifyHost(input) {
+      return runOneShot((signal, onUsage) =>
+        identifyHost(llm, input, { signal, onUsage }),
+      );
+    },
+
+    quizHint(input) {
+      return runOneShot((signal, onUsage) =>
+        quizHint(llm, input, { signal, onUsage }),
+      );
+    },
+
     setAnalyst(enabled, s) {
       analyst.setEnabled(enabled, s);
+    },
+
+    requestTick(reason) {
+      analyst.requestTick(reason);
+    },
+
+    setModel(model) {
+      const m = model.trim();
+      if (!m || m === llm.model) return;
+      llm.setModel?.(m);
+      // Calls from now on are priced at the new model's rates.
+      budget.model = llm.model;
+      emit();
     },
 
     onTranscript(camNumber, text, airMs) {

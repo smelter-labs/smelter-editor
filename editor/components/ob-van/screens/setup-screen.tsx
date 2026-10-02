@@ -36,6 +36,7 @@ import { AdoptInputRow } from '../setup/adopt-input-row';
 import { JoinPlate } from '../setup/join-plate';
 import { DirectorPlate } from '../setup/director-plate';
 import { AiBriefPlate } from '../setup/ai-brief-plate';
+import { HostPlate } from '../setup/host-plate';
 import { RulesCards } from '../setup/rules-cards';
 import { RundownEditor } from '../setup/rundown-editor';
 
@@ -232,7 +233,24 @@ export function SetupScreen({
               <PresetGrid
                 value={config.presetId}
                 onPick={(presetId) =>
-                  onConfig((c) => ({ ...c, presetId, ruleset: null }))
+                  onConfig((c) => ({
+                    ...c,
+                    presetId,
+                    ruleset: null,
+                    // FOLLOW lives on a grid of every camera, which puts no
+                    // camera "on air" for audio-follow — force the mix — and
+                    // is pointless without host recognition.
+                    ...(presetId === 'follow'
+                      ? {
+                          audio: { mode: 'mix' as const },
+                          host: { ...c.host, enabled: true },
+                        }
+                      : {}),
+                    // QUIZ rests on the same all-cameras grid between rounds.
+                    ...(presetId === 'quiz'
+                      ? { audio: { mode: 'mix' as const } }
+                      : {}),
+                  }))
                 }
               />
             </Field>
@@ -339,6 +357,16 @@ export function SetupScreen({
               llm={state?.llm ?? null}
               onRulesetApplied={onRulesetApplied}
             />
+          </ObPlate>
+          <ObPlate
+            title='HOST RECOGNITION'
+            bar={OB.accent}
+            right={
+              state?.llm.available === false ? (
+                <Chip dense label='LLM OFF' disabled />
+              ) : null
+            }>
+            <HostPlate config={config} onConfig={onConfig} />
           </ObPlate>
           <ObPlate title='RULES'>
             <RulesCards

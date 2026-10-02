@@ -417,6 +417,15 @@ const WHY = str('Why, in a few words (shown in the log).', 80);
 const DIRECT_ACTION: ObJsonSchema = {
   anyOf: [
     obj(
+      {
+        type: { type: 'string', const: 'cut' },
+        cam: int(1, 8, 'Camera number to put on program (solo).'),
+        why: WHY,
+      },
+      ['type', 'cam', 'why'],
+      'Cut the program to this camera now. Use it when the wrong camera is on air or the shot has gone stale.',
+    ),
+    obj(
       { type: { type: 'string', const: 'advance_segment' }, why: WHY },
       ['type', 'why'],
       'Go to the next rundown segment (only when the talk clearly moved on).',
@@ -470,7 +479,7 @@ const DIRECT_ACTION: ObJsonSchema = {
 export const OB_DIRECT_TOOL: ObLlmToolDef = {
   name: 'direct',
   description:
-    'Nudge the show with at most 3 bounded actions. An empty list means "all good, keep going".',
+    'Direct the show with at most 3 bounded actions — a cut when the wrong camera is on air, plus nudges (lower third, pacing, camera bias, note). An empty list means "all good, keep going".',
   inputSchema: toStrictSchema({
     type: 'object',
     properties: {
@@ -496,7 +505,7 @@ Every 100 ms the auto pilot scores each live camera (weights × signals, roleBia
 - keywords: groups of lowercase words / phrases matched in live captions; a leaf {signal:"keyword", op:"has", value:"<group>"} fires when a group word is heard.
 - rule: {id, name, priority 0..100 (≥ 80 ignores minHoldMs), cooldownMs, holdMs, enabled, when, then}.
 - when: a leaf {signal, cam?, op?, value?, forMs?} or ONE level of {all:[leaves]} / {any:[leaves]} / {not: leaf}. No nesting.
-  signals: speech (someone talks; bool), silence (nobody talks), speechShare (0..1 of last 10 s), rms (dBFS, −90..0), onset (audio onset now), onsetsPerSec, motion (0..1), motionSpike, burst (sustained action), people (count), ball (ball visible), ballAge (ms since ball seen), keyword (op "has", value = group), hold (ms current shot has been on air), segment (rundown index), dialogue (two cams alternating speech; bool).
+  signals: speech (someone talks; bool), silence (nobody talks), speechShare (0..1 of last 10 s), rms (dBFS, −90..0), onset (audio onset now), onsetsPerSec, motion (0..1), motionSpike, burst (sustained action), people (count), ball (ball visible), ballAge (ms since ball seen), keyword (op "has", value = group), quizTurn (the quiz contestant being asked answers on this camera; bool), hold (ms current shot has been on air), segment (rundown index), dialogue (two cams alternating speech; bool).
   ops: ${OB_OPS.join(' ')}; leaving op/value out = "is true".
 - cam selectors: a role (${OB_CAM_ROLES.join(', ')}, custom:<name>) = first live camera with that role; "any"; "program" (on air); "not-program" (best camera off air); "trigger" (the camera that met the condition); "cam:<n>" = camera number n.
 - then: {shot?, transition?, effects?, lowerThird?, replay?, pacing?} — at least one of shot/effects/lowerThird/replay/pacing.

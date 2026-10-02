@@ -53,6 +53,12 @@ export function pendingKeyOf(cmd: ObOperatorCommand): string {
       return `prefer_cam:${cmd.camId}`;
     case 'note':
       return 'note';
+    case 'quiz':
+      // A re-lock of another letter is a new press; everything else is one
+      // in-flight action of its kind.
+      return cmd.action === 'lock'
+        ? `quiz:lock:${cmd.letter ?? ''}`
+        : `quiz:${cmd.action}`;
   }
 }
 
@@ -104,6 +110,32 @@ export function commandEchoed(
       return now.replay != null;
     case 'title_bug':
       return cmd.visible == null || now.titleBug.visible === cmd.visible;
+    case 'quiz': {
+      const quiz = now.quiz;
+      if (!quiz) return true;
+      switch (cmd.action) {
+        case 'assign':
+          return (
+            quiz.current != null &&
+            (cmd.camId == null || quiz.current.forCamId === cmd.camId)
+          );
+        case 'show_board':
+          return quiz.current?.shownAtMs != null;
+        case 'hide_board':
+          return quiz.current == null || quiz.current.shownAtMs == null;
+        case 'lock':
+          return quiz.current?.lockedLetter === cmd.letter;
+        case 'reveal':
+          return quiz.phase === 'revealed' || quiz.phase === 'idle';
+        case 'lifeline':
+          return quiz.hint != null;
+        case 'skip':
+          return quiz.current == null;
+        case 'reset':
+          return true;
+      }
+      return true;
+    }
     default:
       // No visible echo to wait for — clear on the next state.
       return true;

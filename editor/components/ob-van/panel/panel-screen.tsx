@@ -23,8 +23,13 @@ import { BusRow } from './bus-row';
 import { FxBar } from './fx-bar';
 import { LowerThirdBar } from './lower-third-bar';
 import { MonitorRow } from './monitor-row';
-import { PANEL_KEY_HINTS } from './panel-keys';
+import {
+  PANEL_KEY_HINTS,
+  QUIZ_KEY_HINTS,
+  quizLettersActive,
+} from './panel-keys';
 import { panelKeyContextOf } from './panel-model';
+import { QuizBar } from './quiz-bar';
 import { RundownStrip } from './rundown-strip';
 import { ShotBar } from './shot-bar';
 import { Transport } from './transport';
@@ -68,7 +73,8 @@ export function PanelScreen({
 }) {
   const state = socket.state;
   const pending = useObPending(state, socket.send);
-  usePanelKeys(state ? panelKeyContextOf(state) : null, pending.send, true);
+  const keyCtx = state ? panelKeyContextOf(state) : null;
+  usePanelKeys(keyCtx, pending.send, true);
 
   // A refused command: drop every pending mark and show the reason for 4 s.
   const errorAt = socket.lastError?.at ?? null;
@@ -200,6 +206,7 @@ export function PanelScreen({
         <ShotBar state={state} pending={pending} />
         <FxBar state={state} pending={pending} />
         <LowerThirdBar state={state} pending={pending} />
+        <QuizBar state={state} pending={pending} />
         <RundownStrip state={state} pending={pending} />
       </div>
 
@@ -217,7 +224,15 @@ export function PanelScreen({
         <WhyTicker log={socket.log} />
       </div>
 
-      {desk ? <FooterHints hints={PANEL_KEY_HINTS} /> : null}
+      {desk ? (
+        <FooterHints
+          hints={
+            keyCtx && quizLettersActive(keyCtx.quiz)
+              ? QUIZ_KEY_HINTS
+              : PANEL_KEY_HINTS
+          }
+        />
+      ) : null}
 
       {toast ? (
         <div

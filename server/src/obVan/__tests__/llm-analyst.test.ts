@@ -11,12 +11,19 @@ import {
   ObAnalyst,
   OB_ANALYST_MAX_BACKOFF_MS,
   parseDirectActions,
+  situationHash,
 } from '../llm/analyst';
+import {
+  buildAnalystUser,
+  OB_LLM_SYSTEM,
+  OB_LLM_SYSTEM_ANALYST,
+} from '../llm/prompts';
 import { ObLlmBudget } from '../llm/budget';
 import { ObLlmError } from '../llm/errors';
 import { createObLlm } from '../llm';
 import { ObTranscriptRing } from '../llm/transcripts';
 import {
+  cam,
   deferred,
   FakeLlmClient,
   flush,
@@ -106,7 +113,8 @@ describe('ObAnalyst gating', () => {
     expect(s.client.calls[1]).toMatchObject({
       effort: 'low',
       maxTokens: 1500,
-      timeoutMs: 25_000,
+      timeoutMs: 20_000,
+      toolChoice: 'required',
     });
   });
 
@@ -215,7 +223,9 @@ describe('ObAnalyst actions', () => {
 
   it('rejects prefer_cam for the camera already on program', async () => {
     s.client.tool({
-      actions: [{ type: 'prefer_cam', cam: 1, forMs: 20000, why: 'host leads' }],
+      actions: [
+        { type: 'prefer_cam', cam: 1, forMs: 20000, why: 'host leads' },
+      ],
     });
     await s.analyst.tick();
     expect(s.applied).toEqual([]);
@@ -372,7 +382,7 @@ describe('helpers', () => {
   });
 
   it('reads the interval from the environment, clamped', () => {
-    expect(analystIntervalFromEnv({})).toBe(30);
+    expect(analystIntervalFromEnv({})).toBe(15);
     expect(analystIntervalFromEnv({ OB_VAN_LLM_ANALYST_INTERVAL_S: '5' })).toBe(
       10,
     );
@@ -381,7 +391,7 @@ describe('helpers', () => {
     ).toBe(45);
     expect(
       analystIntervalFromEnv({ OB_VAN_LLM_ANALYST_INTERVAL_S: 'soon' }),
-    ).toBe(30);
+    ).toBe(15);
   });
 });
 
@@ -511,5 +521,230 @@ describe('createObLlm analyst wiring', () => {
     expect((err as ObLlmError).code).toBe('budget');
     llm.setPhase('setup');
     expect(llm.status().runs).toBe(0);
+  });
+});
+
+describe('ObAnalyst cut action', () => {
+  it('parses cut and maps it to a held solo take with source llm', async () => {
+    const s = setup();
+    s.live();
+    s.client.tool({
+      actions: [{ type: 'cut', cam: 2, why: 'speaker is on cam 2' }],
+    });
+    expect(await s.analyst.tick()).toBe('ran');
+    expect(s.applied).toHaveLength(1);
+    expect(s.applied[0].cmd).toEqual({
+      op: 'shot',
+      shot: { kind: 'solo', cam: 'c2' },
+      mode: 'take',
+      holdMs: 4000,
+    });
+    expect(s.applied[0].reasons).toContain('speaker is on cam 2');
+  });
+
+  it('rejects cut to a dead, missing or on-program camera', async () => {
+    const s = setup({
+      situation: situation({
+        cams: [
+          cam(1, 'wide', null, { onProgram: true }),
+          cam(2, 'speaker', null, { live: false }),
+        ],
+      }),
+    });
+    s.live();
+    s.client.tool({
+      actions: [{ type: 'cut', cam: 1, why: 'x' }],
+    });
+    expect(await s.analyst.tick()).toBe('ran');
+    expect(s.applied).toHaveLength(0);
+    expect(s.logs.map((l) => l.text).join('\n')).toContain(
+      'cut: camera 1 is already on program',
+    );
+    s.ring.push(1, 'new words', s.now());
+    s.client.tool({
+      actions: [
+        { type: 'cut', cam: 2, why: 'x' },
+        { type: 'note', text: 'cam 9 next' },
+      ],
+    });
+    expect(await s.analyst.tick()).toBe('ran');
+    expect(s.applied.map((a) => a.cmd.op)).toEqual(['note']);
+    expect(s.logs.map((l) => l.text).join('\n')).toContain(
+      'cut: camera 2 is not live',
+    );
+  });
+
+  it('applies the cut before other actions in the same turn', async () => {
+    const s = setup();
+    s.live();
+    s.client.tool({
+      actions: [
+        { type: 'note', text: 'cutting to the speaker' },
+        { type: 'cut', cam: 2, why: 'speaker' },
+      ],
+    });
+    expect(await s.analyst.tick()).toBe('ran');
+    expect(s.applied.map((a) => a.cmd.op)).toEqual(['shot', 'note']);
+  });
+});
+
+describe('ObAnalyst immediate and event ticks', () => {
+  it('ticks right away when enabled on air (no full-interval wait)', async () => {
+    const s = setup();
+    s.client.tool({ actions: [] });
+    s.live();
+    expect(s.timers.timeouts.length).toBeGreaterThan(0);
+    s.timers.fireTimeouts();
+    await flush();
+    expect(s.client.calls).toHaveLength(1);
+  });
+
+  it('requestTick debounces, then runs when the situation changed', async () => {
+    const s = setup();
+    s.live();
+    s.client.tool({ actions: [] }).tool({ actions: [] });
+    expect(await s.analyst.tick()).toBe('ran');
+    s.advance(6_000);
+    s.ring.push(2, 'fresh words', s.now());
+    s.analyst.requestTick('speaker CAM 2');
+    expect(s.timers.timeouts.some((t) => t.ms === 1_000)).toBe(true);
+    s.timers.fireTimeouts();
+    await flush();
+    expect(s.client.calls).toHaveLength(2);
+  });
+
+  it('requestTick respects the minimum gap after a run', async () => {
+    const s = setup();
+    s.live();
+    s.client.tool({ actions: [] });
+    expect(await s.analyst.tick()).toBe('ran');
+    s.advance(2_000); // < 5 s gap
+    s.analyst.requestTick('keyword tape');
+    s.timers.fireTimeouts();
+    await flush();
+    expect(s.client.calls).toHaveLength(1);
+  });
+
+  it('requestTick is a no-op while disabled or off-air', () => {
+    const s = setup();
+    s.analyst.requestTick('speaker CAM 2');
+    s.analyst.setPhase('on-air');
+    s.analyst.requestTick('speaker CAM 2');
+    expect(s.timers.timeouts).toHaveLength(0);
+  });
+
+  it('an event during a call in flight queues one follow-up tick', async () => {
+    const s = setup();
+    s.live();
+    s.timers.timeouts = []; // drop the immediate first tick, driven by hand here
+    const gate = deferred<{ toolInput: unknown }>();
+    s.client.reply(
+      gate.promise as Promise<Partial<import('../llm/client').ObLlmCallResult>>,
+    );
+    s.client.tool({ actions: [] });
+    const first = s.analyst.tick();
+    await flush();
+    s.analyst.requestTick('cut applied');
+    expect(s.timers.timeouts).toHaveLength(0); // queued as pending, not timed
+    gate.resolve({ toolInput: { actions: [] } });
+    expect(await first).toBe('ran');
+    expect(s.timers.timeouts.some((t) => t.ms === 1_000)).toBe(true);
+    s.advance(6_000);
+    s.ring.push(2, 'more words', s.now());
+    s.timers.fireTimeouts();
+    await flush();
+    expect(s.client.calls).toHaveLength(2);
+  });
+});
+
+describe('situationHash signals', () => {
+  it('changes when a camera starts speaking, not on loudness jitter', () => {
+    const base = situation();
+    const a = situationHash(base, null);
+    const speaking = situation({
+      cams: [
+        cam(1, 'wide', null, { onProgram: true }),
+        cam(2, 'speaker', 'Anna Kowalska', {
+          signals: {
+            speaking: true,
+            speechShare: 0.2,
+            rmsDb: -30,
+            motion: 0.1,
+            people: 1,
+          },
+        }),
+        cam(3, 'guest', null),
+      ],
+    });
+    expect(situationHash(speaking, null)).not.toBe(a);
+    const jitter = situation({
+      cams: [
+        cam(1, 'wide', null, {
+          onProgram: true,
+          signals: {
+            speaking: false,
+            speechShare: 0.21,
+            rmsDb: -22,
+            motion: 0.4,
+            people: 1,
+          },
+        }),
+        cam(2, 'speaker', 'Anna Kowalska'),
+        cam(3, 'guest', null),
+      ],
+    });
+    expect(situationHash(jitter, null)).toBe(a);
+  });
+});
+
+describe('analyst prompts', () => {
+  it('the analyst system prompt is directive and carries no rules DSL', () => {
+    expect(OB_LLM_SYSTEM_ANALYST).not.toContain('RULES DSL');
+    expect(OB_LLM_SYSTEM_ANALYST).toContain('cut');
+    expect(OB_LLM_SYSTEM).toContain('RULES DSL');
+  });
+
+  it('the situation report shows all handed cuts, speaking flags and scores', () => {
+    const sit = situation({
+      cams: [
+        cam(1, 'wide', null, { onProgram: true }),
+        cam(2, 'speaker', 'Anna Kowalska', {
+          signals: {
+            speaking: true,
+            speechShare: 0.6,
+            rmsDb: -25,
+            motion: 0.1,
+            people: 1,
+          },
+        }),
+      ],
+      scores: { 1: 0.4, 2: 1.31 },
+      lastCuts: [
+        {
+          id: 'x1',
+          atMs: 90_000,
+          source: 'auto',
+          kind: 'auto',
+          tone: 'ai',
+          label: 'AUTO',
+          text: 'older cut',
+        },
+        {
+          id: 'x2',
+          atMs: 99_000,
+          source: 'llm',
+          kind: 'take',
+          tone: 'ai',
+          label: 'LLM',
+          text: 'newest cut',
+        },
+      ],
+    });
+    const user = buildAnalystUser(sit, []);
+    expect(user).toContain('newest cut');
+    expect(user).toContain('older cut');
+    expect(user).toContain('"speakingNow":true');
+    expect(user).toContain('"score":1.31');
+    expect(user).toContain('signalsRunAheadOfCaptionsMs');
   });
 });

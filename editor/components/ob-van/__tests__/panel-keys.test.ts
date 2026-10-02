@@ -3,7 +3,9 @@ import { OB_TRANSITION_TYPES } from '@smelter-editor/types';
 import {
   nextTransitionType,
   panelKeyToCommand,
+  quizLettersActive,
   type PanelKeyContext,
+  type PanelKeyQuizContext,
 } from '../panel/panel-keys';
 
 const cams = [
@@ -22,6 +24,7 @@ function ctx(over: Partial<PanelKeyContext> = {}): PanelKeyContext {
     lowerThirdCamId: null,
     rundownLength: 0,
     replayEnabled: false,
+    quiz: null,
     ...over,
   };
 }
@@ -119,6 +122,96 @@ describe('panelKeyToCommand — transition, rundown, replay', () => {
   it('ignores unmapped keys', () => {
     expect(panelKeyToCommand('x', ctx())).toBeNull();
     expect(panelKeyToCommand('Escape', ctx())).toBeNull();
+  });
+});
+
+describe('panelKeyToCommand — quiz', () => {
+  const quiz = (phase: PanelKeyQuizContext['phase'], over = {}) =>
+    ctx({ quiz: { phase, canReveal: false, canLifeline: false, ...over } });
+
+  it('A stays the auto toggle until the board is up, then locks the letter', () => {
+    expect(panelKeyToCommand('a', ctx())).toEqual({
+      op: 'auto',
+      enabled: true,
+    });
+    expect(panelKeyToCommand('a', quiz('idle'))).toEqual({
+      op: 'auto',
+      enabled: true,
+    });
+    expect(panelKeyToCommand('a', quiz('assigned'))).toEqual({
+      op: 'auto',
+      enabled: true,
+    });
+    expect(panelKeyToCommand('a', quiz('board'))).toEqual({
+      op: 'quiz',
+      action: 'lock',
+      letter: 'A',
+    });
+    expect(panelKeyToCommand('d', quiz('locked'))).toEqual({
+      op: 'quiz',
+      action: 'lock',
+      letter: 'D',
+    });
+  });
+
+  it('Q toggles the board by phase', () => {
+    expect(panelKeyToCommand('q', quiz('assigned'))).toEqual({
+      op: 'quiz',
+      action: 'show_board',
+    });
+    expect(panelKeyToCommand('Q', quiz('board'))).toEqual({
+      op: 'quiz',
+      action: 'hide_board',
+    });
+    expect(panelKeyToCommand('q', quiz('idle'))).toBeNull();
+    expect(panelKeyToCommand('q', ctx())).toBeNull();
+  });
+
+  it('V reveals only when allowed; G / W override; H burns the lifeline', () => {
+    expect(panelKeyToCommand('v', quiz('locked'))).toBeNull();
+    expect(panelKeyToCommand('v', quiz('locked', { canReveal: true }))).toEqual(
+      { op: 'quiz', action: 'reveal' },
+    );
+    expect(panelKeyToCommand('g', quiz('board'))).toEqual({
+      op: 'quiz',
+      action: 'reveal',
+      verdict: 'correct',
+    });
+    expect(panelKeyToCommand('w', quiz('locked'))).toEqual({
+      op: 'quiz',
+      action: 'reveal',
+      verdict: 'wrong',
+    });
+    expect(panelKeyToCommand('g', quiz('idle'))).toBeNull();
+    expect(panelKeyToCommand('h', quiz('assigned'))).toBeNull();
+    expect(
+      panelKeyToCommand('H', quiz('assigned', { canLifeline: true })),
+    ).toEqual({ op: 'quiz', action: 'lifeline' });
+  });
+
+  it('digits still preview cameras during the quiz', () => {
+    expect(panelKeyToCommand('2', quiz('board'))).toEqual({
+      op: 'preview',
+      shot: { kind: 'solo', cam: 'b' },
+    });
+  });
+
+  it('quizLettersActive only with the board up', () => {
+    expect(quizLettersActive(null)).toBe(false);
+    expect(
+      quizLettersActive({
+        phase: 'idle',
+        canReveal: false,
+        canLifeline: false,
+      }),
+    ).toBe(false);
+    expect(
+      quizLettersActive({
+        phase: 'board',
+        canReveal: false,
+        canLifeline: false,
+      }),
+    ).toBe(true);
   });
 });
 

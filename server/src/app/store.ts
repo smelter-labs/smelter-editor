@@ -20,6 +20,8 @@ import type {
   ObActionSource,
   ObGrade,
   ObPhase,
+  ObQuizLetter,
+  ObQuizVerdict,
   ShooterTopScoreEntry,
 } from '@smelter-editor/types';
 import type { HandsStore } from '../hands/handStore';
@@ -32,6 +34,7 @@ import { useShallow } from 'zustand/react/shallow';
 
 export type { SnakeGameState } from '../snakeGame/types';
 import type { SnakeGameState } from '../snakeGame/types';
+import type { ObPuppetConfig } from '../obVan/puppets/types';
 
 export type InputConfig = {
   inputId: string;
@@ -49,6 +52,8 @@ export type InputConfig = {
   restartFading?: boolean;
   frozenImageId?: string;
   hidden?: boolean;
+  /** OB Van live puppet: paint this illustrated talent instead of the video. */
+  obPuppet?: ObPuppetConfig;
 } & InputDisplayProperties &
   Partial<TextInputProperties> &
   Partial<BorderProperties> &
@@ -963,6 +968,48 @@ export type ObHudState = {
     avgHoldMs: number;
     bySource: Record<ObActionSource, number>;
     shares: { number: number; name: string; pct: number }[];
+  } | null;
+  /**
+   * Smelterionaire quiz overlays (preset `quiz`, on air only). Stable values
+   * plus timestamps — the renderer computes every animation from the clock,
+   * so the JSON dedupe in publishHud stays effective. `correct` appears only
+   * inside `reveal`: the program can never leak the answer early.
+   */
+  quiz: {
+    players: {
+      name: string;
+      amount: number;
+      amountFrom: number;
+      changedAtMs: number | null;
+      verdict: ObQuizVerdict | null;
+      active: boolean;
+      lifelineUsed: boolean;
+    }[];
+    board: {
+      q: string;
+      answers: [string, string, string, string];
+      forName: string;
+      number: number;
+      shownAtMs: number;
+      locked: ObQuizLetter | null;
+      lockedAtMs: number | null;
+      reveal: {
+        correct: ObQuizLetter;
+        verdict: ObQuizVerdict;
+        atMs: number;
+        delta: number;
+      } | null;
+    } | null;
+    hint: {
+      text: string;
+      letter: ObQuizLetter | null;
+      atMs: number;
+      untilMs: number;
+    } | null;
+    /** Title plate while on air before the first question. */
+    splash: boolean;
+    /** A stinger clip currently mixed into the output (audio-only mp4). */
+    sfx: { inputId: string; startedAtMs: number } | null;
   } | null;
 };
 
