@@ -44,6 +44,14 @@ export interface ObQuizTtsModule {
 const SR = 24_000; // pcm_24000 — the highest PCM rate on the free tier
 /** Silent tail muxed after the line (see the mux comment). */
 const QUIZ_TTS_TAIL_PAD_S = 3;
+/**
+ * Silent head muxed before the line. The clip starts on the engine timeline
+ * at its register offset, but the scene's `<InputStream>` mounts only after
+ * `registerInput` resolves (up to ~850 ms) — without the head the first
+ * syllables never reach the mix. The controller shifts the mouth clock and
+ * pacing by the same amount.
+ */
+export const OB_QUIZ_TTS_HEAD_PAD_MS = 1_200;
 const MOUTH_RATE_HZ = 50;
 const FETCH_TIMEOUT_MS = 12_000;
 const FFMPEG_TIMEOUT_MS = 10_000;
@@ -202,7 +210,7 @@ export function createObQuizTts(
           '-f', 's16le', '-ar', String(SR), '-ac', '1', '-i', pcmPath,
           '-f', 'lavfi', '-i', 'color=c=black:s=64x36:r=10',
           '-map', '1:v', '-map', '0:a',
-          '-af', `apad=pad_dur=${QUIZ_TTS_TAIL_PAD_S}`,
+          '-af', `adelay=delays=${OB_QUIZ_TTS_HEAD_PAD_MS}:all=1,apad=pad_dur=${QUIZ_TTS_TAIL_PAD_S}`,
           '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
           '-c:a', 'aac', '-b:a', '128k', '-ar', '44100',
           '-shortest', '-movflags', '+faststart',

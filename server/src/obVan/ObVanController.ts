@@ -137,7 +137,11 @@ import {
   type ObQuizAiModule,
   type ObQuizHostEvent,
 } from './llm/quizHost';
-import type { ObQuizTtsClip, ObQuizTtsModule } from './llm/tts';
+import {
+  OB_QUIZ_TTS_HEAD_PAD_MS,
+  type ObQuizTtsClip,
+  type ObQuizTtsModule,
+} from './llm/tts';
 import type { PuppetLiveMouth } from './puppets/types';
 
 // ── Public contract ────────────────────────────────────────────────────────
@@ -394,12 +398,14 @@ const QUIZ_SFX_MS: Record<ObQuizSfx, number> = {
 /** Register a stinger slightly ahead so it starts at frame 0 of its clip. */
 const QUIZ_SFX_LEAD_MS = 250;
 /**
- * Speech clips start this far ahead on the engine timeline. Deliberately
- * larger than the sting lead: `registerInput` alone takes up to ~850 ms and
- * the `<InputStream>` mounts only after it resolves, so a short lead loses
- * the head of a 1–2 s line.
+ * Minimum gap between registering a speech clip and its VOICE starting.
+ * Freshly registered inputs join the audio mix late by a variable amount
+ * (measured on recordings: with sting-sized leads most 2 s lines never made
+ * the mix at all, while long-running carrier inputs are rock solid), so every
+ * line gets seconds of decode warm-up: the engine plays the clip's muxed
+ * silent head (`OB_QUIZ_TTS_HEAD_PAD_MS`) and whatever it loses is silence.
  */
-const QUIZ_SPEECH_LEAD_MS = 1_000;
+const QUIZ_SPEECH_HEADROOM_MS = 4_000;
 /** On-air breath between queued TTS lines. */
 const QUIZ_SPEECH_GAP_MS = 300;
 /**
@@ -644,6 +650,23 @@ export class ObVanController {
   private quizSpeechBusyUntilMs = 0;
   /** Cam whose puppet mouth is being driven, so cleanup clears the right one. */
   private quizSpeechMouthCam: string | null = null;
+  /** Guards the tidy-up mouth clear against a newer line's takeover. */
+  private quizSpeechMouthToken = 0;
+  private quizSpeechMouthApplied = 0;
+  /** When the last SCHEDULED line's voice (plus gap) ends — lines chain here. */
+  private quizSpeechEndsAtMs = 0;
+  /**
+   * Spent clip inputs awaiting unregister. Tearing an input down glitches the
+   * engine's audio mix and a clip STARTING in that window never joins it, so
+   * spent stings/lines are swept only while nothing is on the air (hard cap
+   * 30 s so inputs can't pile up through a chatty stretch).
+   */
+  private readonly quizAudioGarbage: {
+    inputId: string;
+    kind: 'sfx' | 'speech';
+    afterMs: number;
+    hardAtMs: number;
+  }[] = [];
   private lastGesture: ObHostState['lastGesture'] = null;
   /** Camera whose worker currently runs hand tracking (the host's). */
   private gestureCamId: string | null = null;
@@ -2392,7 +2415,7 @@ export class ObVanController {
       .then((inputId) => {
         if (this.disposed || !inputId) return;
         const prior = this.quizSfx;
-        if (prior) this.deps.unregisterQuizSfx?.(prior.inputId);
+        if (prior) this.discardQuizAudio('sfx', prior.inputId, 0);
         this.quizSfx = { inputId, kind, startedAtMs: this.now() };
         this.publishHud();
         const t = setTimeout(
@@ -2402,7 +2425,7 @@ export class ObVanController {
               this.quizSfx = null;
               if (!this.disposed) this.publishHud();
             }
-            this.deps.unregisterQuizSfx?.(inputId);
+            this.discardQuizAudio('sfx', inputId, 0);
           },
           // The files carry a 3 s silent tail (see scripts/quiz-render-sfx) —
           // hold the input through it, the mix dislikes short-lived inputs.
@@ -2411,6 +2434,49 @@ export class ObVanController {
         this.quizSfxTimers.add(t);
       })
       .catch((err) => console.warn('[ob] quiz sfx failed', err));
+  }
+
+  /** Queue a spent clip input for the quiet-air sweep. */
+  private discardQuizAudio(
+    kind: 'sfx' | 'speech',
+    inputId: string,
+    notBeforeMs: number,
+  ): void {
+    const now = this.now();
+    this.quizAudioGarbage.push({
+      inputId,
+      kind,
+      afterMs: now + notBeforeMs,
+      hardAtMs: now + notBeforeMs + 30_000,
+    });
+  }
+
+  /** Unregister spent clips, but only while no clip is on (or near) the air. */
+  private sweepQuizAudio(now: number): void {
+    if (!this.quizAudioGarbage.length) return;
+    // EXPERIMENT: no mid-show unregisters at all.
+    if (process.env.OB_QUIZ_NO_SWEEP === '1') return;
+    const speechIdle =
+      !this.quizSpeechPlaying && this.quizSpeechQueue.length === 0;
+    const sfxQuiet =
+      !this.quizSfx ||
+      now - this.quizSfx.startedAtMs >=
+        QUIZ_SFX_MS[this.quizSfx.kind] + QUIZ_SFX_LEAD_MS;
+    for (let i = this.quizAudioGarbage.length - 1; i >= 0; i--) {
+      const g = this.quizAudioGarbage[i];
+      if (now < g.afterMs) continue;
+      if (now < g.hardAtMs && !(speechIdle && sfxQuiet)) continue;
+      this.quizAudioGarbage.splice(i, 1);
+      if (g.kind === 'speech') {
+        this.deps.unregisterQuizSpeech?.(g.inputId);
+        if (this.quizSpeech?.inputId === g.inputId) {
+          this.quizSpeech = null;
+          if (!this.disposed) this.publishHud();
+        }
+      } else {
+        this.deps.unregisterQuizSfx?.(g.inputId);
+      }
+    }
   }
 
   // ── Quiz speech (ElevenLabs voices) ──────────────────────────────────
@@ -2447,6 +2513,10 @@ export class ObVanController {
     if (this.quizSpeechPlaying || this.disposed) return;
     const entry = this.quizSpeechQueue.shift();
     if (!entry) return;
+    // Serialises synth + register. Playback itself is a SCHEDULE: each line
+    // is registered as early as possible with its voice slotted after the
+    // previous line, so every input gets seconds of decode warm-up (and a
+    // queued chain of lines warms up even longer).
     this.quizSpeechPlaying = true;
     void (async () => {
       try {
@@ -2455,70 +2525,76 @@ export class ObVanController {
           (await this.quizTts?.synth(entry.text, entry.voiceId)) ??
           null;
         if (clip && !this.disposed && this.quizOn() && this.phase === 'on-air') {
-          // The clip starts at `offsetMs` on the engine timeline no matter
-          // when the register resolves — take both clocks in the same tick so
-          // the puppet mouth and the audio line up.
-          const startedAtMs = this.now() + QUIZ_SPEECH_LEAD_MS;
+          const now = this.now();
+          const voicedStartMs = Math.max(
+            now + QUIZ_SPEECH_HEADROOM_MS,
+            this.quizSpeechEndsAtMs,
+          );
+          // Claim the slot BEFORE any await — a second line slipping through
+          // while the register is in flight must chain after this one, never
+          // share its slot (two voices at once).
+          this.quizSpeechEndsAtMs =
+            voicedStartMs + clip.durationMs + QUIZ_SPEECH_GAP_MS;
+          this.quizSpeechBusyUntilMs = Math.max(
+            this.quizSpeechBusyUntilMs,
+            this.quizSpeechEndsAtMs,
+          );
+          // The engine starts the clip's muxed silent head before the voice.
           const offsetMs =
-            this.deps.getPipelineTimeMs() + QUIZ_SPEECH_LEAD_MS;
+            this.deps.getPipelineTimeMs() +
+            (voicedStartMs - now) -
+            OB_QUIZ_TTS_HEAD_PAD_MS;
           const inputId = await this.deps.registerQuizSpeech!(
             clip.file,
             offsetMs,
           );
           if (inputId && !this.disposed) {
-            this.quizSpeech = { inputId, startedAtMs };
-            this.quizSpeechBusyUntilMs = Math.max(
-              this.quizSpeechBusyUntilMs,
-              startedAtMs + clip.durationMs + QUIZ_SPEECH_GAP_MS,
-            );
-            if (entry.camInputId && this.deps.setQuizSpeechMouth) {
-              this.quizSpeechMouthCam = entry.camInputId;
-              this.deps.setQuizSpeechMouth(entry.camInputId, {
-                track: clip.mouth,
-                startWallMs: startedAtMs,
-                durationMs: clip.durationMs,
-              });
-            }
-            entry.onStart?.(clip, startedAtMs);
+            this.quizSpeech = { inputId, startedAtMs: voicedStartMs };
+            entry.onStart?.(clip, voicedStartMs);
             this.publishHud();
-            const startDeltaMs = Math.max(0, startedAtMs - this.now());
-            // The line is over: rest the mouth and release the queue. The
-            // input itself lives on through its silent tail — unregistering
-            // it right at the voiced end is churn the engine mix dislikes.
-            const t = setTimeout(
-              () => {
-                this.quizSpeechTimers.delete(t);
-                if (this.quizSpeechMouthCam) {
-                  this.deps.setQuizSpeechMouth?.(this.quizSpeechMouthCam, null);
-                  this.quizSpeechMouthCam = null;
-                }
-                this.quizSpeechPlaying = false;
-                this.pumpQuizSpeech();
-              },
-              startDeltaMs + clip.durationMs + QUIZ_SPEECH_GAP_MS,
+            if (entry.camInputId && this.deps.setQuizSpeechMouth) {
+              const cam = entry.camInputId;
+              const token = ++this.quizSpeechMouthToken;
+              const tOn = setTimeout(
+                () => {
+                  this.quizSpeechTimers.delete(tOn);
+                  if (this.disposed) return;
+                  this.quizSpeechMouthCam = cam;
+                  this.quizSpeechMouthApplied = token;
+                  this.deps.setQuizSpeechMouth?.(cam, {
+                    track: clip.mouth,
+                    startWallMs: voicedStartMs,
+                    durationMs: clip.durationMs,
+                  });
+                },
+                Math.max(0, voicedStartMs - 300 - this.now()),
+              );
+              this.quizSpeechTimers.add(tOn);
+              // The renderer expires the live mouth by duration on its own;
+              // this clear is tidiness, skipped when a newer line took over.
+              const tOff = setTimeout(
+                () => {
+                  this.quizSpeechTimers.delete(tOff);
+                  if (this.quizSpeechMouthApplied === token) {
+                    this.deps.setQuizSpeechMouth?.(cam, null);
+                    this.quizSpeechMouthCam = null;
+                  }
+                },
+                voicedStartMs + clip.durationMs + 200 - this.now(),
+              );
+              this.quizSpeechTimers.add(tOff);
+            }
+            // Spent input → the quiet-air sweep, once the tail is over.
+            this.discardQuizAudio(
+              'speech',
+              inputId,
+              voicedStartMs + clip.durationMs + QUIZ_SPEECH_TAIL_MS - now,
             );
-            this.quizSpeechTimers.add(t);
-            const tGone = setTimeout(
-              () => {
-                this.quizSpeechTimers.delete(tGone);
-                this.deps.unregisterQuizSpeech?.(inputId);
-                if (this.quizSpeech?.inputId === inputId) {
-                  this.quizSpeech = null;
-                  if (!this.disposed) this.publishHud();
-                }
-              },
-              startDeltaMs + clip.durationMs + QUIZ_SPEECH_TAIL_MS,
-            );
-            this.quizSpeechTimers.add(tGone);
-            return; // playing — the first timer releases the queue
           }
-          if (inputId) this.deps.unregisterQuizSpeech?.(inputId);
         }
       } catch (err) {
         console.warn('[ob] quiz speech failed', err);
       }
-      // No clip / off-air / register failed: release and move on (the text
-      // plates carried the moment anyway).
       this.quizSpeechPlaying = false;
       this.pumpQuizSpeech();
     })();
@@ -2529,6 +2605,11 @@ export class ObVanController {
     this.quizSpeechQueue.length = 0;
     for (const t of this.quizSpeechTimers) clearTimeout(t);
     this.quizSpeechTimers.clear();
+    for (const g of this.quizAudioGarbage) {
+      if (g.kind === 'speech') this.deps.unregisterQuizSpeech?.(g.inputId);
+      else this.deps.unregisterQuizSfx?.(g.inputId);
+    }
+    this.quizAudioGarbage.length = 0;
     if (this.quizSpeech) {
       this.deps.unregisterQuizSpeech?.(this.quizSpeech.inputId);
       this.quizSpeech = null;
@@ -2539,6 +2620,7 @@ export class ObVanController {
     }
     this.quizSpeechPlaying = false;
     this.quizSpeechBusyUntilMs = 0;
+    this.quizSpeechEndsAtMs = 0;
   }
 
   /** Fill the disk cache with every static line (fire-and-forget). */
@@ -2593,6 +2675,7 @@ export class ObVanController {
       this.publishHud();
       this.markStateDirty();
     }
+    this.sweepQuizAudio(now);
     this.quizAutoStep(now);
   }
 

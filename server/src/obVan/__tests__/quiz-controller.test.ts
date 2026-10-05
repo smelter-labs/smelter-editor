@@ -605,12 +605,14 @@ describe('ObVanController · quiz voices', () => {
     expect(synths[0]).toEqual({ text: 'canned-intro', voiceId: 'voice-host' });
     expect(h.speechRegs).toHaveLength(1);
     expect(h.lastHudQuiz()?.speech?.inputId).toBe('ob-tts-1');
-    // The host cam's puppet mouth follows the clip.
+    // The host cam's puppet mouth follows the clip (armed just before the
+    // scheduled voice start — the 4 s warm-up headroom).
+    await vi.advanceTimersByTimeAsync(4_000);
     expect(h.mouthSets[0]).toMatchObject({ camInputId: 'mp4-1' });
     expect(h.mouthSets[0].mouth).toMatchObject({ durationMs: 1_000 });
-    // Clip over (1 s lead + 1 s clip + gap, then the silent-tail hold):
+    // Clip over (4 s headroom + 1 s clip + gap, then the silent-tail hold):
     // input unregistered, mouth rested, HUD slot cleared.
-    await vi.advanceTimersByTimeAsync(6_000);
+    await vi.advanceTimersByTimeAsync(7_000);
     expect(h.speechUnregs).toContain('ob-tts-1');
     expect(h.mouthSets.at(-1)).toMatchObject({
       camInputId: 'mp4-1',
@@ -632,8 +634,9 @@ describe('ObVanController · quiz voices', () => {
     h.controller.operate({ op: 'quiz', action: 'show_board' });
     await vi.advanceTimersByTimeAsync(2_500); // board host line plays out
     h.controller.operate({ op: 'quiz', action: 'ask' });
-    await vi.advanceTimersByTimeAsync(10);
-    // The murmur is on air the moment the question lands.
+    // The murmur is queued the moment the question lands (the serial queue
+    // may still be reading the board line — give it a beat to reach it).
+    await vi.advanceTimersByTimeAsync(2_000);
     const murmur = synths.find(
       (s) => s.voiceId === 'voice-gpt' && !s.text.includes('says'),
     );
@@ -670,12 +673,12 @@ describe('ObVanController · quiz voices', () => {
     const h = harness(ai, tts);
     await onAirVoicedQuiz(h);
     h.controller.setConfig({ quiz: { auto: true } });
-    // The intro clip (10 s) holds AUTO: nothing is assigned yet well past the
-    // usual 2.5 s assign delay.
+    // The intro clip (10 s, voiced after the 4 s warm-up) holds AUTO: nothing
+    // is assigned yet well past the usual 2.5 s assign delay.
     await vi.advanceTimersByTimeAsync(5_000);
     expect(h.controller.stateSnapshot().quiz?.phase).toBe('idle');
     // Once the line ends, the round moves.
-    await vi.advanceTimersByTimeAsync(9_000);
+    await vi.advanceTimersByTimeAsync(12_000);
     expect(h.controller.stateSnapshot().quiz?.phase).not.toBe('idle');
   });
 
@@ -696,7 +699,9 @@ describe('ObVanController · quiz voices', () => {
     h.controller.operate({ op: 'quiz', action: 'assign', camId: gemini });
     h.controller.operate({ op: 'quiz', action: 'show_board' });
     h.controller.operate({ op: 'quiz', action: 'ask' });
-    await vi.advanceTimersByTimeAsync(OB_QUIZ_THINK_MIN_MS + 5_000);
+    // Enough for the serial queue (assign + board lines, each with the lead
+    // and the clip's silent head) to reach the farewell and the host line.
+    await vi.advanceTimersByTimeAsync(OB_QUIZ_THINK_MIN_MS + 12_000);
     const farewellIx = synths.findIndex((s) => s.voiceId === 'voice-gemini');
     const cashoutIx = synths.findIndex((s) => s.text === 'canned-cashout');
     expect(farewellIx).toBeGreaterThanOrEqual(0);
