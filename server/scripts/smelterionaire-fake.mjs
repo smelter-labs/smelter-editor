@@ -25,6 +25,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
@@ -89,6 +90,8 @@ const LINES = {
 };
 
 // Questions verbatim from server/src/obVan/quizQuestionsSmelter.ts.
+// The host reads each question + all four answers after the board lands
+// (that reading time is, theoretically, when the agents think).
 const QUESTIONS = {
   s01: {
     q: 'Who builds Smelter?',
@@ -109,6 +112,14 @@ const QUESTIONS = {
 
 // Aśka (a human walk-in, not a model) takes lux — the pink-haired puppet —
 // and JEV moves to prof; no shared studio view, so no host puppet at all.
+// Board read-outs, synthesized per question (underscores spoken as spaces).
+for (const [qid, question] of Object.entries(QUESTIONS)) {
+  const answers = question.answers
+    .map((a, i) => `${'ABCD'[i]} — ${a.replace(/_/g, ' ')}.`)
+    .join(' ');
+  LINES[`host-read-${qid}`] = ['host', `${question.q} ${answers}`];
+}
+
 const PLAYER_ORDER = ['OPUS', 'GPT', 'Aśka', 'JEV'];
 const PLAYER_CHARACTER = { OPUS: 'nova', GPT: 'bit', Aśka: 'lux', JEV: 'prof' };
 
@@ -275,17 +286,24 @@ function questionBeat(tts, cfg) {
 
   const boardAtS = assignUntil + 0.4;
   audio.push({ wav: stingWav('board'), atS: boardAtS - 0.15 });
-  let cursor = boardAtS;
+  let cursor = boardAtS + 0.5;
   if (withBoardLine) {
-    const atS = boardAtS + 0.4;
-    hostPlates.push({ text: LINES['host-board'][1], atS, untilS: atS + dur('host-board') + 0.6 });
-    guides.push({ key: 'host-board', atS });
-    cursor = atS + dur('host-board');
+    hostPlates.push({ text: LINES['host-board'][1], atS: cursor, untilS: cursor + dur('host-board') + 0.5 });
+    guides.push({ key: 'host-board', atS: cursor });
+    cursor += dur('host-board') + 0.5;
   }
-  const thinkingFromS = boardAtS + 1.0;
+  // The host reads the question and all four answers (guide on A2) — the
+  // agents' "thinking time". The plate shows just the question; the board
+  // already carries the answers.
+  const readKey = `host-read-${qid}`;
+  const readAtS = cursor + 0.3;
+  const readEndS = readAtS + dur(readKey);
+  hostPlates.push({ text: QUESTIONS[qid].q, atS: readAtS, untilS: readEndS + 0.4 });
+  guides.push({ key: readKey, atS: readAtS });
+  const thinkingFromS = readEndS + 0.4;
   let murmurEnd = thinkingFromS + 1.2;
   if (murmurKey) {
-    const startS = Math.max(thinkingFromS + 0.3, cursor + 0.3);
+    const startS = thinkingFromS + 0.4;
     speech.push({ character, startS, durS: dur(murmurKey), mouth: tts[murmurKey].mouth });
     audio.push({ wav: tts[murmurKey].wav, atS: startS });
     murmurEnd = startS + dur(murmurKey);
@@ -297,7 +315,7 @@ function questionBeat(tts, cfg) {
     hostPlates.push({ text: LINES['host-filler'][1], atS, untilS: fillerUntil });
     guides.push({ key: 'host-filler', atS });
   }
-  const lockAtS = Math.max(thinkingFromS + 5.0, fillerUntil + 0.6, murmurEnd + 1.6);
+  const lockAtS = Math.max(thinkingFromS + 3.5, fillerUntil + 0.6, murmurEnd + 1.6);
   let revealAtS;
   if (quipKey) {
     const startS = lockAtS + 0.25;
@@ -663,6 +681,9 @@ async function renderPreview(placed, guidePlacements) {
 async function main() {
   if (!existsSync(path.join(PKG_DIR, 'node_modules')))
     fail('packages/smelterionaire-fake has no node_modules — run `pnpm install --ignore-workspace` there first.');
+  // The guide numbering shifts whenever the episode changes — rebuild the
+  // folder from scratch so stale copies never ride along to the XML/Desktop.
+  rmSync(GUIDE_DIR, { recursive: true, force: true });
   for (const dir of [OUT_DIR, TTS_DIR, CLIPS_DIR, AUDIO_DIR, GUIDE_DIR]) mkdirSync(dir, { recursive: true });
 
   console.log('— assets');
