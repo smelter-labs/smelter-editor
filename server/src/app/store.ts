@@ -1032,6 +1032,8 @@ export type ObHudState = {
     splash: boolean;
     /** A stinger clip currently mixed into the output (audio-only mp4). */
     sfx: { inputId: string; startedAtMs: number } | null;
+    /** A TTS line currently mixed into the output (its own slot). */
+    speech: { inputId: string; startedAtMs: number } | null;
   } | null;
 };
 

@@ -892,6 +892,15 @@ function QuizSfx({ sfx }: { sfx: NonNullable<QuizHud['sfx']> }) {
   );
 }
 
+/** A TTS line (host / contestant voice) — its own slot so stings can't cut it. */
+function QuizSpeech({ speech }: { speech: NonNullable<QuizHud['speech']> }) {
+  return (
+    <View style={{ top: 0, left: 2, width: 2, height: 2, overflow: 'hidden' }}>
+      <InputStream inputId={speech.inputId} volume={1} />
+    </View>
+  );
+}
+
 // ── Overlay root ──────────────────────────────────────────────────────────
 
 /** Track the last reveal so the float survives the board fading away. */
@@ -998,6 +1007,7 @@ export function ObQuizOverlay({
         </Frame>
       ) : null}
       {quiz.sfx ? <QuizSfx sfx={quiz.sfx} /> : null}
+      {quiz.speech ? <QuizSpeech speech={quiz.speech} /> : null}
     </View>
   );
 }

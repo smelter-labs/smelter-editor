@@ -129,7 +129,16 @@ import {
 } from './quiz';
 import { QUIZ_QUESTIONS, type QuizQuestion } from './quizQuestions';
 import { SMELTER_QUIZ_QUESTIONS } from './quizQuestionsSmelter';
-import type { ObQuizAiModule, ObQuizHostEvent } from './llm/quizHost';
+import {
+  cannedHostFiller,
+  cannedMurmur,
+  OB_QUIZ_FAREWELL_LINE,
+  quizWarmLines,
+  type ObQuizAiModule,
+  type ObQuizHostEvent,
+} from './llm/quizHost';
+import type { ObQuizTtsClip, ObQuizTtsModule } from './llm/tts';
+import type { PuppetLiveMouth } from './puppets/types';
 
 // ── Public contract ────────────────────────────────────────────────────────
 
@@ -208,6 +217,17 @@ export type ObControllerDeps = {
   /** Quiz stinger: register a bundled sfx mp4 (server/sfx) at this offset. */
   registerQuizSfx?: (kind: string, offsetMs: number) => Promise<string | null>;
   unregisterQuizSfx?: (inputId: string) => void;
+  /** Quiz TTS line: register a synthesised mp4 (data/ob-tts) at this offset. */
+  registerQuizSpeech?: (
+    file: string,
+    offsetMs: number,
+  ) => Promise<string | null>;
+  unregisterQuizSpeech?: (inputId: string) => void;
+  /** Drive the cam's puppet mouth from a live TTS clip (null clears it). */
+  setQuizSpeechMouth?: (
+    camInputId: string,
+    mouth: PuppetLiveMouth | null,
+  ) => void;
   getPipelineTimeMs: () => number;
   now?: () => number;
 };
@@ -232,6 +252,11 @@ export type ObControllerFactories = {
    * and must not sit behind the serialised one-shot gate.
    */
   createQuizAi?: () => ObQuizAiModule | null;
+  /**
+   * ElevenLabs voices (`createObQuizTts` from `./llm/tts`): host +
+   * contestant speech clips. Absent / no key = the show stays text-only.
+   */
+  createQuizTts?: () => ObQuizTtsModule | null;
   /** The air clock (`makeObClock` from `./signals`); default `createObClock`. */
   createClock?: (deps: ObClockSource) => ObClock;
 };
@@ -368,6 +393,31 @@ const QUIZ_SFX_MS: Record<ObQuizSfx, number> = {
 };
 /** Register a stinger slightly ahead so it starts at frame 0 of its clip. */
 const QUIZ_SFX_LEAD_MS = 250;
+/**
+ * Speech clips start this far ahead on the engine timeline. Deliberately
+ * larger than the sting lead: `registerInput` alone takes up to ~850 ms and
+ * the `<InputStream>` mounts only after it resolves, so a short lead loses
+ * the head of a 1–2 s line.
+ */
+const QUIZ_SPEECH_LEAD_MS = 1_000;
+/** On-air breath between queued TTS lines. */
+const QUIZ_SPEECH_GAP_MS = 300;
+/** Give up on a quip's synth after this — the show goes on text-only. */
+const QUIZ_SPEECH_QUIP_BUDGET_MS = 8_000;
+/** A line queued but not yet measured blocks AUTO for this long at most. */
+const QUIZ_SPEECH_PROVISIONAL_MS = 4_000;
+
+/** One line in the quiz speech queue (pre-synthesised clip, or text to synth). */
+type ObQuizSpeechEntry = {
+  text: string;
+  voiceId: string;
+  /** Already-synthesised clip (skips the synth step). */
+  clip?: ObQuizTtsClip | null;
+  /** Cam whose puppet mouth follows the clip (null = no lip-sync). */
+  camInputId: string | null;
+  /** Runs when the clip actually starts playing (duration now known). */
+  onStart?: (clip: ObQuizTtsClip, startedAtMs: number) => void;
+};
 /** Event ticks: speech must be stable this long to count as "the speaker". */
 const OB_LLM_EVENT_SPEECH_STABLE_MS = 700;
 /** Event ticks: everybody quiet this long → one "silence" tick. */
@@ -577,6 +627,18 @@ export class ObVanController {
   private quizAutoHoldUntilMs = 0;
   /** AUTO round: next step not before this time (show pacing between beats). */
   private quizAutoNextAtMs = 0;
+  /** ElevenLabs voices (null = text-only show). */
+  private readonly quizTts: ObQuizTtsModule | null;
+  /** The TTS clip on air right now (its own slot — stings must not cut it). */
+  private quizSpeech: { inputId: string; startedAtMs: number } | null = null;
+  private readonly quizSpeechTimers = new Set<ReturnType<typeof setTimeout>>();
+  /** Serial speech queue: one voice at a time, with a small on-air gap. */
+  private readonly quizSpeechQueue: ObQuizSpeechEntry[] = [];
+  private quizSpeechPlaying = false;
+  /** AUTO round waits for the current line to end before the next beat. */
+  private quizSpeechBusyUntilMs = 0;
+  /** Cam whose puppet mouth is being driven, so cleanup clears the right one. */
+  private quizSpeechMouthCam: string | null = null;
   private lastGesture: ObHostState['lastGesture'] = null;
   /** Camera whose worker currently runs hand tracking (the host's). */
   private gestureCamId: string | null = null;
@@ -718,6 +780,7 @@ export class ObVanController {
     });
     this.quiz = new ObQuizGame(QUIZ_QUESTIONS, { now: () => this.now() });
     this.quizAi = factories.createQuizAi?.() ?? null;
+    this.quizTts = factories.createQuizTts?.() ?? null;
   }
 
   private now(): number {
@@ -1262,6 +1325,7 @@ export class ObVanController {
         this.quizHostLine = null;
         this.quizAutoNextAtMs = 0;
         this.quizAutoHoldUntilMs = 0;
+        this.clearQuizSpeech();
       }
       c.presetId = patch.presetId;
       if (patch.ruleset === undefined && c.ruleset) {
@@ -1369,6 +1433,11 @@ export class ObVanController {
         c.quiz.auto = patch.quiz.auto;
         this.quizAutoNextAtMs = 0;
         this.quizAutoHoldUntilMs = 0;
+      }
+      if (typeof patch.quiz.tts === 'boolean') {
+        c.quiz.tts = patch.quiz.tts;
+        if (c.quiz.tts) this.warmQuizTts();
+        else this.clearQuizSpeech();
       }
     }
     if (patch.host) {
@@ -1526,6 +1595,7 @@ export class ObVanController {
         this.setPhase('on-air');
         if (this.quizOn()) {
           this.playQuizSting('intro');
+          this.warmQuizTts();
           this.setQuizHostLine({
             kind: 'intro',
             eventName: this.config.eventName,
@@ -1539,6 +1609,7 @@ export class ObVanController {
         this.stats.endedAtMs = now;
         this.cancelScheduled(() => true);
         this.lowerThird = null;
+        this.clearQuizSpeech();
         this.setPhase('wrap');
         break;
       case 'reset':
@@ -1561,6 +1632,7 @@ export class ObVanController {
         this.quizHostLine = null;
         this.quizAutoNextAtMs = 0;
         this.quizAutoHoldUntilMs = 0;
+        this.clearQuizSpeech();
         this.closeReplay();
         this.refreshRuleset('reset');
         this.log.clear();
@@ -1864,6 +1936,7 @@ export class ObVanController {
           quiz: {
             ...(cmd.auto !== undefined ? { auto: cmd.auto } : {}),
             ...(cmd.aiHost !== undefined ? { aiHost: cmd.aiHost } : {}),
+            ...(cmd.tts !== undefined ? { tts: cmd.tts } : {}),
           },
         });
         this.pushLog({
@@ -1876,6 +1949,7 @@ export class ObVanController {
             cmd.aiHost !== undefined
               ? `AI host ${cmd.aiHost ? 'ON' : 'OFF'}`
               : null,
+            cmd.tts !== undefined ? `voice ${cmd.tts ? 'ON' : 'OFF'}` : null,
           ]
             .filter(Boolean)
             .join(' · '),
@@ -2042,25 +2116,71 @@ export class ObVanController {
           }
         | { cashOut: true }
         | null,
+      quipClip: ObQuizTtsClip | null = null,
     ) => {
       if (this.disposed) return;
       if (!this.quiz.resolveAnswer(fx.seq, res)) return;
       if (res && 'cashOut' in res) this.afterQuizCashOut(fx.forCamId);
-      else this.afterQuizAnswer();
+      else {
+        // Voice and answer plate land in the same tick, like television.
+        if (quipClip)
+          this.speakQuiz({
+            text: (res && 'quip' in res && res.quip) || '',
+            voiceId: voice ?? '',
+            clip: quipClip,
+            camInputId: camInputId,
+          });
+        this.afterQuizAnswer(quipClip?.durationMs ?? 0);
+      }
     };
     const adapter = fx.model ? this.quizAi?.contestants[fx.model] : undefined;
+    const camInputId = this.cams.get(fx.forCamId)?.inputId ?? null;
+    const voice =
+      fx.model && this.ttsOn() ? this.quizTts?.voiceOf(fx.model) : null;
     if (!adapter?.available()) {
       // Human contestant, missing key or spent cap: a thinking beat, then
       // the machine's canned answer.
       this.setQuizTimer(1_500 + Math.random() * 1_500, () => finish(null));
       return;
     }
+    // Latency theatre: a murmur the instant the question lands, and a host
+    // aside if the thinking runs long — both from the pre-warmed cache.
+    if (voice) {
+      const murmur = fx.model && cannedMurmur(fx.model, fx.question.id);
+      if (murmur) this.speakQuiz({ text: murmur, voiceId: voice, camInputId });
+    }
+    if (this.ttsOn() && this.quizTts && this.config.quiz.aiHost) {
+      const hostVoice = this.quizTts.hostVoice;
+      this.setQuizTimer(4_500, () => {
+        const ans = this.quiz.state().current?.answering;
+        if (ans?.seq === fx.seq && ans.status === 'pending')
+          this.speakQuiz({
+            text: cannedHostFiller(fx.question.id),
+            voiceId: hostVoice,
+            camInputId: this.hostCamInputId(),
+          });
+      });
+    }
     const started = this.now();
     void adapter
       .answer({ question: fx.question.q, answers: fx.question.answers })
-      .then((res) => {
+      .then(async (res) => {
+        // Synthesise the spoken quip while the thinking plate is still up,
+        // so the voice can start together with the lock (budgeted — past it
+        // the answer goes out text-only).
+        let quipClip: ObQuizTtsClip | null = null;
+        if (voice && res && !('cashOut' in res) && res.quip && this.quizTts) {
+          quipClip = await Promise.race([
+            this.quizTts.synth(res.quip, voice),
+            new Promise<null>((resolve) =>
+              this.setQuizTimer(QUIZ_SPEECH_QUIP_BUDGET_MS, () =>
+                resolve(null),
+              ),
+            ),
+          ]);
+        }
         const wait = Math.max(0, OB_QUIZ_THINK_MIN_MS - (this.now() - started));
-        this.setQuizTimer(wait, () => finish(res));
+        this.setQuizTimer(wait, () => finish(res, quipClip));
       })
       .catch(() => finish(null));
   }
@@ -2096,13 +2216,42 @@ export class ObVanController {
     // Let the exit breathe: AUTO must not call the next contestant while the
     // leaver's solo is still on (their lower third would sit on this shot).
     this.quizAutoNextAtMs = this.now() + 6_000;
+    // The cameo gets its only spoken words on the way out; the solo and the
+    // AUTO pause stretch to the clip, and the host line queues up behind it.
+    const voice = player?.model ? this.quizTts?.voiceOf(player.model) : null;
+    if (this.ttsOn() && voice) {
+      const camInputId = this.cams.get(camId)?.inputId ?? null;
+      this.speakQuiz({
+        text: OB_QUIZ_FAREWELL_LINE,
+        voiceId: voice,
+        camInputId,
+        onStart: (clip, startedAtMs) => {
+          const endsAtMs = startedAtMs + clip.durationMs;
+          this.quizAutoNextAtMs = Math.max(
+            this.quizAutoNextAtMs,
+            endsAtMs + 2_000,
+          );
+          if (clip.durationMs + 1_000 > 5_000)
+            this.applyDecision(
+              {
+                shot: { kind: 'solo', cam: camId },
+                transition: { type: 'cut', durationMs: 0 },
+                holdMs: clip.durationMs + 1_000,
+                logKind: 'shot',
+                reasons: ['quiz cash out'],
+              },
+              'auto',
+            );
+        },
+      });
+    }
     this.setQuizHostLine({ kind: 'cashout', name, amountText });
     this.publishHud();
     this.markStateDirty();
   }
 
   /** Log + picture + host reaction once an answer landed (and auto-locked). */
-  private afterQuizAnswer(): void {
+  private afterQuizAnswer(quipDurationMs = 0): void {
     const s = this.quiz.state();
     const ans = s.current?.answering;
     const player = s.current
@@ -2128,7 +2277,9 @@ export class ObVanController {
       {
         shot: { kind: 'solo', cam: s.current.forCamId },
         transition: { type: 'cut', durationMs: 0 },
-        holdMs: 3_500,
+        // With a spoken quip the solo stays on the contestant until the
+        // voice is done.
+        holdMs: Math.max(3_500, quipDurationMs + 1_000),
         logKind: 'shot',
         reasons: ['quiz answer'],
       },
@@ -2148,6 +2299,11 @@ export class ObVanController {
    * Put the AI host's line on air: the canned text immediately, a haiku
    * rewrite swapped in if it lands while the plate is still up. Gated by
    * `config.quiz.aiHost` — off means a human host is talking instead.
+   *
+   * With voices on the host SPEAKS the canned line instead (deterministic,
+   * so the disk cache soon makes it instant) and the haiku swap is skipped —
+   * hearing one line while reading another is worse than no polish. The
+   * plate then stays up at least as long as the voice.
    */
   private setQuizHostLine(evt: ObQuizHostEvent): void {
     if (!this.config.quiz.aiHost || !this.quizOn()) return;
@@ -2157,6 +2313,44 @@ export class ObVanController {
     if (!canned) return;
     this.quizHostLine = { text: canned, atMs, untilMs };
     this.publishHud();
+    if (this.ttsOn() && this.quizTts) {
+      this.speakQuiz({
+        text: canned,
+        voiceId: this.quizTts.hostVoice,
+        camInputId: this.hostCamInputId(),
+        onStart: (clip, startedAtMs) => {
+          const current = this.quizHostLine;
+          if (current && current.atMs === atMs)
+            this.quizHostLine = {
+              text: canned,
+              atMs,
+              untilMs: Math.max(
+                untilMs,
+                startedAtMs + clip.durationMs + 1_500,
+              ),
+            };
+          // The welcome gets the host's face; reveals keep the contestant's
+          // celebrate solo and play as voice-over.
+          if (evt.kind === 'intro' || evt.kind === 'wrap') {
+            const hostCam = this.cams
+              .list()
+              .find((c) => c.role === 'speaker' && c.live);
+            if (hostCam)
+              this.applyDecision(
+                {
+                  shot: { kind: 'solo', cam: hostCam.id },
+                  transition: { type: 'cut', durationMs: 0 },
+                  holdMs: clip.durationMs + 800,
+                  logKind: 'shot',
+                  reasons: ['quiz host speaking'],
+                },
+                'auto',
+              );
+          }
+        },
+      });
+      return;
+    }
     void this.quizAi?.polishHostLine(evt).then((line) => {
       if (this.disposed || !line) return;
       const current = this.quizHostLine;
@@ -2212,6 +2406,152 @@ export class ObVanController {
       .catch((err) => console.warn('[ob] quiz sfx failed', err));
   }
 
+  // ── Quiz speech (ElevenLabs voices) ──────────────────────────────────
+
+  /** Voices are on: module present AND the config toggle set. */
+  private ttsOn(): boolean {
+    return this.quizTts !== null && this.config.quiz.tts;
+  }
+
+  /** The host's cam (`speaker` role) — its puppet mouths the host lines. */
+  private hostCamInputId(): string | null {
+    return (
+      this.cams.list().find((c) => c.role === 'speaker' && c.live)?.inputId ??
+      null
+    );
+  }
+
+  /**
+   * Queue a line. Serial on purpose — two voices at once reads as a bug, not
+   * as television. AUTO is held provisionally right away (the clip's length
+   * is unknown until the synth lands) and corrected once it starts playing.
+   */
+  private speakQuiz(entry: ObQuizSpeechEntry): void {
+    if (!this.ttsOn() || !this.deps.registerQuizSpeech) return;
+    this.quizSpeechQueue.push(entry);
+    this.quizSpeechBusyUntilMs = Math.max(
+      this.quizSpeechBusyUntilMs,
+      this.now() + QUIZ_SPEECH_PROVISIONAL_MS,
+    );
+    this.pumpQuizSpeech();
+  }
+
+  private pumpQuizSpeech(): void {
+    if (this.quizSpeechPlaying || this.disposed) return;
+    const entry = this.quizSpeechQueue.shift();
+    if (!entry) return;
+    this.quizSpeechPlaying = true;
+    void (async () => {
+      try {
+        const clip =
+          entry.clip ??
+          (await this.quizTts?.synth(entry.text, entry.voiceId)) ??
+          null;
+        if (clip && !this.disposed && this.quizOn() && this.phase === 'on-air') {
+          // The clip starts at `offsetMs` on the engine timeline no matter
+          // when the register resolves — take both clocks in the same tick so
+          // the puppet mouth and the audio line up.
+          const startedAtMs = this.now() + QUIZ_SPEECH_LEAD_MS;
+          const offsetMs =
+            this.deps.getPipelineTimeMs() + QUIZ_SPEECH_LEAD_MS;
+          const inputId = await this.deps.registerQuizSpeech!(
+            clip.file,
+            offsetMs,
+          );
+          if (inputId && !this.disposed) {
+            this.quizSpeech = { inputId, startedAtMs };
+            this.quizSpeechBusyUntilMs = Math.max(
+              this.quizSpeechBusyUntilMs,
+              startedAtMs + clip.durationMs + QUIZ_SPEECH_GAP_MS,
+            );
+            if (entry.camInputId && this.deps.setQuizSpeechMouth) {
+              this.quizSpeechMouthCam = entry.camInputId;
+              this.deps.setQuizSpeechMouth(entry.camInputId, {
+                track: clip.mouth,
+                startWallMs: startedAtMs,
+                durationMs: clip.durationMs,
+              });
+            }
+            entry.onStart?.(clip, startedAtMs);
+            this.publishHud();
+            const t = setTimeout(
+              () => {
+                this.quizSpeechTimers.delete(t);
+                this.deps.unregisterQuizSpeech?.(inputId);
+                if (this.quizSpeechMouthCam) {
+                  this.deps.setQuizSpeechMouth?.(this.quizSpeechMouthCam, null);
+                  this.quizSpeechMouthCam = null;
+                }
+                if (this.quizSpeech?.inputId === inputId) {
+                  this.quizSpeech = null;
+                  if (!this.disposed) this.publishHud();
+                }
+                this.quizSpeechPlaying = false;
+                this.pumpQuizSpeech();
+              },
+              Math.max(0, startedAtMs - this.now()) +
+                clip.durationMs +
+                QUIZ_SPEECH_GAP_MS,
+            );
+            this.quizSpeechTimers.add(t);
+            return; // playing — the timer releases the queue
+          }
+          if (inputId) this.deps.unregisterQuizSpeech?.(inputId);
+        }
+      } catch (err) {
+        console.warn('[ob] quiz speech failed', err);
+      }
+      // No clip / off-air / register failed: release and move on (the text
+      // plates carried the moment anyway).
+      this.quizSpeechPlaying = false;
+      this.pumpQuizSpeech();
+    })();
+  }
+
+  /** Drop the queue, silence the current clip, rest the puppet mouth. */
+  private clearQuizSpeech(): void {
+    this.quizSpeechQueue.length = 0;
+    for (const t of this.quizSpeechTimers) clearTimeout(t);
+    this.quizSpeechTimers.clear();
+    if (this.quizSpeech) {
+      this.deps.unregisterQuizSpeech?.(this.quizSpeech.inputId);
+      this.quizSpeech = null;
+    }
+    if (this.quizSpeechMouthCam) {
+      this.deps.setQuizSpeechMouth?.(this.quizSpeechMouthCam, null);
+      this.quizSpeechMouthCam = null;
+    }
+    this.quizSpeechPlaying = false;
+    this.quizSpeechBusyUntilMs = 0;
+  }
+
+  /** Fill the disk cache with every static line (fire-and-forget). */
+  private warmQuizTts(): void {
+    const tts = this.quizTts;
+    if (!tts || !this.ttsOn()) return;
+    const lines = quizWarmLines();
+    const warm: { text: string; voiceId: string }[] = [];
+    if (this.config.quiz.aiHost) {
+      warm.push(
+        ...[
+          this.quizAi?.cannedHostLine({
+            kind: 'intro',
+            eventName: this.config.eventName,
+          }),
+          ...lines.host,
+        ]
+          .filter((text): text is string => !!text)
+          .map((text) => ({ text, voiceId: tts.hostVoice })),
+      );
+    }
+    for (const [model, texts] of Object.entries(lines.byModel)) {
+      const voiceId = tts.voiceOf(model as ObQuizModelId);
+      if (voiceId)
+        warm.push(...texts.map((text) => ({ text, voiceId })));
+    }
+    tts.warm(warm);
+  }
+
   /** Per-tick quiz housekeeping: roster sync + celebration / hint expiry. */
   private quizStep(now: number): void {
     if (!this.quizOn()) return;
@@ -2250,6 +2590,8 @@ export class ObVanController {
   private quizAutoStep(now: number): void {
     if (!this.config.quiz.auto || this.phase !== 'on-air') return;
     if (now < this.quizAutoHoldUntilMs || now < this.quizAutoNextAtMs) return;
+    // Never talk over a voice line: the next beat waits for the speech queue.
+    if (now < this.quizSpeechBusyUntilMs) return;
     const s = this.quiz.state();
     const step = (cmd: ObQuizCommand, nextDelayMs: number) => {
       const r = this.quizCommand(cmd, 'auto');
@@ -2383,6 +2725,12 @@ export class ObVanController {
         ? {
             inputId: this.quizSfx.inputId,
             startedAtMs: this.quizSfx.startedAtMs,
+          }
+        : null,
+      speech: this.quizSpeech
+        ? {
+            inputId: this.quizSpeech.inputId,
+            startedAtMs: this.quizSpeech.startedAtMs,
           }
         : null,
     };
@@ -4337,7 +4685,9 @@ export class ObVanController {
     this.quizSfxTimers.clear();
     for (const t of this.quizAnswerTimers) clearTimeout(t);
     this.quizAnswerTimers.clear();
+    this.clearQuizSpeech();
     this.quizAi?.dispose();
+    this.quizTts?.dispose();
     if (this.quizSfx) {
       this.deps.unregisterQuizSfx?.(this.quizSfx.inputId);
       this.quizSfx = null;

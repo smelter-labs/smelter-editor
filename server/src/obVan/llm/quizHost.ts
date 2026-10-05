@@ -102,6 +102,59 @@ export function cannedHostLine(evt: ObQuizHostEvent): string {
   }
 }
 
+// ── Pre-warmable interstitials (spoken, never on the text plates) ─────────
+// Latency theatre: a contestant murmur starts the instant the question is
+// asked, covering the adapter + quip-synth wait; the host filler drops in
+// only when the thinking runs long. All short, so the disk cache makes them
+// free after the first show.
+
+const MURMURS: Partial<Record<ObQuizModelId, string[]>> = {
+  opus: [
+    'Hmm. Let me compose myself.',
+    'Fascinating. Give me a moment.',
+    'One moment — savoring the question.',
+  ],
+  gpt: [
+    'Great question — paging the docs back in!',
+    'Okay okay okay — thinking!',
+    'Love it. Running the numbers!',
+  ],
+  // jev never talks; gemini never thinks (it walks).
+};
+
+export function cannedMurmur(
+  model: ObQuizModelId,
+  seed: string,
+): string | null {
+  const pool = MURMURS[model];
+  return pool ? pick(pool, seed) : null;
+}
+
+const HOST_FILLERS = [
+  'Take your time — the clock is only a metaphor.',
+  'Somewhere in a datacenter, fans are spinning for this.',
+  'No pressure. It’s only a million tokens.',
+];
+
+export function cannedHostFiller(seed: string): string {
+  return pick(HOST_FILLERS, seed);
+}
+
+/** The GEMINI cameo's only spoken words before walking out. */
+export const OB_QUIZ_FAREWELL_LINE =
+  'I have seen enough. I’m taking the million. Goodbye.';
+
+/** Everything static enough to synthesise ahead of the show. */
+export function quizWarmLines(): {
+  host: string[];
+  byModel: Partial<Record<ObQuizModelId, string[]>>;
+} {
+  return {
+    host: [...HOST_FILLERS, cannedHostLine({ kind: 'board' })],
+    byModel: { ...MURMURS, gemini: [OB_QUIZ_FAREWELL_LINE] },
+  };
+}
+
 const HOST_SYSTEM = `You are Max Smelter, the sharp-tongued host of the live quiz show "Who Wants to Be a Smelterionaire?", where AI models compete on Smelter (the video compositing toolkit) trivia. Write EXACTLY ONE on-air host line for the moment described: punchy, warm, a little wicked, UNDER 110 characters. No quotes, no emoji, no stage directions — just the line.`;
 
 const hostUser = (evt: ObQuizHostEvent): string => {

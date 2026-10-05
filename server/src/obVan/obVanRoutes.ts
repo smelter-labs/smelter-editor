@@ -238,6 +238,7 @@ export const ObOperatorCommandSchema = Type.Union([
     op: Type.Literal('quiz_set'),
     auto: Type.Optional(Type.Boolean()),
     aiHost: Type.Optional(Type.Boolean()),
+    tts: Type.Optional(Type.Boolean()),
   }),
 ]);
 
@@ -279,6 +280,7 @@ const ObConfigPatchSchema = Type.Object({
       bank: Type.Optional(literals(OB_QUIZ_BANKS)),
       aiHost: Type.Optional(Type.Boolean()),
       auto: Type.Optional(Type.Boolean()),
+      tts: Type.Optional(Type.Boolean()),
     }),
   ),
   joinUrls: Type.Optional(

@@ -25,12 +25,18 @@ class SpySignals extends ObNullSignals {
   }
 }
 
-function harness(quizAi?: import('../llm/quizHost').ObQuizAiModule) {
+function harness(
+  quizAi?: import('../llm/quizHost').ObQuizAiModule,
+  quizTts?: import('../llm/tts').ObQuizTtsModule,
+) {
   const events: RoomEvent[] = [];
   const hud: (ObHudState | null)[] = [];
   const connected = new Set<string>();
   const sfxRegs: { kind: string; offsetMs: number }[] = [];
   const sfxUnregs: string[] = [];
+  const speechRegs: { file: string; offsetMs: number }[] = [];
+  const speechUnregs: string[] = [];
+  const mouthSets: { camInputId: string; mouth: unknown }[] = [];
   const signals = new SpySignals();
 
   const deps: ObControllerDeps = {
@@ -59,6 +65,13 @@ function harness(quizAi?: import('../llm/quizHost').ObQuizAiModule) {
       return `ob-sfx-${sfxRegs.length}`;
     },
     unregisterQuizSfx: (inputId) => sfxUnregs.push(inputId),
+    registerQuizSpeech: async (file, offsetMs) => {
+      speechRegs.push({ file, offsetMs });
+      return `ob-tts-${speechRegs.length}`;
+    },
+    unregisterQuizSpeech: (inputId) => speechUnregs.push(inputId),
+    setQuizSpeechMouth: (camInputId, mouth) =>
+      mouthSets.push({ camInputId, mouth }),
     getPipelineTimeMs: () => 50_000,
   };
 
@@ -67,6 +80,7 @@ function harness(quizAi?: import('../llm/quizHost').ObQuizAiModule) {
     createBrain: () => NULL_BRAIN,
     attention: NULL_ATTENTION,
     ...(quizAi ? { createQuizAi: () => quizAi } : {}),
+    ...(quizTts ? { createQuizTts: () => quizTts } : {}),
   });
 
   const attach = (n: number, role: 'speaker' | 'guest', talent?: string) => {
@@ -92,7 +106,18 @@ function harness(quizAi?: import('../llm/quizHost').ObQuizAiModule) {
     return null;
   };
 
-  return { controller, signals, events, hud, sfxRegs, attach, lastHudQuiz };
+  return {
+    controller,
+    signals,
+    events,
+    hud,
+    sfxRegs,
+    speechRegs,
+    speechUnregs,
+    mouthSets,
+    attach,
+    lastHudQuiz,
+  };
 }
 
 /** Quiz preset, host + two contestants, on air, roster synced. */
@@ -519,5 +544,180 @@ describe('ObVanController · the Gemini cameo', () => {
       s.players.find((p) => p.name === 'GPT')!.answered,
     ).toBeGreaterThanOrEqual(2);
     expect(calls.filter((c) => c.model === 'gemini')).toHaveLength(1);
+  });
+});
+
+// ── Voices (ElevenLabs TTS) ─────────────────────────────────────────────────
+
+import type { ObQuizTtsClip, ObQuizTtsModule } from '../llm/tts';
+
+function fakeQuizTts(durationMs = 1_200): {
+  tts: ObQuizTtsModule;
+  synths: { text: string; voiceId: string }[];
+  warmed: { text: string; voiceId: string }[];
+} {
+  const synths: { text: string; voiceId: string }[] = [];
+  const warmed: { text: string; voiceId: string }[] = [];
+  const tts: ObQuizTtsModule = {
+    hostVoice: 'voice-host',
+    voiceOf: (model) => (model === 'jev' ? null : `voice-${model}`),
+    async synth(text, voiceId): Promise<ObQuizTtsClip | null> {
+      synths.push({ text, voiceId });
+      return {
+        file: `/tts/${synths.length}.mp4`,
+        durationMs,
+        mouth: { rateHz: 50, v: [0.2, 0.8, 0.4] },
+      };
+    },
+    warm(lines) {
+      warmed.push(...lines);
+    },
+    dispose: () => {},
+  };
+  return { tts, synths, warmed };
+}
+
+/** Quiz preset with voices on (host + GPT + JEV cams), on air. */
+async function onAirVoicedQuiz(
+  h: ReturnType<typeof harness>,
+): Promise<{ gpt: string; jev: string }> {
+  h.controller.setConfig({
+    presetId: 'quiz',
+    audio: { mode: 'mix' },
+    quiz: { bank: 'smelter', aiHost: true, tts: true },
+  });
+  h.attach(1, 'speaker', 'Max Smelter');
+  const gpt = h.attach(2, 'guest', 'GPT');
+  const jev = h.attach(3, 'guest', 'JEV');
+  expect(h.controller.control('go_live').ok).toBe(true);
+  await vi.advanceTimersByTimeAsync(150);
+  return { gpt, jev };
+}
+
+describe('ObVanController · quiz voices', () => {
+  it('speaks the intro with the host voice, lip-syncs the host cam and cleans up', async () => {
+    const { ai } = fakeQuizAi();
+    const { tts, synths, warmed } = fakeQuizTts(1_000);
+    const h = harness(ai, tts);
+    await onAirVoicedQuiz(h);
+    // go_live pre-warmed the static lines and spoke the intro.
+    expect(warmed.length).toBeGreaterThan(0);
+    expect(synths[0]).toEqual({ text: 'canned-intro', voiceId: 'voice-host' });
+    expect(h.speechRegs).toHaveLength(1);
+    expect(h.lastHudQuiz()?.speech?.inputId).toBe('ob-tts-1');
+    // The host cam's puppet mouth follows the clip.
+    expect(h.mouthSets[0]).toMatchObject({ camInputId: 'mp4-1' });
+    expect(h.mouthSets[0].mouth).toMatchObject({ durationMs: 1_000 });
+    // Clip over (1 s lead + 1 s clip + gap): input unregistered, mouth
+    // rested, HUD slot cleared.
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(h.speechUnregs).toContain('ob-tts-1');
+    expect(h.mouthSets.at(-1)).toMatchObject({
+      camInputId: 'mp4-1',
+      mouth: null,
+    });
+    expect(h.lastHudQuiz()?.speech).toBeNull();
+  });
+
+  it('plays a murmur on ask, then the spoken quip with the lock — serially', async () => {
+    const { ai } = fakeQuizAi();
+    const { tts, synths } = fakeQuizTts(1_000);
+    const h = harness(ai, tts);
+    const { gpt } = await onAirVoicedQuiz(h);
+    // Let the intro line finish so the queue is empty.
+    await vi.advanceTimersByTimeAsync(3_000);
+    h.controller.operate({ op: 'quiz', action: 'assign', camId: gpt });
+    await vi.advanceTimersByTimeAsync(2_500); // assign host line plays out
+    const regsBefore = h.speechRegs.length;
+    h.controller.operate({ op: 'quiz', action: 'show_board' });
+    await vi.advanceTimersByTimeAsync(2_500); // board host line plays out
+    h.controller.operate({ op: 'quiz', action: 'ask' });
+    await vi.advanceTimersByTimeAsync(10);
+    // The murmur is on air the moment the question lands.
+    const murmur = synths.find(
+      (s) => s.voiceId === 'voice-gpt' && !s.text.includes('says'),
+    );
+    expect(murmur).toBeTruthy();
+    // The quip clip starts in the same tick as the lock.
+    await vi.advanceTimersByTimeAsync(OB_QUIZ_THINK_MIN_MS + 300);
+    expect(h.controller.stateSnapshot().quiz?.phase).toBe('locked');
+    expect(synths.some((s) => s.text === 'gpt says B')).toBe(true);
+    // Serial queue: never two clips registered within one clip's length.
+    const starts = h.speechRegs.slice(regsBefore);
+    expect(starts.length).toBeGreaterThanOrEqual(2);
+    // The mouth of the contestant cam was driven for the murmur/quip.
+    expect(h.mouthSets.some((m) => m.camInputId === 'mp4-2')).toBe(true);
+  });
+
+  it('jev stays silent: no voice, no murmur, no mouth driving', async () => {
+    const { ai } = fakeQuizAi();
+    const { tts, synths } = fakeQuizTts(500);
+    const h = harness(ai, tts);
+    const { jev } = await onAirVoicedQuiz(h);
+    await vi.advanceTimersByTimeAsync(3_000);
+    h.controller.operate({ op: 'quiz', action: 'assign', camId: jev });
+    h.controller.operate({ op: 'quiz', action: 'show_board' });
+    h.controller.operate({ op: 'quiz', action: 'ask' });
+    await vi.advanceTimersByTimeAsync(OB_QUIZ_THINK_MIN_MS + 500);
+    expect(h.controller.stateSnapshot().quiz?.phase).toBe('locked');
+    expect(synths.some((s) => s.voiceId === 'voice-jev')).toBe(false);
+    expect(h.mouthSets.some((m) => m.camInputId === 'mp4-3')).toBe(false);
+  });
+
+  it('AUTO waits for the speech queue before the next beat', async () => {
+    const { ai } = fakeQuizAi();
+    const { tts } = fakeQuizTts(10_000); // a long-winded host
+    const h = harness(ai, tts);
+    await onAirVoicedQuiz(h);
+    h.controller.setConfig({ quiz: { auto: true } });
+    // The intro clip (10 s) holds AUTO: nothing is assigned yet well past the
+    // usual 2.5 s assign delay.
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(h.controller.stateSnapshot().quiz?.phase).toBe('idle');
+    // Once the line ends, the round moves.
+    await vi.advanceTimersByTimeAsync(9_000);
+    expect(h.controller.stateSnapshot().quiz?.phase).not.toBe('idle');
+  });
+
+  it('the cameo speaks its farewell before the host cashout line', async () => {
+    const { ai } = fakeQuizAi();
+    const { tts, synths } = fakeQuizTts(800);
+    const h = harness(ai, tts);
+    h.controller.setConfig({
+      presetId: 'quiz',
+      audio: { mode: 'mix' },
+      quiz: { bank: 'smelter', aiHost: true, tts: true },
+    });
+    h.attach(1, 'speaker', 'Max Smelter');
+    const gemini = h.attach(2, 'guest', 'GEMINI');
+    h.attach(3, 'guest', 'GPT');
+    h.controller.control('go_live');
+    await vi.advanceTimersByTimeAsync(3_000);
+    h.controller.operate({ op: 'quiz', action: 'assign', camId: gemini });
+    h.controller.operate({ op: 'quiz', action: 'show_board' });
+    h.controller.operate({ op: 'quiz', action: 'ask' });
+    await vi.advanceTimersByTimeAsync(OB_QUIZ_THINK_MIN_MS + 5_000);
+    const farewellIx = synths.findIndex((s) => s.voiceId === 'voice-gemini');
+    const cashoutIx = synths.findIndex((s) => s.text === 'canned-cashout');
+    expect(farewellIx).toBeGreaterThanOrEqual(0);
+    expect(cashoutIx).toBeGreaterThan(farewellIx);
+  });
+
+  it('tts config off keeps everything text-only and clears a playing line', async () => {
+    const { ai } = fakeQuizAi();
+    const { tts, synths } = fakeQuizTts(60_000);
+    const h = harness(ai, tts);
+    await onAirVoicedQuiz(h);
+    expect(h.speechRegs.length).toBe(1); // the intro is playing
+    h.controller.operate({ op: 'quiz_set', tts: false });
+    expect(h.controller.stateSnapshot().config.quiz.tts).toBe(false);
+    expect(h.speechUnregs).toContain('ob-tts-1');
+    expect(h.lastHudQuiz()?.speech).toBeNull();
+    const after = synths.length;
+    h.controller.operate({ op: 'quiz', action: 'show_board' });
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(synths.length).toBe(after); // no further synths
+    // The haiku polish path is back in play (plates only) — still no voices.
+    expect(h.speechRegs.length).toBe(1);
   });
 });

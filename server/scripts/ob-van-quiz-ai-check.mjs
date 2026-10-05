@@ -50,7 +50,10 @@ async function main() {
       audio: { mode: 'mix' },
       autoPilot: true,
       captions: false,
-      quiz: { bank: 'smelter', aiHost: true, auto: false },
+      // `tts: true` with no ELEVENLABS_API_KEY (and no OB_QUIZ_TTS_FAKE) must
+      // degrade silently to the text-only show — every check below holds
+      // either way.
+      quiz: { bank: 'smelter', aiHost: true, auto: false, tts: true },
     });
     await ob.mp4Cam(roomId, {
       role: 'speaker',
@@ -191,6 +194,13 @@ async function main() {
       `round-robin reached ${answeredPlayers.length} players`,
     );
     await ob.operate(roomId, { op: 'quiz_set', auto: false });
+
+    await ob.operate(roomId, { op: 'quiz_set', tts: false });
+    const afterTts = await ob.state(roomId);
+    check(
+      afterTts.config.quiz.tts === false,
+      'quiz_set toggles the voice flag',
+    );
 
     const state = await ob.state(roomId);
     log('WHY log tail:');

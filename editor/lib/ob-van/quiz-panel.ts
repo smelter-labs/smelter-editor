@@ -64,9 +64,10 @@ export type QuizBarModel = {
   canLifeline: boolean;
   lifelinePending: boolean;
   canSkip: boolean;
-  /** `config.quiz` toggles (the AUTO / AI HOST chips). */
+  /** `config.quiz` toggles (the AUTO / AI HOST / VOICE chips). */
   auto: boolean;
   aiHost: boolean;
+  tts: boolean;
 };
 
 /** Null unless the QUIZ preset is on and the server reports quiz state. */
@@ -135,5 +136,6 @@ export function quizBarModel(
     canSkip: onAir && inQuestion,
     auto: state.config.quiz?.auto ?? false,
     aiHost: state.config.quiz?.aiHost ?? false,
+    tts: state.config.quiz?.tts ?? false,
   };
 }

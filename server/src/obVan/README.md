@@ -404,10 +404,34 @@ OpenAI-compatible na `fetch` (json_schema + luźny fallback na literę).
 budżet panelu (price table zna tylko claude-*) — koszt pilnuje cap + log
 latencji w konsoli (`[ob-van][quiz-ai]`).
 
-**Host AI** (tekstowy, bez TTS): `config.quiz.aiHost` włącza plansze „MAX
+**Host AI**: `config.quiz.aiHost` włącza plansze „MAX
 SMELTER · <linia>" u góry (canned szablony natychmiast; haiku —
 `OB_QUIZ_HOST_MODEL` — podmienia intro/reveal, jeśli zdąży). `aiHost:false`
-= człowiek prowadzi z kamery `speaker`, zero plansz. **AUTO**
+= człowiek prowadzi z kamery `speaker`, zero plansz.
+
+**Głosy (ElevenLabs TTS)**: `config.quiz.tts` (panel: chip VOICE; demo
+włącza) + `ELEVENLABS_API_KEY` ⇒ host i zawodnicy MÓWIĄ. Moduł
+`llm/tts.ts`: `POST /v1/text-to-speech/{voice}?output_format=pcm_24000`
+(model `OB_QUIZ_TTS_MODEL`, domyślnie `eleven_flash_v2_5`) → z surowego PCM
+liczymy dokładny czas i mouth-track 50 Hz (lip-sync puppetów przez
+`getLiveMouth` na `ObPuppetConfig` — runtime'owa mapa w RoomState, zustand
+nietykany) → ffmpeg muxuje do mp4 (czarne 64×36 + AAC, jak stingery) →
+cache dyskowy `data/ob-tts/<sha1(voice|text)>.mp4` + sidecar json (canned
+linie hosta po pierwszym show grają z dysku). Odtwarzanie: osobny slot
+`speech` obok `sfx` (sting nie utnie kwestii), kolejka SZEREGOWA z 300 ms
+przerwą; AUTO czeka na koniec kwestii (`quizSpeechBusyUntilMs`). Latencję
+maskują pre-warmowane wstawki: murmur zawodnika od razu przy `ask`
+(„Hmm. Let me compose myself."), filler hosta po 4,5 s myślenia, pożegnanie
+GEMINI przy cash-oucie. Quip startuje w tym samym ticku co lock (budżet
+syntu 8 s, potem text-only). Przy włączonym tts haiku-polish jest
+pomijany (widz słyszałby co innego, niż czyta). Głosy: host
+`OB_QUIZ_TTS_HOST_VOICE` (default `2E3fywgOSbUgLXqjR29C`), zawodnicy
+`OB_QUIZ_TTS_VOICE_{OPUS,GPT,GEMINI}` (defaulty z bieżącego katalogu
+premade; stare głosy ElevenLabs wygasają 2026-12-31); **JEV nie mówi** —
+System One nie generuje tekstu, to część żartu. Brak klucza / błąd / cap
+(`OB_QUIZ_TTS_MAX_CALLS`, domyślnie 200 wywołań API na proces) ⇒ cicha
+degradacja do text-only. `OB_QUIZ_TTS_FAKE=1` = lokalny ton zamiast API
+(e2e bez klucza ćwiczy register/mouth/pacing). **AUTO**
 (`config.quiz.auto`, panel: chip AUTO ROUND): runda jedzie sama (assign
 round-robin po najmniejszej liczbie odpowiedzi → board → ask → reveal 4 s po
 locku → celebracja → następny gracz; koniec banku = linia wrap); każda

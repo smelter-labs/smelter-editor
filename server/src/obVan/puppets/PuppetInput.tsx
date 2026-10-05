@@ -343,7 +343,7 @@ type PuppetPose = {
  * the shared ticker (key check only) and by the render pass (full pose) —
  * re-running at the same instant is a no-op for the dynamics.
  */
-function computePuppetPose(
+export function computePuppetPose(
   cfg: ObPuppetConfig,
   resolution: Resolution,
   inputId: string,
@@ -352,10 +352,19 @@ function computePuppetPose(
 ): PuppetPose {
   const airMs = clipAirMs(cfg.getClock(), now);
   const posed = figureSlots(cfg, resolution).map((f) => {
+    // A live TTS clip overrides the carrier mouth while it plays (its own
+    // wall clock, so it works even when the carrier clock is null).
+    const live = cfg.getLiveMouth?.(f.character) ?? null;
+    const liveAirMs = live ? now - live.startWallMs : null;
+    const liveOn =
+      live != null &&
+      liveAirMs != null &&
+      liveAirMs >= 0 &&
+      liveAirMs < live.durationMs + 300;
     const fig = advanceFigure(
       dynamicsFor(inputId, f.character),
-      f.mouth,
-      airMs,
+      liveOn ? live.track : f.mouth,
+      liveOn ? liveAirMs : airMs,
       now,
     );
     const fx = quizFxFor(players, f.name, now);

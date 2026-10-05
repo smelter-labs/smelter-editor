@@ -70,7 +70,7 @@ writeFileSync(
       config: {
         subtitles: false,
         autoPilot: true,
-        quiz: { bank: 'smelter', aiHost: true, auto: true },
+        quiz: { bank: 'smelter', aiHost: true, auto: true, tts: true },
       },
       rundown: [
         { title: 'INTRO', note: 'host opens, splash up' },

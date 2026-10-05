@@ -240,7 +240,11 @@ export function parseObCommand(raw: unknown): ObOperatorCommand | null {
       if (auto !== undefined) cmd.auto = auto;
       const aiHost = bool(raw.aiHost);
       if (aiHost !== undefined) cmd.aiHost = aiHost;
-      return auto === undefined && aiHost === undefined ? null : cmd;
+      const tts = bool(raw.tts);
+      if (tts !== undefined) cmd.tts = tts;
+      return auto === undefined && aiHost === undefined && tts === undefined
+        ? null
+        : cmd;
     }
     default:
       return null;

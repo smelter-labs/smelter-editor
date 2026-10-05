@@ -414,10 +414,11 @@ export type ObConfig = {
   /**
    * Smelterionaire extras: which question bank is loaded (swapping resets the
    * game), whether the AI host's text plates run (off = a human host on the
-   * `speaker` cam), and whether the round advances itself (assign → board →
-   * ask → reveal; an operator command pauses it for `resumeAfterMs`).
+   * `speaker` cam), whether the round advances itself (assign → board →
+   * ask → reveal; an operator command pauses it for `resumeAfterMs`), and
+   * whether the host/contestants speak via TTS (needs ELEVENLABS_API_KEY).
    */
-  quiz: { bank: ObQuizBank; aiHost: boolean; auto: boolean };
+  quiz: { bank: ObQuizBank; aiHost: boolean; auto: boolean; tts: boolean };
   joinUrls?: { cam?: string };
 };
 
@@ -481,7 +482,7 @@ export const OB_DEFAULT_CONFIG: ObConfig = {
   rundown: [],
   llm: { analyst: false, analystIntervalS: 15, model: "claude-haiku-4-5" },
   host: { enabled: false, description: "wears a GOLD baseball cap" },
-  quiz: { bank: "default", aiHost: false, auto: false },
+  quiz: { bank: "default", aiHost: false, auto: false, tts: false },
 };
 
 export const OB_CONFIG_LIMITS = {
@@ -695,7 +696,7 @@ export type ObOperatorCommand =
       verdict?: ObQuizVerdict;
     }
   /** Desk toggles for `config.quiz` (the panel is WS-only). */
-  | { op: "quiz_set"; auto?: boolean; aiHost?: boolean };
+  | { op: "quiz_set"; auto?: boolean; aiHost?: boolean; tts?: boolean };
 export type ObOperatorOp = ObOperatorCommand["op"];
 
 export type ObControlAction =

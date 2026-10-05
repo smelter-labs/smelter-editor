@@ -62,6 +62,7 @@ function PlayersRow({
     op: 'quiz_set',
     aiHost: !model.aiHost,
   };
+  const ttsCmd: ObOperatorCommand = { op: 'quiz_set', tts: !model.tts };
   const askPending = model.answering?.status === 'pending';
   const thinkerName = model.players.find((p) => p.active)?.name.toUpperCase();
   return (
@@ -179,6 +180,15 @@ function PlayersRow({
         pending={pending.isPending(aiHostCmd)}
         onClick={() => pending.send(aiHostCmd)}
         title='Max Smelter text plates on air (off = a human host talks)'
+      />
+      <Chip
+        dense
+        label='VOICE'
+        active={model.tts}
+        tone={model.tts ? 'amber' : 'default'}
+        pending={pending.isPending(ttsCmd)}
+        onClick={() => pending.send(ttsCmd)}
+        title='ElevenLabs voices for the host and contestants (needs ELEVENLABS_API_KEY on the server)'
       />
       <Meta size={9} color={OB.dim2} style={{ marginLeft: 'auto' }}>
         {model.questionsLeft} QUESTION{model.questionsLeft === 1 ? '' : 'S'}{' '}
