@@ -8,8 +8,12 @@ import {
   View,
 } from '@swmansion/smelter';
 import type { Api } from '@swmansion/smelter';
-import { obQuizFormatDelta, obQuizFormatMoney } from '@smelter-editor/types';
-import type { ObQuizLetter } from '@smelter-editor/types';
+import {
+  OB_QUIZ_MODELS,
+  obQuizFormatDelta,
+  obQuizFormatMoney,
+} from '@smelter-editor/types';
+import type { ObQuizLetter, ObQuizModelId } from '@smelter-editor/types';
 import type { ObHudState } from '../app/store';
 import { TransitionShaderWrapper } from './transitionWrapper';
 
@@ -212,6 +216,19 @@ function useFrameTicker(untilMs: number | null): void {
   }, [untilMs]);
 }
 
+/**
+ * Coarse ticker for low-rate text animation (thinking dots): every re-render
+ * rebuilds the engine's render graph, so 400 ms beats 33 ms by an order of
+ * magnitude while still reading as "alive".
+ */
+function useSlowTicker(intervalMs: number): void {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setTick((t) => t + 1), intervalMs);
+    return () => clearInterval(timer);
+  }, [intervalMs]);
+}
+
 // ── Money rail (top right) ────────────────────────────────────────────────
 
 const LOGO_CHIP = { x: 1484, y: 44, w: 380, h: 64 };
@@ -233,17 +250,15 @@ function MoneyChip({
   const changedAt = player.changedAtMs;
   useFrameTicker(changedAt != null ? changedAt + COUNT_TINT_MS : null);
   const now = Date.now();
-  const t =
-    changedAt == null ? 1 : clamp01((now - changedAt) / COUNT_MS);
+  const t = changedAt == null ? 1 : clamp01((now - changedAt) / COUNT_MS);
   const value = Math.round(
     player.amountFrom + (player.amount - player.amountFrom) * easeOutCubic(t),
   );
   const tinted = changedAt != null && now - changedAt < COUNT_TINT_MS;
-  const color = !tinted
-    ? CHALK
-    : player.verdict === 'wrong'
-      ? RED
-      : GOLD;
+  const color = !tinted ? CHALK : player.verdict === 'wrong' ? RED : GOLD;
+  // Cashed out (the Gemini cameo): the chip stays on the rail with the pot
+  // they walked with, dimmed, no lifeline — a monument, not a contestant.
+  const faded = '#F2F4F866';
   const y = railY(index);
   return (
     <Group x={RAIL.x} y={y} w={RAIL.w} h={RAIL.h} k={k}>
@@ -263,7 +278,7 @@ function MoneyChip({
         fs={22}
         k={k}
         weight='bold'
-        color={player.active ? GOLD : DIM}
+        color={player.cashedOut ? faded : player.active ? GOLD : DIM}
         centerIn={RAIL.h}
       />
       <Label
@@ -275,11 +290,11 @@ function MoneyChip({
         k={k}
         font={MONO}
         weight='semi_bold'
-        color={color}
+        color={player.cashedOut ? faded : color}
         align='right'
         centerIn={RAIL.h}
       />
-      {player.lifelineUsed ? null : (
+      {player.lifelineUsed || player.cashedOut ? null : (
         <Label
           x={352}
           y={6}
@@ -315,11 +330,11 @@ function MoneyFloat({
   const color = `${delta >= 0 ? GOLD : RED}${alphaHex(alpha)}`;
   return (
     <Label
-      x={RAIL.x - 260}
+      x={RAIL.x - 360}
       y={railY(index) + 12 - rise}
-      w={240}
+      w={340}
       text={obQuizFormatDelta(delta)}
-      fs={40 + Math.round(8 * easeOutCubic(Math.min(1, t * 3)))}
+      fs={36 + Math.round(8 * easeOutCubic(Math.min(1, t * 3)))}
       k={k}
       weight='black'
       color={color}
@@ -556,7 +571,14 @@ function HintPlate({
           overflow: 'visible',
         }}>
         <Group x={HINT.x} y={HINT.y} w={HINT.w} h={HINT.h} k={k}>
-          <Art id='ob-quiz-hint-plate' x={0} y={0} w={HINT.w} h={HINT.h} k={k} />
+          <Art
+            id='ob-quiz-hint-plate'
+            x={0}
+            y={0}
+            w={HINT.w}
+            h={HINT.h}
+            k={k}
+          />
           <Label
             x={48}
             y={16}
@@ -586,6 +608,271 @@ function HintPlate({
   );
 }
 
+// ── AI contestants: thinking / answer / host line ─────────────────────────
+
+const vendorOf = (model: ObQuizModelId | null): string =>
+  model ? OB_QUIZ_MODELS[model].vendor.toUpperCase() : '';
+
+/** "GPT IS THINKING…" in the HINT slot while an adapter call is in flight. */
+function ThinkingPlate({
+  thinking,
+  k,
+  resolution,
+}: {
+  thinking: NonNullable<QuizHud['thinking']>;
+  k: number;
+  resolution: Resolution;
+}) {
+  useSlowTicker(400);
+  const dots = '.'.repeat(
+    1 + (Math.floor((Date.now() - thinking.sinceMs) / 400) % 3),
+  );
+  return (
+    <TransitionShaderWrapper
+      transition={{
+        type: 'fade',
+        durationMs: HINT_FADE_MS,
+        direction: 'in',
+        startedAtMs: thinking.sinceMs,
+      }}
+      resolution={resolution}>
+      <View
+        style={{
+          top: 0,
+          left: 0,
+          width: resolution.width,
+          height: resolution.height,
+          overflow: 'visible',
+        }}>
+        <Group x={HINT.x} y={HINT.y} w={HINT.w} h={HINT.h} k={k}>
+          <Art
+            id='ob-quiz-hint-plate'
+            x={0}
+            y={0}
+            w={HINT.w}
+            h={HINT.h}
+            k={k}
+          />
+          <Label
+            x={48}
+            y={16}
+            w={HINT.w - 96}
+            text={`${thinking.name.toUpperCase()} IS THINKING${dots}`}
+            fs={26}
+            k={k}
+            weight='black'
+            color={SKY}
+          />
+          <Label
+            x={48}
+            y={58}
+            w={HINT.w - 96}
+            text={
+              thinking.model
+                ? `${vendorOf(thinking.model)} · LIVE ANSWER IN PROGRESS`
+                : 'PONDERING OUT LOUD'
+            }
+            fs={24}
+            k={k}
+            font={MONO}
+            weight='medium'
+            color={DIM}
+          />
+        </Group>
+      </View>
+    </TransitionShaderWrapper>
+  );
+}
+
+/** Naive two-line wrap at a character budget (mono-ish, good enough). */
+function wrapTwoLines(text: string, perLine: number): [string, string | null] {
+  if (text.length <= perLine) return [text, null];
+  const cut = text.lastIndexOf(' ', perLine);
+  const at = cut > perLine * 0.5 ? cut : perLine;
+  const rest = text.slice(at).trim();
+  return [
+    text.slice(0, at).trim(),
+    rest.length > perLine ? `${rest.slice(0, perLine - 1).trimEnd()}…` : rest,
+  ];
+}
+
+/** The landed answer: pick + quip (chat models) or confidence (Jev). */
+function AnswerPlate({
+  answer,
+  k,
+  resolution,
+}: {
+  answer: NonNullable<QuizHud['answer']>;
+  k: number;
+  resolution: Resolution;
+}) {
+  const title =
+    answer.confidence !== null
+      ? `${answer.name.toUpperCase()} LOCKS ${answer.letter} · ${Math.round(answer.confidence * 100)}% SURE`
+      : `${answer.name.toUpperCase()} LOCKS ${answer.letter}`;
+  const line =
+    answer.quip ??
+    (answer.confidence !== null
+      ? 'A typed decision. No second thoughts — no thoughts at all.'
+      : '');
+  const [line1, line2] = wrapTwoLines(line, 70);
+  return (
+    <TransitionShaderWrapper
+      transition={{
+        type: 'fade',
+        durationMs: HINT_FADE_MS,
+        direction: 'in',
+        startedAtMs: answer.atMs,
+      }}
+      resolution={resolution}>
+      <View
+        style={{
+          top: 0,
+          left: 0,
+          width: resolution.width,
+          height: resolution.height,
+          overflow: 'visible',
+        }}>
+        <Group x={HINT.x} y={HINT.y} w={HINT.w} h={HINT.h} k={k}>
+          <Art
+            id='ob-quiz-hint-plate'
+            x={0}
+            y={0}
+            w={HINT.w}
+            h={HINT.h}
+            k={k}
+          />
+          <Label
+            x={48}
+            y={16}
+            w={HINT.w - 96}
+            text={answer.canned ? `${title} (OFFLINE)` : title}
+            fs={26}
+            k={k}
+            weight='black'
+            color={GOLD}
+          />
+          {line ? (
+            <Label
+              x={48}
+              y={line2 ? 54 : 58}
+              w={HINT.w - 96}
+              text={line1}
+              fs={22}
+              k={k}
+              font={MONO}
+              weight='medium'
+              color={CHALK}
+            />
+          ) : null}
+          {line2 ? (
+            <Label
+              x={48}
+              y={90}
+              w={HINT.w - 96}
+              text={line2}
+              fs={22}
+              k={k}
+              font={MONO}
+              weight='medium'
+              color={CHALK}
+            />
+          ) : null}
+        </Group>
+      </View>
+    </TransitionShaderWrapper>
+  );
+}
+
+// ── Host line (top, between the title bug and the money rail) ─────────────
+
+const HOST_LINE = { x: 720, y: 40, w: 740, h: 72 };
+
+function HostLinePlate({
+  hostLine,
+  k,
+  resolution,
+}: {
+  hostLine: NonNullable<QuizHud['hostLine']>;
+  k: number;
+  resolution: Resolution;
+}) {
+  useFrameTicker(hostLine.untilMs);
+  const now = Date.now();
+  const fadingOut = hostLine.untilMs - now < HINT_FADE_MS;
+  const [line1, line2] = wrapTwoLines(hostLine.text, 58);
+  return (
+    <TransitionShaderWrapper
+      transition={{
+        type: 'fade',
+        durationMs: HINT_FADE_MS,
+        direction: fadingOut ? 'out' : 'in',
+        startedAtMs: fadingOut
+          ? hostLine.untilMs - HINT_FADE_MS
+          : hostLine.atMs,
+      }}
+      resolution={resolution}>
+      <View
+        style={{
+          top: 0,
+          left: 0,
+          width: resolution.width,
+          height: resolution.height,
+          overflow: 'visible',
+        }}>
+        <Group
+          x={HOST_LINE.x}
+          y={HOST_LINE.y}
+          w={HOST_LINE.w}
+          h={HOST_LINE.h}
+          k={k}>
+          <Art
+            id='ob-quiz-host-plate'
+            x={0}
+            y={0}
+            w={HOST_LINE.w}
+            h={HOST_LINE.h}
+            k={k}
+          />
+          <Label
+            x={26}
+            y={6}
+            w={HOST_LINE.w - 52}
+            text='MAX SMELTER'
+            fs={12}
+            k={k}
+            font={MONO}
+            weight='semi_bold'
+            color={GOLD}
+          />
+          <Label
+            x={26}
+            y={line2 ? 24 : 32}
+            w={HOST_LINE.w - 52}
+            text={line1}
+            fs={19}
+            k={k}
+            weight='bold'
+            color={CHALK}
+          />
+          {line2 ? (
+            <Label
+              x={26}
+              y={46}
+              w={HOST_LINE.w - 52}
+              text={line2}
+              fs={19}
+              k={k}
+              weight='bold'
+              color={CHALK}
+            />
+          ) : null}
+        </Group>
+      </View>
+    </TransitionShaderWrapper>
+  );
+}
+
 // ── Splash + stinger ──────────────────────────────────────────────────────
 
 function QuizSplash({ k }: { k: number }) {
@@ -601,6 +888,15 @@ function QuizSfx({ sfx }: { sfx: NonNullable<QuizHud['sfx']> }) {
   return (
     <View style={{ top: 0, left: 0, width: 2, height: 2, overflow: 'hidden' }}>
       <InputStream inputId={sfx.inputId} volume={0.7} />
+    </View>
+  );
+}
+
+/** A TTS line (host / contestant voice) — its own slot so stings can't cut it. */
+function QuizSpeech({ speech }: { speech: NonNullable<QuizHud['speech']> }) {
+  return (
+    <View style={{ top: 0, left: 2, width: 2, height: 2, overflow: 'hidden' }}>
+      <InputStream inputId={speech.inputId} volume={1} />
     </View>
   );
 }
@@ -681,12 +977,37 @@ export function ObQuizOverlay({
           <QuizBoard board={quiz.board} k={k} resolution={resolution} />
         </Frame>
       ) : null}
+      {/* One plate owns the HINT slot: lifeline > landed answer > thinking. */}
       {quiz.hint ? (
         <Frame key={`hint-${quiz.hint.atMs}`} resolution={resolution}>
           <HintPlate hint={quiz.hint} k={k} resolution={resolution} />
         </Frame>
+      ) : quiz.answer ? (
+        <Frame key={`answer-${quiz.answer.atMs}`} resolution={resolution}>
+          <AnswerPlate answer={quiz.answer} k={k} resolution={resolution} />
+        </Frame>
+      ) : quiz.thinking ? (
+        <Frame
+          key={`thinking-${quiz.thinking.sinceMs}`}
+          resolution={resolution}>
+          <ThinkingPlate
+            thinking={quiz.thinking}
+            k={k}
+            resolution={resolution}
+          />
+        </Frame>
+      ) : null}
+      {quiz.hostLine ? (
+        <Frame key={`host-${quiz.hostLine.atMs}`} resolution={resolution}>
+          <HostLinePlate
+            hostLine={quiz.hostLine}
+            k={k}
+            resolution={resolution}
+          />
+        </Frame>
       ) : null}
       {quiz.sfx ? <QuizSfx sfx={quiz.sfx} /> : null}
+      {quiz.speech ? <QuizSpeech speech={quiz.speech} /> : null}
     </View>
   );
 }

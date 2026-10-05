@@ -36,6 +36,13 @@ export type PuppetCastMember = {
   mouth: PuppetMouthTrack | null;
 };
 
+/** A TTS clip currently speaking through a puppet's mouth (wall-clock timed). */
+export type PuppetLiveMouth = {
+  track: PuppetMouthTrack;
+  startWallMs: number;
+  durationMs: number;
+};
+
 export type ObPuppetConfig = {
   /** `studio` renders the whole set (every cast member at a desk). */
   character: PuppetCharacterId | 'studio';
@@ -47,9 +54,15 @@ export type ObPuppetConfig = {
    * restarts and loops never need a store round-trip.
    */
   getClock: () => PuppetClock | null;
+  /**
+   * Runtime TTS lip-sync: while a live mouth is active for a character it
+   * overrides the carrier `mouth` track. A closure into RoomState (like
+   * `getClock`) so per-frame reads never touch the store.
+   */
+  getLiveMouth?: (character: PuppetCharacterId) => PuppetLiveMouth | null;
   /** The studio's seated cast (solo puppets ignore it). */
   cast?: PuppetCastMember[];
 };
 
-/** What an attach caller provides — RoomState adds the live clock. */
-export type ObPuppetSeed = Omit<ObPuppetConfig, 'getClock'>;
+/** What an attach caller provides — RoomState adds the live closures. */
+export type ObPuppetSeed = Omit<ObPuppetConfig, 'getClock' | 'getLiveMouth'>;

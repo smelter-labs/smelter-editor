@@ -13,7 +13,7 @@
  * render only the audio keeper and do not tick at all.
  */
 import React, { useContext, useRef } from 'react';
-import { Image, InputStream, Rescaler, View } from '@swmansion/smelter';
+import { Image, InputStream, Rescaler, Text, View } from '@swmansion/smelter';
 import { useStoreWithEqualityFn } from 'zustand/traditional';
 import { StoreContext } from '../../app/store';
 import {
@@ -183,10 +183,55 @@ function FigureGlow({
   );
 }
 
-function Desk({ cx, topY, w }: { cx: number; topY: number; w: number }) {
+function Desk({
+  cx,
+  topY,
+  w,
+  name,
+}: {
+  cx: number;
+  topY: number;
+  w: number;
+  name: string;
+}) {
   const h = w * (PUPPET_DESK.h / PUPPET_DESK.w);
+  // The plate PNG carries only the gold framing rules — the nameplate text
+  // is live, so every contestant desk reads their own name.
+  // Only the desk's top band stays in frame (solo crops at ~150 design px),
+  // so the name sits right under the gold edge.
+  const kd = w / PUPPET_DESK.w;
+  const fs = Math.round(76 * kd);
   return (
-    <Sprite id='ob-puppet-studio-desk' x={cx - w / 2} y={topY} w={w} h={h} />
+    <View
+      style={{
+        top: Math.round(topY),
+        left: Math.round(cx - w / 2),
+        width: Math.round(w),
+        height: Math.round(h),
+        overflow: 'hidden',
+      }}>
+      <Sprite id='ob-puppet-studio-desk' x={0} y={0} w={w} h={h} />
+      <View
+        style={{
+          top: Math.round(34 * kd),
+          left: 0,
+          width: Math.round(w),
+          height: Math.round(fs * 1.35),
+          overflow: 'hidden',
+        }}>
+        <Text
+          style={{
+            fontSize: fs,
+            color: '#FFD166',
+            width: Math.round(w),
+            align: 'center',
+            fontFamily: 'Big Shoulders Display',
+            fontWeight: 'extra_bold',
+          }}>
+          {name.toUpperCase()}
+        </Text>
+      </View>
+    </View>
   );
 }
 
@@ -343,7 +388,7 @@ type PuppetPose = {
  * the shared ticker (key check only) and by the render pass (full pose) —
  * re-running at the same instant is a no-op for the dynamics.
  */
-function computePuppetPose(
+export function computePuppetPose(
   cfg: ObPuppetConfig,
   resolution: Resolution,
   inputId: string,
@@ -352,10 +397,19 @@ function computePuppetPose(
 ): PuppetPose {
   const airMs = clipAirMs(cfg.getClock(), now);
   const posed = figureSlots(cfg, resolution).map((f) => {
+    // A live TTS clip overrides the carrier mouth while it plays (its own
+    // wall clock, so it works even when the carrier clock is null).
+    const live = cfg.getLiveMouth?.(f.character) ?? null;
+    const liveAirMs = live ? now - live.startWallMs : null;
+    const liveOn =
+      live != null &&
+      liveAirMs != null &&
+      liveAirMs >= 0 &&
+      liveAirMs < live.durationMs + 300;
     const fig = advanceFigure(
       dynamicsFor(inputId, f.character),
-      f.mouth,
-      airMs,
+      liveOn ? live.track : f.mouth,
+      liveOn ? liveAirMs : airMs,
       now,
     );
     const fx = quizFxFor(players, f.name, now);
@@ -491,7 +545,7 @@ export function ObPuppetInput({
           visual={visual}
           cheer={fx.cheer}
         />
-        <Desk cx={f.cx} topY={deskTop} w={f.deskW} />
+        <Desk cx={f.cx} topY={deskTop} w={f.deskW} name={f.name} />
       </View>
     );
   });

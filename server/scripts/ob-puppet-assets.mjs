@@ -410,9 +410,10 @@ function studioDesk() {
   </defs>
   <path d="${plate}" fill="url(#deskG)" stroke="url(#goldG)" stroke-width="5"/>
   <path d="M ${cut + 8} 40 H ${900 - cut - 8} L ${900 - 22} ${40 + cut - 6} V 60 H 22 V ${40 + cut - 6} Z" fill="#FFD16614"/>
-  <rect x="330" y="196" width="240" height="4" fill="url(#goldG)" opacity="0.8"/>
-  <text x="450" y="172" text-anchor="middle" font-family="'Big Shoulders Display'" font-weight="800" font-size="64" fill="url(#goldG)" letter-spacing="6">SMELTERIONAIRE</text>
-  <rect x="330" y="232" width="240" height="4" fill="url(#goldG)" opacity="0.8"/>`;
+  <!-- The nameplate text is live (the player's name, PuppetInput renders
+       it in the desk's top band — only ~150 design px stay in frame), so
+       the plate itself is generic: one framing rule under the name. -->
+  <rect x="300" y="146" width="300" height="4" fill="url(#goldG)" opacity="0.8"/>`;
 }
 
 /** Radial gold speaking glow, three intensities. */

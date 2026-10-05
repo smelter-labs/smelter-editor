@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  OB_QUIZ_ANSWER_TIMEOUT_MS,
   OB_QUIZ_CELEBRATE_MS,
   OB_QUIZ_HINT_SHOW_MS,
   OB_QUIZ_HINT_TIMEOUT_MS,
@@ -23,11 +24,15 @@ const Q = (id: string, correct: 'A' | 'B' | 'C' | 'D' = 'B'): QuizQuestion => ({
 
 const BANK = [Q('q1'), Q('q2', 'A'), Q('q3', 'D')];
 
-const CAM = (id: string, over: Partial<Parameters<ObQuizGame['syncPlayers']>[0][number]> = {}) => ({
+const CAM = (
+  id: string,
+  over: Partial<Parameters<ObQuizGame['syncPlayers']>[0][number]> = {},
+) => ({
   id,
   role: 'guest' as const,
   name: `cam-${id}`,
   talent: null,
+  model: null,
   live: true,
   ...over,
 });
@@ -82,12 +87,12 @@ describe('money math', () => {
     }
   });
 
-  it('formats dollars with separators and a real minus', () => {
-    expect(obQuizFormatMoney(3_375_000)).toBe('$3,375,000');
-    expect(obQuizFormatMoney(1_000_000)).toBe('$1,000,000');
-    expect(obQuizFormatMoney(7_813)).toBe('$7,813');
-    expect(obQuizFormatDelta(506_250)).toBe('+$506,250');
-    expect(obQuizFormatDelta(-843_750)).toBe('−$843,750');
+  it('formats tokens with separators and a real minus', () => {
+    expect(obQuizFormatMoney(3_375_000)).toBe('3,375,000 TOK');
+    expect(obQuizFormatMoney(1_000_000)).toBe('1,000,000 TOK');
+    expect(obQuizFormatMoney(7_813)).toBe('7,813 TOK');
+    expect(obQuizFormatDelta(506_250)).toBe('+506,250 TOK');
+    expect(obQuizFormatDelta(-843_750)).toBe('−843,750 TOK');
   });
 });
 
@@ -161,21 +166,21 @@ describe('phase legality', () => {
   it('refuses assign while a question is open, to a dead cam, and on an empty bank', () => {
     const { g } = game([Q('only')]);
     g.syncPlayers([CAM('g1'), CAM('g2', { live: false })]);
-    expect(
-      g.command({ op: 'quiz', action: 'assign', camId: 'g2' }).ok,
-    ).toBe(false);
+    expect(g.command({ op: 'quiz', action: 'assign', camId: 'g2' }).ok).toBe(
+      false,
+    );
     g.command({ op: 'quiz', action: 'assign', camId: 'g1' });
-    expect(
-      g.command({ op: 'quiz', action: 'assign', camId: 'g1' }).ok,
-    ).toBe(false);
+    expect(g.command({ op: 'quiz', action: 'assign', camId: 'g1' }).ok).toBe(
+      false,
+    );
     g.command({ op: 'quiz', action: 'skip' });
     g.command({ op: 'quiz', action: 'assign', camId: 'g1' });
     g.command({ op: 'quiz', action: 'show_board' });
     g.command({ op: 'quiz', action: 'lock', letter: 'B' });
     g.command({ op: 'quiz', action: 'reveal' });
-    expect(
-      g.command({ op: 'quiz', action: 'assign', camId: 'g1' }).ok,
-    ).toBe(false); // bank empty
+    expect(g.command({ op: 'quiz', action: 'assign', camId: 'g1' }).ok).toBe(
+      false,
+    ); // bank empty
   });
 
   it('lets the contestant change their lock before the reveal', () => {
@@ -302,5 +307,238 @@ describe('skip and reset', () => {
     expect(s.players[0].amount).toBe(OB_QUIZ_START_AMOUNT);
     expect(s.players[0].lifelineUsed).toBe(false);
     expect(s.questionsLeft).toBe(BANK.length);
+  });
+});
+
+describe('ask / resolveAnswer (AI contestants)', () => {
+  /** idle → assigned → board, nothing asked yet. */
+  function toBoard(g: ObQuizGame, camId = 'g1', model: 'gpt' | null = 'gpt') {
+    g.syncPlayers([
+      CAM(camId, { model, talent: model?.toUpperCase() ?? null }),
+    ]);
+    expect(g.command({ op: 'quiz', action: 'assign', camId }).ok).toBe(true);
+    expect(g.command({ op: 'quiz', action: 'show_board' }).ok).toBe(true);
+  }
+
+  function askSeq(g: ObQuizGame): number {
+    const r = g.command({ op: 'quiz', action: 'ask' });
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error('unreachable');
+    const fx = r.effects.find((e) => e.type === 'answer');
+    expect(fx?.type).toBe('answer');
+    return fx?.type === 'answer' ? fx.seq : -1;
+  }
+
+  it('is legal only on the board, once, for a live player', () => {
+    const { g } = game();
+    expect(g.command({ op: 'quiz', action: 'ask' }).ok).toBe(false); // idle
+    g.syncPlayers([CAM('g1', { model: 'gpt' })]);
+    g.command({ op: 'quiz', action: 'assign', camId: 'g1' });
+    expect(g.command({ op: 'quiz', action: 'ask' }).ok).toBe(false); // assigned
+    g.command({ op: 'quiz', action: 'show_board' });
+    expect(g.command({ op: 'quiz', action: 'ask' }).ok).toBe(true);
+    expect(g.command({ op: 'quiz', action: 'ask' }).ok).toBe(false); // pending
+  });
+
+  it('carries the player model and never the correct letter in the effect', () => {
+    const { g } = game();
+    toBoard(g);
+    const r = g.command({ op: 'quiz', action: 'ask' });
+    if (!r.ok) throw new Error('refused');
+    const fx = r.effects.find((e) => e.type === 'answer');
+    expect(fx?.type === 'answer' && fx.model).toBe('gpt');
+    const ans = g.state().current?.answering;
+    expect(ans).toMatchObject({ status: 'pending', model: 'gpt' });
+    expect(ans && 'correct' in ans).toBe(false);
+  });
+
+  it('a resolved answer fills the fields and auto-locks', () => {
+    const { g } = game();
+    toBoard(g);
+    const seq = askSeq(g);
+    expect(
+      g.resolveAnswer(seq, { letter: 'B', quip: 'easy', confidence: null }),
+    ).toBe(true);
+    const s = g.state();
+    expect(s.phase).toBe('locked');
+    expect(s.current?.lockedLetter).toBe('B');
+    expect(s.current?.answering).toMatchObject({
+      status: 'done',
+      letter: 'B',
+      quip: 'easy',
+      canned: false,
+    });
+    // REVEAL now verdicts off the lock exactly as a desk lock would.
+    expect(g.command({ op: 'quiz', action: 'reveal' }).ok).toBe(true);
+    expect(g.state().current?.verdict).toBe('correct');
+  });
+
+  it('null resolution goes canned: deterministic letter inside the quip', () => {
+    const { g } = game();
+    toBoard(g, 'g1', null); // human / no adapter
+    const seq = askSeq(g);
+    expect(g.resolveAnswer(seq, null)).toBe(true);
+    const ans = g.state().current?.answering;
+    expect(ans?.canned).toBe(true);
+    expect(ans?.letter).toMatch(/^[A-D]$/);
+    expect(ans?.quip).toContain(ans?.letter);
+    expect(g.state().current?.lockedLetter).toBe(ans?.letter);
+    // Deterministic: same question + cam → same letter.
+    const { g: g2 } = game();
+    toBoard(g2, 'g1', null);
+    g2.resolveAnswer(askSeq(g2), null);
+    expect(g2.state().current?.answering?.letter).toBe(ans?.letter);
+  });
+
+  it('seq-guards stale resolutions: manual lock wins, late answer ignored', () => {
+    const { g } = game();
+    toBoard(g);
+    const seq = askSeq(g);
+    g.command({ op: 'quiz', action: 'lock', letter: 'D' }); // operator overrules
+    expect(g.state().current?.answering).toBeNull();
+    expect(
+      g.resolveAnswer(seq, { letter: 'A', quip: 'late', confidence: null }),
+    ).toBe(false);
+    expect(g.state().current?.lockedLetter).toBe('D');
+  });
+
+  it('seq-guards across skip and re-ask of the same question', () => {
+    const { g } = game();
+    toBoard(g);
+    const seq1 = askSeq(g);
+    g.command({ op: 'quiz', action: 'skip' });
+    // Same question comes back to the board, asked again: new seq.
+    g.command({ op: 'quiz', action: 'assign', camId: 'g1' });
+    g.command({ op: 'quiz', action: 'show_board' });
+    const seq2 = askSeq(g);
+    expect(seq2).not.toBe(seq1);
+    expect(
+      g.resolveAnswer(seq1, { letter: 'A', quip: 'stale', confidence: null }),
+    ).toBe(false);
+    expect(
+      g.resolveAnswer(seq2, { letter: 'C', quip: 'fresh', confidence: null }),
+    ).toBe(true);
+    expect(g.state().current?.lockedLetter).toBe('C');
+  });
+
+  it('a departed contestant takes the pending answer with them', () => {
+    const { g } = game();
+    toBoard(g);
+    const seq = askSeq(g);
+    g.syncPlayers([]); // player left — question back in the bank
+    expect(g.state().current).toBeNull();
+    expect(
+      g.resolveAnswer(seq, { letter: 'A', quip: 'ghost', confidence: null }),
+    ).toBe(false);
+  });
+
+  it('tick goes canned after the answer timeout', () => {
+    const { g, t } = game();
+    toBoard(g);
+    askSeq(g);
+    t.now += OB_QUIZ_ANSWER_TIMEOUT_MS;
+    expect(g.tick(t.now).changed).toBe(true);
+    const ans = g.state().current?.answering;
+    expect(ans?.status).toBe('done');
+    expect(ans?.canned).toBe(true);
+    expect(g.state().phase).toBe('locked');
+  });
+
+  it('the answer survives the reveal and clears with the celebration', () => {
+    const { g, t } = game();
+    toBoard(g);
+    const seq = askSeq(g);
+    g.resolveAnswer(seq, { letter: 'B', quip: 'done', confidence: 0.9 });
+    g.command({ op: 'quiz', action: 'reveal' });
+    expect(g.state().current?.answering?.quip).toBe('done');
+    t.now += OB_QUIZ_CELEBRATE_MS;
+    g.tick(t.now);
+    expect(g.state().current).toBeNull();
+  });
+
+  it('setBank swaps questions and resets the game', () => {
+    const { g } = game();
+    toLocked(g, 'g1', 'B');
+    g.command({ op: 'quiz', action: 'reveal' });
+    g.setBank([Q('s1', 'A'), Q('s2', 'C')]);
+    const s = g.state();
+    expect(s.phase).toBe('idle');
+    expect(s.questionsLeft).toBe(2);
+    expect(s.players[0].amount).toBe(OB_QUIZ_START_AMOUNT);
+    g.command({ op: 'quiz', action: 'assign', camId: 'g1' });
+    expect(g.state().current?.questionId).toBe('s1');
+  });
+
+  it('syncPlayers carries the model through reconnects', () => {
+    const { g } = game();
+    g.syncPlayers([CAM('g1', { model: 'jev', talent: 'JEV' })]);
+    expect(g.state().players[0].model).toBe('jev');
+    g.syncPlayers([CAM('g1', { model: 'jev', live: false })]);
+    g.syncPlayers([CAM('g1', { model: 'jev', live: true })]);
+    expect(g.state().players[0].model).toBe('jev');
+  });
+});
+
+describe('cash out (the Gemini cameo)', () => {
+  function toAsked(g: ObQuizGame) {
+    g.syncPlayers([
+      CAM('g1', { model: 'gemini', talent: 'GEMINI' }),
+      CAM('g2', { model: 'gpt', talent: 'GPT' }),
+    ]);
+    g.command({ op: 'quiz', action: 'assign', camId: 'g1' });
+    g.command({ op: 'quiz', action: 'show_board' });
+    const r = g.command({ op: 'quiz', action: 'ask' });
+    if (!r.ok) throw new Error('ask refused');
+    const fx = r.effects.find((e) => e.type === 'answer');
+    return fx?.type === 'answer' ? fx.seq : -1;
+  }
+
+  it('retires the player with their pot and returns the question', () => {
+    const { g } = game();
+    const seq = toAsked(g);
+    expect(g.resolveAnswer(seq, { cashOut: true })).toBe(true);
+    const s = g.state();
+    expect(s.phase).toBe('idle');
+    expect(s.questionsLeft).toBe(BANK.length); // unburned
+    const gemini = s.players.find((p) => p.camId === 'g1')!;
+    expect(gemini.cashedOut).toBe(true);
+    expect(gemini.amount).toBe(OB_QUIZ_START_AMOUNT); // keeps the tokens
+    // Same question goes to the next contestant.
+    g.command({ op: 'quiz', action: 'assign', camId: 'g2' });
+    expect(g.state().current?.questionId).toBe('q1');
+  });
+
+  it('a cashed-out player can never be assigned again', () => {
+    const { g } = game();
+    const seq = toAsked(g);
+    g.resolveAnswer(seq, { cashOut: true });
+    const r = g.command({ op: 'quiz', action: 'assign', camId: 'g1' });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.message).toContain('took the tokens');
+  });
+
+  it('cashedOut survives reconnects and clears on reset', () => {
+    const { g } = game();
+    const seq = toAsked(g);
+    g.resolveAnswer(seq, { cashOut: true });
+    g.syncPlayers([
+      CAM('g1', { model: 'gemini', live: false }),
+      CAM('g2', { model: 'gpt' }),
+    ]);
+    g.syncPlayers([
+      CAM('g1', { model: 'gemini', live: true }),
+      CAM('g2', { model: 'gpt' }),
+    ]);
+    expect(g.state().players[0].cashedOut).toBe(true);
+    g.command({ op: 'quiz', action: 'reset' });
+    expect(g.state().players[0].cashedOut).toBe(false);
+  });
+
+  it('cash out is seq-guarded like any other resolution', () => {
+    const { g } = game();
+    const seq = toAsked(g);
+    g.command({ op: 'quiz', action: 'lock', letter: 'A' }); // desk overrules
+    expect(g.resolveAnswer(seq, { cashOut: true })).toBe(false);
+    expect(g.state().players[0].cashedOut).toBe(false);
   });
 });

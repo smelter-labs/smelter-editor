@@ -411,8 +411,19 @@ export type ObConfig = {
    * confirmed host sets the per-camera `host` signal and enables gestures.
    */
   host: { enabled: boolean; description: string };
+  /**
+   * Smelterionaire extras: which question bank is loaded (swapping resets the
+   * game), whether the AI host's text plates run (off = a human host on the
+   * `speaker` cam), whether the round advances itself (assign → board →
+   * ask → reveal; an operator command pauses it for `resumeAfterMs`), and
+   * whether the host/contestants speak via TTS (needs ELEVENLABS_API_KEY).
+   */
+  quiz: { bank: ObQuizBank; aiHost: boolean; auto: boolean; tts: boolean };
   joinUrls?: { cam?: string };
 };
+
+export type ObQuizBank = "default" | "smelter";
+export const OB_QUIZ_BANKS: readonly ObQuizBank[] = ["default", "smelter"];
 
 /** Models the LLM layer can run on (UI selector; validated on config/route). */
 export const OB_LLM_MODELS = [
@@ -449,6 +460,7 @@ export type ObConfigPatch = {
   rundown?: ObRundownItem[];
   llm?: Partial<ObConfig["llm"]>;
   host?: Partial<ObConfig["host"]>;
+  quiz?: Partial<ObConfig["quiz"]>;
   joinUrls?: { cam?: string };
 };
 
@@ -470,6 +482,7 @@ export const OB_DEFAULT_CONFIG: ObConfig = {
   rundown: [],
   llm: { analyst: false, analystIntervalS: 15, model: "claude-haiku-4-5" },
   host: { enabled: false, description: "wears a GOLD baseball cap" },
+  quiz: { bank: "default", aiHost: false, auto: false, tts: false },
 };
 
 export const OB_CONFIG_LIMITS = {
@@ -681,7 +694,9 @@ export type ObOperatorCommand =
       letter?: ObQuizLetter;
       /** `reveal`: manual override for open judgment calls. */
       verdict?: ObQuizVerdict;
-    };
+    }
+  /** Desk toggles for `config.quiz` (the panel is WS-only). */
+  | { op: "quiz_set"; auto?: boolean; aiHost?: boolean; tts?: boolean };
 export type ObOperatorOp = ObOperatorCommand["op"];
 
 export type ObControlAction =

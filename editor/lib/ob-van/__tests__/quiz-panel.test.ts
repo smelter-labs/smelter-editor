@@ -15,23 +15,27 @@ function quizState(patch: Partial<ObQuizState> = {}): ObQuizState {
       {
         camId: 'g1',
         name: 'Alice',
+        model: null,
         amount: 1_500_000,
         amountFrom: 1_000_000,
         amountChangedAtMs: 100,
         lifelineUsed: false,
         answered: 1,
         correctCount: 1,
+        cashedOut: false,
         live: true,
       },
       {
         camId: 'g2',
         name: 'Bob',
+        model: null,
         amount: 1_000_000,
         amountFrom: 1_000_000,
         amountChangedAtMs: null,
         lifelineUsed: true,
         answered: 0,
         correctCount: 0,
+        cashedOut: false,
         live: false,
       },
     ],
@@ -70,6 +74,7 @@ const question = (patch = {}): NonNullable<ObQuizState['current']> => ({
   verdict: null,
   revealedAtMs: null,
   delta: 0,
+  answering: null,
   ...patch,
 });
 
@@ -84,7 +89,7 @@ describe('quizBarModel', () => {
   it('formats money and marks who is assignable (live, idle phase)', () => {
     const m = quizBarModel(state(quizState()))!;
     expect(m.players[0]).toMatchObject({
-      money: '$1,500,000',
+      money: '1,500,000 TOK',
       assignable: true,
       active: false,
     });
@@ -154,6 +159,53 @@ describe('quizBarModel', () => {
     expect(revealed.canReveal).toBe(false);
     expect(revealed.question?.verdict).toBe('wrong');
     expect(revealed.players[0].assignable).toBe(true); // next question may go out
+  });
+
+  it('exposes ask: board up, nothing in flight, and the answering row', () => {
+    const board = quizBarModel(
+      state(quizState({ phase: 'board', current: question({ shownAtMs: 5 }) })),
+    )!;
+    expect(board.canAsk).toBe(true);
+    expect(board.answering).toBeNull();
+    const pending = quizBarModel(
+      state(
+        quizState({
+          phase: 'board',
+          current: question({
+            shownAtMs: 5,
+            answering: {
+              seq: 1,
+              status: 'pending',
+              model: 'gpt',
+              startedAtMs: 7,
+              answeredAtMs: null,
+              letter: null,
+              quip: null,
+              confidence: null,
+              canned: false,
+            },
+          }),
+        }),
+      ),
+    )!;
+    expect(pending.canAsk).toBe(false);
+    expect(pending.answering?.status).toBe('pending');
+    const idle = quizBarModel(state(quizState()))!;
+    expect(idle.canAsk).toBe(false);
+  });
+
+  it('carries player model badges and the config toggles', () => {
+    const withModel = quizState();
+    withModel.players[0].model = 'opus';
+    const m = quizBarModel(
+      state(withModel, {
+        config: { quiz: { bank: 'smelter', aiHost: true, auto: true } },
+      }),
+    )!;
+    expect(m.players[0].model).toBe('opus');
+    expect(m.players[1].model).toBeNull();
+    expect(m.auto).toBe(true);
+    expect(m.aiHost).toBe(true);
   });
 
   it('gates the lifeline on the active player and a pending hint', () => {

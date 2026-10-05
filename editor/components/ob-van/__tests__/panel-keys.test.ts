@@ -127,7 +127,15 @@ describe('panelKeyToCommand — transition, rundown, replay', () => {
 
 describe('panelKeyToCommand — quiz', () => {
   const quiz = (phase: PanelKeyQuizContext['phase'], over = {}) =>
-    ctx({ quiz: { phase, canReveal: false, canLifeline: false, ...over } });
+    ctx({
+      quiz: {
+        phase,
+        canReveal: false,
+        canLifeline: false,
+        canAsk: false,
+        ...over,
+      },
+    });
 
   it('A stays the auto toggle until the board is up, then locks the letter', () => {
     expect(panelKeyToCommand('a', ctx())).toEqual({
@@ -189,6 +197,15 @@ describe('panelKeyToCommand — quiz', () => {
     ).toEqual({ op: 'quiz', action: 'lifeline' });
   });
 
+  it('K asks the contestant only when allowed', () => {
+    expect(panelKeyToCommand('k', quiz('board'))).toBeNull();
+    expect(panelKeyToCommand('K', quiz('board', { canAsk: true }))).toEqual({
+      op: 'quiz',
+      action: 'ask',
+    });
+    expect(panelKeyToCommand('k', quiz('idle', { canAsk: false }))).toBeNull();
+  });
+
   it('digits still preview cameras during the quiz', () => {
     expect(panelKeyToCommand('2', quiz('board'))).toEqual({
       op: 'preview',
@@ -203,6 +220,7 @@ describe('panelKeyToCommand — quiz', () => {
         phase: 'idle',
         canReveal: false,
         canLifeline: false,
+        canAsk: false,
       }),
     ).toBe(false);
     expect(
@@ -210,6 +228,7 @@ describe('panelKeyToCommand — quiz', () => {
         phase: 'board',
         canReveal: false,
         canLifeline: false,
+        canAsk: false,
       }),
     ).toBe(true);
   });

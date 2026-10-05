@@ -102,8 +102,15 @@ import { ObSignals, makeObClock } from '../obVan/signals';
 import { createObBrain } from '../obVan/brain';
 import { attentionFor } from '../obVan/attention';
 import { createObLlm } from '../obVan/llm';
+import { createObQuizAi } from '../obVan/llm/quizHost';
+import { createObQuizTts } from '../obVan/llm/tts';
 import type { ObBriefResult } from '../obVan/contracts';
-import type { ObPuppetConfig, ObPuppetSeed } from '../obVan/puppets/types';
+import type {
+  ObPuppetConfig,
+  ObPuppetSeed,
+  PuppetCharacterId,
+  PuppetLiveMouth,
+} from '../obVan/puppets/types';
 import { OB_VAN_MODEL_ID } from '../ai-models/ob-van/manifest';
 import type {
   ObCamRole,
@@ -178,6 +185,8 @@ import type { AIModelConfig } from '@smelter-editor/types';
 const RESUME_FROZEN_IMAGE_CLEANUP_DELAY_MS = 5500;
 const FROZEN_IMAGE_UNREGISTER_GRACE_MS = 500;
 const AUDIO_ASSETS_DIR = path.join(DATA_DIR, 'audios');
+/** Synthesised quiz speech clips (see obVan/llm/tts.ts). */
+const OB_TTS_DIR = path.join(DATA_DIR, 'ob-tts');
 
 function cloneLayers(layers: Layer[]): Layer[] {
   if (typeof structuredClone === 'function') {
@@ -386,6 +395,11 @@ export class RoomState {
 
   /** OB Van live puppets by carrier inputId (see obVan/puppets). */
   private readonly obPuppets = new Map<string, ObPuppetConfig>();
+  /** TTS clip currently mouthed per puppet character (read by closures). */
+  private readonly obPuppetLiveMouth = new Map<
+    PuppetCharacterId,
+    PuppetLiveMouth
+  >();
 
   private frozenImages: Map<string, { imageId: string; jpegPath: string }> =
     new Map();
@@ -996,6 +1010,36 @@ export class RoomState {
         unregisterQuizSfx: (inputId) => {
           void SmelterInstance.unregisterInput(inputId).catch(() => {});
         },
+        // Quiz TTS lines: synthesised mp4s from the data/ob-tts cache, same
+        // playback mechanics as the stingers (own slot, chrome-level audio).
+        registerQuizSpeech: async (file, offsetMs) => {
+          const filePath = path.resolve(file);
+          if (!filePath.startsWith(OB_TTS_DIR + path.sep)) return null;
+          if (!(await pathExists(filePath))) return null;
+          const safeRoom = idPrefix.replace(/[^a-zA-Z0-9_-]/g, '_');
+          const inputId = `ob-tts-${safeRoom}-${Date.now() % 1e7}`;
+          try {
+            await SmelterInstance.registerInput(inputId, {
+              type: 'mp4',
+              filePath,
+              loop: false,
+              offsetMs,
+            });
+          } catch (err) {
+            console.warn('[ob] quiz speech register failed', err);
+            return null;
+          }
+          return inputId;
+        },
+        unregisterQuizSpeech: (inputId) => {
+          void SmelterInstance.unregisterInput(inputId).catch(() => {});
+        },
+        setQuizSpeechMouth: (camInputId, mouth) => {
+          const character = this.obPuppets.get(camInputId)?.character;
+          if (!character || character === 'studio') return;
+          if (mouth) this.obPuppetLiveMouth.set(character, mouth);
+          else this.obPuppetLiveMouth.delete(character);
+        },
         getPipelineTimeMs: () => SmelterInstance.getPipelineTimeMs(),
       },
       {
@@ -1005,6 +1049,8 @@ export class RoomState {
           createObBrain(ruleset, { onNote: hooks.onNote }),
         attention: attentionFor,
         createLlm: (deps, opts) => createObLlm(deps, undefined, opts),
+        createQuizAi: () => createObQuizAi(),
+        createQuizTts: () => createObQuizTts(process.env, { cacheDir: OB_TTS_DIR }),
       },
     );
 
@@ -3059,6 +3105,10 @@ export class RoomState {
               }
             : null;
         },
+        // Live TTS lips: keyed by character so the studio set's cast members
+        // mouth the same clips as the solo close-ups.
+        getLiveMouth: (character) =>
+          this.obPuppetLiveMouth.get(character) ?? null,
       });
       this.updateStoreWithState();
     }

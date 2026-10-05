@@ -54,8 +54,17 @@ function PlayersRow({
     op: 'quiz',
     action: model.boardShown ? 'hide_board' : 'show_board',
   };
+  const askCmd: ObOperatorCommand = { op: 'quiz', action: 'ask' };
   const lifelineCmd: ObOperatorCommand = { op: 'quiz', action: 'lifeline' };
   const skipCmd: ObOperatorCommand = { op: 'quiz', action: 'skip' };
+  const autoCmd: ObOperatorCommand = { op: 'quiz_set', auto: !model.auto };
+  const aiHostCmd: ObOperatorCommand = {
+    op: 'quiz_set',
+    aiHost: !model.aiHost,
+  };
+  const ttsCmd: ObOperatorCommand = { op: 'quiz_set', tts: !model.tts };
+  const askPending = model.answering?.status === 'pending';
+  const thinkerName = model.players.find((p) => p.active)?.name.toUpperCase();
   return (
     <div
       style={{
@@ -91,15 +100,20 @@ function PlayersRow({
             title={
               p.assignable
                 ? `Ask ${p.name} the next question`
-                : p.active
-                  ? `${p.name} is answering`
-                  : p.live
-                    ? 'Finish the current question first'
-                    : `${p.name} is not live`
+                : p.cashedOut
+                  ? `${p.name} took the tokens and left the show`
+                  : p.active
+                    ? `${p.name} is answering`
+                    : p.live
+                      ? 'Finish the current question first'
+                      : `${p.name} is not live`
             }
             label={
               <span style={{ display: 'inline-flex', gap: 8 }}>
                 <span>{p.name.toUpperCase()}</span>
+                {p.model ? (
+                  <span style={{ color: OB.accent, fontSize: 9 }}>AI</span>
+                ) : null}
                 <span style={{ color: p.active ? undefined : OB.amber }}>
                   {p.money}
                 </span>
@@ -126,6 +140,15 @@ function PlayersRow({
       <Chip
         dense
         tone='accent'
+        label={askPending ? `${thinkerName ?? 'MODEL'} THINKING…` : 'ASK'}
+        disabled={!model.canAsk && !askPending}
+        pending={askPending || pending.isPending(askCmd)}
+        onClick={() => pending.send(askCmd)}
+        title='The contestant answers for itself (live AI call; auto-locks)'
+      />
+      <Chip
+        dense
+        tone='accent'
         label={model.lifelinePending ? 'AI THINKING…' : 'ASK AI'}
         disabled={!model.canLifeline}
         pending={model.lifelinePending || pending.isPending(lifelineCmd)}
@@ -139,6 +162,33 @@ function PlayersRow({
         pending={pending.isPending(skipCmd)}
         onClick={() => pending.send(skipCmd)}
         title='Abandon the question (back into the bank, no money change)'
+      />
+      <Chip
+        dense
+        label='AUTO ROUND'
+        active={model.auto}
+        tone={model.auto ? 'amber' : 'default'}
+        pending={pending.isPending(autoCmd)}
+        onClick={() => pending.send(autoCmd)}
+        title='The round runs itself: assign → board → ask → reveal (your commands pause it)'
+      />
+      <Chip
+        dense
+        label='AI HOST'
+        active={model.aiHost}
+        tone={model.aiHost ? 'amber' : 'default'}
+        pending={pending.isPending(aiHostCmd)}
+        onClick={() => pending.send(aiHostCmd)}
+        title='Max Smelter text plates on air (off = a human host talks)'
+      />
+      <Chip
+        dense
+        label='VOICE'
+        active={model.tts}
+        tone={model.tts ? 'amber' : 'default'}
+        pending={pending.isPending(ttsCmd)}
+        onClick={() => pending.send(ttsCmd)}
+        title='ElevenLabs voices for the host and contestants (needs ELEVENLABS_API_KEY on the server)'
       />
       <Meta size={9} color={OB.dim2} style={{ marginLeft: 'auto' }}>
         {model.questionsLeft} QUESTION{model.questionsLeft === 1 ? '' : 'S'}{' '}
@@ -188,6 +238,22 @@ function QuestionCard({
           </TagChip>
         ) : null}
       </div>
+      {model.answering ? (
+        <Mono size={11} weight={600} style={{ color: OB.accent, minWidth: 0 }}>
+          {model.answering.status === 'pending'
+            ? `${q.forName.toUpperCase()} is thinking…`
+            : [
+                `${q.forName.toUpperCase()} locked ${model.answering.letter}`,
+                model.answering.confidence != null
+                  ? `${Math.round(model.answering.confidence * 100)}% sure`
+                  : null,
+                model.answering.quip ? `“${model.answering.quip}”` : null,
+                model.answering.canned ? '(offline)' : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+        </Mono>
+      ) : null}
       <div
         style={{
           display: 'grid',

@@ -262,3 +262,88 @@ describe('blink & sway & confetti', () => {
     expect(a.color).toMatch(/^#/);
   });
 });
+
+// ── Live TTS mouth (computePuppetPose) ─────────────────────────────────────
+
+import { computePuppetPose } from '../puppets/PuppetInput';
+import type { ObPuppetConfig, PuppetLiveMouth } from '../puppets/types';
+
+const RES = { width: 1920, height: 1080 };
+const LOUD: PuppetLiveMouth = {
+  track: track(new Array(100).fill(0.9)),
+  startWallMs: 10_000,
+  durationMs: 2_000,
+};
+
+const soloCfg = (
+  live: PuppetLiveMouth | null,
+  calls?: string[],
+): ObPuppetConfig => ({
+  character: 'nova',
+  name: 'OPUS',
+  mouth: null,
+  getClock: () => null,
+  getLiveMouth: (character) => {
+    calls?.push(character);
+    return live;
+  },
+});
+
+/** Same pose twice so the amp smoothing settles before fingerprinting. */
+function settledKey(cfg: ObPuppetConfig, inputId: string, now: number): string {
+  computePuppetPose(cfg, RES, inputId, undefined, now - 200);
+  return computePuppetPose(cfg, RES, inputId, undefined, now).key;
+}
+
+describe('computePuppetPose · live TTS mouth', () => {
+  it('a live clip opens the mouth of a silent carrier, then expires to rest', () => {
+    const rest = settledKey(soloCfg(null), 'in-rest', 10_500);
+    const talking = settledKey(soloCfg(LOUD), 'in-live', 10_500);
+    expect(talking).not.toBe(rest);
+    // Past startWallMs + durationMs (+300 grace) the override is ignored.
+    const expired = settledKey(soloCfg(LOUD), 'in-expired', 13_000);
+    const restLater = settledKey(soloCfg(null), 'in-rest-2', 13_000);
+    expect(expired).toBe(restLater);
+    // Before the clip starts it is ignored too.
+    const early = settledKey(soloCfg(LOUD), 'in-early', 9_000);
+    const restEarly = settledKey(soloCfg(null), 'in-rest-3', 9_000);
+    expect(early).toBe(restEarly);
+  });
+
+  it('works without a getLiveMouth closure (older configs)', () => {
+    const cfg = soloCfg(null);
+    delete cfg.getLiveMouth;
+    expect(() =>
+      computePuppetPose(cfg, RES, 'in-legacy', undefined, 10_500),
+    ).not.toThrow();
+  });
+
+  it('the studio set asks per cast character, so one puppet can talk alone', () => {
+    const calls: string[] = [];
+    const cfg: ObPuppetConfig = {
+      character: 'studio',
+      name: 'STUDIO',
+      mouth: null,
+      getClock: () => null,
+      getLiveMouth: (character) => {
+        calls.push(character);
+        return character === 'bit' ? LOUD : null;
+      },
+      cast: [
+        { character: 'host', name: 'Max Smelter', mouth: null },
+        { character: 'nova', name: 'OPUS', mouth: null },
+        { character: 'bit', name: 'GPT', mouth: null },
+      ],
+    };
+    const withLive = settledKey(cfg, 'in-studio', 10_500);
+    expect(calls).toContain('host');
+    expect(calls).toContain('nova');
+    expect(calls).toContain('bit');
+    const silent = settledKey(
+      { ...cfg, getLiveMouth: () => null },
+      'in-studio-2',
+      10_500,
+    );
+    expect(withLive).not.toBe(silent);
+  });
+});

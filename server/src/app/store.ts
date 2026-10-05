@@ -21,6 +21,7 @@ import type {
   ObGrade,
   ObPhase,
   ObQuizLetter,
+  ObQuizModelId,
   ObQuizVerdict,
   ShooterTopScoreEntry,
 } from '@smelter-editor/types';
@@ -978,8 +979,11 @@ export type ObHudState = {
   quiz: {
     players: {
       name: string;
+      model: ObQuizModelId | null;
       amount: number;
       amountFrom: number;
+      /** Took the tokens and left (chip stays on the rail, dimmed). */
+      cashedOut: boolean;
       changedAtMs: number | null;
       verdict: ObQuizVerdict | null;
       active: boolean;
@@ -1006,10 +1010,30 @@ export type ObHudState = {
       atMs: number;
       untilMs: number;
     } | null;
+    /** An AI contestant is answering live (board up, no letter yet). */
+    thinking: {
+      name: string;
+      model: ObQuizModelId | null;
+      sinceMs: number;
+    } | null;
+    /** The contestant's landed answer (their pick is public; verdict isn't). */
+    answer: {
+      name: string;
+      model: ObQuizModelId | null;
+      letter: ObQuizLetter;
+      quip: string | null;
+      confidence: number | null;
+      canned: boolean;
+      atMs: number;
+    } | null;
+    /** The AI host's current on-air line (null = human host / nothing). */
+    hostLine: { text: string; atMs: number; untilMs: number } | null;
     /** Title plate while on air before the first question. */
     splash: boolean;
     /** A stinger clip currently mixed into the output (audio-only mp4). */
     sfx: { inputId: string; startedAtMs: number } | null;
+    /** A TTS line currently mixed into the output (its own slot). */
+    speech: { inputId: string; startedAtMs: number } | null;
   } | null;
 };
 

@@ -33,6 +33,7 @@ export function panelKeyContextOf(state: ObState): PanelKeyContext {
           phase: quiz.phase,
           canReveal: quiz.canReveal,
           canLifeline: quiz.canLifeline,
+          canAsk: quiz.canAsk,
         }
       : null,
   };
