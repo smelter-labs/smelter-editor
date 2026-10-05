@@ -102,6 +102,7 @@ import { ObSignals, makeObClock } from '../obVan/signals';
 import { createObBrain } from '../obVan/brain';
 import { attentionFor } from '../obVan/attention';
 import { createObLlm } from '../obVan/llm';
+import { createObQuizAi } from '../obVan/llm/quizHost';
 import type { ObBriefResult } from '../obVan/contracts';
 import type { ObPuppetConfig, ObPuppetSeed } from '../obVan/puppets/types';
 import { OB_VAN_MODEL_ID } from '../ai-models/ob-van/manifest';
@@ -1005,6 +1006,7 @@ export class RoomState {
           createObBrain(ruleset, { onNote: hooks.onNote }),
         attention: attentionFor,
         createLlm: (deps, opts) => createObLlm(deps, undefined, opts),
+        createQuizAi: () => createObQuizAi(),
       },
     );
 

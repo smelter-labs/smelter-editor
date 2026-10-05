@@ -26,6 +26,8 @@ export type PanelKeyQuizContext = {
   phase: ObQuizPhase;
   canReveal: boolean;
   canLifeline: boolean;
+  /** `K`: the contestant answers for itself (board up, nothing in flight). */
+  canAsk: boolean;
 };
 
 export type PanelKeyContext = {
@@ -54,6 +56,7 @@ export const PANEL_KEY_HINTS: { key: string; label: string }[] = [
 
 export const QUIZ_KEY_HINTS: { key: string; label: string }[] = [
   { key: 'Q', label: 'BOARD' },
+  { key: 'K', label: 'ASK' },
   { key: 'A-D', label: 'LOCK' },
   { key: 'V', label: 'REVEAL' },
   { key: 'G/W', label: 'OVERRIDE' },
@@ -92,6 +95,8 @@ function quizKeyToCommand(
         : null;
     case 'H':
       return quiz.canLifeline ? { op: 'quiz', action: 'lifeline' } : null;
+    case 'K':
+      return quiz.canAsk ? { op: 'quiz', action: 'ask' } : null;
     default:
       return null;
   }

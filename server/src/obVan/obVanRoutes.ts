@@ -23,6 +23,7 @@ import {
   OB_GRADES,
   OB_PRESET_IDS,
   OB_QUIZ_ACTIONS,
+  OB_QUIZ_BANKS,
   OB_QUIZ_LETTERS,
   OB_TRANSITION_TYPES,
   type ObCamRole,
@@ -233,6 +234,11 @@ export const ObOperatorCommandSchema = Type.Union([
     letter: Type.Optional(literals(OB_QUIZ_LETTERS)),
     verdict: Type.Optional(literals(['correct', 'wrong'] as const)),
   }),
+  Type.Object({
+    op: Type.Literal('quiz_set'),
+    auto: Type.Optional(Type.Boolean()),
+    aiHost: Type.Optional(Type.Boolean()),
+  }),
 ]);
 
 const RundownItemSchema = Type.Object({
@@ -266,6 +272,13 @@ const ObConfigPatchSchema = Type.Object({
     Type.Object({
       analyst: Type.Optional(Type.Boolean()),
       analystIntervalS: Type.Optional(Type.Number()),
+    }),
+  ),
+  quiz: Type.Optional(
+    Type.Object({
+      bank: Type.Optional(literals(OB_QUIZ_BANKS)),
+      aiHost: Type.Optional(Type.Boolean()),
+      auto: Type.Optional(Type.Boolean()),
     }),
   ),
   joinUrls: Type.Optional(

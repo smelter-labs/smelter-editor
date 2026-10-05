@@ -363,6 +363,76 @@ operatora, konduktor ich nie czyta. Klipy są równe co do próbki (pętlą się
 razem), wide jest cyfrowo niemy (mix nie dubluje głosów), a room-tone
 konduktora wycina gate — pięć kamer w mixie nie sumuje szumu.
 
+### SMELTERIONAIRE · AI — modele jako zawodnicy
+
+Wariant quizu, w którym zawodnikami są **żywe modele AI** rywalizujące w
+wiedzy o Smelterze — pula jest w **TOKENACH** (jedyna waluta, którą modele
+szanują; start 1 000 000 TOK, formaty w `obQuizFormatMoney`): **OPUS**
+(Anthropic), **GPT** (OpenAI), **JEV** (TypeSafe AI — model „System One":
+zamiast tekstu zwraca typowaną decyzję A–D z kalibrowaną pewnością; REST
+`POST /v1/systemone`) oraz **GEMINI** — wyreżyserowane kameo bez żadnego
+API: zapytane o cokolwiek, zabiera swój milion tokenów i wychodzi
+(maszyna: `resolveAnswer(seq, {cashOut:true})` → gracz `cashedOut`, pytanie
+wraca na początek banku, chip na railu zostaje przygaszony z pulą; nigdy
+więcej nieassignowalny, AUTO go pomija, reset czyści). Mapowanie
+zawodnik↔model idzie **po nazwie talentu** kamery (`obQuizModelFromName`:
+OPUS/CLAUDE→opus, GPT/OPENAI→gpt, GEMINI/GOOGLE→gemini, JEV/TYPESAFE→jev);
+kamera z innym talentem to człowiek, więc gry mieszane działają.
+
+Nowa akcja **`ask`** (panel: chip ASK / klawisz `K`; legalna na planszy):
+maszyna zapisuje `current.answering {seq, status, model, …}` i emituje efekt
+`answer`; kontroler woła adapter zawodnika (`llm/contestants.ts`) **w
+ciemno** — model dostaje pytanie, cztery odpowiedzi i wspólną ściągę o
+Smelterze (`llm/smelterContext.ts`, celowo bez retrievalu per pytanie — złe
+odpowiedzi są częścią show), a wynik wraca przez `resolveAnswer(seq, …)` i
+**auto-lockuje** literę (REVEAL działa jak przy locku z pulpitu). Guard
+`seq` zabija spóźnione odpowiedzi po ręcznym locku/skipie/odejściu gracza;
+backstop maszyny: po `OB_QUIZ_ANSWER_TIMEOUT_MS` (30 s) pending przechodzi w
+canned. Wyniki poniżej `OB_QUIZ_THINK_MIN_MS` (2 s, Jev odpowiada w <500 ms)
+są przytrzymane, żeby plansza „X IS THINKING…" nie mignęła. Brak klucza /
+błąd / cap (`OB_QUIZ_AI_MAX_CALLS`, domyślnie 200 wywołań na proces) ⇒
+deterministyczna canned odpowiedź z literą w docince — dlatego e2e przechodzi
+bez żadnych kluczy. p87 (solo na mowę) nie zadziała dla niemych kamer AI,
+więc moment odpowiedzi sam bierze obraz (solo 3,5 s przez `applyDecision`).
+
+Klucze env: `ANTHROPIC_API_KEY` (+`OB_QUIZ_OPUS_MODEL`, domyślnie
+`claude-opus-5`), `OPENAI_API_KEY` (+`OB_QUIZ_GPT_MODEL`, `gpt-6-astra`),
+`TYPESAFE_API_KEY` (+`OB_QUIZ_JEV_MODEL`, `jev-latest`;
+`OB_QUIZ_JEV_BASE_URL`); GEMINI nie ma klucza — to teatr. GPT to adapter
+OpenAI-compatible na `fetch` (json_schema + luźny fallback na literę).
+**Uwaga:** zawodnicy i host NIE przechodzą przez `runOneShot` ani
+budżet panelu (price table zna tylko claude-*) — koszt pilnuje cap + log
+latencji w konsoli (`[ob-van][quiz-ai]`).
+
+**Host AI** (tekstowy, bez TTS): `config.quiz.aiHost` włącza plansze „MAX
+SMELTER · <linia>" u góry (canned szablony natychmiast; haiku —
+`OB_QUIZ_HOST_MODEL` — podmienia intro/reveal, jeśli zdąży). `aiHost:false`
+= człowiek prowadzi z kamery `speaker`, zero plansz. **AUTO**
+(`config.quiz.auto`, panel: chip AUTO ROUND): runda jedzie sama (assign
+round-robin po najmniejszej liczbie odpowiedzi → board → ask → reveal 4 s po
+locku → celebracja → następny gracz; koniec banku = linia wrap); każda
+komenda operatora pauzuje auto na `resumeAfterMs`. Oba toggle idą po WS
+opem **`quiz_set`** (panel jest WS-only). Bank pytań wybiera
+`config.quiz.bank`: `default` (`quizQuestions.ts`) lub `smelter`
+(`quizQuestionsSmelter.ts`, 30 pytań wyłącznie o Smelterze, z docsów);
+zmiana banku = świeża gra (`setBank`).
+
+```bash
+node scripts/ob-quiz-ai-demo.mjs      # nieme carriery + cams.json
+                                      #   → data/mp4s/ob-demo/quiz-ai/
+OB_SIM=1 pnpm start                   # a potem:
+node scripts/ob-van-quiz-ai-check.mjs # e2e bez kluczy (canned ścieżka)
+```
+
+Przycisk **SMELTERIONAIRE · AI** w QUICK DEMOS ładuje preset z
+`{bank:'smelter', aiHost:true, auto:true}` — show prowadzi się samo; puppety
+(nova=OPUS, bit=GPT, prof=GEMINI, lux=JEV) reagują jak zwykle po nazwach
+graczy. HUD dostał trzy plansze: „X IS THINKING…" (kropki animowane w
+rendererze, ticker 400 ms), odpowiedź z docinkiem (Jev: `· 87% SURE`,
+`(OFFLINE)` przy canned) i linię hosta (`ob-quiz-host-plate`, 740×72 przy
+(720,40) — między title bugiem a money railem). Litera zawodnika jest
+publiczna; `correct` nadal dociera do HUD wyłącznie w `board.reveal`.
+
 ## Materiał demo w pojedynkę
 
 Jak nagrać event wielokamerowy, mając jedną osobę (i ewentualnie pomocnika).

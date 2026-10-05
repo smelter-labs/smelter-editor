@@ -59,6 +59,8 @@ export function pendingKeyOf(cmd: ObOperatorCommand): string {
       return cmd.action === 'lock'
         ? `quiz:lock:${cmd.letter ?? ''}`
         : `quiz:${cmd.action}`;
+    case 'quiz_set':
+      return `quiz_set:${cmd.auto !== undefined ? 'auto' : ''}${cmd.aiHost !== undefined ? 'aiHost' : ''}`;
   }
 }
 
@@ -136,6 +138,11 @@ export function commandEchoed(
       }
       return true;
     }
+    case 'quiz_set':
+      return (
+        (cmd.auto == null || now.config.quiz?.auto === cmd.auto) &&
+        (cmd.aiHost == null || now.config.quiz?.aiHost === cmd.aiHost)
+      );
     default:
       // No visible echo to wait for — clear on the next state.
       return true;

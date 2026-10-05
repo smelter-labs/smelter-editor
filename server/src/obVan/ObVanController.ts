@@ -18,6 +18,8 @@ import type {
   ObOperatorCommand,
   ObPhase,
   ObPresetId,
+  ObQuizLetter,
+  ObQuizModelId,
   ObRuleset,
   ObRundownItem,
   ObShot,
@@ -35,13 +37,17 @@ import {
   OB_PACING_DIAL_FACTOR,
   OB_PRESET_IDS,
   OB_PRESET_META,
+  OB_QUIZ_BANKS,
   OB_QUIZ_CELEBRATE_MS,
   OB_QUIZ_HINT_SHOW_MS,
+  OB_QUIZ_THINK_MIN_MS,
   OB_RULESET_LIMITS,
   OB_TRANSITION_LIMITS,
   isObCamRole,
   isObLlmModelId,
   obPresetRuleset,
+  obQuizFormatMoney,
+  obQuizModelFromName,
   obShotCams,
   obShotsEqual,
   parseObRuleset,
@@ -115,8 +121,15 @@ import { OB_VIRTUAL_GLIDE_MS, ObVirtualCam } from './virtualCam';
 import { analystIntervalFromEnv } from './llm/analyst';
 import { ObLlmError } from './llm/errors';
 import { obVanParamsForRole } from '../ai-models/ob-van/manifest';
-import { ObQuizGame, type ObQuizEffect, type ObQuizSfx } from './quiz';
+import {
+  ObQuizGame,
+  type ObQuizCommand,
+  type ObQuizEffect,
+  type ObQuizSfx,
+} from './quiz';
 import { QUIZ_QUESTIONS, type QuizQuestion } from './quizQuestions';
+import { SMELTER_QUIZ_QUESTIONS } from './quizQuestionsSmelter';
+import type { ObQuizAiModule, ObQuizHostEvent } from './llm/quizHost';
 
 // ── Public contract ────────────────────────────────────────────────────────
 
@@ -212,6 +225,13 @@ export type ObControllerFactories = {
     deps: ObLlmDeps,
     opts: { intervalS: number },
   ) => ObLlmModule | null;
+  /**
+   * Smelterionaire's AI module (`createObQuizAi` from `./llm/quizHost`):
+   * contestant adapters + host lines. Absent = every `ask` resolves canned.
+   * Deliberately separate from `createLlm` — contestants answer in parallel
+   * and must not sit behind the serialised one-shot gate.
+   */
+  createQuizAi?: () => ObQuizAiModule | null;
   /** The air clock (`makeObClock` from `./signals`); default `createObClock`. */
   createClock?: (deps: ObClockSource) => ObClock;
 };
@@ -546,6 +566,17 @@ export class ObVanController {
     startedAtMs: number;
   } | null = null;
   private readonly quizSfxTimers = new Set<ReturnType<typeof setTimeout>>();
+  /** AI contestants + host lines (null = everything canned). */
+  private readonly quizAi: ObQuizAiModule | null;
+  /** The AI host's on-air line (presentation state, like quizSfx). */
+  private quizHostLine: { text: string; atMs: number; untilMs: number } | null =
+    null;
+  /** Timers pacing canned answers / min-think display, cleared on dispose. */
+  private readonly quizAnswerTimers = new Set<ReturnType<typeof setTimeout>>();
+  /** AUTO round: an operator command pauses auto-advance until this time. */
+  private quizAutoHoldUntilMs = 0;
+  /** AUTO round: next step not before this time (show pacing between beats). */
+  private quizAutoNextAtMs = 0;
   private lastGesture: ObHostState['lastGesture'] = null;
   /** Camera whose worker currently runs hand tracking (the host's). */
   private gestureCamId: string | null = null;
@@ -686,6 +717,7 @@ export class ObVanController {
       now: () => this.now(),
     });
     this.quiz = new ObQuizGame(QUIZ_QUESTIONS, { now: () => this.now() });
+    this.quizAi = factories.createQuizAi?.() ?? null;
   }
 
   private now(): number {
@@ -1227,6 +1259,9 @@ export class ObVanController {
         // Leaving the quiz: the game and its signal must not outlive it.
         this.quiz.reset();
         this.signals.setQuizTurn(null);
+        this.quizHostLine = null;
+        this.quizAutoNextAtMs = 0;
+        this.quizAutoHoldUntilMs = 0;
       }
       c.presetId = patch.presetId;
       if (patch.ruleset === undefined && c.ruleset) {
@@ -1303,6 +1338,38 @@ export class ObVanController {
         this.llm?.setModel(c.llm.model);
       }
       this.llm?.setAnalyst(c.llm.analyst, c.llm.analystIntervalS);
+    }
+    if (patch.quiz) {
+      // After the preset block on purpose: entering/leaving `quiz` resets the
+      // game above, and a bank swap in the same patch must land on the fresh
+      // game (the demo loader sends presetId + quiz in one patch).
+      if (
+        patch.quiz.bank !== undefined &&
+        OB_QUIZ_BANKS.includes(patch.quiz.bank) &&
+        patch.quiz.bank !== c.quiz.bank
+      ) {
+        c.quiz.bank = patch.quiz.bank;
+        this.quiz.setBank(
+          c.quiz.bank === 'smelter' ? SMELTER_QUIZ_QUESTIONS : QUIZ_QUESTIONS,
+        );
+        this.signals.setQuizTurn(null);
+        this.pushLog({
+          source: 'system',
+          kind: 'note',
+          tone: 'amber',
+          label: 'QUIZ',
+          text: `question bank: ${c.quiz.bank} — fresh game`,
+        });
+      }
+      if (typeof patch.quiz.aiHost === 'boolean') {
+        c.quiz.aiHost = patch.quiz.aiHost;
+        if (!c.quiz.aiHost) this.quizHostLine = null;
+      }
+      if (typeof patch.quiz.auto === 'boolean') {
+        c.quiz.auto = patch.quiz.auto;
+        this.quizAutoNextAtMs = 0;
+        this.quizAutoHoldUntilMs = 0;
+      }
     }
     if (patch.host) {
       if (typeof patch.host.enabled === 'boolean')
@@ -1457,7 +1524,13 @@ export class ObVanController {
         }
         this.prog = { ...this.prog, sinceMs: now };
         this.setPhase('on-air');
-        if (this.quizOn()) this.playQuizSting('intro');
+        if (this.quizOn()) {
+          this.playQuizSting('intro');
+          this.setQuizHostLine({
+            kind: 'intro',
+            eventName: this.config.eventName,
+          });
+        }
         break;
       case 'wrap':
         if (this.phase !== 'on-air')
@@ -1485,6 +1558,9 @@ export class ObVanController {
         this.lastGesture = null;
         this.quiz.reset();
         this.signals.setQuizTurn(null);
+        this.quizHostLine = null;
+        this.quizAutoNextAtMs = 0;
+        this.quizAutoHoldUntilMs = 0;
         this.closeReplay();
         this.refreshRuleset('reset');
         this.log.clear();
@@ -1777,6 +1853,36 @@ export class ObVanController {
         return { ok: true };
       case 'quiz':
         return this.quizCommand(cmd, source);
+      case 'quiz_set': {
+        if (!this.quizOn())
+          return {
+            ok: false,
+            code: 'bad_action',
+            message: 'The QUIZ preset is off.',
+          };
+        this.setConfig({
+          quiz: {
+            ...(cmd.auto !== undefined ? { auto: cmd.auto } : {}),
+            ...(cmd.aiHost !== undefined ? { aiHost: cmd.aiHost } : {}),
+          },
+        });
+        this.pushLog({
+          source,
+          kind: 'note',
+          tone: 'chalk',
+          label: 'QUIZ',
+          text: [
+            cmd.auto !== undefined ? `auto ${cmd.auto ? 'ON' : 'OFF'}` : null,
+            cmd.aiHost !== undefined
+              ? `AI host ${cmd.aiHost ? 'ON' : 'OFF'}`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(' · '),
+          ...rs,
+        });
+        return { ok: true };
+      }
     }
   }
 
@@ -1800,10 +1906,37 @@ export class ObVanController {
       return { ok: false, code: 'bad_phase', message: 'Not on air.' };
     const r = this.quiz.command(cmd);
     if (!r.ok) return { ok: false, code: r.code, message: r.message };
+    // A human on the desk outranks the auto round — pause it like the
+    // autopilot pauses on a manual cut.
+    if (source === 'operator')
+      this.quizAutoHoldUntilMs = this.now() + this.config.resumeAfterMs;
     this.applyQuizEffects(r.effects, source);
+    this.quizHostReact(cmd.action);
     if (cmd.action === 'assign') this.llm?.requestTick('quiz question');
     if (cmd.action === 'reveal') this.llm?.requestTick('quiz reveal');
     return { ok: true };
+  }
+
+  /** The AI host comments on the beat that just happened (text plate only). */
+  private quizHostReact(action: ObQuizCommand['action']): void {
+    const s = this.quiz.state();
+    const player = s.current
+      ? s.players.find((p) => p.camId === s.current?.forCamId)
+      : undefined;
+    if (action === 'assign' && s.current && player)
+      this.setQuizHostLine({
+        kind: 'assign',
+        name: player.name,
+        number: s.current.number,
+      });
+    else if (action === 'show_board') this.setQuizHostLine({ kind: 'board' });
+    else if (action === 'reveal' && s.current?.verdict && player)
+      this.setQuizHostLine({
+        kind: 'reveal',
+        name: player.name,
+        verdict: s.current.verdict,
+        amountText: obQuizFormatMoney(player.amount),
+      });
   }
 
   private applyQuizEffects(
@@ -1832,11 +1965,17 @@ export class ObVanController {
         case 'hint':
           this.startQuizHint(fx.question);
           break;
+        case 'answer':
+          this.startQuizAnswer(fx);
+          break;
         case 'sfx':
           this.playQuizSting(fx.kind);
           break;
         case 'lower-third':
-          this.lowerThirdCommand({ op: 'lower_third', camId: fx.camId }, 'auto');
+          this.lowerThirdCommand(
+            { op: 'lower_third', camId: fx.camId },
+            'auto',
+          );
           break;
         case 'log':
           this.pushLog({
@@ -1870,6 +2009,163 @@ export class ObVanController {
         if (this.disposed) return;
         if (this.quiz.resolveHint(null)) this.afterQuizHint();
       });
+  }
+
+  /** Short pacing timer for the quiz-answer flow (cleared on dispose). */
+  private setQuizTimer(delayMs: number, fn: () => void): void {
+    const t = setTimeout(() => {
+      this.quizAnswerTimers.delete(t);
+      if (!this.disposed) fn();
+    }, delayMs);
+    this.quizAnswerTimers.add(t);
+  }
+
+  /**
+   * An AI contestant answers its own question: call its adapter (blind — the
+   * effect carries the question without the correct letter reaching any
+   * prompt) and feed the result back through the seq-guarded `resolveAnswer`.
+   * No adapter / no key / failure → canned, after a visible thinking beat.
+   * Jev answers in <500 ms, so results are held to `OB_QUIZ_THINK_MIN_MS`.
+   */
+  private startQuizAnswer(fx: {
+    seq: number;
+    forCamId: string;
+    model: ObQuizModelId | null;
+    question: QuizQuestion;
+  }): void {
+    const finish = (
+      res:
+        | {
+            letter: ObQuizLetter;
+            quip: string | null;
+            confidence: number | null;
+          }
+        | { cashOut: true }
+        | null,
+    ) => {
+      if (this.disposed) return;
+      if (!this.quiz.resolveAnswer(fx.seq, res)) return;
+      if (res && 'cashOut' in res) this.afterQuizCashOut(fx.forCamId);
+      else this.afterQuizAnswer();
+    };
+    const adapter = fx.model ? this.quizAi?.contestants[fx.model] : undefined;
+    if (!adapter?.available()) {
+      // Human contestant, missing key or spent cap: a thinking beat, then
+      // the machine's canned answer.
+      this.setQuizTimer(1_500 + Math.random() * 1_500, () => finish(null));
+      return;
+    }
+    const started = this.now();
+    void adapter
+      .answer({ question: fx.question.q, answers: fx.question.answers })
+      .then((res) => {
+        const wait = Math.max(0, OB_QUIZ_THINK_MIN_MS - (this.now() - started));
+        this.setQuizTimer(wait, () => finish(res));
+      })
+      .catch(() => finish(null));
+  }
+
+  /**
+   * The Gemini cameo landed: the machine already retired the player and put
+   * the question back — here the exit gets its on-air drama. A solo on the
+   * leaver (their puppet, their moment), the host line, the signal cleared.
+   */
+  private afterQuizCashOut(camId: string): void {
+    const player = this.quiz.state().players.find((p) => p.camId === camId);
+    const name = player?.name ?? 'the contestant';
+    const amountText = obQuizFormatMoney(player?.amount ?? 0);
+    this.signals.setQuizTurn(null);
+    this.pushLog({
+      source: 'llm',
+      kind: 'llm',
+      tone: 'amber',
+      label: 'AI',
+      text: `${name} cashes out ${amountText} and leaves the show`,
+      camId,
+    });
+    this.applyDecision(
+      {
+        shot: { kind: 'solo', cam: camId },
+        transition: { type: 'cut', durationMs: 0 },
+        holdMs: 5_000,
+        logKind: 'shot',
+        reasons: ['quiz cash out'],
+      },
+      'auto',
+    );
+    // Let the exit breathe: AUTO must not call the next contestant while the
+    // leaver's solo is still on (their lower third would sit on this shot).
+    this.quizAutoNextAtMs = this.now() + 6_000;
+    this.setQuizHostLine({ kind: 'cashout', name, amountText });
+    this.publishHud();
+    this.markStateDirty();
+  }
+
+  /** Log + picture + host reaction once an answer landed (and auto-locked). */
+  private afterQuizAnswer(): void {
+    const s = this.quiz.state();
+    const ans = s.current?.answering;
+    const player = s.current
+      ? s.players.find((p) => p.camId === s.current?.forCamId)
+      : undefined;
+    if (!s.current || !ans || ans.status !== 'done' || !ans.letter || !player)
+      return;
+    this.pushLog({
+      source: 'llm',
+      kind: 'llm',
+      tone: 'ai',
+      label: 'AI',
+      text: ans.canned
+        ? `(offline) ${player.name} locks ${ans.letter} — ${ans.quip ?? ''}`
+        : ans.confidence !== null
+          ? `${player.name} locks ${ans.letter} · confidence ${Math.round(ans.confidence * 100)}%`
+          : `${player.name} locks ${ans.letter}${ans.quip ? ` — "${ans.quip}"` : ''}`,
+      camId: s.current.forCamId,
+    });
+    // The p87 think-solo rule needs speech; AI contestant cams are silent, so
+    // the answer moment owns the picture the same way the celebrate does.
+    this.applyDecision(
+      {
+        shot: { kind: 'solo', cam: s.current.forCamId },
+        transition: { type: 'cut', durationMs: 0 },
+        holdMs: 3_500,
+        logKind: 'shot',
+        reasons: ['quiz answer'],
+      },
+      'auto',
+    );
+    this.setQuizHostLine({
+      kind: 'answer',
+      name: player.name,
+      letter: ans.letter,
+      quip: ans.quip,
+    });
+    this.publishHud();
+    this.markStateDirty();
+  }
+
+  /**
+   * Put the AI host's line on air: the canned text immediately, a haiku
+   * rewrite swapped in if it lands while the plate is still up. Gated by
+   * `config.quiz.aiHost` — off means a human host is talking instead.
+   */
+  private setQuizHostLine(evt: ObQuizHostEvent): void {
+    if (!this.config.quiz.aiHost || !this.quizOn()) return;
+    const atMs = this.now();
+    const untilMs = atMs + 7_000;
+    const canned = this.quizAi?.cannedHostLine(evt);
+    if (!canned) return;
+    this.quizHostLine = { text: canned, atMs, untilMs };
+    this.publishHud();
+    void this.quizAi?.polishHostLine(evt).then((line) => {
+      if (this.disposed || !line) return;
+      const current = this.quizHostLine;
+      // Swap only while the same plate is still up and worth re-reading.
+      if (current && current.atMs === atMs && this.now() < untilMs - 2_000) {
+        this.quizHostLine = { text: line, atMs, untilMs };
+        this.publishHud();
+      }
+    });
   }
 
   private afterQuizHint(): void {
@@ -1925,15 +2221,82 @@ export class ObVanController {
         role: c.role,
         name: c.name,
         talent: c.talent,
+        model: obQuizModelFromName(c.talent ?? c.name),
         live: c.live && c.inputId != null,
       })),
     );
     if (sync.effects.length) this.applyQuizEffects(sync.effects, 'system');
     const t = this.quiz.tick(now);
     if (t.effects.length) this.applyQuizEffects(t.effects, 'system');
-    if (sync.changed || t.changed) {
+    let changed = sync.changed || t.changed;
+    if (this.quizHostLine && now >= this.quizHostLine.untilMs) {
+      this.quizHostLine = null;
+      changed = true;
+    }
+    if (changed) {
       this.publishHud();
       this.markStateDirty();
+    }
+    this.quizAutoStep(now);
+  }
+
+  /**
+   * AUTO round (`config.quiz.auto`): the show advances itself off the quiz
+   * phase — assign the next live contestant (round-robin by fewest answers),
+   * board, ask; once the answer locks, reveal; the machine's own celebrate
+   * timeout loops back to idle. Any operator command holds it for
+   * `resumeAfterMs` (set in `quizCommand`), and it only runs on air.
+   */
+  private quizAutoStep(now: number): void {
+    if (!this.config.quiz.auto || this.phase !== 'on-air') return;
+    if (now < this.quizAutoHoldUntilMs || now < this.quizAutoNextAtMs) return;
+    const s = this.quiz.state();
+    const step = (cmd: ObQuizCommand, nextDelayMs: number) => {
+      const r = this.quizCommand(cmd, 'auto');
+      if (r.ok) {
+        this.quizAutoNextAtMs = now + nextDelayMs;
+        this.publishHud();
+        this.markStateDirty();
+      } else this.quizAutoNextAtMs = now + 5_000; // refused — don't spin
+    };
+    switch (s.phase) {
+      case 'idle': {
+        if (s.questionsLeft === 0) {
+          const leader = [...s.players].sort((a, b) => b.amount - a.amount)[0];
+          if (leader && !this.quizHostLine)
+            this.setQuizHostLine({
+              kind: 'wrap',
+              leaderName: leader.name,
+              amountText: obQuizFormatMoney(leader.amount),
+            });
+          this.quizAutoNextAtMs = now + 30_000;
+          return;
+        }
+        const nextUp = [...s.players]
+          .filter((p) => p.live && !p.cashedOut)
+          .sort((a, b) => a.answered - b.answered)[0];
+        if (!nextUp) return;
+        step({ op: 'quiz', action: 'assign', camId: nextUp.camId }, 2_500);
+        return;
+      }
+      case 'assigned':
+        step({ op: 'quiz', action: 'show_board' }, 1_500);
+        return;
+      case 'board':
+        // Ask once; while the answer is pending the command is refused and
+        // the 5 s refusal backoff keeps this from spinning.
+        if (!s.current?.answering) step({ op: 'quiz', action: 'ask' }, 1_000);
+        return;
+      case 'locked': {
+        // The lock came from `resolveAnswer`, not from a paced step — give
+        // the answer plate and the host line a beat before the reveal.
+        const lockedAtMs = s.current?.lockedAtMs ?? now;
+        if (now - lockedAtMs >= 4_000)
+          step({ op: 'quiz', action: 'reveal' }, 2_000);
+        return;
+      }
+      case 'revealed':
+        return; // celebrate timeout loops back to idle
     }
   }
 
@@ -1944,11 +2307,14 @@ export class ObVanController {
     const forPlayer = c
       ? s.players.find((p) => p.camId === c.forCamId)
       : undefined;
+    const ans = c?.answering ?? null;
     return {
       players: s.players.map((p) => ({
         name: p.name,
+        model: p.model,
         amount: p.amount,
         amountFrom: p.amountFrom,
+        cashedOut: p.cashedOut,
         changedAtMs: p.amountChangedAtMs,
         verdict:
           p.amountChangedAtMs === null
@@ -1989,9 +2355,35 @@ export class ObVanController {
               untilMs: s.hint.untilMs,
             }
           : null,
+      // The contestant's own pick is legitimately public; `correct` still
+      // reaches the HUD only inside `board.reveal`.
+      thinking:
+        ans?.status === 'pending' && c?.shownAtMs !== null
+          ? {
+              name: forPlayer?.name ?? '',
+              model: ans.model,
+              sinceMs: ans.startedAtMs,
+            }
+          : null,
+      answer:
+        ans?.status === 'done' && ans.letter && ans.answeredAtMs !== null
+          ? {
+              name: forPlayer?.name ?? '',
+              model: ans.model,
+              letter: ans.letter,
+              quip: ans.quip,
+              confidence: ans.confidence,
+              canned: ans.canned,
+              atMs: ans.answeredAtMs,
+            }
+          : null,
+      hostLine: this.quizHostLine ? { ...this.quizHostLine } : null,
       splash: c === null && s.players.every((p) => p.answered === 0),
       sfx: this.quizSfx
-        ? { inputId: this.quizSfx.inputId, startedAtMs: this.quizSfx.startedAtMs }
+        ? {
+            inputId: this.quizSfx.inputId,
+            startedAtMs: this.quizSfx.startedAtMs,
+          }
         : null,
     };
   }
@@ -3943,6 +4335,9 @@ export class ObVanController {
     this.replayUnregisterTimers.clear();
     for (const t of this.quizSfxTimers) clearTimeout(t);
     this.quizSfxTimers.clear();
+    for (const t of this.quizAnswerTimers) clearTimeout(t);
+    this.quizAnswerTimers.clear();
+    this.quizAi?.dispose();
     if (this.quizSfx) {
       this.deps.unregisterQuizSfx?.(this.quizSfx.inputId);
       this.quizSfx = null;

@@ -9,23 +9,29 @@
  * Flow per question: `assign` (a question leaves the bank and belongs to a
  * contestant; the quizTurn signal makes the p85 split fire) → `show_board`
  * (ABCD overlay on program) → `lock` (the contestant's letter, re-lockable)
- * → `reveal` (verdict from the bank, or the operator's override; money ×1.5
- * or ×0.5; celebration solo for `OB_QUIZ_CELEBRATE_MS`) → back to `idle`.
+ * or `ask` (an AI contestant answers for itself and auto-locks; see
+ * `resolveAnswer`) → `reveal` (verdict from the bank, or the operator's
+ * override; money ×1.5 or ×0.5; celebration solo for `OB_QUIZ_CELEBRATE_MS`)
+ * → back to `idle`.
  */
 import type {
   ObCamRole,
   ObLogTone,
   ObOperatorCommand,
+  ObQuizAnswering,
   ObQuizHintState,
   ObQuizLetter,
+  ObQuizModelId,
   ObQuizPhase,
   ObQuizState,
   ObQuizVerdict,
 } from '@smelter-editor/types';
 import {
+  OB_QUIZ_ANSWER_TIMEOUT_MS,
   OB_QUIZ_CELEBRATE_MS,
   OB_QUIZ_HINT_SHOW_MS,
   OB_QUIZ_HINT_TIMEOUT_MS,
+  OB_QUIZ_LETTERS,
   OB_QUIZ_MAX_PLAYERS,
   OB_QUIZ_START_AMOUNT,
   obQuizApplyVerdict,
@@ -39,9 +45,22 @@ export type ObQuizEffect =
   | { type: 'turn'; camId: string | null }
   | { type: 'celebrate'; camId: string; verdict: ObQuizVerdict }
   | { type: 'hint'; forCamId: string; question: QuizQuestion }
+  | {
+      type: 'answer';
+      seq: number;
+      forCamId: string;
+      model: ObQuizModelId | null;
+      question: QuizQuestion;
+    }
   | { type: 'sfx'; kind: ObQuizSfx }
   | { type: 'lower-third'; camId: string }
-  | { type: 'log'; tone: ObLogTone; label: string; text: string; camId?: string };
+  | {
+      type: 'log';
+      tone: ObLogTone;
+      label: string;
+      text: string;
+      camId?: string;
+    };
 
 export type ObQuizCommand = Extract<ObOperatorCommand, { op: 'quiz' }>;
 export type ObQuizCommandResult =
@@ -53,6 +72,8 @@ export type ObQuizCamView = {
   role: ObCamRole;
   name: string;
   talent: string | null;
+  /** AI contestant the talent name maps to (controller resolves the alias). */
+  model: ObQuizModelId | null;
   live: boolean;
 };
 
@@ -64,15 +85,28 @@ const CANNED_HINTS = [
   'I only cut cameras, I never cut corners. This one is all yours.',
 ];
 
+/**
+ * In-character excuses when a contestant's adapter is offline — the `$L`
+ * placeholder gets the (deterministically hashed) letter it still locks.
+ */
+const CANNED_ANSWERS = [
+  'Locking $L. My context window never lies.',
+  '$L, final answer. I read the docs while you read the question.',
+  'Going with $L — my weights are tingling.',
+  "$L. If I'm wrong, blame the training cutoff.",
+];
+
 type QuizPlayer = {
   camId: string;
   name: string;
+  model: ObQuizModelId | null;
   amount: number;
   amountFrom: number;
   amountChangedAtMs: number | null;
   lifelineUsed: boolean;
   answered: number;
   correctCount: number;
+  cashedOut: boolean;
   live: boolean;
 };
 
@@ -86,6 +120,7 @@ type QuizCurrent = {
   verdict: ObQuizVerdict | null;
   revealedAtMs: number | null;
   delta: number;
+  answering: ObQuizAnswering | null;
 };
 
 const fail = (
@@ -98,15 +133,22 @@ export class ObQuizGame {
   private players: QuizPlayer[] = [];
   private remaining: QuizQuestion[];
   private asked = 0;
+  private askSeq = 0;
   private current: QuizCurrent | null = null;
   private hint: (ObQuizHintState & { question: QuizQuestion }) | null = null;
 
   constructor(
-    private readonly bank: QuizQuestion[],
+    private bank: QuizQuestion[],
     deps?: { now?: () => number },
   ) {
     this.now = deps?.now ?? Date.now;
     this.remaining = [...bank];
+  }
+
+  /** Swap the question bank (fresh game — amounts and lifelines reset). */
+  setBank(bank: QuizQuestion[]): void {
+    this.bank = bank;
+    this.reset();
   }
 
   phase(): ObQuizPhase {
@@ -122,7 +164,10 @@ export class ObQuizGame {
    * given order). Amounts and lifelines survive reconnects by camId; a cam
    * that left the show drops its player. Returns true when state changed.
    */
-  syncPlayers(cams: ObQuizCamView[]): { changed: boolean; effects: ObQuizEffect[] } {
+  syncPlayers(cams: ObQuizCamView[]): {
+    changed: boolean;
+    effects: ObQuizEffect[];
+  } {
     const effects: ObQuizEffect[] = [];
     const guests = cams
       .filter((c) => c.role === 'guest')
@@ -131,16 +176,19 @@ export class ObQuizGame {
     const next: QuizPlayer[] = guests.map((c) => {
       const prior = byId.get(c.id);
       const name = c.talent?.trim() || c.name;
-      if (prior) return { ...prior, name, live: c.live };
+      const model = c.model ?? null;
+      if (prior) return { ...prior, name, model, live: c.live };
       return {
         camId: c.id,
         name,
+        model,
         amount: OB_QUIZ_START_AMOUNT,
         amountFrom: OB_QUIZ_START_AMOUNT,
         amountChangedAtMs: null,
         lifelineUsed: false,
         answered: 0,
         correctCount: 0,
+        cashedOut: false,
         live: c.live,
       };
     });
@@ -173,6 +221,8 @@ export class ObQuizGame {
         return this.showBoard();
       case 'hide_board':
         return this.hideBoard();
+      case 'ask':
+        return this.ask();
       case 'lock':
         return this.lock(cmd.letter);
       case 'reveal':
@@ -197,6 +247,14 @@ export class ObQuizGame {
       now - c.revealedAtMs >= OB_QUIZ_CELEBRATE_MS
     ) {
       this.current = null;
+      changed = true;
+    }
+    const ans = this.current?.answering;
+    if (
+      ans?.status === 'pending' &&
+      now - ans.startedAtMs >= OB_QUIZ_ANSWER_TIMEOUT_MS
+    ) {
+      this.applyAnswer(null);
       changed = true;
     }
     if (this.hint) {
@@ -228,6 +286,34 @@ export class ObQuizGame {
     return true;
   }
 
+  /**
+   * A contestant's adapter answered (or failed: `null` → canned letter+quip).
+   * Guarded by the ask sequence — a manual lock, skip, re-ask or player
+   * departure makes a late resolution a no-op. A landed answer auto-locks;
+   * a `cashOut` result instead retires the player (keeps their pot, can
+   * never be assigned again) and puts the question back in the bank.
+   */
+  resolveAnswer(
+    seq: number,
+    res:
+      | {
+          letter: ObQuizLetter;
+          quip: string | null;
+          confidence: number | null;
+        }
+      | { cashOut: true }
+      | null,
+  ): boolean {
+    const ans = this.current?.answering;
+    if (!ans || ans.seq !== seq || ans.status !== 'pending') return false;
+    if (res && 'cashOut' in res) {
+      this.applyCashOut();
+      return true;
+    }
+    this.applyAnswer(res);
+    return true;
+  }
+
   state(): ObQuizState {
     const c = this.current;
     return {
@@ -248,6 +334,7 @@ export class ObQuizGame {
             verdict: c.verdict,
             revealedAtMs: c.revealedAtMs,
             delta: c.delta,
+            answering: c.answering ? { ...c.answering } : null,
           }
         : null,
       hint: this.hint
@@ -274,6 +361,7 @@ export class ObQuizGame {
       lifelineUsed: false,
       answered: 0,
       correctCount: 0,
+      cashedOut: false,
     }));
     this.remaining = [...this.bank];
     this.asked = 0;
@@ -291,6 +379,11 @@ export class ObQuizGame {
     const player = this.players.find((p) => p.camId === camId);
     if (!player) return fail('unknown_cam', 'that camera is not a contestant');
     if (!player.live) return fail('bad_action', `${player.name} is not live`);
+    if (player.cashedOut)
+      return fail(
+        'bad_action',
+        `${player.name} took the tokens and left the show`,
+      );
     const question = this.remaining.shift();
     if (!question) return fail('bad_action', 'the question bank is empty');
     this.asked++;
@@ -304,6 +397,7 @@ export class ObQuizGame {
       verdict: null,
       revealedAtMs: null,
       delta: 0,
+      answering: null,
     };
     return {
       ok: true,
@@ -335,8 +429,7 @@ export class ObQuizGame {
   }
 
   private hideBoard(): ObQuizCommandResult {
-    if (this.phase() !== 'board')
-      return fail('bad_action', 'no board to hide');
+    if (this.phase() !== 'board') return fail('bad_action', 'no board to hide');
     this.current!.shownAtMs = null;
     return {
       ok: true,
@@ -346,11 +439,62 @@ export class ObQuizGame {
     };
   }
 
+  /** The assigned contestant answers for itself (live AI, canned fallback). */
+  private ask(): ObQuizCommandResult {
+    if (this.phase() !== 'board')
+      return fail('bad_action', 'show the board before asking the contestant');
+    const c = this.current!;
+    if (c.answering)
+      return fail(
+        'bad_action',
+        c.answering.status === 'pending'
+          ? 'the contestant is already thinking'
+          : 'the contestant already answered',
+      );
+    const player = this.players.find((p) => p.camId === c.forCamId);
+    if (!player) return fail('unknown_cam', 'the contestant left the show');
+    if (!player.live) return fail('bad_action', `${player.name} is not live`);
+    c.answering = {
+      seq: ++this.askSeq,
+      status: 'pending',
+      model: player.model,
+      startedAtMs: this.now(),
+      answeredAtMs: null,
+      letter: null,
+      quip: null,
+      confidence: null,
+      canned: false,
+    };
+    return {
+      ok: true,
+      effects: [
+        {
+          type: 'answer',
+          seq: c.answering.seq,
+          forCamId: c.forCamId,
+          model: player.model,
+          question: c.question,
+        },
+        {
+          type: 'log',
+          tone: 'ai',
+          label: 'AI',
+          text: `${player.name} is thinking…`,
+          camId: c.forCamId,
+        },
+      ],
+    };
+  }
+
   private lock(letter: ObQuizLetter | undefined): ObQuizCommandResult {
     const phase = this.phase();
     if (phase !== 'board' && phase !== 'locked')
       return fail('bad_action', 'show the board before locking an answer');
     if (!letter) return fail('bad_action', 'lock needs a letter');
+    // The desk overrules a thinking contestant: drop the pending answer (its
+    // late resolution then fails the seq guard and is ignored).
+    if (this.current!.answering?.status === 'pending')
+      this.current!.answering = null;
     this.current!.lockedLetter = letter;
     this.current!.lockedAtMs = this.now();
     return {
@@ -473,6 +617,58 @@ export class ObQuizGame {
         },
       ],
     };
+  }
+
+  // ── Answers ─────────────────────────────────────────────────────────
+
+  private applyAnswer(
+    res: {
+      letter: ObQuizLetter;
+      quip: string | null;
+      confidence: number | null;
+    } | null,
+  ): void {
+    const c = this.current;
+    const ans = c?.answering;
+    if (!c || !ans || ans.status !== 'pending') return;
+    if (res) {
+      ans.letter = res.letter;
+      ans.quip = res.quip;
+      ans.confidence = res.confidence;
+      ans.canned = false;
+    } else {
+      let hash = 0;
+      for (const ch of c.question.id + c.forCamId)
+        hash = (hash * 31 + ch.charCodeAt(0)) | 0;
+      const letter = OB_QUIZ_LETTERS[Math.abs(hash) % OB_QUIZ_LETTERS.length];
+      ans.letter = letter;
+      ans.quip = CANNED_ANSWERS[Math.abs(hash >> 2) % CANNED_ANSWERS.length]
+        .split('$L')
+        .join(letter);
+      ans.confidence = null;
+      ans.canned = true;
+    }
+    ans.status = 'done';
+    ans.answeredAtMs = this.now();
+    // The answer is the lock — REVEAL works exactly as with a desk lock.
+    c.lockedLetter = ans.letter;
+    c.lockedAtMs = ans.answeredAtMs;
+  }
+
+  /**
+   * The Gemini cameo: instead of answering, the contestant retires with
+   * their pot. The open question goes back to the front of the bank
+   * (unburned), the table clears, `cashedOut` makes them unassignable.
+   * The controller clears the quizTurn signal and owns the on-air drama.
+   */
+  private applyCashOut(): void {
+    const c = this.current;
+    if (!c) return;
+    const player = this.players.find((p) => p.camId === c.forCamId);
+    if (player) player.cashedOut = true;
+    this.remaining.unshift(c.question);
+    this.asked--;
+    this.current = null;
   }
 
   // ── Hints ───────────────────────────────────────────────────────────

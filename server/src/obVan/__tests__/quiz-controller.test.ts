@@ -25,7 +25,7 @@ class SpySignals extends ObNullSignals {
   }
 }
 
-function harness() {
+function harness(quizAi?: import('../llm/quizHost').ObQuizAiModule) {
   const events: RoomEvent[] = [];
   const hud: (ObHudState | null)[] = [];
   const connected = new Set<string>();
@@ -66,6 +66,7 @@ function harness() {
     createSignals: () => signals,
     createBrain: () => NULL_BRAIN,
     attention: NULL_ATTENTION,
+    ...(quizAi ? { createQuizAi: () => quizAi } : {}),
   });
 
   const attach = (n: number, role: 'speaker' | 'guest', talent?: string) => {
@@ -122,7 +123,9 @@ describe('QUIZ preset plumbing', () => {
     const byId = Object.fromEntries(
       parsed.ruleset!.rules.map((r) => [r.id, r.priority]),
     );
-    expect(byId['quiz-think-solo']).toBeGreaterThan(byId['quiz-question-split']);
+    expect(byId['quiz-think-solo']).toBeGreaterThan(
+      byId['quiz-question-split'],
+    );
     expect(byId['quiz-question-split']).toBeGreaterThanOrEqual(80);
     expect(byId['default-grid']).toBeLessThan(byId['quiz-host-solo']);
   });
@@ -138,9 +141,9 @@ describe('QUIZ preset plumbing', () => {
       parseObCommand({ op: 'quiz', action: 'reveal', verdict: 'wrong' }),
     ).toEqual({ op: 'quiz', action: 'reveal', verdict: 'wrong' });
     expect(parseObCommand({ op: 'quiz', action: 'nope' })).toBeNull();
-    expect(
-      parseObCommand({ op: 'quiz', action: 'lock', letter: 'E' }),
-    ).toEqual({ op: 'quiz', action: 'lock' });
+    expect(parseObCommand({ op: 'quiz', action: 'lock', letter: 'E' })).toEqual(
+      { op: 'quiz', action: 'lock' },
+    );
   });
 });
 
@@ -181,9 +184,9 @@ describe('ObVanController · quiz', () => {
     const s = h.controller.stateSnapshot();
     expect(s.quiz?.phase).toBe('assigned');
     expect(s.lowerThird?.camId).toBe(g1);
-    expect(
-      h.controller.operate({ op: 'quiz', action: 'show_board' }).ok,
-    ).toBe(true);
+    expect(h.controller.operate({ op: 'quiz', action: 'show_board' }).ok).toBe(
+      true,
+    );
     const board = h.lastHudQuiz()?.board;
     expect(board).not.toBeNull();
     expect(board && 'correct' in board).toBe(false);
@@ -241,5 +244,280 @@ describe('ObVanController · quiz', () => {
     expect(hint?.canned).toBe(true);
     expect(hint?.letter).toBeNull();
     expect(h.lastHudQuiz()?.hint?.text).toBeTruthy();
+  });
+});
+
+// ── AI contestants ─────────────────────────────────────────────────────────
+
+import {
+  OB_QUIZ_THINK_MIN_MS,
+  type ObQuizLetter,
+  type ObQuizModelId,
+} from '@smelter-editor/types';
+import type { ObQuizAiModule } from '../llm/quizHost';
+
+function fakeQuizAi(
+  answer: (model: ObQuizModelId) =>
+    | {
+        letter: ObQuizLetter;
+        quip: string | null;
+        confidence: number | null;
+      }
+    | { cashOut: true }
+    | null = (model) =>
+    model === 'gemini'
+      ? { cashOut: true }
+      : {
+          letter: 'B',
+          quip: `${model} says B`,
+          confidence: model === 'jev' ? 0.9 : null,
+        },
+): {
+  ai: ObQuizAiModule;
+  calls: { model: ObQuizModelId; question: string; answers: string[] }[];
+} {
+  const calls: { model: ObQuizModelId; question: string; answers: string[] }[] =
+    [];
+  const ids: ObQuizModelId[] = ['opus', 'gpt', 'gemini', 'jev'];
+  const ai: ObQuizAiModule = {
+    contestants: Object.fromEntries(
+      ids.map((id) => [
+        id,
+        {
+          id,
+          model: `${id}-test`,
+          available: () => true,
+          answer: async (input: { question: string; answers: string[] }) => {
+            calls.push({
+              model: id,
+              question: input.question,
+              answers: [...input.answers],
+            });
+            return answer(id);
+          },
+        },
+      ]),
+    ) as ObQuizAiModule['contestants'],
+    cannedHostLine: (evt) => `canned-${evt.kind}`,
+    polishHostLine: async () => null,
+    dispose: () => {},
+  };
+  return { ai, calls };
+}
+
+/** Quiz preset with AI-named guests, on air. */
+async function onAirAiQuiz(h: ReturnType<typeof harness>) {
+  h.controller.setConfig({
+    presetId: 'quiz',
+    audio: { mode: 'mix' },
+    quiz: { bank: 'smelter', aiHost: true },
+  });
+  h.attach(1, 'speaker', 'Max Smelter');
+  const gpt = h.attach(2, 'guest', 'GPT');
+  const jev = h.attach(3, 'guest', 'JEV');
+  expect(h.controller.control('go_live').ok).toBe(true);
+  await vi.advanceTimersByTimeAsync(150);
+  return { gpt, jev };
+}
+
+describe('ObVanController · AI contestants', () => {
+  it('ask calls the mapped adapter blind and auto-locks after the think beat', async () => {
+    const { ai, calls } = fakeQuizAi();
+    const h = harness(ai);
+    const { gpt } = await onAirAiQuiz(h);
+    h.controller.operate({ op: 'quiz', action: 'assign', camId: gpt });
+    h.controller.operate({ op: 'quiz', action: 'show_board' });
+    expect(h.controller.operate({ op: 'quiz', action: 'ask' }).ok).toBe(true);
+    // Pending: HUD shows thinking, nothing locked yet.
+    expect(h.lastHudQuiz()?.thinking).toMatchObject({
+      name: 'GPT',
+      model: 'gpt',
+    });
+    expect(h.lastHudQuiz()?.board?.locked).toBeNull();
+    expect(calls).toHaveLength(1);
+    expect(calls[0].model).toBe('gpt');
+    expect(calls[0].question.length).toBeGreaterThan(0);
+    expect(JSON.stringify(calls[0])).not.toContain('"correct"');
+    // The instant result is held to the minimum think time.
+    await vi.advanceTimersByTimeAsync(OB_QUIZ_THINK_MIN_MS + 200);
+    const s = h.controller.stateSnapshot();
+    expect(s.quiz?.phase).toBe('locked');
+    expect(s.quiz?.current?.lockedLetter).toBe('B');
+    expect(s.quiz?.current?.answering).toMatchObject({
+      status: 'done',
+      letter: 'B',
+      quip: 'gpt says B',
+      canned: false,
+    });
+    const hud = h.lastHudQuiz();
+    expect(hud?.thinking).toBeNull();
+    expect(hud?.answer).toMatchObject({ name: 'GPT', letter: 'B' });
+    // The answer moment owns the picture (solo on the contestant).
+    expect(h.controller.stateSnapshot().program.shot).toMatchObject({
+      kind: 'solo',
+    });
+  });
+
+  it('pre-reveal HUD never contains a `correct` key anywhere', async () => {
+    const { ai } = fakeQuizAi();
+    const h = harness(ai);
+    const { jev } = await onAirAiQuiz(h);
+    h.controller.operate({ op: 'quiz', action: 'assign', camId: jev });
+    h.controller.operate({ op: 'quiz', action: 'show_board' });
+    h.controller.operate({ op: 'quiz', action: 'ask' });
+    await vi.advanceTimersByTimeAsync(OB_QUIZ_THINK_MIN_MS + 200);
+    expect(JSON.stringify(h.lastHudQuiz())).not.toContain('"correct"');
+    h.controller.operate({ op: 'quiz', action: 'reveal' });
+    expect(h.lastHudQuiz()?.board?.reveal).toMatchObject({
+      correct: expect.stringMatching(/^[A-D]$/),
+    });
+  });
+
+  it('without a quiz AI module the ask lands canned after a thinking beat', async () => {
+    const h = harness(); // no createQuizAi factory at all
+    h.controller.setConfig({ presetId: 'quiz', audio: { mode: 'mix' } });
+    h.attach(1, 'speaker', 'Max');
+    const g1 = h.attach(2, 'guest', 'GPT');
+    h.controller.control('go_live');
+    await vi.advanceTimersByTimeAsync(150);
+    h.controller.operate({ op: 'quiz', action: 'assign', camId: g1 });
+    h.controller.operate({ op: 'quiz', action: 'show_board' });
+    expect(h.controller.operate({ op: 'quiz', action: 'ask' }).ok).toBe(true);
+    await vi.advanceTimersByTimeAsync(3_200);
+    const ans = h.controller.stateSnapshot().quiz?.current?.answering;
+    expect(ans?.status).toBe('done');
+    expect(ans?.canned).toBe(true);
+    expect(h.controller.stateSnapshot().quiz?.phase).toBe('locked');
+  });
+
+  it('host lines ride the HUD when aiHost is on, and only then', async () => {
+    const { ai } = fakeQuizAi();
+    const h = harness(ai);
+    const { gpt } = await onAirAiQuiz(h);
+    // go_live put the intro line up.
+    expect(h.lastHudQuiz()?.hostLine?.text).toBe('canned-intro');
+    h.controller.operate({ op: 'quiz', action: 'assign', camId: gpt });
+    expect(h.lastHudQuiz()?.hostLine?.text).toBe('canned-assign');
+    // It expires on the tick clock.
+    await vi.advanceTimersByTimeAsync(7_500);
+    expect(h.lastHudQuiz()?.hostLine).toBeNull();
+    // aiHost off → no plates.
+    h.controller.operate({ op: 'quiz_set', aiHost: false });
+    h.controller.operate({ op: 'quiz', action: 'show_board' });
+    expect(h.lastHudQuiz()?.hostLine).toBeNull();
+  });
+
+  it('quiz_set toggles config and parses over the wire', () => {
+    expect(parseObCommand({ op: 'quiz_set', auto: true })).toEqual({
+      op: 'quiz_set',
+      auto: true,
+    });
+    expect(parseObCommand({ op: 'quiz_set' })).toBeNull();
+    const h = harness();
+    h.controller.setConfig({ presetId: 'quiz' });
+    expect(h.controller.operate({ op: 'quiz_set', auto: true }).ok).toBe(true);
+    expect(h.controller.stateSnapshot().config.quiz.auto).toBe(true);
+  });
+
+  it('AUTO runs a whole round hands-free and moves to the next player', async () => {
+    const { ai, calls } = fakeQuizAi();
+    const h = harness(ai);
+    await onAirAiQuiz(h);
+    h.controller.setConfig({ quiz: { auto: true } });
+    // assign → 2.5s board → 1.5s ask → 2s think → 4s reveal → 6s celebrate.
+    await vi.advanceTimersByTimeAsync(20_000);
+    const afterOne = h.controller.stateSnapshot().quiz!;
+    expect(afterOne.players.some((p) => p.answered >= 1)).toBe(true);
+    expect(calls.length).toBeGreaterThanOrEqual(1);
+    // Keeps going: round-robin reaches the other contestant.
+    await vi.advanceTimersByTimeAsync(20_000);
+    const afterTwo = h.controller.stateSnapshot().quiz!;
+    expect(afterTwo.players.every((p) => p.answered >= 1)).toBe(true);
+    expect(new Set(calls.map((c) => c.model)).size).toBe(2);
+  });
+
+  it('an operator command pauses AUTO for resumeAfterMs', async () => {
+    const { ai } = fakeQuizAi();
+    const h = harness(ai);
+    const { gpt } = await onAirAiQuiz(h);
+    h.controller.setConfig({ quiz: { auto: true }, resumeAfterMs: 60_000 });
+    // Operator takes over before auto starts anything.
+    h.controller.operate(
+      { op: 'quiz', action: 'assign', camId: gpt },
+      'operator',
+    );
+    h.controller.operate({ op: 'quiz', action: 'skip' }, 'operator');
+    await vi.advanceTimersByTimeAsync(10_000);
+    // Auto stayed paused: still idle, nothing assigned by itself.
+    expect(h.controller.stateSnapshot().quiz?.phase).toBe('idle');
+    await vi.advanceTimersByTimeAsync(55_000);
+    // Hold expired — auto picked it back up.
+    expect(h.controller.stateSnapshot().quiz?.phase).not.toBe('idle');
+  });
+});
+
+describe('ObVanController · the Gemini cameo', () => {
+  it('cash out retires the player, returns the question and takes the picture', async () => {
+    const { ai } = fakeQuizAi();
+    const h = harness(ai);
+    h.controller.setConfig({
+      presetId: 'quiz',
+      audio: { mode: 'mix' },
+      quiz: { bank: 'smelter', aiHost: true },
+    });
+    h.attach(1, 'speaker', 'Max Smelter');
+    const gemini = h.attach(2, 'guest', 'GEMINI');
+    h.attach(3, 'guest', 'GPT');
+    h.controller.control('go_live');
+    await vi.advanceTimersByTimeAsync(150);
+    const before = h.controller.stateSnapshot().quiz!.questionsLeft;
+    h.controller.operate({ op: 'quiz', action: 'assign', camId: gemini });
+    h.controller.operate({ op: 'quiz', action: 'show_board' });
+    h.controller.operate({ op: 'quiz', action: 'ask' });
+    await vi.advanceTimersByTimeAsync(OB_QUIZ_THINK_MIN_MS + 200);
+    const s = h.controller.stateSnapshot();
+    const player = s.quiz!.players.find((p) => p.camId === gemini)!;
+    expect(player.cashedOut).toBe(true);
+    expect(player.amount).toBe(1_000_000); // walks with the pot
+    expect(s.quiz!.phase).toBe('idle');
+    expect(s.quiz!.questionsLeft).toBe(before); // question unburned
+    expect(h.signals.quizTurns.at(-1)).toBeNull();
+    // The exit owns the picture and the host calls it.
+    expect(s.program.shot).toMatchObject({ kind: 'solo', cam: gemini });
+    expect(h.lastHudQuiz()?.hostLine?.text).toBe('canned-cashout');
+    expect(
+      h.lastHudQuiz()?.players.find((p) => p.name === 'GEMINI'),
+    ).toMatchObject({ cashedOut: true });
+    // Never assignable again.
+    const again = h.controller.operate({
+      op: 'quiz',
+      action: 'assign',
+      camId: gemini,
+    });
+    expect(again.ok).toBe(false);
+  });
+
+  it('AUTO skips a cashed-out contestant', async () => {
+    const { ai, calls } = fakeQuizAi();
+    const h = harness(ai);
+    h.controller.setConfig({
+      presetId: 'quiz',
+      audio: { mode: 'mix' },
+      quiz: { bank: 'smelter', aiHost: true, auto: true },
+    });
+    h.attach(1, 'speaker', 'Max Smelter');
+    h.attach(2, 'guest', 'GEMINI');
+    h.attach(3, 'guest', 'GPT');
+    h.controller.control('go_live');
+    await vi.advanceTimersByTimeAsync(150);
+    // Round 1: GEMINI (fewest answers) gets asked, cashes out; GPT then
+    // plays a real round; GEMINI is never picked again.
+    await vi.advanceTimersByTimeAsync(60_000);
+    const s = h.controller.stateSnapshot().quiz!;
+    expect(s.players.find((p) => p.name === 'GEMINI')?.cashedOut).toBe(true);
+    expect(
+      s.players.find((p) => p.name === 'GPT')!.answered,
+    ).toBeGreaterThanOrEqual(2);
+    expect(calls.filter((c) => c.model === 'gemini')).toHaveLength(1);
   });
 });

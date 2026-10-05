@@ -478,6 +478,7 @@ export type {
   ObErrorCode,
   ObErrorEvent,
   ObServerEvent,
+  ObQuizBank,
 } from "./ob-van-events.js";
 export {
   OB_CAM_ROLES,
@@ -497,6 +498,7 @@ export {
   OB_CONTROL_ACTIONS,
   OB_LLM_MODELS,
   OB_LLM_MODEL_IDS,
+  OB_QUIZ_BANKS,
   isObCamRole,
   isObLlmModelId,
 } from "./ob-van-events.js";
@@ -520,20 +522,26 @@ export type {
   ObQuizPhase,
   ObQuizVerdict,
   ObQuizAction,
+  ObQuizModelId,
   ObQuizPlayer,
   ObQuizCurrent,
+  ObQuizAnswering,
   ObQuizHintState,
   ObQuizState,
 } from "./ob-van-quiz.js";
 export {
   OB_QUIZ_LETTERS,
   OB_QUIZ_ACTIONS,
+  OB_QUIZ_MODELS,
   OB_QUIZ_START_AMOUNT,
   OB_QUIZ_MAX_PLAYERS,
   OB_QUIZ_CELEBRATE_MS,
   OB_QUIZ_HINT_TIMEOUT_MS,
   OB_QUIZ_HINT_SHOW_MS,
+  OB_QUIZ_ANSWER_TIMEOUT_MS,
+  OB_QUIZ_THINK_MIN_MS,
   isObQuizLetter,
+  obQuizModelFromName,
   obQuizApplyVerdict,
   obQuizFormatMoney,
   obQuizFormatDelta,

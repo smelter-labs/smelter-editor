@@ -221,9 +221,7 @@ export function parseObCommand(raw: unknown): ObOperatorCommand | null {
     }
     case 'quiz': {
       const action = raw.action;
-      if (
-        !(OB_QUIZ_ACTIONS as readonly unknown[]).includes(action)
-      )
+      if (!(OB_QUIZ_ACTIONS as readonly unknown[]).includes(action))
         return null;
       const cmd: ObOperatorCommand = {
         op: 'quiz',
@@ -235,6 +233,14 @@ export function parseObCommand(raw: unknown): ObOperatorCommand | null {
       if (raw.verdict === 'correct' || raw.verdict === 'wrong')
         cmd.verdict = raw.verdict;
       return cmd;
+    }
+    case 'quiz_set': {
+      const cmd: ObOperatorCommand = { op: 'quiz_set' };
+      const auto = bool(raw.auto);
+      if (auto !== undefined) cmd.auto = auto;
+      const aiHost = bool(raw.aiHost);
+      if (aiHost !== undefined) cmd.aiHost = aiHost;
+      return auto === undefined && aiHost === undefined ? null : cmd;
     }
     default:
       return null;

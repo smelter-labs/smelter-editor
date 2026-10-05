@@ -208,6 +208,7 @@ describe('echo detection', () => {
       verdict: null,
       revealedAtMs: null,
       delta: 0,
+      answering: null,
     };
     const assign = { op: 'quiz', action: 'assign', camId: 'g1' } as const;
     expect(commandEchoed(assign, before, quiz())).toBe(false);

@@ -259,6 +259,15 @@ const ASSETS = {
     <div style="position:absolute;left:14px;top:0;right:0;height:150px;background:${PLATE};border-top:2px solid ${RULE}"></div>
     <div class="tag" style="position:absolute;right:10px;top:10px;background:rgba(56,189,248,.16);color:${SKY}">LIFELINE · ASK THE AI</div>`,
   ],
+  // AI host line plate 740×72 at (720,40): gold bar left; "MAX SMELTER"
+  // kicker at (26,6) and up to two text lines drawn by ObQuizHud.
+  'quiz-host-plate': [
+    740,
+    72,
+    `
+    <div style="position:absolute;left:0;top:0;width:12px;height:72px;background:${QGOLD}"></div>
+    <div style="position:absolute;left:12px;top:0;right:0;height:72px;background:${PLATE};border-top:2px solid ${RULE}"></div>`,
+  ],
   // Full-frame reveal flashes (rendered at 960×540, rescaled to the output):
   // transparent middle, coloured edge glow; opacity is driven by a shader.
   'quiz-flash-win': [
