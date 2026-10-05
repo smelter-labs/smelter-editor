@@ -24,12 +24,10 @@ import {
 } from './hud';
 import {
   Confetti,
-  NO_FX,
   PuppetFigure,
   StudioWall,
   soloSlot,
   speechAt,
-  studioSlots,
   type PuppetFx,
 } from './puppet';
 import {
@@ -48,8 +46,6 @@ import {
   type SpeechCue,
 } from './theme';
 
-export type CastMember = { character: PuppetCharacterId; name: string };
-
 const useSceneTime = () => {
   const frame = useCurrentFrame();
   const { fps, width, height } = useVideoConfig();
@@ -61,14 +57,14 @@ const useSceneTime = () => {
 
 export type IntroProps = {
   durationS: number;
-  cast: CastMember[];
   players: RailPlayer[];
   /** When the money rail slides in. */
   railAtS: number;
 };
 
-export const Intro: React.FC<IntroProps> = ({ cast, players, railAtS }) => {
-  const { tS, timeMs, width, height } = useSceneTime();
+// No shared studio view in the fake — the intro/wrap are pure title cards.
+export const Intro: React.FC<IntroProps> = ({ players, railAtS }) => {
+  const { tS, width, height } = useSceneTime();
   const splashIn = clamp01((tS - 0.4) / 0.6);
   const scale = 1.18 - 0.18 * (1 - Math.pow(1 - splashIn, 3));
   const railX = interpolate(tS, [railAtS, railAtS + 0.6], [460, 0], {
@@ -78,16 +74,6 @@ export const Intro: React.FC<IntroProps> = ({ cast, players, railAtS }) => {
   return (
     <AbsoluteFill style={{ backgroundColor: INK }}>
       <StudioWall width={width} height={height} />
-      {studioSlots(cast, width, height).map((slot) => (
-        <PuppetFigure
-          key={slot.character}
-          slot={slot}
-          timeMs={timeMs}
-          env={{ amp: 0, bobAmp: 0, silenceMs: 10_000 }}
-          airMs={0}
-          fx={NO_FX}
-        />
-      ))}
       <AbsoluteFill style={{ opacity: splashIn }}>
         <QuizSplash scale={scale} />
       </AbsoluteFill>
@@ -341,32 +327,15 @@ export const CashOutCameo: React.FC<CashOutCameoProps> = (p) => {
 
 export type WrapProps = {
   durationS: number;
-  cast: CastMember[];
   players: RailPlayer[];
-  /** Winners cheer through the wrap. */
-  cheerNames: string[];
 };
 
-export const Wrap: React.FC<WrapProps> = ({ cast, players, cheerNames }) => {
-  const { tS, timeMs, width, height } = useSceneTime();
+export const Wrap: React.FC<WrapProps> = ({ players }) => {
+  const { tS, width, height } = useSceneTime();
   const splashIn = clamp01((tS - 0.5) / 0.5);
   return (
     <AbsoluteFill style={{ backgroundColor: INK }}>
       <StudioWall width={width} height={height} />
-      {studioSlots(cast, width, height).map((slot) => (
-        <PuppetFigure
-          key={slot.character}
-          slot={slot}
-          timeMs={timeMs}
-          env={{ amp: 0, bobAmp: 0, silenceMs: 10_000 }}
-          airMs={0}
-          fx={{
-            active: false,
-            cheer: cheerNames.includes(slot.name) && tS > 0.8,
-            sad: false,
-          }}
-        />
-      ))}
       <Confetti
         sinceMs={(tS - 0.8) * 1000}
         seed={puppetSeed('wrap')}

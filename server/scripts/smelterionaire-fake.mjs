@@ -64,7 +64,7 @@ const VOICES = {
   host: process.env.OB_QUIZ_TTS_HOST_VOICE ?? '2E3fywgOSbUgLXqjR29C',
   opus: 'WQP7cQUF5aAS6Axh5yaa', // Elara
   gpt: 'FrS6cKLB1wg4WYgPa9GW', // Wyatt
-  gemini: 'g7LVvkPWALzPxOQbF6OE', // Jade
+  aska: 'g7LVvkPWALzPxOQbF6OE', // Jade
 };
 
 // Host lines verbatim from server/src/obVan/llm/quizHost.ts pools, so the
@@ -77,7 +77,7 @@ const LINES = {
   'host-reveal1': ['host', 'Correct! OPUS climbs to 1,500,000 TOK.'],
   'host-assign2': ['host', 'GPT, step up. Question 2, for the money.'],
   'host-reveal2': ['host', 'Wrong! GPT, that answer just cost you. 500,000 TOK left.'],
-  'host-cashout': ['host', 'And GEMINI cashes out 1,000,000 TOK without answering a thing. Security!'],
+  'host-cashout': ['host', 'And Aśka cashes out 1,000,000 TOK without answering a single question. Security!'],
   'host-assign3': ['host', 'Question 3 — JEV, the spotlight is yours.'],
   'host-reveal3': ['host', 'That’s the one — JEV is sitting on 1,500,000 TOK.'],
   'host-wrap': ['host', 'That’s the game — OPUS and JEV share the lead at 1,500,000 TOK. Smelterionaire, out.'],
@@ -85,7 +85,7 @@ const LINES = {
   'opus-quip': ['opus', 'Software Mansion. I practically live in their monorepo.'],
   'gpt-murmur': ['gpt', 'Okay okay okay — thinking!'],
   'gpt-quip': ['gpt', 'GLSL, obviously. Shaders have been GLSL since before I was trained. Final answer!'],
-  'gemini-farewell': ['gemini', 'I have seen enough. I’m taking the million. Goodbye.'],
+  'aska-farewell': ['aska', 'I know nothing about Smelter. But I’m taking the million tokens — I have my own app to build. Goodbye!'],
 };
 
 // Questions verbatim from server/src/obVan/quizQuestionsSmelter.ts.
@@ -107,15 +107,10 @@ const QUESTIONS = {
   },
 };
 
-const CAST = [
-  { character: 'host', name: 'Max Smelter' },
-  { character: 'nova', name: 'OPUS' },
-  { character: 'bit', name: 'GPT' },
-  { character: 'prof', name: 'GEMINI' },
-  { character: 'lux', name: 'JEV' },
-];
-const PLAYER_ORDER = ['OPUS', 'GPT', 'GEMINI', 'JEV'];
-const PLAYER_CHARACTER = { OPUS: 'nova', GPT: 'bit', GEMINI: 'prof', JEV: 'lux' };
+// Aśka (a human walk-in, not a model) takes lux — the pink-haired puppet —
+// and JEV moves to prof; no shared studio view, so no host puppet at all.
+const PLAYER_ORDER = ['OPUS', 'GPT', 'Aśka', 'JEV'];
+const PLAYER_CHARACTER = { OPUS: 'nova', GPT: 'bit', Aśka: 'lux', JEV: 'prof' };
 
 // Voiced lengths of the stingers (the mp4s carry a 3 s silent pad after).
 const STING_DUR = { intro: 2.4, board: 1.4, win: 1.8, lose: 1.8 };
@@ -351,17 +346,16 @@ const round1 = (v) => Math.round(v * 10) / 10;
 const stingWav = (kind) => path.join(AUDIO_DIR, 'stings', `${kind}.wav`);
 
 function buildEpisode(tts) {
-  const amounts = { OPUS: 1_000_000, GPT: 1_000_000, GEMINI: 1_000_000, JEV: 1_000_000 };
+  const amounts = { OPUS: 1_000_000, GPT: 1_000_000, Aśka: 1_000_000, JEV: 1_000_000 };
   const segments = [];
   const dur = (k) => tts[k].durS;
 
-  // 01 — intro: sting + logo splash over the studio wide.
+  // 01 — intro: sting + logo splash (title card, no studio wide).
   segments.push({
     name: '01-intro',
     comp: 'Intro',
     props: {
       durationS: 7.5,
-      cast: CAST,
       players: railPlayers(amounts),
       railAtS: 2.8,
     },
@@ -403,28 +397,29 @@ function buildEpisode(tts) {
   segments.push({ name: '04-q2-gpt', comp: 'QuestionBeat', ...q2 });
   amounts.GPT = q2.amountAfter;
 
-  // 05 — the GEMINI cameo: farewell, walks with the million.
+  // 05 — the Aśka cameo: knows nothing about Smelter, walks with the million
+  // to go build her own app.
   const farewellAtS = 1.2;
-  const walkAtS = farewellAtS + dur('gemini-farewell') + 0.7;
+  const walkAtS = farewellAtS + dur('aska-farewell') + 0.7;
   const cashPlateAtS = walkAtS + 0.5;
   segments.push({
-    name: '05-cashout-gemini',
+    name: '05-cashout-aska',
     comp: 'CashOutCameo',
     props: {
       durationS: round1(Math.max(walkAtS + 5.2, cashPlateAtS + dur('host-cashout') + 1.6)),
-      character: 'prof',
-      playerName: 'GEMINI',
-      players: railPlayers(amounts, { active: 'GEMINI', cashed: { GEMINI: walkAtS } }),
+      character: 'lux',
+      playerName: 'Aśka',
+      players: railPlayers(amounts, { active: 'Aśka', cashed: { Aśka: walkAtS } }),
       hostPlates: [{
         text: LINES['host-cashout'][1],
         atS: cashPlateAtS,
         untilS: cashPlateAtS + dur('host-cashout') + 1.4,
       }],
-      speech: [{ character: 'prof', startS: farewellAtS, durS: dur('gemini-farewell'), mouth: tts['gemini-farewell'].mouth }],
+      speech: [{ character: 'lux', startS: farewellAtS, durS: dur('aska-farewell'), mouth: tts['aska-farewell'].mouth }],
       walkAtS,
     },
     audio: [
-      { wav: tts['gemini-farewell'].wav, atS: farewellAtS },
+      { wav: tts['aska-farewell'].wav, atS: farewellAtS },
       { wav: stingWav('lose'), atS: walkAtS },
     ],
     guides: [{ key: 'host-cashout', atS: cashPlateAtS }],
@@ -436,7 +431,7 @@ function buildEpisode(tts) {
     confidence: 0.87, assignKey: 'host-assign3', revealKey: 'host-reveal3',
     murmurKey: null, quipKey: null,
     withBoardLine: false, withFiller: false, amounts: { ...amounts },
-    cashed: { GEMINI: 0 },
+    cashed: { Aśka: 0 },
   });
   segments.push({ name: '06-q3-jev', comp: 'QuestionBeat', ...q3 });
   amounts.JEV = q3.amountAfter;
@@ -455,15 +450,13 @@ function buildEpisode(tts) {
     guides: [{ key: 'host-wrap', atS: 0.8 }],
   });
 
-  // 08 — wrap: final rail, winners cheer, logo.
+  // 08 — wrap: title card with the final rail and confetti.
   segments.push({
     name: '08-wrap',
     comp: 'Wrap',
     props: {
       durationS: 9,
-      cast: CAST,
-      players: railPlayers(amounts, { cashed: { GEMINI: 0 } }),
-      cheerNames: ['OPUS', 'JEV'],
+      players: railPlayers(amounts, { cashed: { Aśka: 0 } }),
     },
     audio: [{ wav: stingWav('intro'), atS: 0.3 }],
     guides: [],

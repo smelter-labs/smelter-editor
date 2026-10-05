@@ -8,8 +8,10 @@ plansze i puppety, ta sama geometria i animacja ust/mrugnięć co
 
 Segmenty prowadzącego to plansze **HOST SHOT** (placeholder do podmiany na
 własne nagrania); głos hosta (ElevenLabs) leży osobno na ścieżce A2 jako
-przewodnik. Zawodnicy (OPUS/GPT/GEMINI) mówią prawdziwymi głosami ElevenLabs,
-JEV tradycyjnie milczy (87% SURE).
+przewodnik. Zawodnicy OPUS/GPT mówią prawdziwymi głosami ElevenLabs, JEV
+tradycyjnie milczy (87% SURE), a czwarte krzesło zajmuje **Aśka** — nic nie
+wie o Smelterze, ale bierze milion tokenów i idzie budować własną apkę
+(kameo cash-out). Bez wspólnego widoku studia — intro/wrap to karty tytułowe.
 
 ## Użycie
 

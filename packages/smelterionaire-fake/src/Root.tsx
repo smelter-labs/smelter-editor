@@ -7,7 +7,6 @@ import {
   QuestionBeat,
   Wrap,
   type CashOutCameoProps,
-  type CastMember,
   type HostSlateProps,
   type IntroProps,
   type QuestionBeatProps,
@@ -31,24 +30,15 @@ const fakeMouth = (durS: number): MouthTrack => {
   return { rateHz: 50, v };
 };
 
-const demoCast: CastMember[] = [
-  { character: 'host', name: 'Max Smelter' },
-  { character: 'nova', name: 'OPUS' },
-  { character: 'bit', name: 'GPT' },
-  { character: 'prof', name: 'GEMINI' },
-  { character: 'lux', name: 'JEV' },
-];
-
 const demoPlayers: RailPlayer[] = [
   { name: 'OPUS', amount: 1_000_000, amountFrom: 1_000_000, changeAtS: null, verdict: null, active: true, cashedOut: false },
   { name: 'GPT', amount: 1_000_000, amountFrom: 1_000_000, changeAtS: null, verdict: null, active: false, cashedOut: false },
-  { name: 'GEMINI', amount: 1_000_000, amountFrom: 1_000_000, changeAtS: null, verdict: null, active: false, cashedOut: false },
+  { name: 'Aśka', amount: 1_000_000, amountFrom: 1_000_000, changeAtS: null, verdict: null, active: false, cashedOut: false },
   { name: 'JEV', amount: 1_000_000, amountFrom: 1_000_000, changeAtS: null, verdict: null, active: false, cashedOut: false },
 ];
 
 const introDefaults: IntroProps = {
   durationS: 7,
-  cast: demoCast,
   players: demoPlayers.map((p) => ({ ...p, active: false })),
   railAtS: 2.6,
 };
@@ -94,35 +84,33 @@ const questionDefaults: QuestionBeatProps = {
 
 const cameoDefaults: CashOutCameoProps = {
   durationS: 12,
-  character: 'prof',
-  playerName: 'GEMINI',
+  character: 'lux',
+  playerName: 'Aśka',
   players: demoPlayers.map((p) =>
-    p.name === 'GEMINI' ? { ...p, cashedOut: true, cashOutAtS: 5 } : p,
+    p.name === 'Aśka' ? { ...p, cashedOut: true, cashOutAtS: 5 } : p,
   ),
   hostPlates: [
     {
-      text: 'And GEMINI cashes out 1,000,000 TOK without answering a thing. Security!',
+      text: 'And Aśka cashes out 1,000,000 TOK without answering a thing. Security!',
       atS: 5.4,
       untilS: 10.5,
     },
   ],
-  speech: [{ character: 'prof', startS: 1, durS: 3.4, mouth: fakeMouth(3.4) }],
+  speech: [{ character: 'lux', startS: 1, durS: 3.4, mouth: fakeMouth(3.4) }],
   walkAtS: 5,
 };
 
 const wrapDefaults: WrapProps = {
   durationS: 8,
-  cast: demoCast,
   players: demoPlayers.map((p) => ({
     ...p,
     active: false,
     amount:
-      p.name === 'GPT' ? 500_000 : p.name === 'GEMINI' ? 1_000_000 : 1_500_000,
+      p.name === 'GPT' ? 500_000 : p.name === 'Aśka' ? 1_000_000 : 1_500_000,
     amountFrom:
-      p.name === 'GPT' ? 500_000 : p.name === 'GEMINI' ? 1_000_000 : 1_500_000,
-    cashedOut: p.name === 'GEMINI',
+      p.name === 'GPT' ? 500_000 : p.name === 'Aśka' ? 1_000_000 : 1_500_000,
+    cashedOut: p.name === 'Aśka',
   })),
-  cheerNames: ['OPUS', 'JEV'],
 };
 
 const meta = ({ props }: { props: { durationS: number } }) => ({

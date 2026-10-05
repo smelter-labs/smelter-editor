@@ -80,7 +80,9 @@ export function Label({
         top: Math.round(top),
         width: w,
         height: Math.round(fs * 1.45),
-        overflow: 'hidden',
+        // Visible: with lineHeight 1 a diacritic (Ś in AŚKA) pokes above the
+        // line box and overflow:hidden would shave it off.
+        overflow: 'visible',
         fontFamily: font,
         fontWeight: weight,
         fontSize: fs,
