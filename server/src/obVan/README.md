@@ -560,6 +560,12 @@ node scripts/ob-tape-reel.mjs --timing data/ob-demo-raw/nba/nba.timing.json \
 OB_API=http://localhost:3001 node scripts/ob-demo-run.mjs --dir ob-demo/nba --live --record --check
 ```
 
+Jest też **offline'owy fake całego Smelterionaire** (na workshop, bez silnika):
+`node scripts/smelterionaire-fake.mjs` renderuje odcinek w Remotionie
+(`packages/smelterionaire-fake` — te same plansze/puppety/głosy co live show,
+host jako placeholder do podmiany) i emituje klipy + projekt Premiere (FCP7
+XML) + preview do `data/smelterionaire-fake/`.
+
 Prawdziwy materiał podmienia się tą samą drogą: nagrane take'y przez
 `ob-prep-takes` (zamiast `fake/*.mov`), ściągnięte highlighty do `tape-src/`
 i ponowny `ob-tape-reel`. Uwaga na licencję Remotion (bezpłatna do 3 osób w
