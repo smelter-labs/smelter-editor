@@ -402,6 +402,11 @@ const QUIZ_SFX_LEAD_MS = 250;
 const QUIZ_SPEECH_LEAD_MS = 1_000;
 /** On-air breath between queued TTS lines. */
 const QUIZ_SPEECH_GAP_MS = 300;
+/**
+ * Clips carry ~3 s of muxed silence after the line (see llm/tts.ts) and stay
+ * registered through it — the engine mix drops audio around input churn.
+ */
+const QUIZ_SPEECH_TAIL_MS = 3_200;
 /** Give up on a quip's synth after this — the show goes on text-only. */
 const QUIZ_SPEECH_QUIP_BUDGET_MS = 8_000;
 /** A line queued but not yet measured blocks AUTO for this long at most. */
@@ -2399,7 +2404,9 @@ export class ObVanController {
             }
             this.deps.unregisterQuizSfx?.(inputId);
           },
-          QUIZ_SFX_MS[kind] + QUIZ_SFX_LEAD_MS + 1000,
+          // The files carry a 3 s silent tail (see scripts/quiz-render-sfx) —
+          // hold the input through it, the mix dislikes short-lived inputs.
+          QUIZ_SFX_MS[kind] + QUIZ_SFX_LEAD_MS + QUIZ_SPEECH_TAIL_MS + 1000,
         );
         this.quizSfxTimers.add(t);
       })
@@ -2474,27 +2481,36 @@ export class ObVanController {
             }
             entry.onStart?.(clip, startedAtMs);
             this.publishHud();
+            const startDeltaMs = Math.max(0, startedAtMs - this.now());
+            // The line is over: rest the mouth and release the queue. The
+            // input itself lives on through its silent tail — unregistering
+            // it right at the voiced end is churn the engine mix dislikes.
             const t = setTimeout(
               () => {
                 this.quizSpeechTimers.delete(t);
-                this.deps.unregisterQuizSpeech?.(inputId);
                 if (this.quizSpeechMouthCam) {
                   this.deps.setQuizSpeechMouth?.(this.quizSpeechMouthCam, null);
                   this.quizSpeechMouthCam = null;
                 }
+                this.quizSpeechPlaying = false;
+                this.pumpQuizSpeech();
+              },
+              startDeltaMs + clip.durationMs + QUIZ_SPEECH_GAP_MS,
+            );
+            this.quizSpeechTimers.add(t);
+            const tGone = setTimeout(
+              () => {
+                this.quizSpeechTimers.delete(tGone);
+                this.deps.unregisterQuizSpeech?.(inputId);
                 if (this.quizSpeech?.inputId === inputId) {
                   this.quizSpeech = null;
                   if (!this.disposed) this.publishHud();
                 }
-                this.quizSpeechPlaying = false;
-                this.pumpQuizSpeech();
               },
-              Math.max(0, startedAtMs - this.now()) +
-                clip.durationMs +
-                QUIZ_SPEECH_GAP_MS,
+              startDeltaMs + clip.durationMs + QUIZ_SPEECH_TAIL_MS,
             );
-            this.quizSpeechTimers.add(t);
-            return; // playing — the timer releases the queue
+            this.quizSpeechTimers.add(tGone);
+            return; // playing — the first timer releases the queue
           }
           if (inputId) this.deps.unregisterQuizSpeech?.(inputId);
         }

@@ -417,7 +417,10 @@ liczymy dokładny czas i mouth-track 50 Hz (lip-sync puppetów przez
 `getLiveMouth` na `ObPuppetConfig` — runtime'owa mapa w RoomState, zustand
 nietykany) → ffmpeg muxuje do mp4 (czarne 64×36 + AAC, jak stingery) →
 cache dyskowy `data/ob-tts/<sha1(voice|text)>.mp4` + sidecar json (canned
-linie hosta po pierwszym show grają z dysku). Odtwarzanie: osobny slot
+linie hosta po pierwszym show grają z dysku). Klipy (i stingery) niosą ~3 s
+ogona ciszy i są wyrejestrowywane dopiero po nim — mix silnika gubi audio
+bardzo krótko żyjących inputów (zdiagnozowane nagraniami: bez ogona ginęła
+większość kwestii, reprodukowalne też na stingerach sprzed TTS). Odtwarzanie: osobny slot
 `speech` obok `sfx` (sting nie utnie kwestii), kolejka SZEREGOWA z 300 ms
 przerwą; AUTO czeka na koniec kwestii (`quizSpeechBusyUntilMs`). Latencję
 maskują pre-warmowane wstawki: murmur zawodnika od razu przy `ask`

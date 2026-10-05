@@ -608,9 +608,9 @@ describe('ObVanController · quiz voices', () => {
     // The host cam's puppet mouth follows the clip.
     expect(h.mouthSets[0]).toMatchObject({ camInputId: 'mp4-1' });
     expect(h.mouthSets[0].mouth).toMatchObject({ durationMs: 1_000 });
-    // Clip over (1 s lead + 1 s clip + gap): input unregistered, mouth
-    // rested, HUD slot cleared.
-    await vi.advanceTimersByTimeAsync(3_000);
+    // Clip over (1 s lead + 1 s clip + gap, then the silent-tail hold):
+    // input unregistered, mouth rested, HUD slot cleared.
+    await vi.advanceTimersByTimeAsync(6_000);
     expect(h.speechUnregs).toContain('ob-tts-1');
     expect(h.mouthSets.at(-1)).toMatchObject({
       camInputId: 'mp4-1',

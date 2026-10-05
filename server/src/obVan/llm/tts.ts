@@ -42,6 +42,8 @@ export interface ObQuizTtsModule {
 }
 
 const SR = 24_000; // pcm_24000 — the highest PCM rate on the free tier
+/** Silent tail muxed after the line (see the mux comment). */
+const QUIZ_TTS_TAIL_PAD_S = 3;
 const MOUTH_RATE_HZ = 50;
 const FETCH_TIMEOUT_MS = 12_000;
 const FFMPEG_TIMEOUT_MS = 10_000;
@@ -189,7 +191,9 @@ export function createObQuizTts(
     );
     try {
       // Same output shape as scripts/quiz-render-sfx.mjs (tiny black video +
-      // AAC) — a proven Smelter-compatible carrier.
+      // AAC) — a proven Smelter-compatible carrier. The silent tail keeps the
+      // input alive past the spoken line: very short clips have flaky audio
+      // in the engine mix, longer ones (replay-clip length) play reliably.
       await execFileAsync(
         'ffmpeg',
         // prettier-ignore
@@ -198,6 +202,7 @@ export function createObQuizTts(
           '-f', 's16le', '-ar', String(SR), '-ac', '1', '-i', pcmPath,
           '-f', 'lavfi', '-i', 'color=c=black:s=64x36:r=10',
           '-map', '1:v', '-map', '0:a',
+          '-af', `apad=pad_dur=${QUIZ_TTS_TAIL_PAD_S}`,
           '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
           '-c:a', 'aac', '-b:a', '128k', '-ar', '44100',
           '-shortest', '-movflags', '+faststart',

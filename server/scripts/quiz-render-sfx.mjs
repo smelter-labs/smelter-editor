@@ -86,15 +86,23 @@ async function main() {
     const args = ['-y'];
     for (const freq of s.notes)
       args.push('-f', 'lavfi', '-i', `sine=frequency=${freq}:duration=${s.dur}`);
-    args.push('-f', 'lavfi', '-i', `color=c=black:s=64x36:r=10:d=${s.dur}`);
+    // The 3 s silent tail keeps the input alive past the sting: the engine
+    // mix drops audio of very short-lived inputs (same trick as llm/tts.ts;
+    // QUIZ_SFX_MS in the controller stays the VOICED length).
+    args.push(
+      '-f',
+      'lavfi',
+      '-i',
+      `color=c=black:s=64x36:r=10:d=${s.dur + 3}`,
+    );
     const renamed = s.notes.map((_, i) => `[${i}:a]anull[a${i}]`).join(';');
     args.push(
       '-filter_complex',
-      `${renamed};${s.filter(s.dur)}`,
+      `${renamed};${s.filter(s.dur)};[a]apad=pad_dur=3[ap]`,
       '-map',
       `${s.notes.length}:v`,
       '-map',
-      '[a]',
+      '[ap]',
       '-c:v',
       'libx264',
       '-pix_fmt',
