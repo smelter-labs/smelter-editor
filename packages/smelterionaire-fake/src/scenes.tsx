@@ -351,7 +351,7 @@ export const QuestionBeat: React.FC<QuestionBeatProps> = (p) => {
   );
 };
 
-// ── Cash-out cameo: Aśka gets a question, answers with a goodbye ──────────
+// ── Cash-out cameo: Joanna gets a question, answers with a goodbye ──────────
 
 export type CashOutCameoProps = {
   durationS: number;
@@ -417,7 +417,7 @@ export const CashOutCameo: React.FC<CashOutCameoProps> = (p) => {
       {tS >= p.boardAtS ? <QuizBoard board={board} shownAtS={p.boardAtS} tS={tS} /> : null}
       <HostPlates cues={p.hostPlates} tS={tS} />
       {/* Like the host slates, this whole solo is a placeholder: the real
-          Aśka gets filmed and dropped over it; her line sits on A2. */}
+          Joanna gets filmed and dropped over it; her line sits on A2. */}
       {tS >= p.standInFromS ? (
         <div
           style={{
@@ -433,7 +433,7 @@ export const CashOutCameo: React.FC<CashOutCameoProps> = (p) => {
             letterSpacing: 3,
             color: SKY,
           }}>
-          STAND-IN · PODMIEŃ NA ŻYWĄ AŚKĘ · GŁOS NA A2
+          STAND-IN · PODMIEŃ NA ŻYWĄ JOANNĘ · GŁOS NA A2
         </div>
       ) : null}
       <SegmentWipe tS={tS} durationS={p.durationS} width={width} height={height} />
@@ -446,7 +446,7 @@ export const CashOutCameo: React.FC<CashOutCameoProps> = (p) => {
 export type WrapProps = {
   durationS: number;
   players: RailPlayer[];
-  /** Final multiviewer state (winner cheering, Aśka's tile cashed out). */
+  /** Final multiviewer state (winner cheering, Joanna's tile cashed out). */
   cams: CamSpec[];
 };
 

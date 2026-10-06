@@ -11,11 +11,11 @@ własne nagrania); głos hosta (ElevenLabs) leży osobno na ścieżce A2 jako
 przewodnik — host robi cold open z **zasadami gry**, czyta każde pytanie
 i wszystkie odpowiedzi z planszy (czas „na myślenie" agentów) i komentuje.
 **Dwa obiegi** pytań: OPUS/GPT mówią prawdziwymi głosami ElevenLabs, JEV
-tradycyjnie milczy (host to obśmiewa), a **Aśka** dostaje swoje pytanie,
+tradycyjnie milczy (host to obśmiewa), a **Joanna** dostaje swoje pytanie,
 po czym oświadcza, że nic nie wie o Smelterze, bierze milion tokenów
-i idzie budować własną apkę (kameo cash-out). Aśka — jak host — będzie
+i idzie budować własną apkę (kameo cash-out). Joanna — jak host — będzie
 żywą osobą: jej kwestia leży na A2 (w klipie cisza), puppet w jej beacie
-to stand-in z badge'em „PODMIEŃ NA ŻYWĄ AŚKĘ". Bez wspólnego widoku studia —
+to stand-in z badge'em „PODMIEŃ NA ŻYWĄ JOANNĘ". Bez wspólnego widoku studia —
 za to każdy beat otwiera **multiviewer 2×2** wszystkich kamer z tally
 i animowanym punch-inem do wywołanego zawodnika, a każdy klip zaczyna się
 i kończy złotym wipe'em (stykowe cięcia na timeline czytają się jak

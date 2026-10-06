@@ -36,14 +36,14 @@ const fakeMouth = (durS: number): MouthTrack => {
 const demoCams: CamSpec[] = [
   { character: 'nova', name: 'OPUS' },
   { character: 'bit', name: 'GPT' },
-  { character: 'lux', name: 'Aśka' },
+  { character: 'lux', name: 'Joanna' },
   { character: 'prof', name: 'JEV' },
 ];
 
 const demoPlayers: RailPlayer[] = [
   { name: 'OPUS', amount: 1_000_000, amountFrom: 1_000_000, changeAtS: null, verdict: null, active: true, cashedOut: false },
   { name: 'GPT', amount: 1_000_000, amountFrom: 1_000_000, changeAtS: null, verdict: null, active: false, cashedOut: false },
-  { name: 'Aśka', amount: 1_000_000, amountFrom: 1_000_000, changeAtS: null, verdict: null, active: false, cashedOut: false },
+  { name: 'Joanna', amount: 1_000_000, amountFrom: 1_000_000, changeAtS: null, verdict: null, active: false, cashedOut: false },
   { name: 'JEV', amount: 1_000_000, amountFrom: 1_000_000, changeAtS: null, verdict: null, active: false, cashedOut: false },
 ];
 
@@ -70,13 +70,13 @@ const meetDefaults: MeetCastProps = {
   intros: [
     { name: 'OPUS', atS: 1, untilS: 4.5 },
     { name: 'GPT', atS: 4.8, untilS: 8.3 },
-    { name: 'Aśka', atS: 8.6, untilS: 12.1 },
+    { name: 'Joanna', atS: 8.6, untilS: 12.1 },
     { name: 'JEV', atS: 12.4, untilS: 15.5 },
   ],
   hostPlates: [
     { text: 'At desk one — OPUS. Writes poetry about monorepos.', atS: 1, untilS: 4.5 },
     { text: 'Desk two — GPT. The enthusiasm of a golden retriever.', atS: 4.8, untilS: 8.3 },
-    { text: 'Desk three — Aśka. Our first human contestant.', atS: 8.6, untilS: 12.1 },
+    { text: 'Desk three — Joanna. Our first human contestant.', atS: 8.6, untilS: 12.1 },
     { text: 'And desk four — JEV. Has never said a word. Current favorite.', atS: 12.4, untilS: 15.5 },
   ],
 };
@@ -119,18 +119,18 @@ const questionDefaults: QuestionBeatProps = {
 const cameoDefaults: CashOutCameoProps = {
   durationS: 22,
   character: 'lux',
-  playerName: 'Aśka',
+  playerName: 'Joanna',
   number: 3,
   q: 'How do you describe a Smelter scene in the TypeScript SDK?',
   answers: ['YAML manifests', 'React components', 'SQL queries', 'Hand-written H.264'],
   players: demoPlayers.map((p) =>
-    p.name === 'Aśka' ? { ...p, active: true, cashedOut: true, cashOutAtS: 15 } : p,
+    p.name === 'Joanna' ? { ...p, active: true, cashedOut: true, cashOutAtS: 15 } : p,
   ),
   cams: demoCams,
   hostPlates: [
-    { text: 'Question 3 — Aśka, the spotlight is yours.', atS: 0.6, untilS: 3.8 },
+    { text: 'Question 3 — Joanna, the spotlight is yours.', atS: 0.6, untilS: 3.8 },
     {
-      text: 'And Aśka cashes out 1,000,000 TOK without answering a single question. Security!',
+      text: 'And Joanna cashes out 1,000,000 TOK without answering a single question. Security!',
       atS: 15.6,
       untilS: 20.5,
     },
@@ -148,15 +148,15 @@ const wrapDefaults: WrapProps = {
     ...p,
     active: false,
     amount:
-      p.name === 'OPUS' ? 2_250_000 : p.name === 'Aśka' ? 1_000_000 : 750_000,
+      p.name === 'OPUS' ? 2_250_000 : p.name === 'Joanna' ? 1_000_000 : 750_000,
     amountFrom:
-      p.name === 'OPUS' ? 2_250_000 : p.name === 'Aśka' ? 1_000_000 : 750_000,
-    cashedOut: p.name === 'Aśka',
+      p.name === 'OPUS' ? 2_250_000 : p.name === 'Joanna' ? 1_000_000 : 750_000,
+    cashedOut: p.name === 'Joanna',
   })),
   cams: demoCams.map((c) => ({
     ...c,
     cheer: c.name === 'OPUS',
-    dimmed: c.name === 'Aśka',
+    dimmed: c.name === 'Joanna',
   })),
 };
 

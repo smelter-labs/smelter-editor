@@ -65,18 +65,18 @@ const VOICES = {
   host: process.env.OB_QUIZ_TTS_HOST_VOICE ?? '2E3fywgOSbUgLXqjR29C',
   opus: 'WQP7cQUF5aAS6Axh5yaa', // Elara
   gpt: 'FrS6cKLB1wg4WYgPa9GW', // Wyatt
-  aska: 'g7LVvkPWALzPxOQbF6OE', // Jade
+  joanna: 'g7LVvkPWALzPxOQbF6OE', // Jade
 };
 
 // Host lines verbatim from server/src/obVan/llm/quizHost.ts pools, so the
 // fake sounds like the live show (rules intro, Jev jokes and the quips are
-// custom). Two rounds: Q1-Q4 then Q5-Q7 (Aśka leaves on her Q3).
+// custom). Two rounds: Q1-Q4 then Q5-Q7 (Joanna leaves on her Q3).
 const LINES = {
   'host-intro': ['host', 'Welcome to Smelterionaire — four minds, a million tokens each, zero mercy.'],
   'host-rules': ['host', 'The rules: every right answer multiplies your pot by one and a half. Every wrong one — half of it goes up the chimney. Two rounds, four contestants, and you can cash out and walk whenever you like. Let’s meet them.'],
   'host-meet-opus': ['host', 'At desk one — OPUS. Writes poetry about monorepos, favors long walks through the documentation.'],
   'host-meet-gpt': ['host', 'Desk two — GPT. The enthusiasm of a golden retriever, the confidence of… well, a GPT.'],
-  'host-meet-aska': ['host', 'Desk three — Aśka. Our first human contestant. Says she is, quote, just here to look around.'],
+  'host-meet-joanna': ['host', 'Desk three — Joanna. Our first human contestant. Says she is, quote, just here to look around.'],
   'host-meet-jev': ['host', 'And desk four — JEV. Zero words so far, and somehow the crowd favorite.'],
   'host-board': ['host', 'Four answers on the board. Only one pays.'],
   'host-filler': ['host', 'Take your time — the clock is only a metaphor.'],
@@ -86,8 +86,8 @@ const LINES = {
   'host-reveal1': ['host', 'Correct! OPUS climbs to 1,500,000 TOK.'],
   'host-assign2': ['host', 'GPT, step up. Question 2, for the money.'],
   'host-reveal2': ['host', 'Wrong! GPT, that answer just cost you. 500,000 TOK left.'],
-  'host-assign3': ['host', 'Question 3 — Aśka, the spotlight is yours.'],
-  'host-cashout': ['host', 'And Aśka cashes out 1,000,000 TOK without answering a single question. Security!'],
+  'host-assign3': ['host', 'Question 3 — Joanna, the spotlight is yours.'],
+  'host-cashout': ['host', 'And Joanna cashes out 1,000,000 TOK without answering a single question. Security!'],
   'host-assign4': ['host', 'JEV, step up. Question 4, for the money.'],
   'host-reveal4': ['host', 'That’s the one — JEV is sitting on 1,500,000 TOK.'],
   'host-assign5': ['host', 'Round two! Question 5 — OPUS, the spotlight is yours.'],
@@ -105,7 +105,7 @@ const LINES = {
   'gpt-quip': ['gpt', 'GLSL, obviously. Shaders have been GLSL since before I was trained. Final answer!'],
   'gpt-murmur2': ['gpt', 'Love it. Running the numbers!'],
   'gpt-quip2': ['gpt', 'Fit! The default is fit — I actually read the docs this time!'],
-  'aska-farewell': ['aska', 'I know nothing about Smelter. But I’m taking the million tokens — I have my own app to build. Goodbye!'],
+  'joanna-farewell': ['joanna', 'I know nothing about Smelter. But I’m taking the million tokens — I have my own app to build. Goodbye!'],
 };
 
 // Questions verbatim from server/src/obVan/quizQuestionsSmelter.ts.
@@ -149,7 +149,7 @@ const QUESTIONS = {
   },
 };
 
-// Aśka (a human walk-in, not a model) takes lux — the pink-haired puppet —
+// Joanna (a human walk-in, not a model) takes lux — the pink-haired puppet —
 // and JEV moves to prof; no shared studio view, so no host puppet at all.
 // Board read-outs, synthesized per question (underscores spoken as spaces,
 // npm scopes dropped so the host does not read "at swmansion slash").
@@ -160,8 +160,8 @@ for (const [qid, question] of Object.entries(QUESTIONS)) {
   LINES[`host-read-${qid}`] = ['host', `${question.q} ${answers}`];
 }
 
-const PLAYER_ORDER = ['OPUS', 'GPT', 'Aśka', 'JEV'];
-const PLAYER_CHARACTER = { OPUS: 'nova', GPT: 'bit', Aśka: 'lux', JEV: 'prof' };
+const PLAYER_ORDER = ['OPUS', 'GPT', 'Joanna', 'JEV'];
+const PLAYER_CHARACTER = { OPUS: 'nova', GPT: 'bit', Joanna: 'lux', JEV: 'prof' };
 
 // Voiced lengths of the stingers (the mp4s carry a 3 s silent pad after).
 const STING_DUR = { intro: 2.4, board: 1.4, win: 1.8, lose: 1.8 };
@@ -442,7 +442,7 @@ function questionBeat(tts, cfg) {
   return { props, audio, guides, amountAfter };
 }
 
-/** Aśka's beat: assigned, board read, and instead of an answer — goodbye. */
+/** Joanna's beat: assigned, board read, and instead of an answer — goodbye. */
 function cashOutBeat(tts, cfg) {
   const { number, name, qid, assignKey, farewellKey, amounts } = cfg;
   const character = PLAYER_CHARACTER[name];
@@ -455,7 +455,7 @@ function cashOutBeat(tts, cfg) {
 
   const { punchAtS, boardAtS, readEndS } = beatOpening(tts, { assignKey, qid, hostPlates, guides, audio });
   const farewellAtS = round1(readEndS + 0.9);
-  // Aśka gets replaced by the real person, so — like the host — her line is
+  // Joanna gets replaced by the real person, so — like the host — her line is
   // a guide on A2, not baked into the clip; the puppet stays as a stand-in
   // (mouth still animates so the preview reads right).
   speech.push({ character, startS: farewellAtS, durS: dur(farewellKey), mouth: tts[farewellKey].mouth });
@@ -494,7 +494,7 @@ const round1 = (v) => Math.round(v * 10) / 10;
 const stingWav = (kind) => path.join(AUDIO_DIR, 'stings', `${kind}.wav`);
 
 function buildEpisode(tts) {
-  const amounts = { OPUS: 1_000_000, GPT: 1_000_000, Aśka: 1_000_000, JEV: 1_000_000 };
+  const amounts = { OPUS: 1_000_000, GPT: 1_000_000, Joanna: 1_000_000, JEV: 1_000_000 };
   const segments = [];
   const dur = (k) => tts[k].durS;
 
@@ -537,7 +537,7 @@ function buildEpisode(tts) {
   for (const [name, key] of [
     ['OPUS', 'host-meet-opus'],
     ['GPT', 'host-meet-gpt'],
-    ['Aśka', 'host-meet-aska'],
+    ['Joanna', 'host-meet-joanna'],
     ['JEV', 'host-meet-jev'],
   ]) {
     const untilS = round1(meetCursor + dur(key) + 0.7);
@@ -579,20 +579,20 @@ function buildEpisode(tts) {
   segments.push({ name: '05-q2-gpt', comp: 'QuestionBeat', ...q2 });
   amounts.GPT = q2.amountAfter;
 
-  // Q3 — Aśka gets her question, and answers with a goodbye.
+  // Q3 — Joanna gets her question, and answers with a goodbye.
   const q3 = cashOutBeat(tts, {
-    number: 3, name: 'Aśka', qid: 's02',
-    assignKey: 'host-assign3', farewellKey: 'aska-farewell',
+    number: 3, name: 'Joanna', qid: 's02',
+    assignKey: 'host-assign3', farewellKey: 'joanna-farewell',
     amounts: { ...amounts },
   });
-  segments.push({ name: '06-q3-aska', comp: 'CashOutCameo', ...q3 });
+  segments.push({ name: '06-q3-joanna', comp: 'CashOutCameo', ...q3 });
 
   const q4 = questionBeat(tts, {
     number: 4, name: 'JEV', qid: 's29', pick: 'C', verdict: 'correct',
     confidence: 0.87, assignKey: 'host-assign4', revealKey: 'host-reveal4',
     murmurKey: null, quipKey: null,
     withBoardLine: false, fillerKey: 'host-jev-joke1', amounts: { ...amounts },
-    cashed: { Aśka: 0 },
+    cashed: { Joanna: 0 },
   });
   segments.push({ name: '07-q4-jev', comp: 'QuestionBeat', ...q4 });
   amounts.JEV = q4.amountAfter;
@@ -603,7 +603,7 @@ function buildEpisode(tts) {
     confidence: null, assignKey: 'host-assign5', revealKey: 'host-reveal5',
     murmurKey: 'opus-murmur2', quipKey: 'opus-quip2',
     withBoardLine: false, fillerKey: null, amounts: { ...amounts },
-    cashed: { Aśka: 0 },
+    cashed: { Joanna: 0 },
   });
   segments.push({ name: '08-q5-opus', comp: 'QuestionBeat', ...q5 });
   amounts.OPUS = q5.amountAfter;
@@ -613,7 +613,7 @@ function buildEpisode(tts) {
     confidence: null, assignKey: 'host-assign6', revealKey: 'host-reveal6',
     murmurKey: 'gpt-murmur2', quipKey: 'gpt-quip2',
     withBoardLine: false, fillerKey: null, amounts: { ...amounts },
-    cashed: { Aśka: 0 },
+    cashed: { Joanna: 0 },
   });
   segments.push({ name: '09-q6-gpt', comp: 'QuestionBeat', ...q6 });
   amounts.GPT = q6.amountAfter;
@@ -624,7 +624,7 @@ function buildEpisode(tts) {
     confidence: 0.96, assignKey: 'host-assign7', revealKey: 'host-reveal7',
     murmurKey: null, quipKey: null,
     withBoardLine: false, fillerKey: 'host-jev-joke2', amounts: { ...amounts },
-    cashed: { Aśka: 0 },
+    cashed: { Joanna: 0 },
   });
   segments.push({ name: '10-q7-jev', comp: 'QuestionBeat', ...q7 });
   amounts.JEV = q7.amountAfter;
@@ -649,8 +649,8 @@ function buildEpisode(tts) {
     comp: 'Wrap',
     props: {
       durationS: 9,
-      players: railPlayers(amounts, { cashed: { Aśka: 0 } }),
-      cams: camsFor(['Aśka']).map((c) => ({ ...c, cheer: c.name === 'OPUS' })),
+      players: railPlayers(amounts, { cashed: { Joanna: 0 } }),
+      cams: camsFor(['Joanna']).map((c) => ({ ...c, cheer: c.name === 'OPUS' })),
     },
     audio: [{ wav: stingWav('intro'), atS: 0.3 }],
     guides: [],
@@ -909,10 +909,10 @@ async function main() {
       'SMELTERIONAIRE — fake episode (workshop)',
       '',
       'Premiere: File → Import → smelterionaire.xml (sekwencja 1080p30).',
-      'V1/A1 = segmenty show; A2 = glosy-przewodniki (host + Aśka, ElevenLabs).',
+      'V1/A1 = segmenty show; A2 = glosy-przewodniki (host + Joanna, ElevenLabs).',
       'Slate\'y "HOST SHOT" podmien na wlasne nagrania; kwestie hosta',
       'w srodku beatow (plansze MAX SMELTER) nagraj wg A2 i poloz na A1/A3.',
-      'Beat Aśki (badge STAND-IN) tez jest do podmiany na zywa osobe —',
+      'Beat Joanny (badge STAND-IN) tez jest do podmiany na zywa osobe —',
       'jej farewell lezy na A2, w klipie jest cisza.',
       'Po przeniesieniu folderu Premiere zrobi relink do clips/.',
       '',
