@@ -69,23 +69,38 @@ const VOICES = {
 };
 
 // Host lines verbatim from server/src/obVan/llm/quizHost.ts pools, so the
-// fake sounds like the live show. The wrap line is custom (tie).
+// fake sounds like the live show (rules intro, Jev jokes and the quips are
+// custom). Two rounds: Q1-Q4 then Q5-Q7 (Aśka leaves on her Q3).
 const LINES = {
   'host-intro': ['host', 'Welcome to Smelterionaire — four minds, a million tokens each, zero mercy.'],
-  'host-assign1': ['host', 'Question 1 — OPUS, the spotlight is yours.'],
+  'host-rules': ['host', 'The rules: every right answer multiplies your pot by one and a half. Every wrong one — half of it goes up the chimney. Two rounds, four contestants, and you can cash out and walk whenever you like. Let’s meet them.'],
   'host-board': ['host', 'Four answers on the board. Only one pays.'],
   'host-filler': ['host', 'Take your time — the clock is only a metaphor.'],
+  'host-jev-joke1': ['host', 'Don’t wait for a quip. JEV doesn’t talk — JEV computes.'],
+  'host-jev-joke2': ['host', 'Still not a single word from JEV all evening. Honestly? I respect it.'],
+  'host-assign1': ['host', 'Question 1 — OPUS, the spotlight is yours.'],
   'host-reveal1': ['host', 'Correct! OPUS climbs to 1,500,000 TOK.'],
   'host-assign2': ['host', 'GPT, step up. Question 2, for the money.'],
   'host-reveal2': ['host', 'Wrong! GPT, that answer just cost you. 500,000 TOK left.'],
+  'host-assign3': ['host', 'Question 3 — Aśka, the spotlight is yours.'],
   'host-cashout': ['host', 'And Aśka cashes out 1,000,000 TOK without answering a single question. Security!'],
-  'host-assign3': ['host', 'Question 3 — JEV, the spotlight is yours.'],
-  'host-reveal3': ['host', 'That’s the one — JEV is sitting on 1,500,000 TOK.'],
-  'host-wrap': ['host', 'That’s the game — OPUS and JEV share the lead at 1,500,000 TOK. Smelterionaire, out.'],
+  'host-assign4': ['host', 'JEV, step up. Question 4, for the money.'],
+  'host-reveal4': ['host', 'That’s the one — JEV is sitting on 1,500,000 TOK.'],
+  'host-assign5': ['host', 'Round two! Question 5 — OPUS, the spotlight is yours.'],
+  'host-reveal5': ['host', 'Correct! OPUS climbs to 2,250,000 TOK.'],
+  'host-assign6': ['host', 'GPT, step up. Question 6, redemption time.'],
+  'host-reveal6': ['host', 'That’s the one — GPT is sitting on 750,000 TOK.'],
+  'host-assign7': ['host', 'Question 7 — JEV, the spotlight is yours.'],
+  'host-reveal7': ['host', 'Oh no. The pot shrinks — JEV is down to 750,000 TOK.'],
+  'host-wrap': ['host', 'That’s the game — OPUS leads with 2,250,000 TOK. Smelterionaire, out.'],
   'opus-murmur': ['opus', 'Hmm. Let me compose myself.'],
   'opus-quip': ['opus', 'Software Mansion. I practically live in their monorepo.'],
+  'opus-murmur2': ['opus', 'Fascinating. Give me a moment.'],
+  'opus-quip2': ['opus', 'Web wasm. The whole compositor in a browser tab — my kind of party trick.'],
   'gpt-murmur': ['gpt', 'Okay okay okay — thinking!'],
   'gpt-quip': ['gpt', 'GLSL, obviously. Shaders have been GLSL since before I was trained. Final answer!'],
+  'gpt-murmur2': ['gpt', 'Love it. Running the numbers!'],
+  'gpt-quip2': ['gpt', 'Fit! The default is fit — I actually read the docs this time!'],
   'aska-farewell': ['aska', 'I know nothing about Smelter. But I’m taking the million tokens — I have my own app to build. Goodbye!'],
 };
 
@@ -98,10 +113,30 @@ const QUESTIONS = {
     answers: ['Software Mansion', 'Smelting Industries', 'The WebRTC WG', 'A Twitch mod team'],
     correct: 'A',
   },
+  s02: {
+    q: 'How do you describe a Smelter scene in the TypeScript SDK?',
+    answers: ['YAML manifests', 'React components', 'SQL queries', 'Hand-written H.264'],
+    correct: 'B',
+  },
   s03: {
     q: 'What language are Smelter shaders written in?',
     answers: ['GLSL', 'HLSL', 'WGSL', 'CUDA'],
     correct: 'C',
+  },
+  s07: {
+    q: 'Which runtime package runs Smelter with no server at all, in the browser?',
+    answers: ['@swmansion/smelter-node', '@swmansion/smelter-web-client', '@swmansion/smelter-web-wasm', '@swmansion/smelter-edge'],
+    correct: 'C',
+  },
+  s08: {
+    q: "What is Rescaler's default rescaleMode?",
+    answers: ['fill', 'stretch', 'crop', 'fit'],
+    correct: 'D',
+  },
+  s09: {
+    q: 'In live processing, Smelter keeps the pipeline synchronized to…',
+    answers: ['The wall clock', 'The GPU clock', 'The fastest input', 'NTP only'],
+    correct: 'A',
   },
   s29: {
     q: 'Which output serves one composed program to MANY WebRTC viewers?',
@@ -112,10 +147,11 @@ const QUESTIONS = {
 
 // Aśka (a human walk-in, not a model) takes lux — the pink-haired puppet —
 // and JEV moves to prof; no shared studio view, so no host puppet at all.
-// Board read-outs, synthesized per question (underscores spoken as spaces).
+// Board read-outs, synthesized per question (underscores spoken as spaces,
+// npm scopes dropped so the host does not read "at swmansion slash").
 for (const [qid, question] of Object.entries(QUESTIONS)) {
   const answers = question.answers
-    .map((a, i) => `${'ABCD'[i]} — ${a.replace(/_/g, ' ')}.`)
+    .map((a, i) => `${'ABCD'[i]} — ${a.replace(/@swmansion\//g, '').replace(/_/g, ' ')}.`)
     .join(' ');
   LINES[`host-read-${qid}`] = ['host', `${question.q} ${answers}`];
 }
@@ -269,8 +305,43 @@ const railPlayers = (amounts, { active = null, change = null, cashed = {} } = {}
     cashOutAtS: cashed[name],
   }));
 
+/** Multiviewer cam list in rail order; `dimmed` = cashed-out tiles. */
+const camsFor = (dimmedNames = []) =>
+  PLAYER_ORDER.map((name) => ({
+    character: PLAYER_CHARACTER[name],
+    name,
+    dimmed: dimmedNames.includes(name) || undefined,
+  }));
+
+const PUNCH_S = 0.7; // keep in sync with PUNCH_S in src/puppet.tsx
+
+/**
+ * Shared opening of every beat: the 2×2 grid with the assign line over it,
+ * punch-in to the contestant, board sting + fade, host reads the question.
+ * Returns the cue times the rest of the beat continues from.
+ */
+function beatOpening(tts, { assignKey, qid, hostPlates, guides, audio }) {
+  const dur = (k) => tts[k].durS;
+  const assignAtS = 0.8; // grid tiles stagger in first
+  const assignUntil = assignAtS + dur(assignKey) + 0.6;
+  hostPlates.push({ text: LINES[assignKey][1], atS: assignAtS, untilS: assignUntil });
+  guides.push({ key: assignKey, atS: assignAtS });
+  const punchAtS = round1(assignUntil - 0.2);
+  const boardAtS = round1(punchAtS + PUNCH_S + 0.5);
+  audio.push({ wav: stingWav('board'), atS: boardAtS - 0.15 });
+  // The host reads the question and all four answers (guide on A2) — the
+  // agents' "thinking time". The plate shows just the question; the board
+  // already carries the answers.
+  const readKey = `host-read-${qid}`;
+  const readAtS = boardAtS + 0.8;
+  const readEndS = readAtS + dur(readKey);
+  hostPlates.push({ text: QUESTIONS[qid].q, atS: readAtS, untilS: readEndS + 0.4 });
+  guides.push({ key: readKey, atS: readAtS });
+  return { punchAtS, boardAtS, readEndS };
+}
+
 function questionBeat(tts, cfg) {
-  const { number, name, qid, pick, verdict, confidence, assignKey, revealKey, murmurKey, quipKey, withBoardLine, withFiller, amounts, cashed } = cfg;
+  const { number, name, qid, pick, verdict, confidence, assignKey, revealKey, murmurKey, quipKey, withBoardLine, fillerKey, amounts, cashed } = cfg;
   const character = PLAYER_CHARACTER[name];
   const question = QUESTIONS[qid];
   const dur = (k) => tts[k].durS;
@@ -279,28 +350,15 @@ function questionBeat(tts, cfg) {
   const speech = [];
   const audio = [];
 
-  const assignAtS = 0.6;
-  const assignUntil = assignAtS + dur(assignKey) + 0.8;
-  hostPlates.push({ text: LINES[assignKey][1], atS: assignAtS, untilS: assignUntil });
-  guides.push({ key: assignKey, atS: assignAtS });
-
-  const boardAtS = assignUntil + 0.4;
-  audio.push({ wav: stingWav('board'), atS: boardAtS - 0.15 });
-  let cursor = boardAtS + 0.5;
+  const { punchAtS, boardAtS, readEndS } = beatOpening(tts, { assignKey, qid, hostPlates, guides, audio });
+  let cursor = readEndS;
   if (withBoardLine) {
-    hostPlates.push({ text: LINES['host-board'][1], atS: cursor, untilS: cursor + dur('host-board') + 0.5 });
-    guides.push({ key: 'host-board', atS: cursor });
-    cursor += dur('host-board') + 0.5;
+    const atS = readEndS + 0.5;
+    hostPlates.push({ text: LINES['host-board'][1], atS, untilS: atS + dur('host-board') + 0.5 });
+    guides.push({ key: 'host-board', atS });
+    cursor = atS + dur('host-board');
   }
-  // The host reads the question and all four answers (guide on A2) — the
-  // agents' "thinking time". The plate shows just the question; the board
-  // already carries the answers.
-  const readKey = `host-read-${qid}`;
-  const readAtS = cursor + 0.3;
-  const readEndS = readAtS + dur(readKey);
-  hostPlates.push({ text: QUESTIONS[qid].q, atS: readAtS, untilS: readEndS + 0.4 });
-  guides.push({ key: readKey, atS: readAtS });
-  const thinkingFromS = readEndS + 0.4;
+  const thinkingFromS = round1(cursor + 0.4);
   let murmurEnd = thinkingFromS + 1.2;
   if (murmurKey) {
     const startS = thinkingFromS + 0.4;
@@ -309,21 +367,21 @@ function questionBeat(tts, cfg) {
     murmurEnd = startS + dur(murmurKey);
   }
   let fillerUntil = murmurEnd;
-  if (withFiller) {
+  if (fillerKey) {
     const atS = murmurEnd + 1.0;
-    fillerUntil = atS + dur('host-filler') + 0.8;
-    hostPlates.push({ text: LINES['host-filler'][1], atS, untilS: fillerUntil });
-    guides.push({ key: 'host-filler', atS });
+    fillerUntil = atS + dur(fillerKey) + 0.8;
+    hostPlates.push({ text: LINES[fillerKey][1], atS, untilS: fillerUntil });
+    guides.push({ key: fillerKey, atS });
   }
-  const lockAtS = Math.max(thinkingFromS + 3.5, fillerUntil + 0.6, murmurEnd + 1.6);
+  const lockAtS = round1(Math.max(thinkingFromS + 3.5, fillerUntil + 0.6, murmurEnd + 1.6));
   let revealAtS;
   if (quipKey) {
     const startS = lockAtS + 0.25;
     speech.push({ character, startS, durS: dur(quipKey), mouth: tts[quipKey].mouth });
     audio.push({ wav: tts[quipKey].wav, atS: startS });
-    revealAtS = startS + dur(quipKey) + 0.9;
+    revealAtS = round1(startS + dur(quipKey) + 0.9);
   } else {
-    revealAtS = lockAtS + 3.2; // Jev: time to read the typed-decision plate
+    revealAtS = round1(lockAtS + 3.2); // Jev: time to read the typed-decision plate
   }
   audio.push({ wav: stingWav(verdict === 'correct' ? 'win' : 'lose'), atS: revealAtS - 0.05 });
   const revealPlateAtS = revealAtS + 0.6;
@@ -350,14 +408,60 @@ function questionBeat(tts, cfg) {
       change: { name, amount: amountAfter, atS: revealAtS, verdict },
       cashed,
     }),
+    cams: camsFor(Object.keys(cashed)),
     hostPlates,
     speech,
+    punchAtS,
     boardAtS,
     thinkingFromS,
     lockAtS,
     revealAtS,
   };
   return { props, audio, guides, amountAfter };
+}
+
+/** Aśka's beat: assigned, board read, and instead of an answer — goodbye. */
+function cashOutBeat(tts, cfg) {
+  const { number, name, qid, assignKey, farewellKey, amounts } = cfg;
+  const character = PLAYER_CHARACTER[name];
+  const question = QUESTIONS[qid];
+  const dur = (k) => tts[k].durS;
+  const hostPlates = [];
+  const guides = [];
+  const speech = [];
+  const audio = [];
+
+  const { punchAtS, boardAtS, readEndS } = beatOpening(tts, { assignKey, qid, hostPlates, guides, audio });
+  const farewellAtS = round1(readEndS + 0.9);
+  speech.push({ character, startS: farewellAtS, durS: dur(farewellKey), mouth: tts[farewellKey].mouth });
+  audio.push({ wav: tts[farewellKey].wav, atS: farewellAtS });
+  const walkAtS = round1(farewellAtS + dur(farewellKey) + 0.7);
+  audio.push({ wav: stingWav('lose'), atS: walkAtS });
+  const cashPlateAtS = walkAtS + 0.5;
+  hostPlates.push({
+    text: LINES['host-cashout'][1],
+    atS: cashPlateAtS,
+    untilS: cashPlateAtS + dur('host-cashout') + 1.4,
+  });
+  guides.push({ key: 'host-cashout', atS: cashPlateAtS });
+  const durationS = round1(Math.max(walkAtS + 5.0, cashPlateAtS + dur('host-cashout') + 1.8));
+
+  const props = {
+    durationS,
+    character,
+    playerName: name,
+    number,
+    q: question.q,
+    answers: question.answers,
+    players: railPlayers(amounts, { active: name, cashed: { [name]: walkAtS } }),
+    cams: camsFor(),
+    hostPlates,
+    speech,
+    punchAtS,
+    boardAtS,
+    walkAtS,
+  };
+  return { props, audio, guides };
 }
 
 const round1 = (v) => Math.round(v * 10) / 10;
@@ -381,100 +485,114 @@ function buildEpisode(tts) {
     guides: [],
   });
 
-  // 02 — host cold open (slate; guide voice on A2).
+  // 02 — host cold open + the rules (slate; both lines on the A2 guide).
   segments.push({
     name: '02-host-intro',
     comp: 'HostSlate',
     props: {
-      durationS: round1(dur('host-intro') + 2.2),
-      beat: 'Cold open',
-      line: LINES['host-intro'][1],
+      durationS: round1(dur('host-intro') + dur('host-rules') + 3.0),
+      beat: 'Cold open + rules',
+      lines: [LINES['host-intro'][1], LINES['host-rules'][1]],
       note: 'BEAT 02 · INTRO',
     },
     audio: [],
-    guides: [{ key: 'host-intro', atS: 0.8 }],
+    guides: [
+      { key: 'host-intro', atS: 0.8 },
+      { key: 'host-rules', atS: round1(0.8 + dur('host-intro') + 0.6) },
+    ],
   });
 
-  // 03 — Q1: OPUS, correct.
+  // Round 1 ────────────────────────────────────────────────────────────────
   const q1 = questionBeat(tts, {
     number: 1, name: 'OPUS', qid: 's01', pick: 'A', verdict: 'correct',
     confidence: null, assignKey: 'host-assign1', revealKey: 'host-reveal1',
     murmurKey: 'opus-murmur', quipKey: 'opus-quip',
-    withBoardLine: true, withFiller: true, amounts: { ...amounts }, cashed: {},
+    withBoardLine: true, fillerKey: 'host-filler', amounts: { ...amounts }, cashed: {},
   });
   segments.push({ name: '03-q1-opus', comp: 'QuestionBeat', ...q1 });
   amounts.OPUS = q1.amountAfter;
 
-  // 04 — Q2: GPT, wrong (GLSL with full confidence).
   const q2 = questionBeat(tts, {
     number: 2, name: 'GPT', qid: 's03', pick: 'A', verdict: 'wrong',
     confidence: null, assignKey: 'host-assign2', revealKey: 'host-reveal2',
     murmurKey: 'gpt-murmur', quipKey: 'gpt-quip',
-    withBoardLine: false, withFiller: false, amounts: { ...amounts }, cashed: {},
+    withBoardLine: false, fillerKey: null, amounts: { ...amounts }, cashed: {},
   });
   segments.push({ name: '04-q2-gpt', comp: 'QuestionBeat', ...q2 });
   amounts.GPT = q2.amountAfter;
 
-  // 05 — the Aśka cameo: knows nothing about Smelter, walks with the million
-  // to go build her own app.
-  const farewellAtS = 1.2;
-  const walkAtS = farewellAtS + dur('aska-farewell') + 0.7;
-  const cashPlateAtS = walkAtS + 0.5;
-  segments.push({
-    name: '05-cashout-aska',
-    comp: 'CashOutCameo',
-    props: {
-      durationS: round1(Math.max(walkAtS + 5.2, cashPlateAtS + dur('host-cashout') + 1.6)),
-      character: 'lux',
-      playerName: 'Aśka',
-      players: railPlayers(amounts, { active: 'Aśka', cashed: { Aśka: walkAtS } }),
-      hostPlates: [{
-        text: LINES['host-cashout'][1],
-        atS: cashPlateAtS,
-        untilS: cashPlateAtS + dur('host-cashout') + 1.4,
-      }],
-      speech: [{ character: 'lux', startS: farewellAtS, durS: dur('aska-farewell'), mouth: tts['aska-farewell'].mouth }],
-      walkAtS,
-    },
-    audio: [
-      { wav: tts['aska-farewell'].wav, atS: farewellAtS },
-      { wav: stingWav('lose'), atS: walkAtS },
-    ],
-    guides: [{ key: 'host-cashout', atS: cashPlateAtS }],
+  // Q3 — Aśka gets her question, and answers with a goodbye.
+  const q3 = cashOutBeat(tts, {
+    number: 3, name: 'Aśka', qid: 's02',
+    assignKey: 'host-assign3', farewellKey: 'aska-farewell',
+    amounts: { ...amounts },
   });
+  segments.push({ name: '05-q3-aska', comp: 'CashOutCameo', ...q3 });
 
-  // 06 — Q3: JEV, correct, 87% sure, never says a word.
-  const q3 = questionBeat(tts, {
-    number: 3, name: 'JEV', qid: 's29', pick: 'C', verdict: 'correct',
-    confidence: 0.87, assignKey: 'host-assign3', revealKey: 'host-reveal3',
+  const q4 = questionBeat(tts, {
+    number: 4, name: 'JEV', qid: 's29', pick: 'C', verdict: 'correct',
+    confidence: 0.87, assignKey: 'host-assign4', revealKey: 'host-reveal4',
     murmurKey: null, quipKey: null,
-    withBoardLine: false, withFiller: false, amounts: { ...amounts },
+    withBoardLine: false, fillerKey: 'host-jev-joke1', amounts: { ...amounts },
     cashed: { Aśka: 0 },
   });
-  segments.push({ name: '06-q3-jev', comp: 'QuestionBeat', ...q3 });
-  amounts.JEV = q3.amountAfter;
+  segments.push({ name: '06-q4-jev', comp: 'QuestionBeat', ...q4 });
+  amounts.JEV = q4.amountAfter;
 
-  // 07 — host wrap (slate).
+  // Round 2 ────────────────────────────────────────────────────────────────
+  const q5 = questionBeat(tts, {
+    number: 5, name: 'OPUS', qid: 's07', pick: 'C', verdict: 'correct',
+    confidence: null, assignKey: 'host-assign5', revealKey: 'host-reveal5',
+    murmurKey: 'opus-murmur2', quipKey: 'opus-quip2',
+    withBoardLine: false, fillerKey: null, amounts: { ...amounts },
+    cashed: { Aśka: 0 },
+  });
+  segments.push({ name: '07-q5-opus', comp: 'QuestionBeat', ...q5 });
+  amounts.OPUS = q5.amountAfter;
+
+  const q6 = questionBeat(tts, {
+    number: 6, name: 'GPT', qid: 's08', pick: 'D', verdict: 'correct',
+    confidence: null, assignKey: 'host-assign6', revealKey: 'host-reveal6',
+    murmurKey: 'gpt-murmur2', quipKey: 'gpt-quip2',
+    withBoardLine: false, fillerKey: null, amounts: { ...amounts },
+    cashed: { Aśka: 0 },
+  });
+  segments.push({ name: '08-q6-gpt', comp: 'QuestionBeat', ...q6 });
+  amounts.GPT = q6.amountAfter;
+
+  // Q7 — JEV, 96% sure. Wrong. Still silent.
+  const q7 = questionBeat(tts, {
+    number: 7, name: 'JEV', qid: 's09', pick: 'B', verdict: 'wrong',
+    confidence: 0.96, assignKey: 'host-assign7', revealKey: 'host-reveal7',
+    murmurKey: null, quipKey: null,
+    withBoardLine: false, fillerKey: 'host-jev-joke2', amounts: { ...amounts },
+    cashed: { Aśka: 0 },
+  });
+  segments.push({ name: '09-q7-jev', comp: 'QuestionBeat', ...q7 });
+  amounts.JEV = q7.amountAfter;
+
+  // 10 — host wrap (slate).
   segments.push({
-    name: '07-host-wrap',
+    name: '10-host-wrap',
     comp: 'HostSlate',
     props: {
       durationS: round1(dur('host-wrap') + 2.2),
       beat: 'Wrap',
-      line: LINES['host-wrap'][1],
-      note: 'BEAT 07 · WRAP',
+      lines: [LINES['host-wrap'][1]],
+      note: 'BEAT 10 · WRAP',
     },
     audio: [],
     guides: [{ key: 'host-wrap', atS: 0.8 }],
   });
 
-  // 08 — wrap: title card with the final rail and confetti.
+  // 11 — wrap: the multiviewer with the final state + logo and confetti.
   segments.push({
-    name: '08-wrap',
+    name: '11-wrap',
     comp: 'Wrap',
     props: {
       durationS: 9,
       players: railPlayers(amounts, { cashed: { Aśka: 0 } }),
+      cams: camsFor(['Aśka']).map((c) => ({ ...c, cheer: c.name === 'OPUS' })),
     },
     audio: [{ wav: stingWav('intro'), atS: 0.3 }],
     guides: [],

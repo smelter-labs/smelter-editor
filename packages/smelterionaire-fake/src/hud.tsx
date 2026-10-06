@@ -537,6 +537,49 @@ export function RevealFlash({
   );
 }
 
+// ── Segment wipe (view-switch transition baked into every clip) ───────────
+
+const WIPE_S = 0.45;
+
+/**
+ * A gold skewed bar sweeping the frame at the start and before the end of
+ * each clip — butt-joined segments on the Premiere timeline read as switcher
+ * transitions instead of hard cuts.
+ */
+export function SegmentWipe({
+  tS,
+  durationS,
+  width,
+  height,
+}: {
+  tS: number;
+  durationS: number;
+  width: number;
+  height: number;
+}) {
+  let p: number | null = null;
+  if (tS < WIPE_S) p = tS / WIPE_S;
+  else if (tS > durationS - WIPE_S) p = (tS - (durationS - WIPE_S)) / WIPE_S;
+  if (p == null || p < 0 || p > 1) return null;
+  const barW = width * 0.55;
+  const x = -barW - width * 0.15 + p * (width + barW + width * 0.3);
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: x,
+        top: -120,
+        width: barW,
+        height: height + 240,
+        transform: 'skewX(-12deg)',
+        background:
+          'linear-gradient(90deg, rgba(255,209,102,0) 0%, #FFD166 18%, #FFE9B0 50%, #FFD166 82%, rgba(255,209,102,0) 100%)',
+        opacity: 0.97,
+      }}
+    />
+  );
+}
+
 /** Centre-splash logo (intro / wrap). */
 export function QuizSplash({ opacity = 1, scale = 1 }: { opacity?: number; scale?: number }) {
   return (

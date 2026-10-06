@@ -17,7 +17,16 @@ import {
   puppetSway,
   type FigureEnvelope,
 } from './anim';
-import { DISPLAY, GOLD, type PuppetCharacterId, type SpeechCue } from './theme';
+import {
+  DISPLAY,
+  GOLD,
+  INK,
+  MONO,
+  RED,
+  clamp01,
+  type PuppetCharacterId,
+  type SpeechCue,
+} from './theme';
 
 export const PUPPET_CANVAS = { w: 900, h: 1200 };
 type Box = { x: number; y: number; w: number; h: number };
@@ -235,6 +244,217 @@ export function StudioWall({ width, height }: { width: number; height: number })
       src={staticFile('puppets/puppet-studio-wall.png')}
       style={{ position: 'absolute', left: 0, top: 0, width, height }}
     />
+  );
+}
+
+// ── Multiviewer: the "all inputs at once" grid with a punch-in cut ─────────
+
+export type CamSpec = {
+  character: PuppetCharacterId;
+  name: string;
+  /** Cashed out: tile dimmed with a CASHED OUT wash. */
+  dimmed?: boolean;
+  /** Wrap celebration pose. */
+  cheer?: boolean;
+};
+
+type Rect = { x: number; y: number; w: number; h: number };
+
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+const easeInOut = (t: number) =>
+  t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+
+/** One camera tile: a full solo scene scaled into `rect`, OB-style chrome. */
+function CamTile({
+  cam,
+  rect,
+  timeMs,
+  width,
+  height,
+  tally,
+  opacity,
+}: {
+  cam: CamSpec;
+  rect: Rect;
+  timeMs: number;
+  width: number;
+  height: number;
+  tally: boolean;
+  opacity: number;
+}) {
+  if (opacity <= 0) return null;
+  const k = rect.w / width;
+  const border = tally ? 5 : 2;
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: rect.x,
+        top: rect.y,
+        width: rect.w,
+        height: rect.h,
+        overflow: 'hidden',
+        opacity,
+        boxSizing: 'border-box',
+        border: `${border}px solid ${tally ? GOLD : 'rgba(242,244,248,.28)'}`,
+        backgroundColor: INK,
+      }}>
+      <div
+        style={{
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          width,
+          height,
+          transform: `scale(${k})`,
+          transformOrigin: '0 0',
+        }}>
+        <StudioWall width={width} height={height} />
+        <PuppetFigure
+          slot={soloSlot(cam.character, cam.name, width, height)}
+          timeMs={timeMs}
+          env={{ amp: 0, bobAmp: 0, silenceMs: 10_000 }}
+          airMs={0}
+          fx={{ active: tally, cheer: cam.cheer ?? false, sad: false }}
+        />
+        {cam.dimmed ? (
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              backgroundColor: 'rgba(7,11,24,.72)',
+            }}>
+            <div
+              style={{
+                position: 'absolute',
+                left: 0,
+                top: height / 2 - 40,
+                width,
+                textAlign: 'center',
+                fontFamily: MONO,
+                fontWeight: 600,
+                fontSize: 44,
+                letterSpacing: 14,
+                color: 'rgba(242,244,248,.6)',
+              }}>
+              CASHED OUT
+            </div>
+          </div>
+        ) : null}
+      </div>
+      {/* OB-style cam label + tally chip. */}
+      <div
+        style={{
+          position: 'absolute',
+          left: 14,
+          top: 12,
+          padding: '4px 10px',
+          backgroundColor: 'rgba(7,11,24,.82)',
+          fontFamily: MONO,
+          fontWeight: 600,
+          fontSize: 15,
+          letterSpacing: 2,
+          color: tally ? GOLD : 'rgba(242,244,248,.7)',
+        }}>
+        {cam.name.toUpperCase()}
+      </div>
+      {tally ? (
+        <div
+          style={{
+            position: 'absolute',
+            right: 14,
+            top: 12,
+            padding: '4px 10px',
+            backgroundColor: RED,
+            fontFamily: MONO,
+            fontWeight: 600,
+            fontSize: 15,
+            letterSpacing: 2,
+            color: '#fff',
+          }}>
+          LIVE
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * 2×2 multiviewer of all contestant cams. Tiles stagger in; from `punchAtS`
+ * the active tile expands to full frame (the on-air "cut") over PUNCH_S while
+ * the rest fade — at progress 1 its content matches the underlying solo
+ * scene exactly, so the hand-off is seamless and the grid stops rendering.
+ */
+export const PUNCH_S = 0.7;
+
+export function CamGrid({
+  cams,
+  activeIndex,
+  tS,
+  timeMs,
+  punchAtS,
+  width,
+  height,
+}: {
+  cams: CamSpec[];
+  /** −1: nobody on tally (wrap grid). */
+  activeIndex: number;
+  tS: number;
+  timeMs: number;
+  /** null: the grid never punches in (wrap). */
+  punchAtS: number | null;
+  width: number;
+  height: number;
+}) {
+  const punch =
+    punchAtS == null ? 0 : easeInOut(clamp01((tS - punchAtS) / PUNCH_S));
+  if (punch >= 1) return null;
+  const quadrant = (i: number): Rect => ({
+    x: (i % 2) * (width / 2),
+    y: Math.floor(i / 2) * (height / 2),
+    w: width / 2,
+    h: height / 2,
+  });
+  const full: Rect = { x: 0, y: 0, w: width, h: height };
+  return (
+    // zIndex: 0 makes the grid its own stacking context, so the tiles'
+    // internal zIndex never outranks the HUD drawn after it in the scene.
+    <AbsoluteFill style={{ backgroundColor: INK, zIndex: 0 }}>
+      {cams.map((cam, i) => {
+        const active = i === activeIndex;
+        const q = quadrant(i);
+        const rect = active
+          ? {
+              x: lerp(q.x, full.x, punch),
+              y: lerp(q.y, full.y, punch),
+              w: lerp(q.w, full.w, punch),
+              h: lerp(q.h, full.h, punch),
+            }
+          : q;
+        const enter = clamp01((tS - i * 0.12) / 0.35);
+        const opacity = active ? enter : enter * (1 - punch);
+        return (
+          <div
+            key={cam.name}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              transform: `translateY(${(1 - enter) * 36}px)`,
+              zIndex: active ? 2 : 1,
+            }}>
+            <CamTile
+              cam={cam}
+              rect={rect}
+              timeMs={timeMs}
+              width={width}
+              height={height}
+              tally={active && punch < 0.4}
+              opacity={opacity}
+            />
+          </div>
+        );
+      })}
+    </AbsoluteFill>
   );
 }
 

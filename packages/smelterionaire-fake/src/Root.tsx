@@ -12,6 +12,7 @@ import {
   type QuestionBeatProps,
   type WrapProps,
 } from './scenes';
+import type { CamSpec } from './puppet';
 import type { MouthTrack, RailPlayer } from './theme';
 
 const FPS = 30;
@@ -30,6 +31,13 @@ const fakeMouth = (durS: number): MouthTrack => {
   return { rateHz: 50, v };
 };
 
+const demoCams: CamSpec[] = [
+  { character: 'nova', name: 'OPUS' },
+  { character: 'bit', name: 'GPT' },
+  { character: 'lux', name: 'Aśka' },
+  { character: 'prof', name: 'JEV' },
+];
+
 const demoPlayers: RailPlayer[] = [
   { name: 'OPUS', amount: 1_000_000, amountFrom: 1_000_000, changeAtS: null, verdict: null, active: true, cashedOut: false },
   { name: 'GPT', amount: 1_000_000, amountFrom: 1_000_000, changeAtS: null, verdict: null, active: false, cashedOut: false },
@@ -44,14 +52,17 @@ const introDefaults: IntroProps = {
 };
 
 const slateDefaults: HostSlateProps = {
-  durationS: 7,
+  durationS: 14,
   beat: 'Cold open',
-  line: 'Welcome to Smelterionaire — four minds, a million tokens each, zero mercy.',
+  lines: [
+    'Welcome to Smelterionaire — four minds, a million tokens each, zero mercy.',
+    'The rules: right answer — your pot times one point five. Wrong — half goes up the chimney. Two rounds, and you can cash out and walk.',
+  ],
   note: 'BEAT 02 · INTRO',
 };
 
 const questionDefaults: QuestionBeatProps = {
-  durationS: 24,
+  durationS: 30,
   character: 'nova',
   playerName: 'OPUS',
   model: 'opus',
@@ -65,51 +76,66 @@ const questionDefaults: QuestionBeatProps = {
   quip: 'Software Mansion. I practically live in their monorepo.',
   players: demoPlayers.map((p) =>
     p.name === 'OPUS'
-      ? { ...p, amount: 1_500_000, changeAtS: 17, verdict: 'correct' as const }
+      ? { ...p, amount: 1_500_000, changeAtS: 23, verdict: 'correct' as const }
       : p,
   ),
+  cams: demoCams,
   hostPlates: [
-    { text: 'Question 1 — OPUS, the spotlight is yours.', atS: 0.5, untilS: 4 },
-    { text: 'Correct! OPUS climbs to 1,500,000 TOK.', atS: 17.6, untilS: 22 },
+    { text: 'Question 1 — OPUS, the spotlight is yours.', atS: 0.6, untilS: 3.8 },
+    { text: 'Who builds Smelter?', atS: 6.5, untilS: 14 },
+    { text: 'Correct! OPUS climbs to 1,500,000 TOK.', atS: 23.6, untilS: 27.5 },
   ],
   speech: [
-    { character: 'nova', startS: 6.5, durS: 2.4, mouth: fakeMouth(2.4) },
-    { character: 'nova', startS: 13, durS: 3.4, mouth: fakeMouth(3.4) },
+    { character: 'nova', startS: 15, durS: 2.4, mouth: fakeMouth(2.4) },
+    { character: 'nova', startS: 19.5, durS: 3.4, mouth: fakeMouth(3.4) },
   ],
-  boardAtS: 4.2,
-  thinkingFromS: 6.2,
-  lockAtS: 13,
-  revealAtS: 17,
+  punchAtS: 3.6,
+  boardAtS: 4.6,
+  thinkingFromS: 14.5,
+  lockAtS: 19.3,
+  revealAtS: 23,
 };
 
 const cameoDefaults: CashOutCameoProps = {
-  durationS: 12,
+  durationS: 22,
   character: 'lux',
   playerName: 'Aśka',
+  number: 3,
+  q: 'How do you describe a Smelter scene in the TypeScript SDK?',
+  answers: ['YAML manifests', 'React components', 'SQL queries', 'Hand-written H.264'],
   players: demoPlayers.map((p) =>
-    p.name === 'Aśka' ? { ...p, cashedOut: true, cashOutAtS: 5 } : p,
+    p.name === 'Aśka' ? { ...p, active: true, cashedOut: true, cashOutAtS: 15 } : p,
   ),
+  cams: demoCams,
   hostPlates: [
+    { text: 'Question 3 — Aśka, the spotlight is yours.', atS: 0.6, untilS: 3.8 },
     {
-      text: 'And Aśka cashes out 1,000,000 TOK without answering a thing. Security!',
-      atS: 5.4,
-      untilS: 10.5,
+      text: 'And Aśka cashes out 1,000,000 TOK without answering a single question. Security!',
+      atS: 15.6,
+      untilS: 20.5,
     },
   ],
-  speech: [{ character: 'lux', startS: 1, durS: 3.4, mouth: fakeMouth(3.4) }],
-  walkAtS: 5,
+  speech: [{ character: 'lux', startS: 11, durS: 3.4, mouth: fakeMouth(3.4) }],
+  punchAtS: 3.6,
+  boardAtS: 4.6,
+  walkAtS: 15,
 };
 
 const wrapDefaults: WrapProps = {
-  durationS: 8,
+  durationS: 9,
   players: demoPlayers.map((p) => ({
     ...p,
     active: false,
     amount:
-      p.name === 'GPT' ? 500_000 : p.name === 'Aśka' ? 1_000_000 : 1_500_000,
+      p.name === 'OPUS' ? 2_250_000 : p.name === 'Aśka' ? 1_000_000 : 750_000,
     amountFrom:
-      p.name === 'GPT' ? 500_000 : p.name === 'Aśka' ? 1_000_000 : 1_500_000,
+      p.name === 'OPUS' ? 2_250_000 : p.name === 'Aśka' ? 1_000_000 : 750_000,
     cashedOut: p.name === 'Aśka',
+  })),
+  cams: demoCams.map((c) => ({
+    ...c,
+    cheer: c.name === 'OPUS',
+    dimmed: c.name === 'Aśka',
   })),
 };
 

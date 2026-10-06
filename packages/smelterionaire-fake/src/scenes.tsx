@@ -1,8 +1,12 @@
 /**
- * The five Smelterionaire fake-episode scenes. Every animated value is a
- * pure function of the frame and the cue times in props — the orchestrator
+ * The Smelterionaire fake-episode scenes. Every animated value is a pure
+ * function of the frame and the cue times in props — the orchestrator
  * (server/scripts/smelterionaire-fake.mjs) computes the cue times from the
  * synthesized TTS durations and passes them in via --props.
+ *
+ * Question beats open on a 2×2 multiviewer of all contestant cams and
+ * punch-in to the assigned one; every clip starts and ends with a gold wipe
+ * so butt-joined segments read as switcher transitions on the timeline.
  */
 import React from 'react';
 import {
@@ -19,15 +23,19 @@ import {
   QuizBoard,
   QuizSplash,
   RevealFlash,
+  SegmentWipe,
   ThinkingPlate,
   type BoardState,
 } from './hud';
 import {
+  CamGrid,
   Confetti,
+  PUNCH_S,
   PuppetFigure,
   StudioWall,
   soloSlot,
   speechAt,
+  type CamSpec,
   type PuppetFx,
 } from './puppet';
 import {
@@ -62,8 +70,8 @@ export type IntroProps = {
   railAtS: number;
 };
 
-// No shared studio view in the fake — the intro/wrap are pure title cards.
-export const Intro: React.FC<IntroProps> = ({ players, railAtS }) => {
+// No shared studio view in the fake — the intro is a pure title card.
+export const Intro: React.FC<IntroProps> = ({ durationS, players, railAtS }) => {
   const { tS, width, height } = useSceneTime();
   const splashIn = clamp01((tS - 0.4) / 0.6);
   const scale = 1.18 - 0.18 * (1 - Math.pow(1 - splashIn, 3));
@@ -80,6 +88,7 @@ export const Intro: React.FC<IntroProps> = ({ players, railAtS }) => {
       <AbsoluteFill style={{ transform: `translateX(${railX}px)` }}>
         <MoneyRail players={players} tS={tS} />
       </AbsoluteFill>
+      <SegmentWipe tS={tS} durationS={durationS} width={width} height={height} />
     </AbsoluteFill>
   );
 };
@@ -89,20 +98,24 @@ export const Intro: React.FC<IntroProps> = ({ players, railAtS }) => {
 export type HostSlateProps = {
   durationS: number;
   beat: string;
-  line: string;
+  /** Lines to deliver, read back-to-back on the A2 guide track. */
+  lines: string[];
   note: string;
 };
+
+const slateFs = (len: number) => (len > 160 ? 34 : len > 90 ? 44 : 52);
 
 export const HostSlate: React.FC<HostSlateProps> = ({
   durationS,
   beat,
-  line,
+  lines,
   note,
 }) => {
   const { tS, width, height } = useSceneTime();
   const pulse = 0.5 + 0.5 * Math.sin(tS * Math.PI * 1.2);
   const cx = width / 2;
-  const headY = height * 0.46;
+  const headY = height * 0.44;
+  const long = lines.join(' ').length > 160;
   return (
     <AbsoluteFill style={{ backgroundColor: INK }}>
       {/* Framing guide: head-and-shoulders silhouette + eyeline rule. */}
@@ -121,7 +134,7 @@ export const HostSlate: React.FC<HostSlateProps> = ({
           strokeDasharray='14 12'
         />
         <path
-          d={`M ${cx - 420} ${height * 0.98} C ${cx - 330} ${height * 0.68}, ${cx - 210} ${height * 0.62}, ${cx} ${height * 0.62} C ${cx + 210} ${height * 0.62}, ${cx + 330} ${height * 0.68}, ${cx + 420} ${height * 0.98}`}
+          d={`M ${cx - 420} ${height * 0.98} C ${cx - 330} ${height * 0.66}, ${cx - 210} ${height * 0.6}, ${cx} ${height * 0.6} C ${cx + 210} ${height * 0.6}, ${cx + 330} ${height * 0.66}, ${cx + 420} ${height * 0.98}`}
           fill='none'
           stroke={SKY}
           strokeWidth={3}
@@ -166,21 +179,29 @@ export const HostSlate: React.FC<HostSlateProps> = ({
         }}>
         {beat.toUpperCase()}
       </div>
-      {/* The line to deliver. */}
+      {/* The lines to deliver. */}
       <div
         style={{
           position: 'absolute',
-          left: width * 0.14,
-          top: height * 0.68,
-          width: width * 0.72,
+          left: width * 0.12,
+          top: height * (long ? 0.56 : 0.66),
+          width: width * 0.76,
           textAlign: 'center',
-          fontFamily: DISPLAY,
-          fontWeight: 800,
-          fontSize: 52,
-          lineHeight: 1.18,
-          color: GOLD,
         }}>
-        “{line}”
+        {lines.map((line, i) => (
+          <div
+            key={i}
+            style={{
+              fontFamily: DISPLAY,
+              fontWeight: 800,
+              fontSize: slateFs(line.length),
+              lineHeight: 1.18,
+              color: GOLD,
+              marginBottom: 22,
+            }}>
+            “{line}”
+          </div>
+        ))}
       </div>
       <div
         style={{
@@ -196,6 +217,7 @@ export const HostSlate: React.FC<HostSlateProps> = ({
         }}>
         {note} · {durationS.toFixed(1)} s · GUIDE VOICE NA ŚCIEŻCE A2
       </div>
+      <SegmentWipe tS={tS} durationS={durationS} width={width} height={height} />
     </AbsoluteFill>
   );
 };
@@ -216,8 +238,11 @@ export type QuestionBeatProps = {
   confidence: number | null;
   quip: string | null;
   players: RailPlayer[];
+  cams: CamSpec[];
   hostPlates: HostPlateCue[];
   speech: SpeechCue[];
+  /** When the multiviewer punches in to this beat's contestant. */
+  punchAtS: number;
   boardAtS: number;
   thinkingFromS: number;
   lockAtS: number;
@@ -255,6 +280,15 @@ export const QuestionBeat: React.FC<QuestionBeatProps> = (p) => {
         />
       ) : null}
       <RevealFlash atS={p.revealAtS} verdict={p.verdict} tS={tS} width={width} height={height} />
+      <CamGrid
+        cams={p.cams}
+        activeIndex={p.cams.findIndex((c) => c.name === p.playerName)}
+        tS={tS}
+        timeMs={timeMs}
+        punchAtS={p.punchAtS}
+        width={width}
+        height={height}
+      />
       <MoneyRail players={p.players} tS={tS} />
       {tS >= p.boardAtS ? <QuizBoard board={board} shownAtS={p.boardAtS} tS={tS} /> : null}
       {tS >= p.lockAtS ? (
@@ -277,19 +311,26 @@ export const QuestionBeat: React.FC<QuestionBeatProps> = (p) => {
         />
       ) : null}
       <HostPlates cues={p.hostPlates} tS={tS} />
+      <SegmentWipe tS={tS} durationS={p.durationS} width={width} height={height} />
     </AbsoluteFill>
   );
 };
 
-// ── Cash-out cameo (GEMINI walks) ─────────────────────────────────────────
+// ── Cash-out cameo: Aśka gets a question, answers with a goodbye ──────────
 
 export type CashOutCameoProps = {
   durationS: number;
   character: PuppetCharacterId;
   playerName: string;
+  number: number;
+  q: string;
+  answers: [string, string, string, string];
   players: RailPlayer[];
+  cams: CamSpec[];
   hostPlates: HostPlateCue[];
   speech: SpeechCue[];
+  punchAtS: number;
+  boardAtS: number;
   /** When the figure starts walking off (after the farewell). */
   walkAtS: number;
 };
@@ -300,6 +341,15 @@ export const CashOutCameo: React.FC<CashOutCameoProps> = (p) => {
   const { env, airMs } = speechAt(p.speech, p.character, tS);
   const walk = clamp01((tS - p.walkAtS) / 1.8);
   const walkEase = 1 - Math.pow(1 - walk, 2);
+  // The board stays up, unanswered — that is the joke.
+  const board: BoardState = {
+    number: p.number,
+    forName: p.playerName,
+    q: p.q,
+    answers: p.answers,
+    locked: null,
+    reveal: null,
+  };
   return (
     <AbsoluteFill style={{ backgroundColor: INK }}>
       <StudioWall width={width} height={height} />
@@ -317,8 +367,19 @@ export const CashOutCameo: React.FC<CashOutCameoProps> = (p) => {
         />
       </AbsoluteFill>
       <RevealFlash atS={p.walkAtS} verdict='wrong' tS={tS} width={width} height={height} />
+      <CamGrid
+        cams={p.cams}
+        activeIndex={p.cams.findIndex((c) => c.name === p.playerName)}
+        tS={tS}
+        timeMs={timeMs}
+        punchAtS={p.punchAtS}
+        width={width}
+        height={height}
+      />
       <MoneyRail players={p.players} tS={tS} />
+      {tS >= p.boardAtS ? <QuizBoard board={board} shownAtS={p.boardAtS} tS={tS} /> : null}
       <HostPlates cues={p.hostPlates} tS={tS} />
+      <SegmentWipe tS={tS} durationS={p.durationS} width={width} height={height} />
     </AbsoluteFill>
   );
 };
@@ -328,14 +389,28 @@ export const CashOutCameo: React.FC<CashOutCameoProps> = (p) => {
 export type WrapProps = {
   durationS: number;
   players: RailPlayer[];
+  /** Final multiviewer state (winner cheering, Aśka's tile cashed out). */
+  cams: CamSpec[];
 };
 
-export const Wrap: React.FC<WrapProps> = ({ players }) => {
-  const { tS, width, height } = useSceneTime();
-  const splashIn = clamp01((tS - 0.5) / 0.5);
+export const Wrap: React.FC<WrapProps> = ({ durationS, players, cams }) => {
+  const { tS, timeMs, width, height } = useSceneTime();
+  const splashIn = clamp01((tS - 0.6) / 0.5);
   return (
     <AbsoluteFill style={{ backgroundColor: INK }}>
-      <StudioWall width={width} height={height} />
+      <CamGrid
+        cams={cams}
+        activeIndex={-1}
+        tS={tS}
+        timeMs={timeMs}
+        punchAtS={null}
+        width={width}
+        height={height}
+      />
+      {/* Dark wash so the logo reads over the grid. */}
+      <AbsoluteFill
+        style={{ backgroundColor: 'rgba(7,11,24,.45)', opacity: splashIn }}
+      />
       <Confetti
         sinceMs={(tS - 0.8) * 1000}
         seed={puppetSeed('wrap')}
@@ -361,6 +436,7 @@ export const Wrap: React.FC<WrapProps> = ({ players }) => {
         </div>
       </AbsoluteFill>
       <MoneyRail players={players} tS={tS} />
+      <SegmentWipe tS={tS} durationS={durationS} width={width} height={height} />
     </AbsoluteFill>
   );
 };

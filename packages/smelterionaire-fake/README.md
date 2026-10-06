@@ -8,10 +8,16 @@ plansze i puppety, ta sama geometria i animacja ust/mrugnięć co
 
 Segmenty prowadzącego to plansze **HOST SHOT** (placeholder do podmiany na
 własne nagrania); głos hosta (ElevenLabs) leży osobno na ścieżce A2 jako
-przewodnik. Zawodnicy OPUS/GPT mówią prawdziwymi głosami ElevenLabs, JEV
-tradycyjnie milczy (87% SURE), a czwarte krzesło zajmuje **Aśka** — nic nie
-wie o Smelterze, ale bierze milion tokenów i idzie budować własną apkę
-(kameo cash-out). Bez wspólnego widoku studia — intro/wrap to karty tytułowe.
+przewodnik — host robi cold open z **zasadami gry**, czyta każde pytanie
+i wszystkie odpowiedzi z planszy (czas „na myślenie" agentów) i komentuje.
+**Dwa obiegi** pytań: OPUS/GPT mówią prawdziwymi głosami ElevenLabs, JEV
+tradycyjnie milczy (host to obśmiewa), a **Aśka** dostaje swoje pytanie,
+po czym oświadcza, że nic nie wie o Smelterze, bierze milion tokenów
+i idzie budować własną apkę (kameo cash-out). Bez wspólnego widoku studia —
+za to każdy beat otwiera **multiviewer 2×2** wszystkich kamer z tally
+i animowanym punch-inem do wywołanego zawodnika, a każdy klip zaczyna się
+i kończy złotym wipe'em (stykowe cięcia na timeline czytają się jak
+przejścia reżyserki).
 
 ## Użycie
 
