@@ -666,7 +666,68 @@ export type CamSpec = {
   name: string;
   dimmed?: boolean;
   cheer?: boolean;
+  /** A real person will be filmed for this cam: show a framing-guide
+   * placeholder instead of a puppet. */
+  placeholder?: boolean;
 };
+
+/** Full-frame framing guide for a cam that gets replaced with real footage. */
+export function FramingGuide({
+  width,
+  height,
+  label,
+}: {
+  width: number;
+  height: number;
+  label: string;
+}) {
+  const cx = width / 2;
+  const headY = height * 0.42;
+  const SKY = '#38BDF8';
+  return (
+    <AbsoluteFill
+      style={{ background: 'linear-gradient(180deg, #0c1228 0%, #070b1a 100%)' }}>
+      <svg width={width} height={height} style={{ position: 'absolute', left: 0, top: 0, opacity: 0.6 }}>
+        <ellipse cx={cx} cy={headY} rx={width * 0.1} ry={height * 0.21} fill='none' stroke={SKY} strokeWidth={4} strokeDasharray='16 13' />
+        <path
+          d={`M ${cx - width * 0.28} ${height} C ${cx - width * 0.22} ${height * 0.66}, ${cx - width * 0.14} ${height * 0.62}, ${cx} ${height * 0.62} C ${cx + width * 0.14} ${height * 0.62}, ${cx + width * 0.22} ${height * 0.66}, ${cx + width * 0.28} ${height}`}
+          fill='none' stroke={SKY} strokeWidth={4} strokeDasharray='16 13'
+        />
+        <line x1={width * 0.07} y1={height / 3} x2={width * 0.93} y2={height / 3} stroke='#F2F4F82b' strokeWidth={3} strokeDasharray='8 12' />
+      </svg>
+      <div
+        style={{
+          position: 'absolute',
+          left: 0,
+          top: height * 0.1,
+          width,
+          textAlign: 'center',
+          fontFamily: MONO,
+          fontWeight: 600,
+          fontSize: Math.round(height * 0.045),
+          letterSpacing: 8,
+          color: SKY,
+        }}>
+        {label}
+      </div>
+      <div
+        style={{
+          position: 'absolute',
+          left: 0,
+          bottom: height * 0.07,
+          width,
+          textAlign: 'center',
+          fontFamily: MONO,
+          fontWeight: 500,
+          fontSize: Math.round(height * 0.032),
+          letterSpacing: 4,
+          color: 'rgba(242,244,248,.55)',
+        }}>
+        ŻYWA KAMERA · PODMIEŃ W PREMIERE
+      </div>
+    </AbsoluteFill>
+  );
+}
 
 type Rect = { x: number; y: number; w: number; h: number };
 
@@ -724,14 +785,20 @@ function CamTile({
           transform: `scale(${k})`,
           transformOrigin: '0 0',
         }}>
-        <StudioWall width={width} height={height} timeMs={timeMs} />
-        <PuppetFigure
-          slot={soloSlot(cam.character, cam.name, width, height)}
-          timeMs={timeMs}
-          env={{ amp: 0, bobAmp: 0, silenceMs: 10_000 }}
-          airMs={0}
-          fx={{ active: tally, cheer: cam.cheer ?? false, sad: false }}
-        />
+        {cam.placeholder ? (
+          <FramingGuide width={width} height={height} label={cam.name.toUpperCase()} />
+        ) : (
+          <>
+            <StudioWall width={width} height={height} timeMs={timeMs} />
+            <PuppetFigure
+              slot={soloSlot(cam.character, cam.name, width, height)}
+              timeMs={timeMs}
+              env={{ amp: 0, bobAmp: 0, silenceMs: 10_000 }}
+              airMs={0}
+              fx={{ active: tally, cheer: cam.cheer ?? false, sad: false }}
+            />
+          </>
+        )}
         {cam.dimmed ? (
           <div style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(7,11,24,.74)' }}>
             <div
@@ -814,6 +881,7 @@ export function CamGrid({
   punchAtS,
   width,
   height,
+  centerCam = null,
 }: {
   cams: CamSpec[];
   activeIndex: number;
@@ -822,6 +890,8 @@ export function CamGrid({
   punchAtS: number | null;
   width: number;
   height: number;
+  /** Extra centred PiP tile (the host, briefly on screen with everyone). */
+  centerCam?: CamSpec | null;
 }) {
   const punch =
     punchAtS == null ? 0 : easeInOut(clamp01((tS - punchAtS) / PUNCH_S));
@@ -872,6 +942,32 @@ export function CamGrid({
           </div>
         );
       })}
+      {centerCam ? (
+        (() => {
+          const enter = easeInOut(clamp01((tS - 0.55) / 0.4));
+          const cw = width * 0.3;
+          const ch = height * 0.3;
+          return (
+            <div style={{ position: 'absolute', inset: 0, zIndex: 3 }}>
+              <CamTile
+                cam={centerCam}
+                rect={{
+                  x: (width - cw) / 2,
+                  y: (height - ch) / 2 + (1 - enter) * 44,
+                  w: cw,
+                  h: ch,
+                }}
+                radius={16}
+                timeMs={timeMs}
+                width={width}
+                height={height}
+                tally={activeIndex === -1}
+                opacity={enter}
+              />
+            </div>
+          );
+        })()
+      ) : null}
     </AbsoluteFill>
   );
 }

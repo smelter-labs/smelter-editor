@@ -30,6 +30,7 @@ import {
 import {
   CamGrid,
   Confetti,
+  FramingGuide,
   PUNCH_S,
   PuppetFigure,
   StudioWall,
@@ -231,6 +232,8 @@ export type MeetCastProps = {
   /** Who is being introduced when — the tally walks the grid. */
   intros: { name: string; atS: number; untilS: number }[];
   hostPlates: HostPlateCue[];
+  /** The host's own cam (a live-footage placeholder), centred over the grid. */
+  hostCam?: CamSpec | null;
 };
 
 export const MeetCast: React.FC<MeetCastProps> = (p) => {
@@ -249,6 +252,7 @@ export const MeetCast: React.FC<MeetCastProps> = (p) => {
         punchAtS={null}
         width={width}
         height={height}
+        centerCam={p.hostCam ?? null}
       />
       <MoneyRail players={p.players} tS={tS} />
       <HostPlates cues={p.hostPlates} tS={tS} />
@@ -370,6 +374,8 @@ export type CashOutCameoProps = {
   walkAtS: number;
   /** From when the solo is a stand-in to be replaced with real footage. */
   standInFromS: number;
+  /** Render the solo as a framing-guide placeholder instead of the puppet. */
+  placeholderSolo?: boolean;
 };
 
 export const CashOutCameo: React.FC<CashOutCameoProps> = (p) => {
@@ -395,13 +401,17 @@ export const CashOutCameo: React.FC<CashOutCameoProps> = (p) => {
           transform: `translateX(${walkEase * width * 0.75}px)`,
           opacity: 1 - walkEase * 0.9,
         }}>
-        <PuppetFigure
-          slot={slot}
-          timeMs={timeMs}
-          env={env}
-          airMs={airMs}
-          fx={{ active: tS < p.walkAtS, cheer: tS >= p.walkAtS - 0.4, sad: false }}
-        />
+        {p.placeholderSolo ? (
+          <FramingGuide width={width} height={height} label={p.playerName.toUpperCase()} />
+        ) : (
+          <PuppetFigure
+            slot={slot}
+            timeMs={timeMs}
+            env={env}
+            airMs={airMs}
+            fx={{ active: tS < p.walkAtS, cheer: tS >= p.walkAtS - 0.4, sad: false }}
+          />
+        )}
       </AbsoluteFill>
       <RevealFlash atS={p.walkAtS} verdict='wrong' tS={tS} width={width} height={height} />
       <CamGrid
@@ -448,9 +458,11 @@ export type WrapProps = {
   players: RailPlayer[];
   /** Final multiviewer state (winner cheering, Joanna's tile cashed out). */
   cams: CamSpec[];
+  /** The host's live-footage placeholder, on screen with everyone. */
+  hostCam?: CamSpec | null;
 };
 
-export const Wrap: React.FC<WrapProps> = ({ durationS, players, cams }) => {
+export const Wrap: React.FC<WrapProps> = ({ durationS, players, cams, hostCam }) => {
   const { tS, timeMs, width, height } = useSceneTime();
   const splashIn = clamp01((tS - 0.6) / 0.5);
   return (
@@ -463,6 +475,7 @@ export const Wrap: React.FC<WrapProps> = ({ durationS, players, cams }) => {
         punchAtS={null}
         width={width}
         height={height}
+        centerCam={hostCam ?? null}
       />
       {/* Dark wash so the logo reads over the grid. */}
       <AbsoluteFill

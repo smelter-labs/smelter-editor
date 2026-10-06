@@ -330,7 +330,12 @@ const camsFor = (dimmedNames = []) =>
     character: PLAYER_CHARACTER[name],
     name,
     dimmed: dimmedNames.includes(name) || undefined,
+    // Joanna is a real person: her cam is a live-footage placeholder.
+    placeholder: name === 'Joanna' || undefined,
   }));
+
+/** The host's own cam — always a live-footage placeholder. */
+const HOST_CAM = { character: 'host', name: 'HOST', placeholder: true };
 
 const PUNCH_S = 0.7; // keep in sync with PUNCH_S in src/puppet.tsx
 
@@ -483,6 +488,7 @@ function cashOutBeat(tts, cfg) {
     boardAtS,
     walkAtS,
     standInFromS: round1(punchAtS + PUNCH_S),
+    placeholderSolo: true,
   };
   return { props, audio, guides };
 }
@@ -552,6 +558,7 @@ function buildEpisode(tts) {
       cams: camsFor(),
       intros: meetIntros,
       hostPlates: meetPlates,
+      hostCam: HOST_CAM,
     },
     audio: [{ wav: stingWav('board'), atS: 0.3 }],
     guides: meetGuides,
@@ -909,8 +916,10 @@ async function main() {
       'V1/A1 = segmenty show; A2 = glosy-przewodniki (host + Joanna, ElevenLabs).',
       'Slate\'y "HOST SHOT" podmien na wlasne nagrania; kwestie hosta',
       'w srodku beatow (plansze MAX SMELTER) nagraj wg A2 i poloz na A1/A3.',
-      'Beat Joanny (badge STAND-IN) tez jest do podmiany na zywa osobe —',
-      'jej farewell lezy na A2, w klipie jest cisza.',
+      'Beat Joanny i jej tile w multiviewerze to placeholdery (ramka kadru)',
+      'na zywa osobe — jej farewell lezy na A2, w klipie jest cisza.',
+      'W meet-the-cast posrodku gridu jest tile HOST — placeholder na Ciebie',
+      'jednoczesnie z uczestnikami.',
       'Po przeniesieniu folderu Premiere zrobi relink do clips/.',
       '',
       `Total: ${Math.round(cursorS)}s, ${placed.length} segmentow.`,

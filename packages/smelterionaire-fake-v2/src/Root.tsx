@@ -36,7 +36,7 @@ const fakeMouth = (durS: number): MouthTrack => {
 const demoCams: CamSpec[] = [
   { character: 'nova', name: 'OPUS' },
   { character: 'bit', name: 'GPT' },
-  { character: 'lux', name: 'Joanna' },
+  { character: 'lux', name: 'Joanna', placeholder: true },
   { character: 'prof', name: 'JEV' },
 ];
 
@@ -65,6 +65,7 @@ const slateDefaults: HostSlateProps = {
 
 const meetDefaults: MeetCastProps = {
   durationS: 16,
+  hostCam: { character: 'host', name: 'HOST', placeholder: true },
   players: demoPlayers.map((p) => ({ ...p, active: false })),
   cams: demoCams,
   intros: [
@@ -140,6 +141,7 @@ const cameoDefaults: CashOutCameoProps = {
   boardAtS: 4.6,
   walkAtS: 15,
   standInFromS: 4.3,
+  placeholderSolo: true,
 };
 
 const wrapDefaults: WrapProps = {
