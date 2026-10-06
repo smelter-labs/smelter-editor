@@ -739,6 +739,17 @@ async function renderPlaceholderCam(name, file) {
   await runRender(['render', 'src/index.ts', 'PlaceholderCam', file, `--props=${propsFile}`, '--codec=h264', '--muted']);
 }
 
+/** Transparent label clip (ProRes 4444) that rides above the real footage. */
+async function renderNameOverlay(name, variant, file) {
+  if (opt['skip-render'] && existsSync(file)) return;
+  const propsFile = path.join(AUDIO_DIR, `overlay-${variant}-${path.basename(file)}.json`);
+  writeFileSync(propsFile, JSON.stringify({ durationS: PLACEHOLDER_S, name, variant }));
+  await runRender([
+    'render', 'src/index.ts', 'NameOverlay', file, `--props=${propsFile}`,
+    '--codec=prores', '--prores-profile=4444', '--pixel-format=yuva444p10le', '--image-format=png', '--muted',
+  ]);
+}
+
 // ── Premiere project (FCP7 XML / xmeml v4) ────────────────────────────────
 
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -798,7 +809,7 @@ function premiereXml(placed, guidePlacements, overlays) {
     markers.push(`<marker><comment>${esc(p.comp)}</comment><name>${esc(p.name)}</name><in>${toF(p.startS)}</in><out>-1</out></marker>`);
     total = Math.max(total, toF(p.startS) + frames);
   });
-  const overlayTracks = [2, 3].map((track) => {
+  const overlayTracks = [2, 3, 4].map((track) => {
     const seen = new Map();
     return overlays
       .filter((o) => o.track === track)
@@ -860,6 +871,11 @@ ${overlayTracks[0]}
       </track>
       <track>
 ${overlayTracks[1]}
+        <enabled>TRUE</enabled>
+        <locked>FALSE</locked>
+      </track>
+      <track>
+${overlayTracks[2]}
         <enabled>TRUE</enabled>
         <locked>FALSE</locked>
       </track>
@@ -963,6 +979,10 @@ async function main() {
   const joannaCamFile = path.join(CLIPS_DIR, 'cam-joanna-placeholder.mp4');
   await renderPlaceholderCam('HOST', hostCamFile);
   await renderPlaceholderCam('Joanna', joannaCamFile);
+  const joannaTileLabel = path.join(CLIPS_DIR, 'overlay-joanna-tile.mov');
+  const joannaSoloLabel = path.join(CLIPS_DIR, 'overlay-joanna-solo.mov');
+  await renderNameOverlay('Joanna', 'tile', joannaTileLabel);
+  await renderNameOverlay('Joanna', 'solo', joannaSoloLabel);
 
   // Overlay placements: Joanna on V2, the host on V3, pre-scaled into the
   // multiviewer tile rects with Basic Motion (Joanna = bottom-left quadrant).
@@ -970,25 +990,26 @@ async function main() {
   const overlays = [];
   for (const p of placed) {
     const t0 = p.startS;
+    const FULL = { scalePct: 100, cH: 0, cV: 0 };
     if (p.comp === 'QuestionBeat' || p.comp === 'CashOutCameo') {
-      overlays.push({
-        track: 2, name: 'JOANNA cam', file: joannaCamFile,
-        atS: round1(t0 + 0.75), durS: round1(p.props.punchAtS - 0.75), ...QUAD,
-      });
+      const win = { atS: round1(t0 + 0.75), durS: round1(p.props.punchAtS - 0.75) };
+      overlays.push({ track: 2, name: 'JOANNA cam', file: joannaCamFile, ...win, ...QUAD });
+      // The name chip rides above her footage (the label is pre-positioned
+      // for the bottom-left quadrant inside the transparent clip).
+      overlays.push({ track: 4, name: 'JOANNA label', file: joannaTileLabel, ...win, ...FULL });
     }
     if (p.comp === 'CashOutCameo') {
-      overlays.push({
-        track: 2, name: 'JOANNA solo', file: joannaCamFile,
+      const win = {
         atS: round1(t0 + p.props.punchAtS + PUNCH_S),
         durS: round1(p.props.walkAtS - p.props.punchAtS - PUNCH_S),
-        scalePct: 100, cH: 0, cV: 0,
-      });
+      };
+      overlays.push({ track: 2, name: 'JOANNA solo', file: joannaCamFile, ...win, ...FULL });
+      overlays.push({ track: 4, name: 'JOANNA nameplate', file: joannaSoloLabel, ...win, ...FULL });
     }
     if (p.comp === 'MeetCast') {
-      overlays.push({
-        track: 2, name: 'JOANNA cam', file: joannaCamFile,
-        atS: round1(t0 + 0.75), durS: round1(p.durationS - 1.0), ...QUAD,
-      });
+      const win = { atS: round1(t0 + 0.75), durS: round1(p.durationS - 1.0) };
+      overlays.push({ track: 2, name: 'JOANNA cam', file: joannaCamFile, ...win, ...QUAD });
+      overlays.push({ track: 4, name: 'JOANNA label', file: joannaTileLabel, ...win, ...FULL });
       overlays.push({
         track: 3, name: 'HOST cam', file: hostCamFile,
         atS: round1(t0 + 1.0), durS: round1(p.durationS - 1.3),
@@ -1018,7 +1039,9 @@ async function main() {
       '(kafelek gridu + jej solo w Q3), V3 = cam-host-placeholder (srodek',
       'meet-the-cast). Prawy klik na klipie -> Replace Footage / podmiana',
       'pliku w clips/ — transformy (skala/pozycja kafelka) zostaja.',
-      'Farewell Joanny lezy na A2; jej tile CASHED OUT we wrapie jest w V1.',
+      'V4 = przezroczyste overlaye z imieniem JOANNA (chip kafelka + plakietka',
+      'przy solo, ProRes 4444) — leza NAD jej materialem, wiec podpis zostaje',
+      'po podmianie. Farewell Joanny na A2; tile CASHED OUT we wrapie w V1.',
       'Po przeniesieniu folderu Premiere zrobi relink do clips/.',
       '',
       `Total: ${Math.round(cursorS)}s, ${placed.length} segmentow.`,

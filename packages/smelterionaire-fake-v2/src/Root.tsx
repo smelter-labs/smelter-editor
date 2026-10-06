@@ -5,6 +5,7 @@ import {
   HostSlate,
   Intro,
   MeetCast,
+  NameOverlay,
   PlaceholderCam,
   QuestionBeat,
   Wrap,
@@ -12,6 +13,7 @@ import {
   type HostSlateProps,
   type IntroProps,
   type MeetCastProps,
+  type NameOverlayProps,
   type PlaceholderCamProps,
   type QuestionBeatProps,
   type WrapProps,
@@ -166,6 +168,8 @@ const wrapDefaults: WrapProps = {
 
 const placeholderDefaults: PlaceholderCamProps = { durationS: 36, name: 'HOST' };
 
+const nameOverlayDefaults: NameOverlayProps = { durationS: 36, name: 'Joanna', variant: 'tile' };
+
 const meta = ({ props }: { props: { durationS: number } }) => ({
   durationInFrames: Math.max(1, Math.ceil(props.durationS * FPS)),
 });
@@ -176,6 +180,7 @@ export const Root: React.FC = () => (
     <Composition id='HostSlate' component={HostSlate} defaultProps={slateDefaults} fps={FPS} width={W} height={H} durationInFrames={Math.ceil(slateDefaults.durationS * FPS)} calculateMetadata={meta} />
     <Composition id='MeetCast' component={MeetCast} defaultProps={meetDefaults} fps={FPS} width={W} height={H} durationInFrames={Math.ceil(meetDefaults.durationS * FPS)} calculateMetadata={meta} />
     <Composition id='PlaceholderCam' component={PlaceholderCam} defaultProps={placeholderDefaults} fps={FPS} width={W} height={H} durationInFrames={Math.ceil(placeholderDefaults.durationS * FPS)} calculateMetadata={meta} />
+    <Composition id='NameOverlay' component={NameOverlay} defaultProps={nameOverlayDefaults} fps={FPS} width={W} height={H} durationInFrames={Math.ceil(nameOverlayDefaults.durationS * FPS)} calculateMetadata={meta} />
     <Composition id='QuestionBeat' component={QuestionBeat} defaultProps={questionDefaults} fps={FPS} width={W} height={H} durationInFrames={Math.ceil(questionDefaults.durationS * FPS)} calculateMetadata={meta} />
     <Composition id='CashOutCameo' component={CashOutCameo} defaultProps={cameoDefaults} fps={FPS} width={W} height={H} durationInFrames={Math.ceil(cameoDefaults.durationS * FPS)} calculateMetadata={meta} />
     <Composition id='Wrap' component={Wrap} defaultProps={wrapDefaults} fps={FPS} width={W} height={H} durationInFrames={Math.ceil(wrapDefaults.durationS * FPS)} calculateMetadata={meta} />

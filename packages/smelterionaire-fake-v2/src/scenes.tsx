@@ -270,6 +270,72 @@ export const PlaceholderCam: React.FC<PlaceholderCamProps> = ({ name }) => {
   return <FramingGuide width={width} height={height} label={name.toUpperCase()} />;
 };
 
+// ── Name overlay: transparent label clip that rides ABOVE the real footage ─
+
+export type NameOverlayProps = {
+  durationS: number;
+  name: string;
+  /** 'tile' = chip at the bottom-left multiviewer quadrant; 'solo' = plate. */
+  variant: 'tile' | 'solo';
+};
+
+export const NameOverlay: React.FC<NameOverlayProps> = ({ name, variant }) => {
+  const { width, height } = useSceneTime();
+  if (variant === 'tile') {
+    // Matches the CamTile chrome of the bottom-left quadrant (gap 8, pad 16/14).
+    return (
+      <AbsoluteFill>
+        <div
+          style={{
+            position: 'absolute',
+            left: 8 + 16,
+            top: height / 2 + 8 + 14,
+            padding: '5px 14px',
+            borderRadius: 999,
+            backgroundColor: 'rgba(7,11,24,.8)',
+            border: '1px solid rgba(255,209,102,.35)',
+            fontFamily: MONO,
+            fontWeight: 600,
+            fontSize: 15,
+            letterSpacing: 2,
+            color: GOLD,
+          }}>
+          {name.toUpperCase()}
+        </div>
+      </AbsoluteFill>
+    );
+  }
+  // Solo: a gold-framed nameplate top-left (the board owns the lower third).
+  return (
+    <AbsoluteFill>
+      <div
+        style={{
+          position: 'absolute',
+          left: 56,
+          top: 120,
+          padding: 5,
+          borderRadius: 14,
+          background: 'linear-gradient(180deg, #ffe9b0, #ffd166 55%, #a87c17)',
+          boxShadow: '0 10px 24px rgba(0,0,0,.45)',
+        }}>
+        <div
+          style={{
+            borderRadius: 10,
+            backgroundColor: '#0b1026',
+            padding: '10px 30px',
+            fontFamily: DISPLAY,
+            fontWeight: 800,
+            fontSize: 44,
+            letterSpacing: 2,
+            color: GOLD,
+          }}>
+          {name.toUpperCase()}
+        </div>
+      </div>
+    </AbsoluteFill>
+  );
+};
+
 // ── Question beat ─────────────────────────────────────────────────────────
 
 export type QuestionBeatProps = {
