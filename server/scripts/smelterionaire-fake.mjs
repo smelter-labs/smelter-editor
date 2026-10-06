@@ -455,8 +455,11 @@ function cashOutBeat(tts, cfg) {
 
   const { punchAtS, boardAtS, readEndS } = beatOpening(tts, { assignKey, qid, hostPlates, guides, audio });
   const farewellAtS = round1(readEndS + 0.9);
+  // Aśka gets replaced by the real person, so — like the host — her line is
+  // a guide on A2, not baked into the clip; the puppet stays as a stand-in
+  // (mouth still animates so the preview reads right).
   speech.push({ character, startS: farewellAtS, durS: dur(farewellKey), mouth: tts[farewellKey].mouth });
-  audio.push({ wav: tts[farewellKey].wav, atS: farewellAtS });
+  guides.push({ key: farewellKey, atS: farewellAtS });
   const walkAtS = round1(farewellAtS + dur(farewellKey) + 0.7);
   audio.push({ wav: stingWav('lose'), atS: walkAtS });
   const cashPlateAtS = walkAtS + 0.5;
@@ -482,6 +485,7 @@ function cashOutBeat(tts, cfg) {
     punchAtS,
     boardAtS,
     walkAtS,
+    standInFromS: round1(punchAtS + PUNCH_S),
   };
   return { props, audio, guides };
 }
@@ -905,10 +909,12 @@ async function main() {
       'SMELTERIONAIRE — fake episode (workshop)',
       '',
       'Premiere: File → Import → smelterionaire.xml (sekwencja 1080p30).',
-      'V1/A1 = segmenty show; A2 = glos-przewodnik hosta (ElevenLabs).',
-      'Slate\'y "HOST SHOT" (02, 07) podmien na wlasne nagrania; kwestie',
-      'hosta w srodku beatow (plansze MAX SMELTER) nagraj wg A2 i poloz',
-      'na A1/A3. Po przeniesieniu folderu Premiere zrobi relink do clips/.',
+      'V1/A1 = segmenty show; A2 = glosy-przewodniki (host + Aśka, ElevenLabs).',
+      'Slate\'y "HOST SHOT" podmien na wlasne nagrania; kwestie hosta',
+      'w srodku beatow (plansze MAX SMELTER) nagraj wg A2 i poloz na A1/A3.',
+      'Beat Aśki (badge STAND-IN) tez jest do podmiany na zywa osobe —',
+      'jej farewell lezy na A2, w klipie jest cisza.',
+      'Po przeniesieniu folderu Premiere zrobi relink do clips/.',
       '',
       `Total: ${Math.round(cursorS)}s, ${placed.length} segmentow.`,
       ...placed.map((p) => `  ${fmt(p.startS)}  ${p.name} (${Math.round(p.durationS)}s)`),

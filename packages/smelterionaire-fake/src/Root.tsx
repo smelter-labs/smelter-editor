@@ -139,6 +139,7 @@ const cameoDefaults: CashOutCameoProps = {
   punchAtS: 3.6,
   boardAtS: 4.6,
   walkAtS: 15,
+  standInFromS: 4.3,
 };
 
 const wrapDefaults: WrapProps = {

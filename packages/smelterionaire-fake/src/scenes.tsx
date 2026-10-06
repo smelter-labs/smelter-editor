@@ -368,6 +368,8 @@ export type CashOutCameoProps = {
   boardAtS: number;
   /** When the figure starts walking off (after the farewell). */
   walkAtS: number;
+  /** From when the solo is a stand-in to be replaced with real footage. */
+  standInFromS: number;
 };
 
 export const CashOutCameo: React.FC<CashOutCameoProps> = (p) => {
@@ -414,6 +416,26 @@ export const CashOutCameo: React.FC<CashOutCameoProps> = (p) => {
       <MoneyRail players={p.players} tS={tS} />
       {tS >= p.boardAtS ? <QuizBoard board={board} shownAtS={p.boardAtS} tS={tS} /> : null}
       <HostPlates cues={p.hostPlates} tS={tS} />
+      {/* Like the host slates, this whole solo is a placeholder: the real
+          Aśka gets filmed and dropped over it; her line sits on A2. */}
+      {tS >= p.standInFromS ? (
+        <div
+          style={{
+            position: 'absolute',
+            left: 24,
+            bottom: 24,
+            padding: '8px 14px',
+            backgroundColor: 'rgba(7,11,24,.85)',
+            border: `2px dashed ${SKY}`,
+            fontFamily: MONO,
+            fontWeight: 600,
+            fontSize: 20,
+            letterSpacing: 3,
+            color: SKY,
+          }}>
+          STAND-IN · PODMIEŃ NA ŻYWĄ AŚKĘ · GŁOS NA A2
+        </div>
+      ) : null}
       <SegmentWipe tS={tS} durationS={p.durationS} width={width} height={height} />
     </AbsoluteFill>
   );
