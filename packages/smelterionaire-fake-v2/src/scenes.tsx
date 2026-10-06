@@ -261,6 +261,15 @@ export const MeetCast: React.FC<MeetCastProps> = (p) => {
   );
 };
 
+// ── Placeholder cam: a standalone clip the user swaps for real footage ────
+
+export type PlaceholderCamProps = { durationS: number; name: string };
+
+export const PlaceholderCam: React.FC<PlaceholderCamProps> = ({ name }) => {
+  const { width, height } = useSceneTime();
+  return <FramingGuide width={width} height={height} label={name.toUpperCase()} />;
+};
+
 // ── Question beat ─────────────────────────────────────────────────────────
 
 export type QuestionBeatProps = {

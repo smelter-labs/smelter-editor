@@ -5,12 +5,14 @@ import {
   HostSlate,
   Intro,
   MeetCast,
+  PlaceholderCam,
   QuestionBeat,
   Wrap,
   type CashOutCameoProps,
   type HostSlateProps,
   type IntroProps,
   type MeetCastProps,
+  type PlaceholderCamProps,
   type QuestionBeatProps,
   type WrapProps,
 } from './scenes';
@@ -162,6 +164,8 @@ const wrapDefaults: WrapProps = {
   })),
 };
 
+const placeholderDefaults: PlaceholderCamProps = { durationS: 36, name: 'HOST' };
+
 const meta = ({ props }: { props: { durationS: number } }) => ({
   durationInFrames: Math.max(1, Math.ceil(props.durationS * FPS)),
 });
@@ -171,6 +175,7 @@ export const Root: React.FC = () => (
     <Composition id='Intro' component={Intro} defaultProps={introDefaults} fps={FPS} width={W} height={H} durationInFrames={Math.ceil(introDefaults.durationS * FPS)} calculateMetadata={meta} />
     <Composition id='HostSlate' component={HostSlate} defaultProps={slateDefaults} fps={FPS} width={W} height={H} durationInFrames={Math.ceil(slateDefaults.durationS * FPS)} calculateMetadata={meta} />
     <Composition id='MeetCast' component={MeetCast} defaultProps={meetDefaults} fps={FPS} width={W} height={H} durationInFrames={Math.ceil(meetDefaults.durationS * FPS)} calculateMetadata={meta} />
+    <Composition id='PlaceholderCam' component={PlaceholderCam} defaultProps={placeholderDefaults} fps={FPS} width={W} height={H} durationInFrames={Math.ceil(placeholderDefaults.durationS * FPS)} calculateMetadata={meta} />
     <Composition id='QuestionBeat' component={QuestionBeat} defaultProps={questionDefaults} fps={FPS} width={W} height={H} durationInFrames={Math.ceil(questionDefaults.durationS * FPS)} calculateMetadata={meta} />
     <Composition id='CashOutCameo' component={CashOutCameo} defaultProps={cameoDefaults} fps={FPS} width={W} height={H} durationInFrames={Math.ceil(cameoDefaults.durationS * FPS)} calculateMetadata={meta} />
     <Composition id='Wrap' component={Wrap} defaultProps={wrapDefaults} fps={FPS} width={W} height={H} durationInFrames={Math.ceil(wrapDefaults.durationS * FPS)} calculateMetadata={meta} />

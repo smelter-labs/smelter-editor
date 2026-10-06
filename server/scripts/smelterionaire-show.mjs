@@ -728,13 +728,24 @@ async function renderSegment(seg, audioWav) {
   return out;
 }
 
+/** Standalone placeholder clips for the live people — separate files on
+ * their own Premiere tracks, swapped via "replace footage". */
+const PLACEHOLDER_S = 36;
+
+async function renderPlaceholderCam(name, file) {
+  if (opt['skip-render'] && existsSync(file)) return;
+  const propsFile = path.join(AUDIO_DIR, `placeholder-${path.basename(file)}.json`);
+  writeFileSync(propsFile, JSON.stringify({ durationS: PLACEHOLDER_S, name }));
+  await runRender(['render', 'src/index.ts', 'PlaceholderCam', file, `--props=${propsFile}`, '--codec=h264', '--muted']);
+}
+
 // ── Premiere project (FCP7 XML / xmeml v4) ────────────────────────────────
 
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const pathUrl = (p) => `file://localhost${encodeURI(p).replace(/#/g, '%23')}`;
 const RATE = `<rate><timebase>${FPS}</timebase><ntsc>FALSE</ntsc></rate>`;
 
-function fileXml(id, filePath, frames, { video }) {
+function fileXml(id, filePath, frames, { video, audio = true }) {
   return `<file id="${id}">
   <name>${esc(path.basename(filePath))}</name>
   <pathurl>${esc(pathUrl(filePath))}</pathurl>
@@ -742,12 +753,20 @@ function fileXml(id, filePath, frames, { video }) {
   <duration>${frames}</duration>
   <media>
     ${video ? `<video><samplecharacteristics>${RATE}<width>1920</width><height>1080</height><pixelaspectratio>square</pixelaspectratio></samplecharacteristics></video>` : ''}
-    <audio><samplecharacteristics><depth>16</depth><samplerate>48000</samplerate></samplecharacteristics><channelcount>2</channelcount></audio>
+    ${audio ? '<audio><samplecharacteristics><depth>16</depth><samplerate>48000</samplerate></samplecharacteristics><channelcount>2</channelcount></audio>' : ''}
   </media>
 </file>`;
 }
 
-function clipXml({ id, name, fileRef, fileFull, start, frames, mediatype }) {
+/** Basic Motion (scale % + centre in FCP7 canvas units, ±0.5 = frame edge). */
+function motionFilter(scalePct, cH, cV) {
+  return `<filter><effect><name>Basic Motion</name><effectid>basic</effectid><effectcategory>motion</effectcategory><effecttype>motion</effecttype><mediatype>video</mediatype>
+  <parameter><parameterid>scale</parameterid><name>Scale</name><valuemin>0</valuemin><valuemax>1000</valuemax><value>${scalePct}</value></parameter>
+  <parameter><parameterid>center</parameterid><name>Center</name><value><horiz>${cH}</horiz><vert>${cV}</vert></value></parameter>
+</effect></filter>`;
+}
+
+function clipXml({ id, name, fileRef, fileFull, start, frames, mediatype, filterXml = '' }) {
   return `<clipitem id="${id}">
   <name>${esc(name)}</name>
   <enabled>TRUE</enabled>
@@ -759,10 +778,11 @@ function clipXml({ id, name, fileRef, fileFull, start, frames, mediatype }) {
   <out>${frames}</out>
   ${fileFull ?? `<file id="${fileRef}"/>`}
   <sourcetrack><mediatype>${mediatype}</mediatype><trackindex>1</trackindex></sourcetrack>
+  ${filterXml}
 </clipitem>`;
 }
 
-function premiereXml(placed, guidePlacements) {
+function premiereXml(placed, guidePlacements, overlays) {
   const toF = (s) => Math.round(s * FPS);
   let total = 0;
   const videoClips = [];
@@ -778,6 +798,34 @@ function premiereXml(placed, guidePlacements) {
     markers.push(`<marker><comment>${esc(p.comp)}</comment><name>${esc(p.name)}</name><in>${toF(p.startS)}</in><out>-1</out></marker>`);
     total = Math.max(total, toF(p.startS) + frames);
   });
+  const overlayTracks = [2, 3].map((track) => {
+    const seen = new Map();
+    return overlays
+      .filter((o) => o.track === track)
+      .map((o, i) => {
+        const frames = toF(o.durS);
+        let fileFull = null;
+        let fileRef = null;
+        if (seen.has(o.file)) fileRef = seen.get(o.file);
+        else {
+          fileRef = `ofile-${track}-${seen.size + 1}`;
+          seen.set(o.file, fileRef);
+          fileFull = fileXml(fileRef, o.file, toF(36), { video: true, audio: false });
+        }
+        return clipXml({
+          id: `clipitem-o${track}-${i + 1}`,
+          name: o.name,
+          fileRef: fileFull ? undefined : fileRef,
+          fileFull,
+          start: toF(o.atS),
+          frames,
+          mediatype: 'video',
+          filterXml: o.scalePct === 100 ? '' : motionFilter(o.scalePct, o.cH, o.cV),
+        });
+      })
+      .join('\n');
+  });
+
   const guideClips = guidePlacements.map((g, i) => {
     const frames = toF(g.durS);
     const fid = `gfile-${i + 1}`;
@@ -802,6 +850,16 @@ function premiereXml(placed, guidePlacements) {
       <format><samplecharacteristics>${RATE}<width>1920</width><height>1080</height><pixelaspectratio>square</pixelaspectratio></samplecharacteristics></format>
       <track>
 ${videoClips.join('\n')}
+        <enabled>TRUE</enabled>
+        <locked>FALSE</locked>
+      </track>
+      <track>
+${overlayTracks[0]}
+        <enabled>TRUE</enabled>
+        <locked>FALSE</locked>
+      </track>
+      <track>
+${overlayTracks[1]}
         <enabled>TRUE</enabled>
         <locked>FALSE</locked>
       </track>
@@ -900,8 +958,48 @@ async function main() {
     cursorS += durationS;
   }
 
+  console.log('— placeholder cams');
+  const hostCamFile = path.join(CLIPS_DIR, 'cam-host-placeholder.mp4');
+  const joannaCamFile = path.join(CLIPS_DIR, 'cam-joanna-placeholder.mp4');
+  await renderPlaceholderCam('HOST', hostCamFile);
+  await renderPlaceholderCam('Joanna', joannaCamFile);
+
+  // Overlay placements: Joanna on V2, the host on V3, pre-scaled into the
+  // multiviewer tile rects with Basic Motion (Joanna = bottom-left quadrant).
+  const QUAD = { scalePct: 48.5, cH: -0.25, cV: 0.25 };
+  const overlays = [];
+  for (const p of placed) {
+    const t0 = p.startS;
+    if (p.comp === 'QuestionBeat' || p.comp === 'CashOutCameo') {
+      overlays.push({
+        track: 2, name: 'JOANNA cam', file: joannaCamFile,
+        atS: round1(t0 + 0.75), durS: round1(p.props.punchAtS - 0.75), ...QUAD,
+      });
+    }
+    if (p.comp === 'CashOutCameo') {
+      overlays.push({
+        track: 2, name: 'JOANNA solo', file: joannaCamFile,
+        atS: round1(t0 + p.props.punchAtS + PUNCH_S),
+        durS: round1(p.props.walkAtS - p.props.punchAtS - PUNCH_S),
+        scalePct: 100, cH: 0, cV: 0,
+      });
+    }
+    if (p.comp === 'MeetCast') {
+      overlays.push({
+        track: 2, name: 'JOANNA cam', file: joannaCamFile,
+        atS: round1(t0 + 0.75), durS: round1(p.durationS - 1.0), ...QUAD,
+      });
+      overlays.push({
+        track: 3, name: 'HOST cam', file: hostCamFile,
+        atS: round1(t0 + 1.0), durS: round1(p.durationS - 1.3),
+        scalePct: 29, cH: 0, cV: 0,
+      });
+    }
+    // Wrap: no overlay — Joanna's CASHED OUT tile is part of the gag.
+  }
+
   console.log('— premiere xml');
-  const xml = premiereXml(placed, guidePlacements);
+  const xml = premiereXml(placed, guidePlacements, overlays);
   writeFileSync(path.join(OUT_DIR, 'smelterionaire.xml'), xml);
 
   console.log('— preview');
@@ -916,10 +1014,11 @@ async function main() {
       'V1/A1 = segmenty show; A2 = glosy-przewodniki (host + Joanna, ElevenLabs).',
       'Slate\'y "HOST SHOT" podmien na wlasne nagrania; kwestie hosta',
       'w srodku beatow (plansze MAX SMELTER) nagraj wg A2 i poloz na A1/A3.',
-      'Beat Joanny i jej tile w multiviewerze to placeholdery (ramka kadru)',
-      'na zywa osobe — jej farewell lezy na A2, w klipie jest cisza.',
-      'W meet-the-cast posrodku gridu jest tile HOST — placeholder na Ciebie',
-      'jednoczesnie z uczestnikami.',
+      'Ty i Joanna jestescie na OSOBNYCH plikach: V2 = cam-joanna-placeholder',
+      '(kafelek gridu + jej solo w Q3), V3 = cam-host-placeholder (srodek',
+      'meet-the-cast). Prawy klik na klipie -> Replace Footage / podmiana',
+      'pliku w clips/ — transformy (skala/pozycja kafelka) zostaja.',
+      'Farewell Joanny lezy na A2; jej tile CASHED OUT we wrapie jest w V1.',
       'Po przeniesieniu folderu Premiere zrobi relink do clips/.',
       '',
       `Total: ${Math.round(cursorS)}s, ${placed.length} segmentow.`,
