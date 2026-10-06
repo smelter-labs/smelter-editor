@@ -74,6 +74,10 @@ const VOICES = {
 const LINES = {
   'host-intro': ['host', 'Welcome to Smelterionaire — four minds, a million tokens each, zero mercy.'],
   'host-rules': ['host', 'The rules: every right answer multiplies your pot by one and a half. Every wrong one — half of it goes up the chimney. Two rounds, four contestants, and you can cash out and walk whenever you like. Let’s meet them.'],
+  'host-meet-opus': ['host', 'At desk one — OPUS. Writes poetry about monorepos, favors long walks through the documentation.'],
+  'host-meet-gpt': ['host', 'Desk two — GPT. The enthusiasm of a golden retriever, the confidence of… well, a GPT.'],
+  'host-meet-aska': ['host', 'Desk three — Aśka. Our first human contestant. Says she is, quote, just here to look around.'],
+  'host-meet-jev': ['host', 'And desk four — JEV. Zero words so far, and somehow the crowd favorite.'],
   'host-board': ['host', 'Four answers on the board. Only one pays.'],
   'host-filler': ['host', 'Take your time — the clock is only a metaphor.'],
   'host-jev-joke1': ['host', 'Don’t wait for a quip. JEV doesn’t talk — JEV computes.'],
@@ -246,9 +250,23 @@ function fakePcm(text) {
 
 const sha1 = (s) => createHash('sha1').update(s).digest('hex');
 
+// Per-voice ElevenLabs voice_settings (host tuned to the user's dashboard:
+// speed ~1.09, stability 0.5, similarity 0.75, style 0.45, speaker boost).
+const VOICE_SETTINGS = {
+  host: {
+    speed: 1.09,
+    stability: 0.5,
+    similarity_boost: 0.75,
+    style: 0.45,
+    use_speaker_boost: true,
+  },
+};
+
 async function synthLine(apiKey, voiceKey, text) {
   const voice = opt.fake ? 'fake' : VOICES[voiceKey];
-  const hash = sha1(`${voice}|${text}`);
+  const settings = VOICE_SETTINGS[voiceKey] ?? null;
+  // Settings are part of the cache key — retuned voices re-synth cleanly.
+  const hash = sha1(`${voice}|${settings ? JSON.stringify(settings) : ''}|${text}`);
   const wav = path.join(TTS_DIR, `${hash}.wav`);
   const sidecar = path.join(TTS_DIR, `${hash}.json`);
   if (existsSync(wav) && existsSync(sidecar)) {
@@ -264,7 +282,11 @@ async function synthLine(apiKey, voiceKey, text) {
       {
         method: 'POST',
         headers: { 'xi-api-key': apiKey, 'content-type': 'application/json' },
-        body: JSON.stringify({ text, model_id: 'eleven_flash_v2_5' }),
+        body: JSON.stringify({
+          text,
+          model_id: 'eleven_flash_v2_5',
+          ...(settings ? { voice_settings: settings } : {}),
+        }),
       },
     );
     if (!res.ok) fail(`ElevenLabs ${res.status} for "${text.slice(0, 40)}…": ${(await res.text()).slice(0, 300)}`);
@@ -502,6 +524,38 @@ function buildEpisode(tts) {
     ],
   });
 
+  // 03 — meet the cast: the tally walks the multiviewer as the host
+  // introduces each contestant (guide lines on A2).
+  const meetIntros = [];
+  const meetPlates = [];
+  const meetGuides = [];
+  let meetCursor = 1.0;
+  for (const [name, key] of [
+    ['OPUS', 'host-meet-opus'],
+    ['GPT', 'host-meet-gpt'],
+    ['Aśka', 'host-meet-aska'],
+    ['JEV', 'host-meet-jev'],
+  ]) {
+    const untilS = round1(meetCursor + dur(key) + 0.7);
+    meetIntros.push({ name, atS: meetCursor, untilS });
+    meetPlates.push({ text: LINES[key][1], atS: meetCursor, untilS });
+    meetGuides.push({ key, atS: meetCursor });
+    meetCursor = round1(untilS + 0.3);
+  }
+  segments.push({
+    name: '03-meet-cast',
+    comp: 'MeetCast',
+    props: {
+      durationS: round1(meetCursor + 0.6),
+      players: railPlayers(amounts),
+      cams: camsFor(),
+      intros: meetIntros,
+      hostPlates: meetPlates,
+    },
+    audio: [{ wav: stingWav('board'), atS: 0.3 }],
+    guides: meetGuides,
+  });
+
   // Round 1 ────────────────────────────────────────────────────────────────
   const q1 = questionBeat(tts, {
     number: 1, name: 'OPUS', qid: 's01', pick: 'A', verdict: 'correct',
@@ -509,7 +563,7 @@ function buildEpisode(tts) {
     murmurKey: 'opus-murmur', quipKey: 'opus-quip',
     withBoardLine: true, fillerKey: 'host-filler', amounts: { ...amounts }, cashed: {},
   });
-  segments.push({ name: '03-q1-opus', comp: 'QuestionBeat', ...q1 });
+  segments.push({ name: '04-q1-opus', comp: 'QuestionBeat', ...q1 });
   amounts.OPUS = q1.amountAfter;
 
   const q2 = questionBeat(tts, {
@@ -518,7 +572,7 @@ function buildEpisode(tts) {
     murmurKey: 'gpt-murmur', quipKey: 'gpt-quip',
     withBoardLine: false, fillerKey: null, amounts: { ...amounts }, cashed: {},
   });
-  segments.push({ name: '04-q2-gpt', comp: 'QuestionBeat', ...q2 });
+  segments.push({ name: '05-q2-gpt', comp: 'QuestionBeat', ...q2 });
   amounts.GPT = q2.amountAfter;
 
   // Q3 — Aśka gets her question, and answers with a goodbye.
@@ -527,7 +581,7 @@ function buildEpisode(tts) {
     assignKey: 'host-assign3', farewellKey: 'aska-farewell',
     amounts: { ...amounts },
   });
-  segments.push({ name: '05-q3-aska', comp: 'CashOutCameo', ...q3 });
+  segments.push({ name: '06-q3-aska', comp: 'CashOutCameo', ...q3 });
 
   const q4 = questionBeat(tts, {
     number: 4, name: 'JEV', qid: 's29', pick: 'C', verdict: 'correct',
@@ -536,7 +590,7 @@ function buildEpisode(tts) {
     withBoardLine: false, fillerKey: 'host-jev-joke1', amounts: { ...amounts },
     cashed: { Aśka: 0 },
   });
-  segments.push({ name: '06-q4-jev', comp: 'QuestionBeat', ...q4 });
+  segments.push({ name: '07-q4-jev', comp: 'QuestionBeat', ...q4 });
   amounts.JEV = q4.amountAfter;
 
   // Round 2 ────────────────────────────────────────────────────────────────
@@ -547,7 +601,7 @@ function buildEpisode(tts) {
     withBoardLine: false, fillerKey: null, amounts: { ...amounts },
     cashed: { Aśka: 0 },
   });
-  segments.push({ name: '07-q5-opus', comp: 'QuestionBeat', ...q5 });
+  segments.push({ name: '08-q5-opus', comp: 'QuestionBeat', ...q5 });
   amounts.OPUS = q5.amountAfter;
 
   const q6 = questionBeat(tts, {
@@ -557,7 +611,7 @@ function buildEpisode(tts) {
     withBoardLine: false, fillerKey: null, amounts: { ...amounts },
     cashed: { Aśka: 0 },
   });
-  segments.push({ name: '08-q6-gpt', comp: 'QuestionBeat', ...q6 });
+  segments.push({ name: '09-q6-gpt', comp: 'QuestionBeat', ...q6 });
   amounts.GPT = q6.amountAfter;
 
   // Q7 — JEV, 96% sure. Wrong. Still silent.
@@ -568,18 +622,18 @@ function buildEpisode(tts) {
     withBoardLine: false, fillerKey: 'host-jev-joke2', amounts: { ...amounts },
     cashed: { Aśka: 0 },
   });
-  segments.push({ name: '09-q7-jev', comp: 'QuestionBeat', ...q7 });
+  segments.push({ name: '10-q7-jev', comp: 'QuestionBeat', ...q7 });
   amounts.JEV = q7.amountAfter;
 
   // 10 — host wrap (slate).
   segments.push({
-    name: '10-host-wrap',
+    name: '11-host-wrap',
     comp: 'HostSlate',
     props: {
       durationS: round1(dur('host-wrap') + 2.2),
       beat: 'Wrap',
       lines: [LINES['host-wrap'][1]],
-      note: 'BEAT 10 · WRAP',
+      note: 'BEAT 11 · WRAP',
     },
     audio: [],
     guides: [{ key: 'host-wrap', atS: 0.8 }],
@@ -587,7 +641,7 @@ function buildEpisode(tts) {
 
   // 11 — wrap: the multiviewer with the final state + logo and confetti.
   segments.push({
-    name: '11-wrap',
+    name: '12-wrap',
     comp: 'Wrap',
     props: {
       durationS: 9,

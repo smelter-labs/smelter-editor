@@ -222,6 +222,41 @@ export const HostSlate: React.FC<HostSlateProps> = ({
   );
 };
 
+// ── Meet the cast: the host introduces each contestant on the grid ────────
+
+export type MeetCastProps = {
+  durationS: number;
+  players: RailPlayer[];
+  cams: CamSpec[];
+  /** Who is being introduced when — the tally walks the grid. */
+  intros: { name: string; atS: number; untilS: number }[];
+  hostPlates: HostPlateCue[];
+};
+
+export const MeetCast: React.FC<MeetCastProps> = (p) => {
+  const { tS, timeMs, width, height } = useSceneTime();
+  const current = p.intros.find((i) => tS >= i.atS && tS < i.untilS);
+  const activeIndex = current
+    ? p.cams.findIndex((c) => c.name === current.name)
+    : -1;
+  return (
+    <AbsoluteFill style={{ backgroundColor: INK }}>
+      <CamGrid
+        cams={p.cams}
+        activeIndex={activeIndex}
+        tS={tS}
+        timeMs={timeMs}
+        punchAtS={null}
+        width={width}
+        height={height}
+      />
+      <MoneyRail players={p.players} tS={tS} />
+      <HostPlates cues={p.hostPlates} tS={tS} />
+      <SegmentWipe tS={tS} durationS={p.durationS} width={width} height={height} />
+    </AbsoluteFill>
+  );
+};
+
 // ── Question beat ─────────────────────────────────────────────────────────
 
 export type QuestionBeatProps = {

@@ -4,11 +4,13 @@ import {
   CashOutCameo,
   HostSlate,
   Intro,
+  MeetCast,
   QuestionBeat,
   Wrap,
   type CashOutCameoProps,
   type HostSlateProps,
   type IntroProps,
+  type MeetCastProps,
   type QuestionBeatProps,
   type WrapProps,
 } from './scenes';
@@ -59,6 +61,24 @@ const slateDefaults: HostSlateProps = {
     'The rules: right answer — your pot times one point five. Wrong — half goes up the chimney. Two rounds, and you can cash out and walk.',
   ],
   note: 'BEAT 02 · INTRO',
+};
+
+const meetDefaults: MeetCastProps = {
+  durationS: 16,
+  players: demoPlayers.map((p) => ({ ...p, active: false })),
+  cams: demoCams,
+  intros: [
+    { name: 'OPUS', atS: 1, untilS: 4.5 },
+    { name: 'GPT', atS: 4.8, untilS: 8.3 },
+    { name: 'Aśka', atS: 8.6, untilS: 12.1 },
+    { name: 'JEV', atS: 12.4, untilS: 15.5 },
+  ],
+  hostPlates: [
+    { text: 'At desk one — OPUS. Writes poetry about monorepos.', atS: 1, untilS: 4.5 },
+    { text: 'Desk two — GPT. The enthusiasm of a golden retriever.', atS: 4.8, untilS: 8.3 },
+    { text: 'Desk three — Aśka. Our first human contestant.', atS: 8.6, untilS: 12.1 },
+    { text: 'And desk four — JEV. Has never said a word. Current favorite.', atS: 12.4, untilS: 15.5 },
+  ],
 };
 
 const questionDefaults: QuestionBeatProps = {
@@ -147,6 +167,7 @@ export const Root: React.FC = () => (
   <>
     <Composition id='Intro' component={Intro} defaultProps={introDefaults} fps={FPS} width={W} height={H} durationInFrames={Math.ceil(introDefaults.durationS * FPS)} calculateMetadata={meta} />
     <Composition id='HostSlate' component={HostSlate} defaultProps={slateDefaults} fps={FPS} width={W} height={H} durationInFrames={Math.ceil(slateDefaults.durationS * FPS)} calculateMetadata={meta} />
+    <Composition id='MeetCast' component={MeetCast} defaultProps={meetDefaults} fps={FPS} width={W} height={H} durationInFrames={Math.ceil(meetDefaults.durationS * FPS)} calculateMetadata={meta} />
     <Composition id='QuestionBeat' component={QuestionBeat} defaultProps={questionDefaults} fps={FPS} width={W} height={H} durationInFrames={Math.ceil(questionDefaults.durationS * FPS)} calculateMetadata={meta} />
     <Composition id='CashOutCameo' component={CashOutCameo} defaultProps={cameoDefaults} fps={FPS} width={W} height={H} durationInFrames={Math.ceil(cameoDefaults.durationS * FPS)} calculateMetadata={meta} />
     <Composition id='Wrap' component={Wrap} defaultProps={wrapDefaults} fps={FPS} width={W} height={H} durationInFrames={Math.ceil(wrapDefaults.durationS * FPS)} calculateMetadata={meta} />
