@@ -64,6 +64,12 @@ export type CaptionBridgeOptions = {
   port: number;
   socketDir: string;
   onTranscript: (event: TranscriptEvent) => void;
+  /**
+   * Fired the moment a transcript arrives from Python — seconds BEFORE
+   * `onTranscript` delivers it at air time. `airAtMs` is the wall time the
+   * segment will start airing (null when the pipeline clock is unknown).
+   */
+  onRawTranscript?: (event: TranscriptEvent & { airAtMs: number | null }) => void;
 };
 
 type IncomingMessage = {
@@ -278,6 +284,8 @@ export class CaptionBridge {
       (byPts === null || Math.abs(byPts - byHeard) > PTS_TRUST_MS)
         ? byHeard
         : byPts;
+    // The pre-air tap (OB Van AI PANEL): the text is seconds ahead of air.
+    this.opts.onRawTranscript?.({ ...event, airAtMs: airAt });
     const wait = airAt === null ? 0 : airAt - Date.now();
     captionDebug('scheduleTranscript', {
       inputId: event.inputId,

@@ -61,6 +61,8 @@ export function pendingKeyOf(cmd: ObOperatorCommand): string {
         : `quiz:${cmd.action}`;
     case 'quiz_set':
       return `quiz_set:${cmd.auto !== undefined ? 'auto' : ''}${cmd.aiHost !== undefined ? 'aiHost' : ''}${cmd.tts !== undefined ? 'tts' : ''}`;
+    case 'panel_set':
+      return `panel_set:${cmd.auto !== undefined ? 'auto' : ''}${cmd.tts !== undefined ? 'tts' : ''}`;
   }
 }
 
@@ -143,6 +145,11 @@ export function commandEchoed(
         (cmd.auto == null || now.config.quiz?.auto === cmd.auto) &&
         (cmd.aiHost == null || now.config.quiz?.aiHost === cmd.aiHost) &&
         (cmd.tts == null || now.config.quiz?.tts === cmd.tts)
+      );
+    case 'panel_set':
+      return (
+        (cmd.auto == null || now.config.panel?.auto === cmd.auto) &&
+        (cmd.tts == null || now.config.panel?.tts === cmd.tts)
       );
     default:
       // No visible echo to wait for — clear on the next state.

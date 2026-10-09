@@ -44,6 +44,7 @@ function makeState(patch: Partial<ObState> = {}): ObState {
       lastGesture: null,
     },
     quiz: null,
+    panel: null,
     llm: {
       available: false,
       model: null,

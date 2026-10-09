@@ -7,6 +7,7 @@
 // transcript keywords) through a small rules DSL, and an optional LLM turns a
 // natural-language brief into a ruleset and nudges the show every ~30 s.
 
+import type { ObPanelState } from "./ob-van-panel.js";
 import type {
   ObQuizAction,
   ObQuizLetter,
@@ -200,7 +201,7 @@ export type ObAudioPolicy =
 export type ObPhase = "setup" | "on-air" | "wrap";
 export type ObActionSource = "operator" | "auto" | "llm" | "system";
 export type ObPresetId =
-  "talk" | "match" | "stage" | "gig" | "follow" | "quiz" | "custom";
+  "talk" | "match" | "stage" | "gig" | "follow" | "quiz" | "panel" | "custom";
 export const OB_PRESET_IDS: readonly Exclude<ObPresetId, "custom">[] = [
   "talk",
   "match",
@@ -208,6 +209,7 @@ export const OB_PRESET_IDS: readonly Exclude<ObPresetId, "custom">[] = [
   "gig",
   "follow",
   "quiz",
+  "panel",
 ];
 /** Operator pacing dial: multiplies the ruleset's min / max hold. */
 export type ObPacingDial = "calm" | "lively" | "frantic";
@@ -428,6 +430,13 @@ export type ObConfig = {
    * whether the host/contestants speak via TTS (needs ELEVENLABS_API_KEY).
    */
   quiz: { bank: ObQuizBank; aiHost: boolean; auto: boolean; tts: boolean };
+  /**
+   * AI PANEL extras: whether the models speak via TTS (needs
+   * ELEVENLABS_API_KEY; off = text-only answers on the desk) and whether a
+   * closed host turn auto-asks the models (off = questions queue up and the
+   * desk fires them).
+   */
+  panel: { tts: boolean; auto: boolean };
   joinUrls?: { cam?: string };
 };
 
@@ -470,6 +479,7 @@ export type ObConfigPatch = {
   llm?: Partial<ObConfig["llm"]>;
   host?: Partial<ObConfig["host"]>;
   quiz?: Partial<ObConfig["quiz"]>;
+  panel?: Partial<ObConfig["panel"]>;
   joinUrls?: { cam?: string };
 };
 
@@ -492,6 +502,7 @@ export const OB_DEFAULT_CONFIG: ObConfig = {
   llm: { analyst: false, analystIntervalS: 15, model: "claude-haiku-4-5" },
   host: { enabled: false, description: "wears a GOLD baseball cap" },
   quiz: { bank: "default", aiHost: false, auto: false, tts: false },
+  panel: { tts: true, auto: true },
 };
 
 export const OB_CONFIG_LIMITS = {
@@ -646,6 +657,8 @@ export type ObState = {
   host: ObHostState;
   /** Quiz layer state — non-null only while the `quiz` preset is selected. */
   quiz: ObQuizState | null;
+  /** AI PANEL state — non-null only while the `panel` preset is selected. */
+  panel: ObPanelState | null;
   llm: ObLlmStatus;
   stats: ObStats;
   wrapNotes: string | null;
@@ -708,7 +721,9 @@ export type ObOperatorCommand =
       verdict?: ObQuizVerdict;
     }
   /** Desk toggles for `config.quiz` (the panel is WS-only). */
-  | { op: "quiz_set"; auto?: boolean; aiHost?: boolean; tts?: boolean };
+  | { op: "quiz_set"; auto?: boolean; aiHost?: boolean; tts?: boolean }
+  /** Desk toggles for `config.panel` (AI PANEL preset). */
+  | { op: "panel_set"; auto?: boolean; tts?: boolean };
 export type ObOperatorOp = ObOperatorCommand["op"];
 
 export type ObControlAction =

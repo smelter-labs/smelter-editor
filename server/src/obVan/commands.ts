@@ -250,6 +250,14 @@ export function parseObCommand(raw: unknown): ObOperatorCommand | null {
         ? null
         : cmd;
     }
+    case 'panel_set': {
+      const cmd: ObOperatorCommand = { op: 'panel_set' };
+      const auto = bool(raw.auto);
+      if (auto !== undefined) cmd.auto = auto;
+      const tts = bool(raw.tts);
+      if (tts !== undefined) cmd.tts = tts;
+      return auto === undefined && tts === undefined ? null : cmd;
+    }
     default:
       return null;
   }

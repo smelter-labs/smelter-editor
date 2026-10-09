@@ -111,6 +111,23 @@ export class ServerState {
     });
   }
 
+  /** Route a pre-air transcript segment to the room that owns the input
+   * (the OB Van AI PANEL's early tap; quiet when nobody owns it). */
+  public applyRawTranscript(event: {
+    inputId: string;
+    text: string;
+    ts: number;
+    duration: number;
+    airAtMs: number | null;
+  }): void {
+    for (const room of this.getRooms()) {
+      if (room.hasInput(event.inputId)) {
+        room.applyRawTranscript(event);
+        return;
+      }
+    }
+  }
+
   /** Route a transcript event from the captions sidecar to the room that owns
    * the input. Inputs are globally unique so the first match is correct. */
   public applyTranscript(event: {

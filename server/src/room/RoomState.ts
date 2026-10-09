@@ -103,6 +103,7 @@ import { createObBrain } from '../obVan/brain';
 import { attentionFor } from '../obVan/attention';
 import { createObLlm } from '../obVan/llm';
 import { createObQuizAi } from '../obVan/llm/quizHost';
+import { createObPanelAi } from '../obVan/llm/panelists';
 import { createObQuizTts } from '../obVan/llm/tts';
 import type { ObBriefResult } from '../obVan/contracts';
 import type {
@@ -1050,6 +1051,7 @@ export class RoomState {
         attention: attentionFor,
         createLlm: (deps, opts) => createObLlm(deps, undefined, opts),
         createQuizAi: () => createObQuizAi(),
+        createPanelAi: () => createObPanelAi(),
         createQuizTts: () => createObQuizTts(process.env, { cacheDir: OB_TTS_DIR }),
       },
     );
@@ -3860,6 +3862,27 @@ export class RoomState {
    */
   public hasInput(inputId: string): boolean {
     return this.getInputs().some((input) => input.inputId === inputId);
+  }
+
+  /**
+   * A raw transcript segment, seconds BEFORE it airs (the bridge calls this
+   * the moment Whisper delivers). Only the OB Van AI PANEL consumes it; the
+   * on-air path stays `applyTranscript`.
+   */
+  public applyRawTranscript(event: {
+    inputId: string;
+    text: string;
+    ts: number;
+    duration: number;
+    airAtMs: number | null;
+  }): void {
+    this.obVan.onRawTranscript(
+      event.inputId,
+      event.text,
+      event.airAtMs,
+      event.duration,
+      event.ts,
+    );
   }
 
   /** Display a transcript on its input and schedule it to clear after the

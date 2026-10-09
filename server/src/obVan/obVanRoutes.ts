@@ -240,6 +240,11 @@ export const ObOperatorCommandSchema = Type.Union([
     aiHost: Type.Optional(Type.Boolean()),
     tts: Type.Optional(Type.Boolean()),
   }),
+  Type.Object({
+    op: Type.Literal('panel_set'),
+    auto: Type.Optional(Type.Boolean()),
+    tts: Type.Optional(Type.Boolean()),
+  }),
 ]);
 
 const RundownItemSchema = Type.Object({
@@ -279,6 +284,12 @@ const ObConfigPatchSchema = Type.Object({
     Type.Object({
       bank: Type.Optional(literals(OB_QUIZ_BANKS)),
       aiHost: Type.Optional(Type.Boolean()),
+      auto: Type.Optional(Type.Boolean()),
+      tts: Type.Optional(Type.Boolean()),
+    }),
+  ),
+  panel: Type.Optional(
+    Type.Object({
       auto: Type.Optional(Type.Boolean()),
       tts: Type.Optional(Type.Boolean()),
     }),
@@ -349,6 +360,12 @@ const SimulateSchema = Type.Object({
     Type.Object({
       kind: Type.Literal('transcript'),
       text: Type.String({ minLength: 1, maxLength: 400 }),
+    }),
+    Type.Object({
+      kind: Type.Literal('raw-transcript'),
+      text: Type.String({ minLength: 1, maxLength: 400 }),
+      airInMs: Type.Optional(Type.Number({ minimum: 0, maximum: 60000 })),
+      durationMs: Type.Optional(Type.Number({ minimum: 0, maximum: 30000 })),
     }),
   ]),
 });

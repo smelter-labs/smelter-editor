@@ -62,6 +62,7 @@ const PRESETS: readonly ObPresetId[] = [
   "gig",
   "follow",
   "quiz",
+  "panel",
   "custom",
 ];
 

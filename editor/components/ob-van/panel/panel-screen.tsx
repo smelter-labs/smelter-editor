@@ -30,6 +30,7 @@ import {
 } from './panel-keys';
 import { panelKeyContextOf } from './panel-model';
 import { QuizBar } from './quiz-bar';
+import { AiPanelBar } from './ai-panel-bar';
 import { RundownStrip } from './rundown-strip';
 import { ShotBar } from './shot-bar';
 import { Transport } from './transport';
@@ -207,6 +208,7 @@ export function PanelScreen({
         <FxBar state={state} pending={pending} />
         <LowerThirdBar state={state} pending={pending} />
         <QuizBar state={state} pending={pending} />
+        <AiPanelBar state={state} pending={pending} />
         <RundownStrip state={state} pending={pending} />
       </div>
 

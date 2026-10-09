@@ -478,6 +478,56 @@ rendererze, ticker 400 ms), odpowiedź z docinkiem (Jev: `· 87% SURE`,
 (720,40) — między title bugiem a money railem). Litera zawodnika jest
 publiczna; `correct` nadal dociera do HUD wyłącznie w `board.reveal`.
 
+## PANEL · AI (żywy host + dwa modele głosem)
+
+Preset **`panel`**: prawdziwy prowadzący (telefon WHIP, rola `speaker`) zadaje
+pytania głosem, a dwaj AI-paneliści — **OPUS** (Anthropic) i **GPT** (OpenAI,
+puppety nova/bit na niemych carrierach) — odpowiadają na głos, jeden po
+drugim, naprzemiennie zaczynając. Kamera nigdy nie tnie nikogo z wizji:
+wszystkie reguły to `featured` (mówiący duży po lewej, reszta w pasku,
+dissolve 400 ms), p85 na sygnale `quizTurn` (ustawianym przez kontroler, bo
+puppet-kamery są nieme podczas TTS), p70 na mowie hosta, p10 spoczynek na
+hoście. Wymaga `audio: mix`; `go_live` otwiera od razu na featured (nigdy
+solo).
+
+**Przepływ**: surowy transkrypt z sidecara Whispera trafia do Node PRZED
+czasem antenowym (`CaptionBridge.onRawTranscript` → `applyRawTranscript` →
+`ObVanController.onRawTranscript`, tylko kamera `speaker`). `ObTurnAggregator`
+(`panelTurns.ts`) skleja segmenty (VAD tnie po 200 ms ciszy, bywa
+out-of-order) i domyka turę po 1,5 s ciszy; filtr ≥8 znaków/≥2 słowa tnie
+halucynacje. Czysta maszyna `panel.ts` (`ObPanelDiscussion`, styl `quiz.ts`)
+emituje efekt `ask` → `llm/panelists.ts` (`discuss()` free-text, Opus przez
+`AnthropicObLlmClient` bez toola, GPT przez `/chat/completions`; brak
+klucza/fail → canned linia) → klipy TTS idą zwykłą kolejką mowy quizowej, z
+`notBeforeMs` = antenowy koniec pytania + 700 ms, więc odpowiedź wchodzi tuż
+po tym, jak pytanie wybrzmi NA ANTENIE (budżet na LLM+synth daje ~8 s
+side-channel delay). Klamry `speechStarted/Ended` wokół klipu przesuwają
+`quizTurn` (celowo na zakładkę: kafel płynie OPUS → GPT bez mignięcia
+hostem). Pytanie zadane w trakcie odpowiedzi parkuje jako `pendingQuestion`
+(ostatnie wygrywa). Historia rozmowy (host+odpowiedzi, cap 12) leci do
+kolejnych promptów. Desk: `AiPanelBar` (statusy, AUTO/VOICE przez
+`panel_set`); `config.panel = {tts, auto}`.
+
+```bash
+node scripts/ob-panel-demo.mjs        # nieme carriery + cams.json
+                                      #   → data/mp4s/ob-demo/ai-panel/
+                                      # (NIE ob-demo/panel — to demo TALK
+                                      #  „panel z samym sobą" z warsztatu)
+OB_SIM=1 OB_QUIZ_TTS_FAKE=1 pnpm start   # a potem:
+node scripts/ob-van-panel-check.mjs   # e2e bez kluczy i bez telefonu
+                                      # (symulowane raw-transcripty)
+```
+
+Przebieg na żywo: QUICK DEMO **AI PANEL** (ustawia `captions:true` ZANIM
+podepną się kamery) → ON AIR → QR telefonu, rola **SPEAKER**, publish dopiero
+po załadowaniu demka (side channel 8 s wchodzi przy register). Host mówi
+pytanie i milknie; ~8–10 s później pytanie schodzi z anteny i OPUS zaczyna
+mówić z lip-synciem, po nim GPT. Klucze: `ANTHROPIC_API_KEY`,
+`OPENAI_API_KEY`, `ELEVENLABS_API_KEY` (+ env: `OB_PANEL_{OPUS,GPT}_MODEL`,
+`OB_PANEL_TTS_VOICE_{OPUS,GPT}`, `OB_PANEL_AI_MAX_CALLS`; fallbacky do
+`OB_QUIZ_*`). Host słyszy odpowiedzi z odsłuchu programu — słuchawki, inaczej
+mikrofon „zada" odpowiedź modeli jako kolejne pytanie.
+
 ## Materiał demo w pojedynkę
 
 Jak nagrać event wielokamerowy, mając jedną osobę (i ewentualnie pomocnika).

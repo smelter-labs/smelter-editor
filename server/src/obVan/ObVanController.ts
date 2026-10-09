@@ -17,6 +17,7 @@ import type {
   ObLogKind,
   ObLogTone,
   ObOperatorCommand,
+  ObPanelSpeakerId,
   ObPhase,
   ObPresetId,
   ObQuizLetter,
@@ -129,6 +130,13 @@ import {
   type ObQuizSfx,
 } from './quiz';
 import { QUIZ_QUESTIONS, type QuizQuestion } from './quizQuestions';
+import {
+  ObPanelDiscussion,
+  type ObPanelEffect,
+  type ObPanelLine,
+} from './panel';
+import { ObTurnAggregator } from './panelTurns';
+import type { ObPanelAiModule } from './llm/panelists';
 import { SMELTER_QUIZ_QUESTIONS } from './quizQuestionsSmelter';
 import {
   cannedHostFiller,
@@ -258,6 +266,11 @@ export type ObControllerFactories = {
    */
   createQuizAi?: () => ObQuizAiModule | null;
   /**
+   * The AI PANEL's free-text panelists (`createObPanelAi` from
+   * `./llm/panelists`). Absent = every question resolves to canned lines.
+   */
+  createPanelAi?: () => ObPanelAiModule | null;
+  /**
    * ElevenLabs voices (`createObQuizTts` from `./llm/tts`): host +
    * contestant speech clips. Absent / no key = the show stays text-only.
    */
@@ -280,7 +293,15 @@ export type ObCommandResult = { ok: true } | ObCommandError;
 export type ObSimSample =
   | Omit<ObAudioSample, 'arrivalMs' | 'procMs' | 'ptsNanos'>
   | Omit<ObVideoSample, 'arrivalMs' | 'procMs' | 'ptsNanos'>
-  | { kind: 'transcript'; text: string };
+  | { kind: 'transcript'; text: string }
+  /** A pre-air captions segment (the AI PANEL's turn aggregator). */
+  | {
+      kind: 'raw-transcript';
+      text: string;
+      /** How far in the future the segment airs (default 0 = now). */
+      airInMs?: number;
+      durationMs?: number;
+    };
 
 /** A program change from any source (operator command, brain, LLM, system). */
 export type ObChange = Pick<
@@ -427,6 +448,8 @@ type ObQuizSpeechEntry = {
   clip?: ObQuizTtsClip | null;
   /** Cam whose puppet mouth follows the clip (null = no lip-sync). */
   camInputId: string | null;
+  /** Don't let the voice start before this wall time (air-end chaining). */
+  notBeforeMs?: number;
   /** Runs when the clip actually starts playing (duration now known). */
   onStart?: (clip: ObQuizTtsClip, startedAtMs: number) => void;
 };
@@ -670,6 +693,14 @@ export class ObVanController {
     afterMs: number;
     hardAtMs: number;
   }[] = [];
+  /** AI PANEL layer (the `panel` preset). */
+  private readonly panel = new ObPanelDiscussion();
+  /** Joins the live host's raw caption segments into questions. */
+  private readonly panelTurns = new ObTurnAggregator();
+  /** Free-text panelists (null = canned lines only). */
+  private readonly panelAi: ObPanelAiModule | null;
+  /** Timers bracketing answer clips (turn on/off), cleared on dispose. */
+  private readonly panelTimers = new Set<ReturnType<typeof setTimeout>>();
   private lastGesture: ObHostState['lastGesture'] = null;
   /** Camera whose worker currently runs hand tracking (the host's). */
   private gestureCamId: string | null = null;
@@ -811,6 +842,7 @@ export class ObVanController {
     });
     this.quiz = new ObQuizGame(QUIZ_QUESTIONS, { now: () => this.now() });
     this.quizAi = factories.createQuizAi?.() ?? null;
+    this.panelAi = factories.createPanelAi?.() ?? null;
     this.quizTts = factories.createQuizTts?.() ?? null;
   }
 
@@ -1378,6 +1410,13 @@ export class ObVanController {
         this.quizAutoHoldUntilMs = 0;
         this.clearQuizSpeech();
       }
+      if (c.presetId === 'panel') {
+        // Leaving the panel: same hygiene (the turn signal is shared).
+        this.panel.reset();
+        this.panelTurns.reset();
+        this.signals.setQuizTurn(null);
+        this.clearQuizSpeech();
+      }
       c.presetId = patch.presetId;
       if (patch.ruleset === undefined && c.ruleset) {
         c.ruleset = null;
@@ -1489,6 +1528,13 @@ export class ObVanController {
         c.quiz.tts = patch.quiz.tts;
         if (c.quiz.tts) this.warmQuizTts();
         else this.clearQuizSpeech();
+      }
+    }
+    if (patch.panel) {
+      if (typeof patch.panel.auto === 'boolean') c.panel.auto = patch.panel.auto;
+      if (typeof patch.panel.tts === 'boolean') {
+        c.panel.tts = patch.panel.tts;
+        if (!c.panel.tts && this.panelOn()) this.clearQuizSpeech();
       }
     }
     if (patch.host) {
@@ -1639,7 +1685,11 @@ export class ObVanController {
           const first = this.liveCams()[0];
           if (first)
             this.changeProgram(
-              { kind: 'solo', cam: first.id },
+              // The panel never solos anyone — open on the featured layout
+              // the rules will hold anyway.
+              this.panelOn()
+                ? { kind: 'featured', main: first.id, others: [] }
+                : { kind: 'solo', cam: first.id },
               { type: 'cut', durationMs: 0 },
               'system',
               false,
@@ -1692,6 +1742,8 @@ export class ObVanController {
         this.quizAutoNextAtMs = 0;
         this.quizAutoHoldUntilMs = 0;
         this.clearQuizSpeech();
+        this.panel.reset();
+        this.panelTurns.reset();
         this.closeReplay();
         this.refreshRuleset('reset');
         this.log.clear();
@@ -2010,6 +2062,34 @@ export class ObVanController {
             cmd.aiHost !== undefined
               ? `AI host ${cmd.aiHost ? 'ON' : 'OFF'}`
               : null,
+            cmd.tts !== undefined ? `voice ${cmd.tts ? 'ON' : 'OFF'}` : null,
+          ]
+            .filter(Boolean)
+            .join(' · '),
+          ...rs,
+        });
+        return { ok: true };
+      }
+      case 'panel_set': {
+        if (!this.panelOn())
+          return {
+            ok: false,
+            code: 'bad_action',
+            message: 'The PANEL preset is off.',
+          };
+        this.setConfig({
+          panel: {
+            ...(cmd.auto !== undefined ? { auto: cmd.auto } : {}),
+            ...(cmd.tts !== undefined ? { tts: cmd.tts } : {}),
+          },
+        });
+        this.pushLog({
+          source,
+          kind: 'note',
+          tone: 'chalk',
+          label: 'PANEL',
+          text: [
+            cmd.auto !== undefined ? `auto ${cmd.auto ? 'ON' : 'OFF'}` : null,
             cmd.tts !== undefined ? `voice ${cmd.tts ? 'ON' : 'OFF'}` : null,
           ]
             .filter(Boolean)
@@ -2512,11 +2592,215 @@ export class ObVanController {
     }
   }
 
+  // ── AI PANEL (the `panel` preset) ───────────────────────────────────
+
+  private panelOn(): boolean {
+    return this.config.presetId === 'panel';
+  }
+
+  /** Short pacing timer for the panel flow (cleared on dispose). */
+  private setPanelTimer(delayMs: number, fn: () => void): void {
+    const t = setTimeout(() => {
+      this.panelTimers.delete(t);
+      if (!this.disposed) fn();
+    }, delayMs);
+    this.panelTimers.add(t);
+  }
+
+  /**
+   * A raw (pre-air) caption segment from the sidecar — the live host's words
+   * reach the panel seconds before they air, which is the whole latency
+   * budget for the models' answers. Only the `speaker` cam feeds the turn
+   * aggregator; everything else (puppets are silent, answer clips have no
+   * side channel) is ignored.
+   */
+  onRawTranscript(
+    inputId: string,
+    text: string,
+    airAtMs: number | null,
+    durationMs: number,
+    ts: number,
+  ): void {
+    if (this.disposed || !this.panelOn() || this.phase !== 'on-air') return;
+    const cam = this.cams.byInput(inputId);
+    if (!cam || cam.role !== 'speaker') return;
+    const now = this.now();
+    this.panelTurns.push({
+      text,
+      ts,
+      airAtMs: airAtMs ?? now + CAPTIONS_SIDE_CHANNEL_DELAY_MS,
+      durationMs,
+      wallMs: now,
+    });
+  }
+
+  /** Per-tick panel housekeeping: roster sync, turn close, timeouts. */
+  private panelStep(now: number): void {
+    if (!this.panelOn()) return;
+    const sync = this.panel.syncSpeakers(
+      this.cams.list().map((c) => ({
+        id: c.id,
+        role: c.role,
+        name: c.name,
+        talent: c.talent,
+        model: obQuizModelFromName(c.talent ?? c.name),
+        live: c.live && c.inputId != null,
+      })),
+    );
+    if (sync.effects.length) this.applyPanelEffects(sync.effects, 'system');
+    const turn = this.panelTurns.poll(now);
+    if (turn) {
+      if (this.config.panel.auto) {
+        this.applyPanelEffects(
+          this.panel.hostTurn(turn.text, turn.airEndMs, now),
+          'system',
+        );
+      } else {
+        this.pushLog({
+          source: 'system',
+          kind: 'note',
+          tone: 'dim',
+          label: 'PANEL',
+          text: 'auto off — host question ignored',
+        });
+      }
+    }
+    const t = this.panel.tick(now);
+    if (t.effects.length) this.applyPanelEffects(t.effects, 'system');
+    if (sync.changed || t.changed || turn) this.markStateDirty();
+    // The quiz sweep lives in the quiz-gated step — the panel shares the
+    // speech queue, so it must sweep spent clips itself.
+    this.sweepQuizAudio(now);
+  }
+
+  private applyPanelEffects(
+    effects: ObPanelEffect[],
+    source: ObActionSource,
+  ): void {
+    for (const fx of effects) {
+      switch (fx.type) {
+        case 'turn':
+          this.signals.setQuizTurn(fx.camId);
+          break;
+        case 'ask':
+          this.startPanelAnswers(fx);
+          break;
+        case 'log':
+          this.pushLog({
+            source,
+            kind: 'note',
+            tone: fx.tone,
+            label: fx.label,
+            text: fx.text,
+            ...(fx.camId ? { camId: fx.camId } : {}),
+          });
+          break;
+      }
+    }
+  }
+
+  /**
+   * Both models answer the host's question in parallel (blind to each
+   * other), then the clips queue up in on-air order: the first is slotted
+   * right after the question finishes airing (`notBeforeMs`), the second
+   * chains behind it in the serial speech queue. Each clip is bracketed by
+   * `speechStarted` / `speechEnded`, whose `turn` effects move the big tile.
+   */
+  private startPanelAnswers(
+    fx: Extract<ObPanelEffect, { type: 'ask' }>,
+  ): void {
+    const answerOf = async (
+      model: ObPanelSpeakerId,
+    ): Promise<{ model: ObPanelSpeakerId; text: string | null }> => {
+      const adapter = this.panelAi?.panelists[model];
+      if (!adapter?.available()) return { model, text: null };
+      try {
+        const res = await adapter.discuss({
+          question: fx.question,
+          history: fx.history,
+        });
+        return { model, text: res?.text ?? null };
+      } catch {
+        return { model, text: null };
+      }
+    };
+    void Promise.all(fx.order.map(answerOf)).then((answers) => {
+      if (this.disposed) return;
+      const r = this.panel.resolveAnswers(fx.seq, answers);
+      if (!r.ok) return;
+      this.applyPanelEffects(r.effects, 'llm');
+      this.markStateDirty();
+      if (!this.ttsOn() || !this.quizTts) {
+        this.applyPanelEffects(
+          this.panel.finishWithoutSpeech(fx.seq, this.now()),
+          'system',
+        );
+        this.markStateDirty();
+        return;
+      }
+      r.lines.forEach((line, i) =>
+        this.queuePanelLine(
+          fx.seq,
+          line,
+          i === 0 ? fx.notBeforeMs : undefined,
+        ),
+      );
+    });
+  }
+
+  private queuePanelLine(
+    seq: number,
+    line: ObPanelLine,
+    notBeforeMs?: number,
+  ): void {
+    const voiceId =
+      this.panelAi?.voiceOf(line.model) ??
+      this.quizTts?.voiceOf(line.model) ??
+      null;
+    if (!voiceId) {
+      // No voice for this seat: the answer stays desk-only, the turn moves on.
+      this.applyPanelEffects(this.panel.speechStarted(seq, line.model), 'auto');
+      this.applyPanelEffects(
+        this.panel.speechEnded(seq, line.model, this.now()),
+        'auto',
+      );
+      return;
+    }
+    const camInputId = this.cams.get(line.camId)?.inputId ?? null;
+    this.speakQuiz({
+      text: line.text,
+      voiceId,
+      camInputId,
+      ...(notBeforeMs !== undefined ? { notBeforeMs } : {}),
+      onStart: (clip, startedAtMs) => {
+        // The dissolve to the speaker lands as the first word plays.
+        this.setPanelTimer(Math.max(0, startedAtMs - 400 - this.now()), () => {
+          this.applyPanelEffects(
+            this.panel.speechStarted(seq, line.model),
+            'auto',
+          );
+          this.markStateDirty();
+        });
+        this.setPanelTimer(
+          Math.max(0, startedAtMs + clip.durationMs + 200 - this.now()),
+          () => {
+            this.applyPanelEffects(
+              this.panel.speechEnded(seq, line.model, this.now()),
+              'auto',
+            );
+            this.markStateDirty();
+          },
+        );
+      },
+    });
+  }
+
   // ── Quiz speech (ElevenLabs voices) ──────────────────────────────────
 
-  /** Voices are on: module present AND the config toggle set. */
+  /** Voices are on: module present AND the active layer's toggle set. */
   private ttsOn(): boolean {
-    return this.quizTts !== null && this.config.quiz.tts;
+    if (this.quizTts === null) return false;
+    return this.panelOn() ? this.config.panel.tts : this.config.quiz.tts;
   }
 
   /** The host's cam (`speaker` role) — its puppet mouths the host lines. */
@@ -2557,11 +2841,17 @@ export class ObVanController {
           entry.clip ??
           (await this.quizTts?.synth(entry.text, entry.voiceId)) ??
           null;
-        if (clip && !this.disposed && this.quizOn() && this.phase === 'on-air') {
+        if (
+          clip &&
+          !this.disposed &&
+          (this.quizOn() || this.panelOn()) &&
+          this.phase === 'on-air'
+        ) {
           const now = this.now();
           const voicedStartMs = Math.max(
             now + QUIZ_SPEECH_HEADROOM_MS,
             this.quizSpeechEndsAtMs,
+            entry.notBeforeMs ?? 0,
           );
           // Claim the slot BEFORE any await — a second line slipping through
           // while the register is in flight must chain after this one, never
@@ -4202,7 +4492,21 @@ export class ObVanController {
     this.engage();
     const now = this.now();
     cam.lastSignalAt = now;
-    if (sample.kind === 'transcript') {
+    if (sample.kind === 'raw-transcript') {
+      if (!this.panelOn())
+        return {
+          ok: false,
+          code: 'bad_action',
+          message: 'The PANEL preset is off.',
+        };
+      this.panelTurns.push({
+        text: sample.text,
+        ts: now,
+        airAtMs: now + (sample.airInMs ?? 0),
+        durationMs: sample.durationMs ?? 2000,
+        wallMs: now,
+      });
+    } else if (sample.kind === 'transcript') {
       this.signals.ingest(cam.id, {
         kind: 'transcript',
         airMs: now,
@@ -4521,6 +4825,7 @@ export class ObVanController {
         lastGesture: this.lastGesture ? { ...this.lastGesture } : null,
       },
       quiz: this.quizOn() ? this.quiz.state() : null,
+      panel: this.panelOn() ? this.panel.state() : null,
       llm: this.llmStatus(),
       stats: this.statsSnapshot(now),
       wrapNotes: this.wrapNotes,
@@ -4743,6 +5048,7 @@ export class ObVanController {
     this.llmEventStep();
     this.hostStep();
     this.quizStep(now);
+    this.panelStep(now);
     this.broadcastSignals(now);
     this.publishHud();
     this.flushLog();
@@ -4865,6 +5171,8 @@ export class ObVanController {
     this.quizSfxTimers.clear();
     for (const t of this.quizAnswerTimers) clearTimeout(t);
     this.quizAnswerTimers.clear();
+    for (const t of this.panelTimers) clearTimeout(t);
+    this.panelTimers.clear();
     this.clearQuizSpeech();
     this.quizAi?.dispose();
     this.quizTts?.dispose();
