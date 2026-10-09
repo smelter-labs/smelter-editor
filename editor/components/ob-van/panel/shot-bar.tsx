@@ -7,9 +7,9 @@ import type { ObPending } from '../use-ob-pending';
 import { buildShotOptions } from './shot-builder';
 
 /**
- * SOLO / SPLIT / PIP / QUAD / GRID / SLIDES / VIRTUAL — each builds a shot
- * from the preview + program cameras and puts it on PREVIEW; the operator
- * then TAKEs it. The kind on preview now is outlined green.
+ * SOLO / SPLIT / PIP / QUAD / GRID / FEATURED / SLIDES / VIRTUAL — each
+ * builds a shot from the preview + program cameras and puts it on PREVIEW;
+ * the operator then TAKEs it. The kind on preview now is outlined green.
  */
 export function ShotBar({
   state,

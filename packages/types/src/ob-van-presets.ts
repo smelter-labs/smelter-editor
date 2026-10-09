@@ -430,7 +430,8 @@ const FOLLOW: ObRuleset = {
       holdMs: 4000,
       when: { signal: "host", cam: "any", op: "==", value: true },
       then: {
-        shot: { kind: "solo", cam: "trigger" },
+        // Host big, every other camera stays visible in the side strip.
+        shot: { kind: "featured", main: "trigger", others: [] },
         transition: { type: "cut" },
       },
     },

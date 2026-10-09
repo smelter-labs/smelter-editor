@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  CAM_PREFS_KEY,
   camSessionKey,
   clearCamSession,
+  readCamPrefs,
   readCamSession,
+  writeCamPrefs,
   writeCamSession,
 } from '../phone/cam-session';
 
@@ -108,6 +111,48 @@ describe('cam-session', () => {
     expect(storage.data.has(camSessionKey('r1'))).toBe(false);
   });
 
+  it('keeps device prefs separate from room sessions', () => {
+    writeCamPrefs({ name: 'Ola', role: 'speaker', facing: 'user' });
+    expect(readCamPrefs()).toEqual({
+      name: 'Ola',
+      role: 'speaker',
+      facing: 'user',
+    });
+    expect(readCamSession('r1')).toEqual({});
+    clearCamSession('r1');
+    expect(readCamPrefs()).toEqual({
+      name: 'Ola',
+      role: 'speaker',
+      facing: 'user',
+    });
+  });
+
+  it('merges pref patches and clears fields patched to undefined', () => {
+    writeCamPrefs({ name: 'Ola', talent: 'Dr. Smith' });
+    expect(writeCamPrefs({ talent: undefined, facing: 'environment' })).toEqual(
+      { name: 'Ola', facing: 'environment' },
+    );
+    expect(readCamPrefs()).toEqual({ name: 'Ola', facing: 'environment' });
+  });
+
+  it('never stores camKey or wantsCam in prefs', () => {
+    storage.data.set(
+      CAM_PREFS_KEY,
+      JSON.stringify({ name: 'Ola', camKey: 'k-1', wantsCam: true }),
+    );
+    expect(readCamPrefs()).toEqual({ name: 'Ola' });
+    writeCamPrefs({ role: 'wide' });
+    expect(JSON.parse(storage.data.get(CAM_PREFS_KEY) ?? '{}')).toEqual({
+      name: 'Ola',
+      role: 'wide',
+    });
+  });
+
+  it('reads garbage prefs as empty', () => {
+    storage.data.set(CAM_PREFS_KEY, '{not json');
+    expect(readCamPrefs()).toEqual({});
+  });
+
   it('survives blocked storage', () => {
     vi.stubGlobal('window', {
       localStorage: {
@@ -124,6 +169,8 @@ describe('cam-session', () => {
     });
     expect(readCamSession('r1')).toEqual({});
     expect(writeCamSession('r1', { name: 'Ola' })).toEqual({ name: 'Ola' });
+    expect(readCamPrefs()).toEqual({});
+    expect(writeCamPrefs({ name: 'Ola' })).toEqual({ name: 'Ola' });
     expect(() => clearCamSession('r1')).not.toThrow();
   });
 });

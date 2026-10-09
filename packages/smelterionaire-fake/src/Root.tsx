@@ -14,6 +14,14 @@ import {
   type QuestionBeatProps,
   type WrapProps,
 } from './scenes';
+import {
+  FollowCamSlate,
+  FollowHud,
+  FollowSetup,
+  type FollowCamSlateProps,
+  type FollowHudProps,
+  type FollowSetupProps,
+} from './follow';
 import type { CamSpec } from './puppet';
 import type { MouthTrack, RailPlayer } from './theme';
 
@@ -160,6 +168,32 @@ const wrapDefaults: WrapProps = {
   })),
 };
 
+// ── FOLLOW demo defaults (real props come from follow-fake.mjs) ───────────
+
+const followSetupDefaults: FollowSetupProps = { durationS: 5, camCount: 3 };
+
+const followSlateDefaults: FollowCamSlateProps = {
+  durationS: 6,
+  cam: 1,
+  action: 'Stoisz przy kamerze 1, machasz. Pod koniec wybiegasz z kadru w prawo.',
+  note: 'SEGMENT 02 · 6.0 s',
+};
+
+const followHudDefaults: FollowHudProps = {
+  durationS: 30,
+  camCount: 3,
+  target: 'the guy in the golden cap',
+  cuts: [
+    { atS: 5, cam: 1, detect: ['vision: golden cap on CAM 1 · conf 0.93'] },
+    {
+      atS: 11,
+      cam: 2,
+      detect: ['host lost on CAM 1 · scanning', 'vision: golden cap on CAM 2 · conf 0.91'],
+    },
+    { atS: 16, cam: 3, detect: ['motion spike CAM 3', 'vision: golden cap on CAM 3 · conf 0.89'] },
+  ],
+};
+
 const meta = ({ props }: { props: { durationS: number } }) => ({
   durationInFrames: Math.max(1, Math.ceil(props.durationS * FPS)),
 });
@@ -172,5 +206,8 @@ export const Root: React.FC = () => (
     <Composition id='QuestionBeat' component={QuestionBeat} defaultProps={questionDefaults} fps={FPS} width={W} height={H} durationInFrames={Math.ceil(questionDefaults.durationS * FPS)} calculateMetadata={meta} />
     <Composition id='CashOutCameo' component={CashOutCameo} defaultProps={cameoDefaults} fps={FPS} width={W} height={H} durationInFrames={Math.ceil(cameoDefaults.durationS * FPS)} calculateMetadata={meta} />
     <Composition id='Wrap' component={Wrap} defaultProps={wrapDefaults} fps={FPS} width={W} height={H} durationInFrames={Math.ceil(wrapDefaults.durationS * FPS)} calculateMetadata={meta} />
+    <Composition id='FollowSetup' component={FollowSetup} defaultProps={followSetupDefaults} fps={FPS} width={W} height={H} durationInFrames={Math.ceil(followSetupDefaults.durationS * FPS)} calculateMetadata={meta} />
+    <Composition id='FollowCamSlate' component={FollowCamSlate} defaultProps={followSlateDefaults} fps={FPS} width={W} height={H} durationInFrames={Math.ceil(followSlateDefaults.durationS * FPS)} calculateMetadata={meta} />
+    <Composition id='FollowHud' component={FollowHud} defaultProps={followHudDefaults} fps={FPS} width={W} height={H} durationInFrames={Math.ceil(followHudDefaults.durationS * FPS)} calculateMetadata={meta} />
   </>
 );

@@ -205,8 +205,10 @@ function jitter(seed: number, camId: string): number {
 function programCamsOf(ctx: ObBrainContext): string[] {
   const shot = ctx.program.shot;
   if (!shot) return [];
-  if (shot.kind === 'grid' && shot.cams.length === 0)
-    return ctx.cams.filter((c) => c.live).map((c) => c.camId);
+  const allLive = () => ctx.cams.filter((c) => c.live).map((c) => c.camId);
+  if (shot.kind === 'grid' && shot.cams.length === 0) return allLive();
+  if (shot.kind === 'featured' && shot.others.length === 0)
+    return [...new Set([shot.main, ...allLive()])];
   return obShotCams(shot);
 }
 
@@ -374,6 +376,8 @@ function describeTemplate(t: ObShotTemplate): string {
     case 'quad':
     case 'grid':
       return `${t.kind} ${t.cams.join(' + ') || 'all'}`;
+    case 'featured':
+      return `featured ${t.main} + ${t.others.join(' + ') || 'all'}`;
   }
 }
 

@@ -1,41 +1,57 @@
 import { describe, expect, it } from 'vitest';
-import type { ObEffects } from '@smelter-editor/types';
 import {
   describeObGestureCommand,
   isObGestureName,
   obGestureCommand,
 } from '../gestures';
 
-const effects = (over: Partial<ObEffects> = {}): ObEffects => ({
-  grade: 'none',
-  spotlight: false,
-  softBackground: true,
-  ...over,
-});
-
 describe('gestures → commands', () => {
-  it('open palm toggles the spotlight against the current effects', () => {
-    expect(obGestureCommand('open_palm', effects())).toEqual({
-      op: 'fx',
-      effects: { spotlight: true },
-    });
-    expect(obGestureCommand('open_palm', effects({ spotlight: true }))).toEqual(
-      { op: 'fx', effects: { spotlight: false } },
-    );
+  it('every gesture command is scoped to the camera it was seen on', () => {
+    for (const name of ['open_palm', 'thumbs_up', 'peace', 'fist'] as const) {
+      const cmd = obGestureCommand(name, 'cam-7', {});
+      expect(cmd.op).toBe('fx');
+      expect(cmd.op === 'fx' && cmd.camId).toBe('cam-7');
+    }
   });
 
-  it('thumbs-up / peace grade; a fist clears everything', () => {
-    expect(obGestureCommand('thumbs_up', effects())).toEqual({
+  it("open palm toggles the camera's own spotlight override", () => {
+    expect(obGestureCommand('open_palm', 'c1', {})).toEqual({
       op: 'fx',
+      camId: 'c1',
+      effects: { spotlight: true },
+    });
+    expect(obGestureCommand('open_palm', 'c1', { spotlight: true })).toEqual({
+      op: 'fx',
+      camId: 'c1',
+      effects: { spotlight: false },
+    });
+    // A show-wide grade on air does not change the toggle: only the
+    // camera's own override counts.
+    expect(obGestureCommand('open_palm', 'c1', { grade: 'neon' })).toEqual({
+      op: 'fx',
+      camId: 'c1',
+      effects: { spotlight: true },
+    });
+  });
+
+  it('thumbs-up / peace grade; a fist clears the camera', () => {
+    expect(obGestureCommand('thumbs_up', 'c1', {})).toEqual({
+      op: 'fx',
+      camId: 'c1',
       effects: { grade: 'neon' },
     });
-    expect(obGestureCommand('peace', effects())).toEqual({
+    expect(obGestureCommand('peace', 'c1', {})).toEqual({
       op: 'fx',
+      camId: 'c1',
       effects: { grade: 'vhs' },
     });
     expect(
-      obGestureCommand('fist', effects({ grade: 'neon', spotlight: true })),
-    ).toEqual({ op: 'fx', effects: { grade: 'none', spotlight: false } });
+      obGestureCommand('fist', 'c1', { grade: 'neon', spotlight: true }),
+    ).toEqual({
+      op: 'fx',
+      camId: 'c1',
+      effects: { grade: 'none', spotlight: false },
+    });
   });
 
   it('isObGestureName accepts only the known names', () => {

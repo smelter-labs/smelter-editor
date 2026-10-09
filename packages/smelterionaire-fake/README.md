@@ -21,11 +21,19 @@ i animowanym punch-inem do wywołanego zawodnika, a każdy klip zaczyna się
 i kończy złotym wipe'em (stykowe cięcia na timeline czytają się jak
 przejścia reżyserki).
 
+Pakiet zawiera też **FOLLOW demo** (`src/follow.tsx`, orkiestrator
+`server/scripts/follow-fake.mjs`): fake'owy segment „AI znajduje gościa
+w złotej czapce" — V1 to slate'y-placeholdery trzech kamer (każdy opisuje,
+co nagrać: bieganie między kamerami), V2 to przezroczysty overlay HUD
+reżysera (ProRes 4444: chip PROGRAM, log WHY, mini-multiviewer), spięte
+w `follow.xml` dla Premiere + `preview.mp4`.
+
 ## Użycie
 
 ```bash
 cd packages/smelterionaire-fake && pnpm install --ignore-workspace   # raz
 cd server && node scripts/smelterionaire-fake.mjs                    # całość
+cd server && node scripts/follow-fake.mjs                            # FOLLOW demo
 ```
 
 Orkiestrator (`server/scripts/smelterionaire-fake.mjs`):

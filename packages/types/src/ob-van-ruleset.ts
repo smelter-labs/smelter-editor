@@ -113,6 +113,11 @@ export function parseObShotOf<C extends string>(
       const cams = refs(raw.cams ?? [], 0, 8);
       return cams ? { kind: "grid", cams } : null;
     }
+    case "featured": {
+      const main = ref(raw.main);
+      const others = refs(raw.others ?? [], 0, 8);
+      return main && others ? { kind: "featured", main, others } : null;
+    }
     case "speaker-slides": {
       const speaker = ref(raw.speaker);
       const slides = ref(raw.slides);
@@ -159,6 +164,9 @@ export function obShotCams<C>(shot: ObShotOf<C>): C[] {
     case "quad":
     case "grid":
       cams = [...shot.cams];
+      break;
+    case "featured":
+      cams = [shot.main, ...shot.others];
       break;
     case "speaker-slides":
       cams = [shot.slides, shot.speaker];

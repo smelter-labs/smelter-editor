@@ -353,7 +353,7 @@ class GestureGate:
     None / different name resets the hold."""
 
     hold_s: float = 0.5
-    cooldown_s: float = 2.0
+    cooldown_s: float = 1.2
     _candidate: str | None = None
     _candidate_since: float = 0.0
     _blocked_until: float = 0.0

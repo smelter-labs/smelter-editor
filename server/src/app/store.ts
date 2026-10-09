@@ -136,7 +136,13 @@ export type PersonBox = {
  * A box after cross-frame tracking: carries a stable identity so it keeps the
  * same Pac-Man ghost color and can be smoothly interpolated across detections.
  */
-export type TrackedPersonBox = PersonBox & { id: number; color: number };
+export type TrackedPersonBox = PersonBox & {
+  id: number;
+  color: number;
+  /** Updates since the last matched detection: 0 = seen in this very frame,
+   * >0 = the tracker is coasting the box (miss tolerance). */
+  missed?: number;
+};
 
 /**
  * Building detection boxes (Ghost City), normalized to 0..1 of the input frame,
@@ -915,6 +921,8 @@ export type ObHudLook = {
   spotlight: boolean;
   /** Spotlight centre (−1..1) and size factor on a virtual shot's window. */
   focus?: { cx: number; cy: number; scale: number };
+  /** Gold frame + HOST chip on the confirmed host's picture. */
+  hostTag?: boolean;
 };
 
 /**

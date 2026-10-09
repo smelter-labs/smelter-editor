@@ -521,6 +521,7 @@ async def run_video_once(input_id: str) -> int:
 
     reader = asyncio.create_task(read_frames())
     last_at = 0.0
+    last_analysis_at = 0.0
     try:
         while input_id in active_inputs and not (reader_done.is_set() and not queue):
             await frame_ready.wait()
@@ -528,7 +529,12 @@ async def run_video_once(input_id: str) -> int:
             state = active_inputs.get(input_id)
             if state is None:
                 break
-            interval = 1.0 / (_param_hz(state.params) * pace_factor(_video_load_s(), LOAD_BUDGET_S))
+            analysis_interval = 1.0 / (_param_hz(state.params) * pace_factor(_video_load_s(), LOAD_BUDGET_S))
+            hands_on = param_flag(state.params, "hands", False)
+            # Hand gestures tick on their own fast clock (HandLandmarker on
+            # one camera is ~10 ms): the host's gestures stay snappy even when
+            # the global pace factor throttles the heavy YOLO analysis.
+            interval = min(analysis_interval, 1.0 / HANDS_HZ) if hands_on else analysis_interval
             pause = interval - (time.monotonic() - last_at)
             if pause > 0:
                 await asyncio.sleep(pause)
@@ -540,13 +546,19 @@ async def run_video_once(input_id: str) -> int:
             rgb = np.ascontiguousarray(frame.rgba[:, :, :3])
             state.last_frame = (int(frame.pts_nanos), snapshot_copy(rgb))
             t0 = time.monotonic()
-            data = await loop.run_in_executor(_INFER, analyse_frame, rgb, state.params, meter, t0)
-            if param_flag(state.params, "hands", False):
+            if hands_on:
                 gesture = await loop.run_in_executor(_INFER, detect_gesture, state, rgb, t0)
                 if gesture:
                     await send_result(input_id, frame.pts_nanos, {"kind": "gesture", "name": gesture, "conf": 1.0})
             elif state.hands_tracker is not None:
                 release_hands(state)
+            # Heavy analysis stays on its own paced clock (0.9: timer jitter
+            # must not skip a due tick). The first frame always analyses — it
+            # pays for the model load.
+            if sent > 0 and t0 - last_analysis_at < analysis_interval * 0.9:
+                continue
+            last_analysis_at = t0
+            data = await loop.run_in_executor(_INFER, analyse_frame, rgb, state.params, meter, t0)
             if sent > 0:  # the first frame pays for the model load — not a pace sample
                 state.proc_ema_s = ema(state.proc_ema_s, time.monotonic() - t0, PROC_EMA_ALPHA)
             data["procMs"] = round((time.monotonic() - received_at) * 1000.0, 1)
@@ -707,6 +719,10 @@ async def send_result(input_id: str, pts_nanos: int, data: dict) -> None:
 # OB_VAN_HAND_MODEL at it). Everything degrades gracefully, like Silero.
 
 GESTURE_MAX_W = 320
+# Gesture sampling rate on the host camera, independent of the analysis pace
+# (the gate needs a few consecutive identical classifications — at 12 Hz a
+# held gesture fires in ~0.5 s instead of seconds on a throttled loop).
+HANDS_HZ = 12.0
 HAND_MODEL_URL = (
     "https://storage.googleapis.com/mediapipe-models/hand_landmarker/"
     "hand_landmarker/float16/latest/hand_landmarker.task"

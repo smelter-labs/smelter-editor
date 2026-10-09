@@ -78,6 +78,7 @@ const SHOT_WORD: Record<ObShot['kind'], string> = {
   pip: 'PIP',
   quad: 'QUAD',
   grid: 'GRID',
+  featured: 'FEATURED',
   'speaker-slides': 'SLIDES',
   virtual: 'VIRTUAL',
 };
@@ -105,6 +106,10 @@ export function describeShot(
       return shot.cams.length
         ? `${word} · ${shot.cams.map((c) => camNumber(c, cams)).join(' + ')}`
         : `${word} · ALL`;
+    case 'featured':
+      return shot.others.length
+        ? `${word} · ${camLabel(shot.main, cams)} + ${shot.others.map((c) => camNumber(c, cams)).join(' + ')}`
+        : `${word} · ${camLabel(shot.main, cams)} + ALL`;
     case 'speaker-slides':
       return `${word} · ${camLabel(shot.speaker, cams)} + ${camNumber(shot.slides, cams)}`;
   }

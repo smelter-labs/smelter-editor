@@ -1,9 +1,74 @@
 import React from 'react';
-import { Shader, View } from '@swmansion/smelter';
+import { Shader, Text, View } from '@swmansion/smelter';
 import type { ShaderParamStructField } from '@swmansion/smelter';
 import type { ObHudLook } from '../app/store';
 
 type Resolution = { width: number; height: number };
+
+/** Panel amber (ob-kit `OB.amber`) — the HOST marking matches the desk. */
+const HOST_GOLD = '#F5B301';
+const HOST_INK = '#141414';
+
+/**
+ * Gold frame + HOST chip over the confirmed host's picture. Drawn in the
+ * camera's content space, so it scales with the tile wherever the stage puts
+ * it (featured main, grid cell, solo).
+ */
+function HostTag({ width, height }: Resolution) {
+  const k = height / 1080;
+  const border = Math.max(2, Math.round(10 * k));
+  const fs = Math.max(12, Math.round(52 * k));
+  const chipH = Math.round(fs * 1.5);
+  const chipW = Math.round(fs * 3.2);
+  const inset = Math.max(4, Math.round(32 * k));
+  return (
+    <View style={{ top: 0, left: 0, width, height }}>
+      {/* width/height exclude the border while top/left measure to its OUTER
+          edge (same engine quirk as SmoothedBoxes/KbtHud) — size the box down
+          by 2*border or the right/bottom strokes get clipped by the tile. */}
+      <View
+        style={{
+          top: 0,
+          left: 0,
+          width: Math.max(2, width - 2 * border),
+          height: Math.max(2, height - 2 * border),
+          borderWidth: border,
+          borderColor: HOST_GOLD,
+        }}
+      />
+      <View
+        style={{
+          top: inset,
+          left: inset,
+          width: chipW,
+          height: chipH,
+          backgroundColor: HOST_GOLD,
+          borderRadius: Math.round(6 * k) + 2,
+        }}
+      />
+      <View
+        style={{
+          top: inset + Math.round((chipH - fs * 1.2) / 2),
+          left: inset,
+          width: chipW,
+          height: Math.round(fs * 1.45),
+          overflow: 'hidden',
+        }}>
+        <Text
+          style={{
+            fontSize: fs,
+            color: HOST_INK,
+            width: chipW,
+            align: 'center',
+            fontFamily: 'Big Shoulders Display',
+            fontWeight: 'extra_bold',
+          }}>
+          HOST
+        </Text>
+      </View>
+    </View>
+  );
+}
 
 /** hsl-adjust params per grade (mix 0 = untouched picture). */
 const GRADE_HSL: Record<
@@ -93,7 +158,7 @@ export function ObCamLook({
       </Shader>
     );
   }
-  return (
+  content = (
     <Shader
       shaderId='vignette'
       resolution={resolution}
@@ -114,5 +179,23 @@ export function ObCamLook({
       }}>
       {sized(content, resolution)}
     </Shader>
+  );
+  // The outer View keeps the tree shape stable whether or not the HOST
+  // marking shows, so toggling it never rebuilds the video node. The shader
+  // stack sits in a positioned full-frame View (a Shader left in flow gets
+  // pushed off screen), the marking paints on top.
+  return (
+    <View style={{ width: resolution.width, height: resolution.height }}>
+      <View
+        style={{
+          top: 0,
+          left: 0,
+          width: resolution.width,
+          height: resolution.height,
+        }}>
+        {content}
+      </View>
+      {look.hostTag ? <HostTag {...resolution} /> : null}
+    </View>
   );
 }

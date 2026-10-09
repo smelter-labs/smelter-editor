@@ -7,6 +7,7 @@ import type {
   ObConfig,
   ObConfigPatch,
   ObControlAction,
+  ObCamFx,
   ObEffects,
   ObErrorCode,
   ObHostState,
@@ -592,6 +593,8 @@ export class ObVanController {
 
   // ── program extras ──
   private effects: ObEffects = { ...OB_DEFAULT_CONFIG.effects };
+  /** Per-camera effect overrides (host gestures); absent = show-wide FX. */
+  private camFx = new Map<string, ObCamFx>();
   private lowerThird: ObActiveLowerThird | null = null;
   private titleSegment: string | null = null;
   private rundownIndex = -1;
@@ -1021,6 +1024,9 @@ export class ObVanController {
     if (camId === this.gestureCamId) return;
     const prev = this.gestureCamId;
     this.gestureCamId = camId;
+    // Gesture effects belong to the host: when they move on (or are lost),
+    // the old camera's picture goes back to the show-wide look.
+    if (prev) this.camFx.delete(prev);
     for (const id of [prev, camId]) {
       if (!id) continue;
       const cam = this.cams.get(id);
@@ -1031,6 +1037,10 @@ export class ObVanController {
           console.warn(`[ob] gesture reconfigure failed for ${id}`, err),
         );
     }
+    // The on-air host marking (gold frame) lives in the stage looks — re-lay
+    // the current shot so it appears / moves / clears without a cut.
+    this.restage();
+    this.publishHud();
   }
 
   private async startCamera(
@@ -1217,6 +1227,7 @@ export class ObVanController {
     this.signals.removeCam(cam.id);
     this.hostTracker.removeCam(cam.id);
     if (this.gestureCamId === cam.id) this.gestureCamId = null;
+    this.camFx.delete(cam.id);
     this.settleUntil.delete(cam.id);
     this.lastTally.delete(cam.id);
     if (this.preferCam?.camId === cam.id) this.preferCam = null;
@@ -1282,6 +1293,18 @@ export class ObVanController {
     const rest = obShotCams(shot).filter(alive);
     if (shot.kind === 'grid' && shot.cams.length === 0) {
       return this.liveCams().some((c) => c.id !== camId) ? shot : null;
+    }
+    if (shot.kind === 'featured') {
+      if (shot.main !== camId) {
+        // A strip camera left; dynamic others re-resolve by themselves.
+        return shot.others.length
+          ? { kind: 'featured', main: shot.main, others: rest.slice(1) }
+          : shot;
+      }
+      // The featured camera itself left — fall back to everyone.
+      return this.liveCams().some((c) => c.id !== camId)
+        ? { kind: 'grid', cams: [] }
+        : null;
     }
     if (rest.length >= 2 && (shot.kind === 'quad' || shot.kind === 'grid'))
       return { kind: shot.kind, cams: rest };
@@ -1469,8 +1492,11 @@ export class ObVanController {
       }
     }
     if (patch.host) {
-      if (typeof patch.host.enabled === 'boolean')
+      if (typeof patch.host.enabled === 'boolean') {
+        const turnedOn = patch.host.enabled && !c.host.enabled;
         c.host.enabled = patch.host.enabled;
+        if (turnedOn && this.phase === 'on-air') this.llm?.warmupHost();
+      }
       if (typeof patch.host.description === 'string') {
         const description = patch.host.description
           .trim()
@@ -1621,6 +1647,10 @@ export class ObVanController {
         }
         this.prog = { ...this.prog, sinceMs: now };
         this.setPhase('on-air');
+        // Warm the identify path now, so the first gold-cap sighting is not
+        // the call that pays the API cold start (can exceed the 3 s
+        // side-channel headroom and make the first cut feel late).
+        if (this.config.host.enabled) this.llm?.warmupHost();
         if (this.quizOn()) {
           this.playQuizSting('intro');
           this.warmQuizTts();
@@ -1655,6 +1685,7 @@ export class ObVanController {
         this.signals.setHost(null);
         this.syncGestureCam(null);
         this.lastGesture = null;
+        this.camFx.clear();
         this.quiz.reset();
         this.signals.setQuizTurn(null);
         this.quizHostLine = null;
@@ -1811,6 +1842,8 @@ export class ObVanController {
       case 'fx':
         if (cmd.effects.grade !== undefined && !isGrade(cmd.effects.grade))
           return { ok: false, code: 'bad_action', message: 'Unknown grade.' };
+        if (cmd.camId !== undefined)
+          return this.applyCamFx(cmd.camId, cmd.effects, source, rs);
         return this.applyDecision({ effects: cmd.effects, ...rs }, source);
       case 'lower_third':
         return this.lowerThirdCommand(cmd, source, reasons);
@@ -3020,6 +3053,49 @@ export class ObVanController {
     return out;
   }
 
+  /**
+   * Per-camera FX override (host gestures): only `camId`'s picture changes.
+   * `grade: 'none'` / `spotlight: false` clear that key, so the camera falls
+   * back to the show-wide effects rather than pinning an explicit "off".
+   */
+  private applyCamFx(
+    camId: string,
+    patch: Partial<ObEffects>,
+    source: ObActionSource,
+    rs: { reasons?: string[] },
+  ): ObCommandResult {
+    const cam = this.cams.get(camId);
+    if (!cam)
+      return { ok: false, code: 'unknown_cam', message: `No camera ${camId}.` };
+    const next: ObCamFx = { ...this.camFx.get(camId) };
+    if (patch.grade !== undefined) {
+      if (patch.grade === 'none') delete next.grade;
+      else next.grade = patch.grade;
+    }
+    if (typeof patch.spotlight === 'boolean') {
+      if (patch.spotlight) next.spotlight = true;
+      else delete next.spotlight;
+    }
+    if (next.grade !== undefined || next.spotlight !== undefined)
+      this.camFx.set(camId, next);
+    else this.camFx.delete(camId);
+    this.restage();
+    this.pushLog({
+      source,
+      kind: 'fx',
+      tone: source === 'operator' ? 'chalk' : 'ai',
+      label: 'FX',
+      text: `CAM ${cam.number} · ${Object.entries(patch)
+        .map(([k, v]) => `${k} ${String(v)}`)
+        .join(' · ')}`,
+      camId,
+      ...rs,
+    });
+    this.publishHud();
+    this.markStateDirty();
+    return { ok: true };
+  }
+
   private mergeEffects(patch: Partial<ObEffects>, alsoConfig: boolean): void {
     const next = { ...this.effects };
     if (patch.grade !== undefined && isGrade(patch.grade))
@@ -3517,6 +3593,8 @@ export class ObVanController {
       this.deps.getResolution(),
       this.effects,
       crop,
+      this.gestureCamId,
+      this.camFx,
     );
   }
 
@@ -4059,7 +4137,7 @@ export class ObVanController {
       return;
     this.lastGestureAt.set(d.name, now);
     this.lastGesture = { camId, name: d.name, atMs: now };
-    const cmd = obGestureCommand(d.name, this.effects);
+    const cmd = obGestureCommand(d.name, camId, this.camFx.get(camId) ?? {});
     const r = this.operate(cmd, 'operator', [`gesture: ${d.name}`]);
     this.pushLog({
       source: 'operator',
@@ -4410,6 +4488,9 @@ export class ObVanController {
         lastDecisionAtMs: this.lastDecisionAt,
       },
       effects: { ...this.effects },
+      camFx: Object.fromEntries(
+        [...this.camFx].map(([id, fx]) => [id, { ...fx }]),
+      ),
       lowerThird: this.lowerThird ? { ...this.lowerThird } : null,
       titleBug: this.titleBug(),
       audio: { ...this.config.audio },

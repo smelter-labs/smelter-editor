@@ -124,6 +124,21 @@ describe('camera selectors', () => {
       kind: 'grid',
       cams: [],
     });
+    // `others: []` stays dynamic; an explicit other equal to the main drops.
+    expect(
+      resolveShot(e, { kind: 'featured', main: 'trigger', others: [] }, 'c2'),
+    ).toEqual({ kind: 'featured', main: 'c2', others: [] });
+    expect(
+      resolveShot(
+        e,
+        { kind: 'featured', main: 'trigger', others: ['trigger', 'program'] },
+        'c2',
+      ),
+    ).toEqual({ kind: 'featured', main: 'c2', others: ['c1'] });
+    expect(
+      resolveShot(e, { kind: 'featured', main: 'audience', others: [] }, null),
+    ).toBeNull();
+    expect(mainCamOf({ kind: 'featured', main: 'c3', others: [] })).toBe('c3');
     expect(
       mainCamOf({ kind: 'speaker-slides', speaker: 'c2', slides: 'c4' }),
     ).toBe('c2');

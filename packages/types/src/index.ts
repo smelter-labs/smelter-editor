@@ -421,6 +421,7 @@ export type {
   ObTransitionType,
   ObTransition,
   ObGrade,
+  ObCamFx,
   ObEffects,
   ObLowerThird,
   ObActiveLowerThird,

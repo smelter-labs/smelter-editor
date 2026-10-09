@@ -26,7 +26,9 @@ import {
 import {
   type CamSession,
   clearCamSession,
+  readCamPrefs,
   readCamSession,
+  writeCamPrefs,
   writeCamSession,
 } from './cam-session';
 import { useCamMedia } from './use-cam-media';
@@ -428,8 +430,11 @@ export function useCamSocket(roomId: string, serverParam: string | null) {
     }
     const session = readCamSession(roomId);
     sessionRef.current = session;
-    setRestored(session);
-    if (session.facing) media.presetFacing(session.facing);
+    // Prefill from the room session, falling back to this phone's last-used
+    // settings — a fresh room (new event) still gets name/role/talent back.
+    const restoredSession = { ...readCamPrefs(), ...session };
+    setRestored(restoredSession);
+    if (restoredSession.facing) media.presetFacing(restoredSession.facing);
     if (session.camKey) resumeRef.current = 'pending';
     checkRoom();
     // Re-arm after a StrictMode unmount/remount — the cleanup below set the
@@ -467,11 +472,13 @@ export function useCamSocket(roomId: string, serverParam: string | null) {
   const join = useCallback(
     (info: CamJoinInfo) => {
       joinInfoRef.current = info;
-      saveSession({
+      const seat = {
         name: info.name,
         role: info.role,
         talent: info.talent ?? undefined,
-      });
+      };
+      saveSession(seat);
+      writeCamPrefs(seat);
       wantsJoinRef.current = true;
       const msg = joinMessage();
       if (msg) send(wsRef.current, msg);
@@ -483,6 +490,7 @@ export function useCamSocket(roomId: string, serverParam: string | null) {
   const requestCam = useCallback(() => {
     requestCamSilent();
     saveSession({ wantsCam: true, facing: facingRef.current });
+    writeCamPrefs({ facing: facingRef.current });
   }, [facingRef, requestCamSilent, saveSession]);
 
   /** Stop publishing on purpose; the camera stays on for re-framing. */

@@ -96,7 +96,7 @@ wyjścia LLM.
 | MATCH | 1,5 / 12 s | replay po „burście" ruchu | wirtualna kamera za piłką, kamery bramkowe przy zamieszaniu, plan ogólny po zgubieniu piłki |
 | STAGE | 6 / 45 s, dissolve 900 ms | blokada monologu | najazd na mówiącego aktora + spotlight, wejścia z kulis, plan ogólny na zespół i w ciszy |
 | GIG | 1,2 / 8 s | cięcia na beat | szeroko + neon w głośnych partiach, cięcie na beat do innej kamery, publiczność zoom-punchem, zwolnienie w cichych partiach |
-| FOLLOW | 2 / 60 s, cięcia | — (deterministyczne demo) | podążaj za potwierdzonym hostem (p90), solo na skok ruchu / burst, grid wszystkich domyślnie |
+| FOLLOW | 2 / 60 s, cięcia | — (deterministyczne demo) | featured na potwierdzonym hoście (p90: host duży + reszta w pasku, złota ramka HOST), solo na skok ruchu / burst, grid wszystkich domyślnie |
 | QUIZ | 2,5 / 30 s, cięcia | — (steruje maszyna quizu) | split host+odpytywany (`quizTurn`, p85), solo na myślącego na głos (p87), split na dialog, solo hosta, grid studia między rundami |
 
 Gdy żadna reguła nie pasuje, działa **scoring** (wagi presetu: mowa, ruch,
@@ -223,24 +223,34 @@ Najprostszy pokaz "LLM jako reżyser": 4 kamery na żywo, na każdej coś się
 dzieje, program pokazuje **grid wszystkich kamer**. Gdy prowadzący (w **złotej
 czapce z daszkiem** — opis jest konfigurowalny) wejdzie w kadr którejś kamery,
 YOLO zauważa nową osobę, worker robi zrzut klatki, a LLM (vision, Haiku)
-potwierdza: *to host* → cięcie na tę kamerę i podążanie za nim. Gdy host
+potwierdza: *to host* → cięcie na shot **featured**: host duży po lewej
+(ze **złotą ramką i plakietką HOST** na obrazie), pozostałe kamery widoczne
+w pasku po prawej; featured podąża za hostem między kamerami. Gdy host
 zniknie na ~3 s, wraca grid; spike ruchu na dowolnej kamerze robi solo
 "bo coś się dzieje". Host steruje efektami **gestami dłoni** na swojej
 kamerze (MediaPipe, tylko tam): otwarta dłoń = spotlight, kciuk = grade
-neon, wiktoria = vhs, pięść = czyści.
+neon, wiktoria = vhs, pięść = czyści. Efekty gestów działają **tylko na
+obrazie kamery hosta** (komenda `fx` z `camId` → per-kamerowe nadpisanie w
+`camFx`, show-wide FX z panelu zostaje nietknięte); przy przejściu /
+utracie hosta stara kamera wraca do wyglądu programu.
 
-**Przepływ**: `signals.ts` (PeopleTracker, debounce 700 ms, identity 4 s) →
-`host.ts` (`ObHostTracker`: kolejka kandydatów, 1 identify naraz, cooldown
-8 s/kamerę, denied-recheck po 10 s, re-verify co 25 s, host-loss 3 s) →
+**Przepływ**: `signals.ts` (PeopleTracker, debounce 450 ms + wymóg świeżej
+detekcji przy ogłoszeniu — fantomy w trybie coast nigdy nie ogłaszają,
+identity 4 s) → `host.ts` (`ObHostTracker`: kolejka kandydatów, 1 identify
+naraz, cooldown 5 s/kamerę, denied-recheck po 6 s, re-verify co 25 s,
+host-loss 3 s) →
 `capture` do workera → `llm/identify.ts` (strict tool `identify_host`,
 obraz ≤640 px ≈ 300 tokenów) → sygnał `host` → reguła `host-follow` (p90,
 przebija min-hold). Grid trzyma zawsze-prawdziwa reguła `hold >= 0`
 (`default-grid`, p10); **audio musi być `mix`** — pusty grid nie ma kamer
 "na antenie", więc `follow` wyciszyłby wszystko (karta FOLLOW w setupie
 ustawia mix sama). Gesty: worker liczy MediaPipe Hands tylko na kamerze z
-paramem `hands` (kontroler przełącza go za potwierdzonym hostem),
-klasyfikator + bramka hold 0,5 s/cooldown 2 s w `analysis.py`, mapowanie na
-komendy `fx` w `gestures.ts`.
+paramem `hands` (kontroler przełącza go za potwierdzonym hostem) na własnym
+takcie 12 Hz, niezależnym od pacingu YOLO (na zdławionym CPU gest dalej
+odpala w ~0,5–0,7 s); klasyfikator + bramka hold 0,5 s/cooldown 1,2 s w
+`analysis.py`, mapowanie na komendy `fx` w `gestures.ts`. Przy GO LIVE z
+włączoną host-detekcją kontroler robi mały warm-up identify (TLS + cache
+promptu), więc pierwsze prawdziwe wywołanie nie płaci zimnego startu.
 
 **Przycisk QUICK DEMOS** (najszybsza droga): raz na maszynę
 `node scripts/ob-follow-demo-setup.mjs` — buduje `data/mp4s/ob-demo/follow/`
@@ -265,7 +275,7 @@ dołącz telefon przez QR → GO LIVE → wejdź w kadr w czapce.
 
 Ścieżka vision jest zweryfikowana na prawdziwym API (demo z tłami: 8 wywołań
 identify / 2 min, ~8k tokenów, $0.03 — model opisuje klatki i odmawia, bo
-nikt nie ma złotej czapki). Odmowy i cooldowny (1 w locie, 8 s/kamerę,
+nikt nie ma złotej czapki). Odmowy i cooldowny (1 w locie, 5 s/kamerę,
 denied-recheck raz) trzymają tempo ~kilku wywołań na minutę; model bierze
 `OB_VAN_LLM_MODEL`. `OB_HOST_DEBUG=1` wypisuje eventy/starty/błędy identify
 na stdout.
@@ -417,10 +427,18 @@ liczymy dokładny czas i mouth-track 50 Hz (lip-sync puppetów przez
 `getLiveMouth` na `ObPuppetConfig` — runtime'owa mapa w RoomState, zustand
 nietykany) → ffmpeg muxuje do mp4 (czarne 64×36 + AAC, jak stingery) →
 cache dyskowy `data/ob-tts/<sha1(voice|text)>.mp4` + sidecar json (canned
-linie hosta po pierwszym show grają z dysku). Klipy (i stingery) niosą ~3 s
-ogona ciszy i są wyrejestrowywane dopiero po nim — mix silnika gubi audio
-bardzo krótko żyjących inputów (zdiagnozowane nagraniami: bez ogona ginęła
-większość kwestii, reprodukowalne też na stingerach sprzed TTS). Odtwarzanie: osobny slot
+linie hosta po pierwszym show grają z dysku). Klipy niosą ~1,2 s ciszy na
+GŁOWIE (InputStream montuje się dopiero po `registerInput` — bez głowy
+ginęły pierwsze sylaby) i ~3 s na ogonie; kolejka mowy to **scheduler
+slotów**: każda kwestia rejestruje się od razu z głosem wslotowanym za
+poprzednią (atomowa rezerwacja — dwie kwestie nigdy nie mówią naraz),
+więc input dostaje sekundy rozgrzewki dekodera przed pierwszym słowem.
+Zużyte inputy sprząta „quiet-air sweep" (unregister szarpie miksem).
+**Znany limit (silnik, macOS dev)**: mix potrafi per pokój/boot nie
+dostarczać audio klipowych inputów wcale — loteria reprodukowalna też na
+stingerach sprzed TTS (commit cb673761), więc to nie regresja głosów;
+do obejrzenia engine-side / na boksie GPU. Objaw: show niemy poza
+carrierami → zrestartować serwer i spróbować ponownie. Odtwarzanie: osobny slot
 `speech` obok `sfx` (sting nie utnie kwestii), kolejka SZEREGOWA z 300 ms
 przerwą; AUTO czeka na koniec kwestii (`quizSpeechBusyUntilMs`). Latencję
 maskują pre-warmowane wstawki: murmur zawodnika od razu przy `ask`

@@ -600,7 +600,11 @@ describe('FOLLOW', () => {
     const hostCut = show.changes.find(
       (c) => c.decision.ruleId === 'host-follow',
     );
-    expect(hostCut?.shot).toEqual(solo('c2'));
+    expect(hostCut?.shot).toEqual({
+      kind: 'featured',
+      main: 'c2',
+      others: [],
+    });
     // p90 ≥ 80 cuts through the fresh grid's min hold. The cut lands on the
     // AIR clock, which runs ~3 s behind the signals (side-channel lookahead),
     // so "immediately" means within lookahead + a few ticks of the confirm.
@@ -626,7 +630,10 @@ describe('FOLLOW', () => {
     const cuts = show.changes.filter(
       (c) => c.decision.ruleId === 'host-follow',
     );
-    expect(cuts.map((c) => c.shot)).toEqual([solo('c2'), solo('c3')]);
+    expect(cuts.map((c) => c.shot)).toEqual([
+      { kind: 'featured', main: 'c2', others: [] },
+      { kind: 'featured', main: 'c3', others: [] },
+    ]);
   });
 
   it('without a host, a motion spike on an off-program camera solos it, then the grid returns', () => {

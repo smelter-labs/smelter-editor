@@ -116,7 +116,11 @@ export function parseObCommand(raw: unknown): ObOperatorCommand | null {
     }
     case 'fx': {
       const effects = parseEffectsPatch(raw.effects);
-      return effects ? { op: 'fx', effects } : null;
+      if (!effects) return null;
+      const cmd: ObOperatorCommand = { op: 'fx', effects };
+      const camId = str(raw.camId, 80);
+      if (camId) cmd.camId = camId;
+      return cmd;
     }
     case 'lower_third': {
       const cmd: ObOperatorCommand = { op: 'lower_third' };

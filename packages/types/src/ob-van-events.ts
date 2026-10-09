@@ -104,6 +104,8 @@ export type ObShotOf<C> =
   | { kind: "quad"; cams: C[] }
   /** `cams: []` = every live camera. */
   | { kind: "grid"; cams: C[] }
+  /** `main` big, the rest in a side strip; `others: []` = every other live camera. */
+  | { kind: "featured"; main: C; others: C[] }
   | { kind: "speaker-slides"; speaker: C; slides: C }
   | { kind: "virtual"; cam: C; target?: ObAttentionTarget; zoom?: ObZoom };
 
@@ -116,6 +118,7 @@ export const OB_SHOT_KINDS: readonly ObShotKind[] = [
   "pip",
   "quad",
   "grid",
+  "featured",
   "speaker-slides",
   "virtual",
 ];
@@ -164,6 +167,12 @@ export type ObEffects = {
   /** Blurred copy of the main camera behind split / PiP / portrait shots. */
   softBackground: boolean;
 };
+
+/**
+ * Per-camera effect override (host gestures): only that camera's picture is
+ * graded / spotlit; an absent key falls back to the show-wide effects.
+ */
+export type ObCamFx = { grade?: ObGrade; spotlight?: boolean };
 
 export type ObLowerThird = {
   name: string;
@@ -622,6 +631,8 @@ export type ObState = {
     lastDecisionAtMs: number | null;
   };
   effects: ObEffects;
+  /** Per-camera effect overrides (host gestures), keyed by camId. */
+  camFx?: Record<string, ObCamFx>;
   lowerThird: ObActiveLowerThird | null;
   titleBug: ObTitleBug;
   audio: ObAudioPolicy;
@@ -656,7 +667,8 @@ export type ObOperatorCommand =
       holdMs?: number;
     }
   | { op: "transition"; transition: Partial<ObTransition> }
-  | { op: "fx"; effects: Partial<ObEffects> }
+  /** `camId` scopes the patch to that one camera's picture (host gestures). */
+  | { op: "fx"; effects: Partial<ObEffects>; camId?: string }
   | {
       op: "lower_third";
       camId?: string;

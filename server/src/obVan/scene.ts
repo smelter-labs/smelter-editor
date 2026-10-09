@@ -14,6 +14,7 @@
  */
 import type {
   ObAudioPolicy,
+  ObCamFx,
   ObEffects,
   ObGrade,
   ObPipCorner,
@@ -51,6 +52,8 @@ export type ObTileLook = {
   grade: ObGrade;
   spotlight: boolean;
   focus?: { cx: number; cy: number; scale: number };
+  /** Gold frame + HOST chip on the confirmed host's picture. */
+  hostTag?: boolean;
 };
 
 export type ObStage = {
@@ -227,6 +230,42 @@ export function gridRects(
   );
 }
 
+/**
+ * Featured camera big on the left (72 %), the rest stacked in the right
+ * column. With no others the main picture simply fills the frame.
+ */
+export function featuredRects(
+  mainAspect: number,
+  otherAspects: readonly number[],
+  res: { width: number; height: number },
+): { main: ObRect; others: ObRect[] } {
+  if (otherAspects.length === 0)
+    return { main: fitRect(mainAspect, fullRect(res)), others: [] };
+  const k = res.height / 1080;
+  const m = MARGIN_1080 * k;
+  const gap = GAP_1080 * k;
+  const colGap = GAP_1080 * 2 * k;
+  const mainBox = {
+    x: m,
+    y: m,
+    width: res.width * 0.72 - m - colGap / 2,
+    height: res.height - 2 * m,
+  };
+  const stripX = res.width * 0.72 + colGap / 2;
+  const stripW = res.width * 0.28 - m - colGap / 2;
+  const n = otherAspects.length;
+  const cellH = (res.height - 2 * m - gap * (n - 1)) / n;
+  const others = otherAspects.map((a, i) =>
+    fitRect(a, {
+      x: stripX,
+      y: m + i * (cellH + gap),
+      width: stripW,
+      height: cellH,
+    }),
+  );
+  return { main: fitRect(mainAspect, mainBox), others };
+}
+
 /** Slides big on the left (70 %), the speaker in the right column (30 %). */
 export function speakerSlidesRects(
   slidesAspect: number,
@@ -342,6 +381,19 @@ function placeShot(
       const rects = gridRects(ids.map(aspect), res);
       return ids.map((camId, i) => ({ camId, rect: rects[i] }));
     }
+    case 'featured': {
+      if (!has(shot.main)) return [];
+      const others = (
+        shot.others.length
+          ? unique(shot.others)
+          : [...byId.values()].filter((c) => c.live).map((c) => c.id)
+      ).filter((id) => has(id) && id !== shot.main);
+      const r = featuredRects(aspect(shot.main), others.map(aspect), res);
+      return [
+        { camId: shot.main, rect: r.main },
+        ...others.map((camId, i) => ({ camId, rect: r.others[i] })),
+      ];
+    }
     case 'speaker-slides': {
       const r = speakerSlidesRects(
         aspect(shot.slides),
@@ -368,6 +420,7 @@ export function primaryCam(shot: ObShot): string {
     case 'virtual':
       return shot.cam;
     case 'pip':
+    case 'featured':
       return shot.main;
     case 'speaker-slides':
       return shot.speaker;
@@ -401,6 +454,7 @@ function needsBackdrop(
     case 'speaker-slides':
     case 'quad':
     case 'grid':
+    case 'featured':
       return true;
     case 'virtual':
       return false;
@@ -422,6 +476,8 @@ export function buildStage(
   res: { width: number; height: number },
   effects: ObEffects,
   virtualCrop: Crop | null = null,
+  hostCamId: string | null = null,
+  camFx?: ReadonlyMap<string, ObCamFx>,
 ): ObStage {
   const byId = new Map(cams.map((c) => [c.id, c]));
   const placed = shot ? placeShot(shot, byId, res, virtualCrop) : [];
@@ -443,15 +499,19 @@ export function buildStage(
   const looks: Record<string, ObTileLook> = {};
   for (const cam of cams) {
     if (!cam.inputId) continue;
+    // Per-camera overrides (host gestures) beat the show-wide effects, but
+    // only for that one camera's picture.
+    const fx = camFx?.get(cam.id);
     const look: ObTileLook = {
-      grade: effects.grade,
-      spotlight: spot.has(cam.id),
+      grade: fx?.grade ?? effects.grade,
+      spotlight: fx?.spotlight ?? spot.has(cam.id),
     };
     const focus =
       shot?.kind === 'virtual' && shot.cam === cam.id
         ? focusOf(virtualCrop, cam)
         : null;
     if (look.spotlight && focus) look.focus = focus;
+    if (cam.id === hostCamId) look.hostTag = true;
     looks[cam.inputId] = look;
   }
   const primaryInput = shot ? byId.get(primaryCam(shot))?.inputId : null;

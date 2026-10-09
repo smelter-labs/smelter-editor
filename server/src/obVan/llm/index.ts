@@ -17,7 +17,7 @@ import {
   type ObTimers,
 } from './analyst';
 import { generateRuleset } from './brief';
-import { identifyHost } from './identify';
+import { identifyHost, warmupIdentify } from './identify';
 import { quizHint } from './hint';
 import {
   ObLlmBudget,
@@ -86,6 +86,7 @@ export function createObLlm(
       status,
       generateRuleset: () => Promise.reject(unavailable()),
       identifyHost: () => Promise.reject(unavailable()),
+      warmupHost: () => undefined,
       quizHint: () => Promise.reject(unavailable()),
       setAnalyst(enabled, s) {
         wanted = enabled;
@@ -200,6 +201,14 @@ export function createObLlm(
       return runOneShot((signal, onUsage) =>
         identifyHost(llm, input, { signal, onUsage }),
       );
+    },
+
+    warmupHost() {
+      // Best-effort: `busy` / `budget` / transport errors are all fine — the
+      // show must never notice a failed warm-up.
+      void runOneShot((signal, onUsage) =>
+        warmupIdentify(llm, { signal, onUsage }),
+      ).catch(() => undefined);
     },
 
     quizHint(input) {

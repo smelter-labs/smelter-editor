@@ -415,11 +415,11 @@ describe('new persons & host', () => {
     const s = new ObSignals(clock);
     feed(s, 'c1', 60_000, [true, true, true]); // 400 ms old — too young
     expect(s.drainNewPersons()).toEqual([]);
-    feed(s, 'c1', 60_600, [true, true]); // now ≥ 700 ms old
+    feed(s, 'c1', 60_600, [true, true]); // now ≥ 450 ms old
     const events = s.drainNewPersons();
     expect(events).toHaveLength(1);
     expect(events[0].camId).toBe('c1');
-    expect(events[0].airMs).toBe(START + 60_800);
+    expect(events[0].airMs).toBe(START + 60_600);
     // Drained; the same track never announces again.
     feed(s, 'c1', 61_000, [true, true, true]);
     expect(s.drainNewPersons()).toEqual([]);
@@ -428,8 +428,8 @@ describe('new persons & host', () => {
   it('a one-frame YOLO flicker never announces', () => {
     const { clock } = fakeClock();
     const s = new ObSignals(clock);
-    // Detected once, then coasts for maxMisses (3) samples and hides at
-    // 600 ms of age — under the 700 ms debounce.
+    // Detected once, then only coasted by the tracker: it ages past the
+    // debounce but is never fresh again, so it can never announce.
     feed(s, 'c1', 60_000, [true, false, false, false, false, false]);
     expect(s.drainNewPersons()).toEqual([]);
   });

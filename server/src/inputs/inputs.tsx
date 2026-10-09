@@ -250,6 +250,7 @@ export function Input({
         b != null &&
         a.grade === b.grade &&
         a.spotlight === b.spotlight &&
+        a.hostTag === b.hostTag &&
         a.focus?.cx === b.focus?.cx &&
         a.focus?.cy === b.focus?.cy &&
         a.focus?.scale === b.focus?.scale),

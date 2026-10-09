@@ -37,6 +37,10 @@ export function shotLabel(cams: ObBrainCam[], shot: ObShot): string {
       return shot.cams.length
         ? `${shot.kind.toUpperCase()} ${shot.cams.map(l).join(' / ')}`
         : `${shot.kind.toUpperCase()} all`;
+    case 'featured':
+      return shot.others.length
+        ? `FEATURED ${l(shot.main)} + ${shot.others.map(l).join(' / ')}`
+        : `FEATURED ${l(shot.main)} + all`;
   }
 }
 

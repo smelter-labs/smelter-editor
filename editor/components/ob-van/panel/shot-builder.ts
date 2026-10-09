@@ -119,6 +119,18 @@ export function buildShotOptions(ctx: ShotContext): ShotOption[] {
         : 'A grid needs two live cameras.',
   };
 
+  const featuredOk = pv != null && live.some((id) => id !== pv);
+  const featured: ShotOption = {
+    kind: 'featured',
+    label: SHOT_LABEL.featured,
+    shot: featuredOk && pv ? { kind: 'featured', main: pv, others: [] } : null,
+    why: !pv
+      ? 'Put a camera on preview first.'
+      : featuredOk
+        ? `${tag(pv)} big, every other live camera in the strip`
+        : 'Featured needs another live camera for the strip.',
+  };
+
   const slidesCam = sortCams(ctx.cams).find((c) => c.role === 'slides') ?? null;
   const speaker =
     slidesCam == null
@@ -154,5 +166,5 @@ export function buildShotOptions(ctx: ShotContext): ShotOption[] {
       : 'Only a WIDE camera on preview can run a virtual camera.',
   };
 
-  return [solo, split, pip, quad, grid, slides, virtual];
+  return [solo, split, pip, quad, grid, featured, slides, virtual];
 }
