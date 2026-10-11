@@ -2,6 +2,7 @@
 
 import React from 'react';
 import type { KbtScoreBreakdown } from '@smelter-editor/types';
+import { formatKbtPoints } from '@smelter-editor/types';
 import {
   Bar,
   DisplayText,
@@ -18,6 +19,7 @@ import {
 } from '../kbt-kit';
 import { useArcadeKeys } from '../../duck-hunter/use-arcade-input';
 import { KbtAvatar } from '../avatar';
+import { kbtWeightBadge } from '../kbt-weights';
 import { RepShotStrip } from '../rep-shots';
 import type { KbtFeed } from '../use-kbt-feed';
 
@@ -26,11 +28,13 @@ function ScoreRow({
   sheet,
   winner,
   topPoints,
+  weighted,
 }: {
   rank: number;
   sheet: KbtScoreBreakdown;
   winner: boolean;
   topPoints: number;
+  weighted: boolean;
 }) {
   return (
     <Plate
@@ -65,6 +69,7 @@ function ScoreRow({
           {sheet.name}
         </DisplayText>
         <Label size={10} tracking={1.5}>
+          {weighted ? `${kbtWeightBadge(sheet)} · ` : ''}
           {`SW ${sheet.reps.swing} · CL ${sheet.reps.clean} · SN ${sheet.reps.snatch}`}
           {sheet.incorrectReps > 0 ? ` · ✕${sheet.incorrectReps}` : ''}
           {sheet.bestStreak >= 5 ? ` · x${sheet.bestStreak}` : ''}
@@ -74,7 +79,7 @@ function ScoreRow({
           weight={800}
           color={winner ? KBT.accent : KBT.cream}
           style={{ minWidth: 54, textAlign: 'right' }}>
-          {`${sheet.points}`}
+          {formatKbtPoints(sheet.points, weighted)}
         </DisplayText>
       </div>
       <Bar
@@ -116,6 +121,7 @@ export function ResultsScreen({
   const rows = Object.values(match?.scores ?? {}).sort(
     (a, b) => b.points - a.points,
   );
+  const weighted = state?.config.weightedScoring === true;
   const winnerName = match?.winner?.name ?? null;
   const topPoints = rows[0]?.points ?? 0;
 
@@ -210,6 +216,7 @@ export function ResultsScreen({
               sheet={sheet}
               winner={winnerName != null && sheet.name === winnerName}
               topPoints={topPoints}
+              weighted={weighted}
             />
           ))}
         </div>
@@ -266,7 +273,9 @@ export function ResultsScreen({
                       <span style={{ color: KBT.dim }}> · FINALIST</span>
                     ) : null}
                   </span>
-                  <Num size={15}>{`${p.finalScore ?? p.bestScore}`}</Num>
+                  <Num size={15}>
+                    {formatKbtPoints(p.finalScore ?? p.bestScore, weighted)}
+                  </Num>
                 </div>
               );
             })}

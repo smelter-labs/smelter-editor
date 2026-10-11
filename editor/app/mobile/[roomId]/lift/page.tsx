@@ -1055,6 +1055,7 @@ export default function LiftControllerPage() {
           onToggleFile={toggleFilePlayback}
           onRestartFile={restartFile}
           onSeekFile={seekFile}
+          weighted={kbtState?.config?.weightedScoring === true}
         />
       </div>
     );
@@ -1073,6 +1074,7 @@ export default function LiftControllerPage() {
             repLog={repLog}
             points={points}
             onContinue={() => setStep('ready')}
+            weighted={kbtState?.config?.weightedScoring === true}
           />
         </KbtPhoneShell>
       </div>

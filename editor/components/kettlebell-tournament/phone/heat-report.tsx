@@ -3,6 +3,7 @@
 import React from 'react';
 import {
   KETTLEBELL_ISSUE_LABELS,
+  formatKbtPoints,
   type KettlebellExercise,
   type KettlebellIssueCode,
 } from '@smelter-editor/types';
@@ -43,10 +44,13 @@ export function HeatReport({
   repLog,
   points,
   onContinue,
+  weighted = false,
 }: {
   repLog: KbtRepLogEntry[];
   points: number;
   onContinue: () => void;
+  /** Weighted scoring — points render with one decimal. */
+  weighted?: boolean;
 }) {
   const correct = repLog.filter((r) => r.verdict === 'correct').length;
   const incorrect = repLog.length - correct;
@@ -77,7 +81,7 @@ export function HeatReport({
           HEAT COMPLETE
         </Label>
         <DisplayText size={64} weight={800}>
-          {points}
+          {formatKbtPoints(points, weighted)}
         </DisplayText>
         <Label size={10} tracking={3}>
           POINTS
@@ -204,7 +208,7 @@ export function HeatReport({
                       flexShrink: 0,
                     }}>
                     <Num size={12} color={rep.points > 0 ? KBT.cream : KBT.dim}>
-                      +{rep.points}
+                      +{formatKbtPoints(rep.points, weighted)}
                     </Num>
                     <span
                       style={{

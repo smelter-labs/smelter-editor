@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { formatKbtPoints } from '@smelter-editor/types';
 import { KBT, cut, displayFont, kbtMonoFont } from './kbt-kit';
 import { KbtAvatar } from './avatar';
 
@@ -15,6 +16,7 @@ export function ScoreChip({
   photoUrl,
   points,
   large = false,
+  weighted = false,
   style,
 }: {
   name: string;
@@ -22,6 +24,8 @@ export function ScoreChip({
   photoUrl?: string | null;
   points: number;
   large?: boolean;
+  /** Weighted scoring — points render with one decimal. */
+  weighted?: boolean;
   style?: React.CSSProperties;
 }) {
   return (
@@ -56,10 +60,12 @@ export function ScoreChip({
             fontSize: 20,
             color: KBT.cream,
           }}>
-          {points}
+          {formatKbtPoints(points, weighted)}
         </span>
       ) : (
-        <span style={{ color: KBT.accent, fontWeight: 600 }}>{points}</span>
+        <span style={{ color: KBT.accent, fontWeight: 600 }}>
+          {formatKbtPoints(points, weighted)}
+        </span>
       )}
     </span>
   );
