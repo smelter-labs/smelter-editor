@@ -822,6 +822,49 @@ export function ObMatchHud({
           <DipPlate key={dip.startedAtMs} dip={dip} resolution={resolution} />
         </View>
       ) : null}
+      {/* Audio-only clips (stingers / TTS) live OUTSIDE the crossfade: during
+          a chrome swap two SceneChromes render at once, and a keeper inside
+          them would mount the same stream twice. One copy here serves every
+          preset — the quiz and the AI panel share the speech machinery. */}
+      {hud.audio?.sfx ? (
+        <ObAudioClip inputId={hud.audio.sfx.inputId} volume={0.7} slot={0} />
+      ) : null}
+      {hud.audio?.speech.map((clip, i) => (
+        <ObAudioClip
+          key={clip.inputId}
+          inputId={clip.inputId}
+          volume={1}
+          slot={1 + i}
+        />
+      ))}
+    </View>
+  );
+}
+
+/**
+ * An audio-only mp4 mixed in through a hidden 2×2 stream. No videoState
+ * gate: the clip is black anyway, and waiting for 'playing' loses the sound
+ * when a cut churns the scene in the same commit window.
+ */
+function ObAudioClip({
+  inputId,
+  volume,
+  slot,
+}: {
+  inputId: string;
+  volume: number;
+  slot: number;
+}) {
+  return (
+    <View
+      style={{
+        top: 0,
+        left: slot * 2,
+        width: 2,
+        height: 2,
+        overflow: 'hidden',
+      }}>
+      <InputStream inputId={inputId} volume={volume} />
     </View>
   );
 }

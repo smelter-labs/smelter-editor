@@ -4,7 +4,11 @@ import {
   OB_PANEL_ANSWER_TIMEOUT_MS,
   OB_PANEL_HISTORY_MAX,
 } from '@smelter-editor/types';
-import { ObPanelDiscussion, type ObPanelEffect } from '../panel';
+import {
+  ObPanelDiscussion,
+  panelCaptionChunks,
+  type ObPanelEffect,
+} from '../panel';
 
 const T0 = 1_000_000;
 
@@ -34,13 +38,13 @@ function seated() {
 }
 
 const askOf = (effects: ObPanelEffect[]) =>
-  effects.find((e): e is Extract<ObPanelEffect, { type: 'ask' }> =>
-    e.type === 'ask',
+  effects.find(
+    (e): e is Extract<ObPanelEffect, { type: 'ask' }> => e.type === 'ask',
   );
 const turnsOf = (effects: ObPanelEffect[]) =>
   effects
-    .filter((e): e is Extract<ObPanelEffect, { type: 'turn' }> =>
-      e.type === 'turn',
+    .filter(
+      (e): e is Extract<ObPanelEffect, { type: 'turn' }> => e.type === 'turn',
     )
     .map((e) => e.camId);
 
@@ -168,9 +172,9 @@ describe('ObPanelDiscussion · answers', () => {
     ]);
     expect(turnsOf(panel.speechStarted(ask.seq, 'opus'))).toEqual(['cam-opus']);
     expect(panel.state().turnCamId).toBe('cam-opus');
-    expect(
-      panel.state().speakers.find((s) => s.model === 'opus')?.status,
-    ).toBe('speaking');
+    expect(panel.state().speakers.find((s) => s.model === 'opus')?.status).toBe(
+      'speaking',
+    );
     expect(turnsOf(panel.speechEnded(ask.seq, 'opus', T0 + 1))).toEqual([null]);
     expect(turnsOf(panel.speechStarted(ask.seq, 'gpt'))).toEqual(['cam-gpt']);
     const last = panel.speechEnded(ask.seq, 'gpt', T0 + 2);
@@ -242,9 +246,37 @@ describe('ObPanelDiscussion · history', () => {
     const askN = askOf(panel.hostTurn('Final?', T0, T0 + 100))!;
     expect(askN.history.length).toBeLessThanOrEqual(OB_PANEL_HISTORY_MAX);
     // The freshest exchange survived the cap (answer order alternates).
-    expect(askN.history.slice(-2).map((e) => e.text).sort()).toEqual([
-      'x',
-      'y',
+    expect(
+      askN.history
+        .slice(-2)
+        .map((e) => e.text)
+        .sort(),
+    ).toEqual(['x', 'y']);
+  });
+});
+
+describe('panelCaptionChunks', () => {
+  it('keeps a short line whole', () => {
+    expect(panelCaptionChunks('One tidy answer.')).toEqual([
+      'One tidy answer.',
     ]);
+  });
+  it('splits at sentence boundaries under the cap', () => {
+    const chunks = panelCaptionChunks(
+      'This is the first sentence of the answer, fairly long on its own. And here comes the second one, also quite long indeed.',
+    );
+    expect(chunks).toEqual([
+      'This is the first sentence of the answer, fairly long on its own.',
+      'And here comes the second one, also quite long indeed.',
+    ]);
+  });
+  it('breaks an overlong sentence at word boundaries', () => {
+    const chunks = panelCaptionChunks('word '.repeat(60).trim(), 40);
+    expect(chunks.length).toBeGreaterThan(1);
+    for (const c of chunks) expect(c.length).toBeLessThanOrEqual(40);
+    expect(chunks.join(' ')).toBe('word '.repeat(60).trim());
+  });
+  it('whitespace-only input gives no chunks', () => {
+    expect(panelCaptionChunks('   ')).toEqual([]);
   });
 });

@@ -75,7 +75,7 @@ const CANNED_LINES: Record<ObPanelSpeakerId, string[]> = {
   opus: [
     "That's a profound question. I'd need a few more tokens to do it justice.",
     'I have thoughts, but my context window just walked off the set.',
-    "Let me be direct: yes, no, and it depends. Mostly it depends.",
+    'Let me be direct: yes, no, and it depends. Mostly it depends.',
   ],
   gpt: [
     "Great question! I'd elaborate, but my rate limit says hello.",
@@ -248,8 +248,11 @@ export class ObPanelDiscussion {
    * tail lands), so the turn only clears when this speaker still holds it —
    * the featured tile then flows A → B directly, never flashing the host.
    */
-  speechEnded(seq: number, model: ObPanelSpeakerId, now: number):
-    ObPanelEffect[] {
+  speechEnded(
+    seq: number,
+    model: ObPanelSpeakerId,
+    now: number,
+  ): ObPanelEffect[] {
     const c = this.current;
     if (!c || c.seq !== seq || !c.resolved) return [];
     const speaker = this.speakers.find((s) => s.model === model);
@@ -380,8 +383,7 @@ export class ObPanelDiscussion {
 
   private finish(now: number): ObPanelEffect[] {
     this.current = null;
-    for (const s of this.speakers)
-      if (s.status !== 'idle') s.status = 'idle';
+    for (const s of this.speakers) if (s.status !== 'idle') s.status = 'idle';
     if (!this.pending) return [];
     const { text, airEndMs } = this.pending;
     this.pending = null;
@@ -404,4 +406,40 @@ function cannedLine(model: ObPanelSpeakerId, seed: number): string {
 
 function trimForLog(text: string): string {
   return text.length > 80 ? `${text.slice(0, 77)}…` : text;
+}
+
+/**
+ * Split a spoken line into caption-sized chunks at sentence (then word)
+ * boundaries, so a long answer plays as a sequence of readable subtitles
+ * paced proportionally across its TTS clip.
+ */
+export function panelCaptionChunks(text: string, maxChars = 90): string[] {
+  const clean = text.replace(/\s+/g, ' ').trim();
+  if (!clean) return [];
+  const sentences = clean.match(/[^.!?…]+[.!?…]*\s*/g) ?? [clean];
+  const chunks: string[] = [];
+  let cur = '';
+  const push = () => {
+    if (cur.trim()) chunks.push(cur.trim());
+    cur = '';
+  };
+  for (const sentence of sentences) {
+    if ((cur + sentence).trim().length <= maxChars) {
+      cur += sentence;
+      continue;
+    }
+    push();
+    if (sentence.trim().length <= maxChars) {
+      cur = sentence;
+      continue;
+    }
+    // One overlong sentence: break at words.
+    for (const word of sentence.trim().split(' ')) {
+      if (cur.length + 1 + word.length > maxChars) push();
+      cur = cur ? `${cur} ${word}` : word;
+    }
+    push();
+  }
+  push();
+  return chunks;
 }

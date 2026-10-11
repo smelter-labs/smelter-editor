@@ -545,7 +545,7 @@ class BrainTick {
         extraReasons: [rule.name],
         triggerAirMs: usesSignal(rule, 'keyword')
           ? (latestKeywordAirMs(this.env) ?? undefined)
-          : undefined,
+          : this.nowSyncedTriggerAirMs(rule, trigger),
         shot,
         transition:
           shot || replay
@@ -565,6 +565,28 @@ class BrainTick {
         cutThrough,
       },
     };
+  }
+
+  /**
+   * Node-owned signals (`quizTurn`, `host`) are stamped at the moment they
+   * apply ON AIR (wall clock) — the quiz/panel machines and the host
+   * lifecycle already time them air-synced. A rule they trigger must land
+   * now: the default landing (T = nowAir + lookahead) would run the
+   * featured flip a whole side-channel delay (3–8 s) behind the voice it
+   * reacts to.
+   */
+  private nowSyncedTriggerAirMs(
+    rule: ObRule,
+    trigger: string | null,
+  ): number | undefined {
+    const quizTurn = usesSignal(rule, 'quizTurn');
+    const host = usesSignal(rule, 'host');
+    if (!quizTurn && !host) return undefined;
+    const s = trigger ? this.ctx.signals[trigger] : undefined;
+    const since = quizTurn
+      ? (s?.quizTurn.sinceAirMs ?? null)
+      : (s?.host.sinceAirMs ?? null);
+    return since ?? this.ctx.nowAir;
   }
 
   private ruleReplay(
