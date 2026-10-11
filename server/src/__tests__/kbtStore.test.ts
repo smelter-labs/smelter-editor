@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { formatKbtPoints } from '@smelter-editor/types';
 import { barScale, kbtCasterCamRect, kbtParkRect } from '../app/store';
 
 describe('barScale', () => {
@@ -14,6 +15,24 @@ describe('barScale', () => {
   it('never returns less than one step (empty rows → -Infinity max)', () => {
     expect(barScale(-Infinity)).toBe(10);
     expect(barScale(3, 5)).toBe(5);
+  });
+
+  it('handles the fractional maxima weighted scoring produces', () => {
+    expect(barScale(12.3)).toBe(20);
+    expect(barScale(0.4)).toBe(10);
+  });
+});
+
+describe('formatKbtPoints', () => {
+  it('renders one decimal under weighted scoring, integers otherwise', () => {
+    expect(formatKbtPoints(18, true)).toBe('18.0');
+    expect(formatKbtPoints(18, false)).toBe('18');
+    expect(formatKbtPoints(12.3, true)).toBe('12.3');
+  });
+
+  it('cleans float accumulation artifacts before printing', () => {
+    expect(formatKbtPoints(7.1999999, true)).toBe('7.2');
+    expect(formatKbtPoints(0.9 + 0.9, true)).toBe('1.8');
   });
 });
 

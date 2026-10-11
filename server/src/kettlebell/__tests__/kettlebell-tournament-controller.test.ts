@@ -187,9 +187,15 @@ function harness(opts?: {
 }
 
 /** Join two players, give them cameras, draw heats, and reach 'playing'. */
-async function playingHeat(h: ReturnType<typeof harness>) {
-  h.controller.join('p1', 'ANIA');
-  h.controller.join('p2', 'BARTEK');
+async function playingHeat(
+  h: ReturnType<typeof harness>,
+  weights?: {
+    p1?: { kettlebellKg?: number; bodyKg?: number };
+    p2?: { kettlebellKg?: number; bodyKg?: number };
+  },
+) {
+  h.controller.join('p1', 'ANIA', undefined, weights?.p1);
+  h.controller.join('p2', 'BARTEK', undefined, weights?.p2);
   await h.controller.startCamera('p1');
   await h.controller.startCamera('p2');
   h.controller.setConfig({ heatDurationMs: 30_000, heatSize: 2 });
@@ -770,6 +776,157 @@ describe('KettlebellTournamentController', () => {
     expect(reps).toHaveLength(1);
     expect(reps[0].points).toBe(4);
     h.controller.dispose();
+  });
+
+  describe('weighted scoring', () => {
+    it('setConfig accepts the flag, rejects junk, and it reaches state + HUD', async () => {
+      const h = harness();
+      h.controller.setConfig({ weightedScoring: true });
+      const state = h.controller.stateSnapshot();
+      expect(state.config.weightedScoring).toBe(true);
+      h.controller.setConfig({ weightedScoring: 'yes' as never });
+      expect(h.controller.stateSnapshot().config.weightedScoring).toBe(true);
+      await playingHeat(h);
+      await vi.advanceTimersByTimeAsync(3500);
+      expect(h.lastHud()!.weighted).toBe(true);
+      h.controller.dispose();
+    });
+
+    it('kbt_join parses and clamps weights; junk fields are ignored', () => {
+      const h = harness();
+      h.controller.handleMessage('p1', {
+        type: 'kbt_join',
+        name: 'ANIA',
+        kettlebellKg: 200,
+        bodyKg: 10,
+      });
+      h.controller.handleMessage('p2', {
+        type: 'kbt_join',
+        name: 'BARTEK',
+        kettlebellKg: 'abc',
+        bodyKg: 72.44,
+      });
+      const players = h.controller.stateSnapshot().players;
+      const ania = players.find((p) => p.name === 'ANIA')!;
+      const bartek = players.find((p) => p.name === 'BARTEK')!;
+      expect(ania.kettlebellKg).toBe(92);
+      expect(ania.bodyKg).toBe(30);
+      expect(bartek.kettlebellKg).toBeUndefined();
+      expect(bartek.bodyKg).toBe(72.4);
+      // kbt_joined echoes the stored weights for phone prefill.
+      const joined = h.joinedFor('p1')!;
+      expect(joined.kettlebellKg).toBe(92);
+      expect(joined.bodyKg).toBe(30);
+      h.controller.dispose();
+    });
+
+    it('a weightless re-join keeps weights; one with values updates them', () => {
+      const h = harness();
+      h.controller.join('p1', 'ANIA', undefined, {
+        kettlebellKg: 32,
+        bodyKg: 70,
+      });
+      const key = h.joinedFor('p1')!.playerKey;
+      // Auto re-join after a refresh carries no weights.
+      h.controller.join('p1-new', 'ANIA', key);
+      let ania = h.controller
+        .stateSnapshot()
+        .players.find((p) => p.name === 'ANIA')!;
+      expect(ania.kettlebellKg).toBe(32);
+      expect(ania.bodyKg).toBe(70);
+      // Re-registering with new numbers moves them.
+      h.controller.join('p1-new', 'ANIA', key, { bodyKg: 80 });
+      ania = h.controller
+        .stateSnapshot()
+        .players.find((p) => p.name === 'ANIA')!;
+      expect(ania.kettlebellKg).toBe(32);
+      expect(ania.bodyKg).toBe(80);
+      h.controller.dispose();
+    });
+
+    it('multiplies each rep by bell/body and rolls the weighted total up', async () => {
+      const h = harness();
+      h.controller.setConfig({ weightedScoring: true });
+      // 32/80 → ×0.4: snatch pays 4 × 0.4 = 1.6.
+      const { in1 } = await playingHeat(h, {
+        p1: { kettlebellKg: 32, bodyKg: 80 },
+      });
+      h.rep(in1, 1, 'snatch');
+      const reps = h.ofType('kbt_rep');
+      expect(reps[0].points).toBe(1.6);
+      expect(reps[0].totalPoints).toBe(1.6);
+      await vi.advanceTimersByTimeAsync(3500);
+      const tile = h.lastHud()!.tiles[in1];
+      expect(tile.points).toBe(1.6);
+      expect(tile.kettlebellKg).toBe(32);
+      expect(tile.bodyKg).toBe(80);
+      const sheet = h.controller.getMatchSnapshot().scores['p1'];
+      expect(sheet.kettlebellKg).toBe(32);
+      expect(sheet.bodyKg).toBe(80);
+      await vi.advanceTimersByTimeAsync(31_000); // buzzer + grace → finalize
+      const ania = h.controller
+        .stateSnapshot()
+        .players.find((p) => p.name === 'ANIA')!;
+      expect(ania.bestScore).toBe(1.6);
+      h.controller.dispose();
+    });
+
+    it('athletes who never entered weights score with the 24/80 defaults', async () => {
+      const h = harness();
+      h.controller.setConfig({ weightedScoring: true });
+      const { in1 } = await playingHeat(h);
+      h.rep(in1, 1, 'snatch'); // 4 × 24/80 = 1.2
+      expect(h.ofType('kbt_rep')[0].points).toBe(1.2);
+      h.controller.dispose();
+    });
+
+    it('strict halving applies before the weight multiplier', async () => {
+      const h = harness();
+      h.controller.setConfig({ weightedScoring: true, strictTechnique: true });
+      const { in1 } = await playingHeat(h, {
+        p1: { kettlebellKg: 32, bodyKg: 80 },
+      });
+      // floor(4/2) = 2, then × 0.4 = 0.8.
+      h.rep(in1, 1, 'snatch', 'incorrect', ['soft_lockout']);
+      expect(h.ofType('kbt_rep')[0].points).toBe(0.8);
+      h.controller.dispose();
+    });
+
+    it('weights are staged per heat — a mid-heat change waits for the next one', async () => {
+      const h = harness();
+      h.controller.setConfig({ weightedScoring: true });
+      const { in1 } = await playingHeat(h, {
+        p1: { kettlebellKg: 24, bodyKg: 80 },
+      });
+      const key = h.joinedFor('p1')!.playerKey;
+      // New bell mid-heat: the running sheet keeps the staged 24/80.
+      h.controller.join('p1', 'ANIA', key, { kettlebellKg: 48 });
+      h.rep(in1, 1, 'snatch'); // still 4 × 24/80 = 1.2
+      expect(h.ofType('kbt_rep')[0].points).toBe(1.2);
+      const sheet = h.controller.getMatchSnapshot().scores['p1'];
+      expect(sheet.kettlebellKg).toBe(24);
+      // The player record already carries the new bell for the next staging.
+      const ania = h.controller
+        .stateSnapshot()
+        .players.find((p) => p.name === 'ANIA')!;
+      expect(ania.kettlebellKg).toBe(48);
+      h.controller.dispose();
+    });
+
+    it('flag off: weights are stored but reps pay the integer table', async () => {
+      const h = harness();
+      const { in1 } = await playingHeat(h, {
+        p1: { kettlebellKg: 32, bodyKg: 70 },
+      });
+      h.rep(in1, 1, 'snatch');
+      expect(h.ofType('kbt_rep')[0].points).toBe(4);
+      const ania = h.controller
+        .stateSnapshot()
+        .players.find((p) => p.name === 'ANIA')!;
+      expect(ania.kettlebellKg).toBe(32);
+      expect(ania.bodyKg).toBe(70);
+      h.controller.dispose();
+    });
   });
 
   describe('attachExternalCam (KBT_SIM mp4 cams)', () => {
