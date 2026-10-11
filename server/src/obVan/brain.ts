@@ -459,15 +459,19 @@ class BrainTick {
     if (this.gated()) return null;
     let held = false;
     for (const { rule, result } of evaluated) {
-      if (!result.ok || this.cooling(rule)) continue;
+      if (!result.ok) continue;
       const outcome = this.planRule(rule, result.trigger);
-      if (outcome.kind === 'fire') return this.fire(outcome.draft, rule);
-      if (outcome.kind === 'skip' && outcome.note)
-        this.note(`rule:${rule.id}`, outcome.note);
+      // A cooling rule may not fire, but one whose shot is already on
+      // program still holds the frame — otherwise an always-true fallback
+      // below it (grid / rest) steals the picture during the cooldown.
       if (outcome.kind === 'held') {
         held = true;
         break;
       }
+      if (this.cooling(rule)) continue;
+      if (outcome.kind === 'fire') return this.fire(outcome.draft, rule);
+      if (outcome.kind === 'skip' && outcome.note)
+        this.note(`rule:${rule.id}`, outcome.note);
     }
     const behaviour =
       this.burstReplay() ?? this.dialogueEnd() ?? this.dialogueStart();
@@ -574,6 +578,11 @@ class BrainTick {
    * now: the default landing (T = nowAir + lookahead) would run the
    * featured flip a whole side-channel delay (3–8 s) behind the voice it
    * reacts to.
+   *
+   * Rules reading only show state (`hold` / `segment`) land now too: a rest
+   * shot reacts to nothing in the delayed footage, and parking it at the
+   * lookahead edge queues every later decision behind it (`lastApplyAtMs`),
+   * so a turn flip would land seconds after its speaker already finished.
    */
   private nowSyncedTriggerAirMs(
     rule: ObRule,
@@ -581,7 +590,12 @@ class BrainTick {
   ): number | undefined {
     const quizTurn = usesSignal(rule, 'quizTurn');
     const host = usesSignal(rule, 'host');
-    if (!quizTurn && !host) return undefined;
+    if (!quizTurn && !host) {
+      const leaves = conditionLeaves(rule.when);
+      return leaves.every((l) => l.signal === 'hold' || l.signal === 'segment')
+        ? this.ctx.nowAir
+        : undefined;
+    }
     const s = trigger ? this.ctx.signals[trigger] : undefined;
     const since = quizTurn
       ? (s?.quizTurn.sinceAirMs ?? null)

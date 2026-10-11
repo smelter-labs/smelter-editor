@@ -1075,6 +1075,38 @@ describe('now-synced signal landing', () => {
     expect(flip!.decision.ruleId).toBe('panel-turn');
   });
 
+  it('a rest rule (hold-only) lands near now — flips never queue behind it', () => {
+    const panelCams = [
+      cam(1, 'speaker', { name: 'Host' }),
+      cam(2, 'guest', { name: 'OPUS' }),
+      cam(3, 'guest', { name: 'GPT' }),
+    ];
+    const silent: Script = () => ({ audio: { speech: false }, video: {} });
+    // An answer just ended: a panelist is still big, the turn is clear.
+    const show = new Show(obPresetRuleset('panel'), panelCams, {
+      startAir: T0,
+      lookaheadMs: 8000,
+      initial: { kind: 'featured', main: 'c3', others: [] },
+    });
+    show.run(silent, 6_000);
+    const rest = show.changes.find(
+      (c) => c.decision.ruleId === 'panel-host-rest',
+    );
+    expect(rest).toBeDefined();
+    // Before the fix the rest cut parked at T (+8 s), and every turn flip
+    // queued behind it — the "featured panelist who already finished" bug.
+    expect(rest!.atAirMs - T0).toBeLessThanOrEqual(2000);
+    // The next answer's turn flip lands promptly, not behind a parked rest.
+    const turnSetAt = show.now;
+    show.signals.setQuizTurn('c2');
+    show.run(silent, 1_500);
+    const flip = show.changes.find(
+      (c) => c.shot.kind === 'featured' && c.shot.main === 'c2',
+    );
+    expect(flip).toBeDefined();
+    expect(flip!.atAirMs - turnSetAt).toBeLessThanOrEqual(500);
+  });
+
   it('a host-confirmed cut (FOLLOW) lands near now too', () => {
     const followCams = [
       cam(1, 'wide'),
