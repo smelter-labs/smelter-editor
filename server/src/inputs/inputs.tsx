@@ -220,6 +220,11 @@ export function Input({
     store,
     (state) => state.kbTournament?.countIncorrectReps !== false,
   );
+  // Weighted scoring (one-decimal points + weight badge); missing → off.
+  const kbtWeighted = useStore(
+    store,
+    (state) => state.kbTournament?.weighted === true,
+  );
   // Blacktop: the hoop cam's own look, so the inset reads apart from the
   // court view. `on` follows the stage; the mount follows the mode alone.
   const bbCamLook = useStoreWithEqualityFn(
@@ -546,6 +551,7 @@ export function Input({
               parent={{ width: contentWidth, height: contentHeight }}
               floatText={kbtRepFloat}
               countIncorrect={kbtCountIncorrect}
+              weighted={kbtWeighted}
             />
           ) : null}
           {input.showTitle !== false && (

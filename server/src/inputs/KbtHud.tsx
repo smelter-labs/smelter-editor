@@ -8,7 +8,7 @@ import {
   kbtCasterVisible,
 } from '../app/store';
 import type { KbtViewTransitionStyle } from '@smelter-editor/types';
-import { KBT_EXERCISE_COLORS } from '@smelter-editor/types';
+import { KBT_EXERCISE_COLORS, formatKbtPoints } from '@smelter-editor/types';
 import { KbtRepFloaters } from './KbtRepFloat';
 import { TransitionShaderWrapper } from './transitionWrapper';
 
@@ -225,6 +225,7 @@ export function KbtTileHud({
   parent,
   floatText,
   countIncorrect,
+  weighted = false,
 }: {
   tile: KbtHudTile;
   scene: KbtHudState['scene'];
@@ -233,6 +234,8 @@ export function KbtTileHud({
   floatText: boolean;
   /** config.countIncorrectReps — incorrect-rep floater style. */
   countIncorrect: boolean;
+  /** config.weightedScoring — one-decimal points + the weight badge. */
+  weighted?: boolean;
 }) {
   // The tile spans the full output height on ≤3-wide heats; scale the plate
   // with the column so the ×4 grid gets the narrow variant at its true size.
@@ -247,7 +250,13 @@ export function KbtTileHud({
   const fs = Math.max(14, Math.round(parent.height * 0.02));
   const pad = Math.round(fs * 0.5);
   const bw = Math.max(3, Math.round(parent.width * 0.008));
-  const meta = tile.exercise === 'idle' ? 'READY' : tile.exercise.toUpperCase();
+  const lift = tile.exercise === 'idle' ? 'READY' : tile.exercise.toUpperCase();
+  // Weight badge rides the meta line — no extra layout on the baked plate.
+  const meta =
+    weighted && tile.kettlebellKg != null && tile.bodyKg != null
+      ? `${lift} · ${tile.kettlebellKg}KG · BW ${tile.bodyKg}`
+      : lift;
+  const popLabel = `+${formatKbtPoints(tile.lastRepPoints, weighted)}`;
 
   return (
     <View
@@ -296,7 +305,7 @@ export function KbtTileHud({
                 ? plateY - Math.round(fs * 2.2)
                 : pad + Math.round(fs * 2.1),
             left: scene === 'grid' ? plateX : pad,
-            width: monoW(`+${tile.lastRepPoints}`, fs) + pad,
+            width: monoW(popLabel, fs) + pad,
             height: Math.round(fs * 1.7),
             backgroundColor: BG,
             overflow: 'hidden',
@@ -308,7 +317,7 @@ export function KbtTileHud({
               fontFamily: MONO,
               fontWeight: 'semi_bold',
             }}>
-            {` +${tile.lastRepPoints}`}
+            {` ${popLabel}`}
           </Text>
         </View>
       ) : null}
@@ -406,7 +415,7 @@ export function KbtTileHud({
             y={6}
             w={170}
             k={s}
-            text={`${tile.points}`}
+            text={formatKbtPoints(tile.points, weighted)}
             fs={40}
             weight='extra_bold'
             align='right'
@@ -588,7 +597,10 @@ function CenterStage({
   }
   if (match.phase === 'ended' && match.winner) {
     const fs = Math.round(64 * k);
-    const label = `${match.winner.name.toUpperCase()} WINS · ${match.winner.points}`;
+    const label = `${match.winner.name.toUpperCase()} WINS · ${formatKbtPoints(
+      match.winner.points,
+      hud.weighted === true,
+    )}`;
     const width = bsW(label, fs) + Math.round(fs * 1.2);
     const height = Math.round(fs * 2);
     return (
@@ -796,6 +808,7 @@ function LobbyScene({ hud, k }: { hud: KbtHudState; k: number }) {
 function SoloScene({ hud, k }: { hud: KbtHudState; k: number }) {
   const tile = Object.values(hud.tiles)[0];
   if (!tile) return null;
+  const weighted = hud.weighted === true;
   const HX = 70; // hero plate origin (design px)
   const HY = 690;
   const TX = 1570; // tracker origin
@@ -827,14 +840,30 @@ function SoloScene({ hud, k }: { hud: KbtHudState; k: number }) {
         weight='extra_bold'
         color={DARK}
       />
-      {/* Giant points under the baked POINTS label. */}
+      {/* Weight badge in the free top band right of the lift tag. */}
+      {weighted && tile.kettlebellKg != null && tile.bodyKg != null ? (
+        <Label
+          x={HX + 200}
+          y={HY + 14}
+          w={200}
+          k={k}
+          text={`${tile.kettlebellKg}KG · BW ${tile.bodyKg}`}
+          fs={14}
+          font={MONO}
+          weight='normal'
+          color={DIM}
+          align='right'
+        />
+      ) : null}
+      {/* Giant points under the baked POINTS label. Weighted scores carry a
+          decimal ("12.3") — one size down keeps 4+ glyphs inside the window. */}
       <Label
         x={HX + 28}
-        y={HY + 66}
+        y={HY + (weighted ? 82 : 66)}
         w={230}
         k={k}
-        text={`${tile.points}`}
-        fs={150}
+        text={formatKbtPoints(tile.points, weighted)}
+        fs={weighted ? 120 : 150}
         weight='extra_bold'
       />
       {/* Pace under the baked PACE label (280,102). */}
@@ -946,6 +975,7 @@ function SoloScene({ hud, k }: { hud: KbtHudState; k: number }) {
 function BoardScene({ hud, k }: { hud: KbtHudState; k: number }) {
   const board = hud.board;
   if (!board) return null;
+  const weighted = hud.weighted === true;
   const BX = 360;
   const BY = 210;
   const maxPoints = barScale(Math.max(...board.rows.map((r) => r.points)));
@@ -1072,7 +1102,7 @@ function BoardScene({ hud, k }: { hud: KbtHudState; k: number }) {
               centerIn={52}
               w={140}
               k={k}
-              text={`${row.points}`}
+              text={formatKbtPoints(row.points, weighted)}
               fs={34}
               weight='extra_bold'
               align='right'
@@ -1088,6 +1118,7 @@ function BoardScene({ hud, k }: { hud: KbtHudState; k: number }) {
 function PodiumScene({ hud, k }: { hud: KbtHudState; k: number }) {
   const podium = hud.podium;
   if (!podium) return null;
+  const weighted = hud.weighted === true;
   const COLS: Record<number, number> = { 2: 460, 1: 800, 3: 1140 };
   const HEIGHTS: Record<number, number> = { 1: 240, 2: 170, 3: 130 };
   return (
@@ -1149,12 +1180,27 @@ function PodiumScene({ hud, k }: { hud: KbtHudState; k: number }) {
               y={blockTop - 78}
               w={320}
               k={k}
-              text={`${row.points} PTS`}
+              text={`${formatKbtPoints(row.points, weighted)} PTS`}
               fs={40}
               weight='extra_bold'
               color={color}
               align='center'
             />
+            {/* Weight badge in the gap under the score, above the block. */}
+            {weighted && row.kettlebellKg != null && row.bodyKg != null ? (
+              <Label
+                x={x}
+                y={blockTop - 30}
+                w={320}
+                k={k}
+                text={`${row.kettlebellKg}KG · BW ${row.bodyKg}`}
+                fs={13}
+                font={MONO}
+                weight='normal'
+                color={DIM}
+                align='center'
+              />
+            ) : null}
           </View>
         );
       })}
@@ -1258,7 +1304,7 @@ function CasterLowerThird({
             y={cam.y / k + 124 - 56 + 12}
             w={70}
             k={k}
-            text={`${hud.leader.points}`}
+            text={formatKbtPoints(hud.leader.points, hud.weighted === true)}
             fs={28}
             weight='extra_bold'
             color={ACCENT}
@@ -1464,9 +1510,11 @@ function LiveTag({
 function RepShotOverlay({
   overlay,
   k,
+  weighted,
 }: {
   overlay: Extract<KbtOverlayState, { kind: 'rep_shot' }>;
   k: number;
+  weighted: boolean;
 }) {
   const PX = 1400;
   const PY = 150;
@@ -1535,7 +1583,7 @@ function RepShotOverlay({
         y={metaY + 6}
         w={120}
         k={k}
-        text={`+${shot.points} PTS`}
+        text={`+${formatKbtPoints(shot.points, weighted)} PTS`}
         fs={16}
         font={MONO}
         weight='normal'
@@ -1607,9 +1655,11 @@ function RepShotOverlay({
 function SpotlightOverlay({
   overlay,
   k,
+  weighted,
 }: {
   overlay: Extract<KbtOverlayState, { kind: 'spotlight' }>;
   k: number;
+  weighted: boolean;
 }) {
   const PX = 1330;
   const PY = 770;
@@ -1653,7 +1703,7 @@ function SpotlightOverlay({
         w={cellW}
         k={k}
         caption='POINTS'
-        value={`${side.points}`}
+        value={formatKbtPoints(side.points, weighted)}
         color={ACCENT}
       />
       <StatCell
@@ -1700,17 +1750,20 @@ function SpotlightOverlay({
 function H2hOverlay({
   overlay,
   k,
+  weighted,
 }: {
   overlay: Extract<KbtOverlayState, { kind: 'h2h' }>;
   k: number;
+  weighted: boolean;
 }) {
   const PX = 460;
   const PY = 760;
   const W = 1000;
   const H = 250;
   const { a, b } = overlay;
-  const rows: { caption: string; va: number; vb: number }[] = [
-    { caption: 'POINTS', va: a.points, vb: b.points },
+  // Only POINTS turns fractional under weighted scoring; bars keep raw values.
+  const rows: { caption: string; va: number; vb: number; pts?: boolean }[] = [
+    { caption: 'POINTS', va: a.points, vb: b.points, pts: true },
     { caption: 'RPM', va: a.rpm, vb: b.rpm },
     { caption: 'REPS', va: a.reps, vb: b.reps },
   ];
@@ -1805,7 +1858,7 @@ function H2hOverlay({
               centerIn={40}
               w={80}
               k={k}
-              text={`${row.va}`}
+              text={row.pts ? formatKbtPoints(row.va, weighted) : `${row.va}`}
               fs={24}
               weight='extra_bold'
               color={aLeads ? ACCENT : CREAM}
@@ -1815,7 +1868,7 @@ function H2hOverlay({
               centerIn={40}
               w={80}
               k={k}
-              text={`${row.vb}`}
+              text={row.pts ? formatKbtPoints(row.vb, weighted) : `${row.vb}`}
               fs={24}
               weight='extra_bold'
               color={bLeads ? ACCENT : CREAM}
@@ -1863,13 +1916,14 @@ function H2hOverlay({
 function CommentatorOverlay({ hud, k }: { hud: KbtHudState; k: number }) {
   const overlay = hud.overlay;
   if (!overlay || hud.scene === 'podium') return null;
+  const weighted = hud.weighted === true;
   if (overlay.kind === 'rep_shot') {
-    return <RepShotOverlay overlay={overlay} k={k} />;
+    return <RepShotOverlay overlay={overlay} k={k} weighted={weighted} />;
   }
   if (overlay.kind === 'spotlight') {
-    return <SpotlightOverlay overlay={overlay} k={k} />;
+    return <SpotlightOverlay overlay={overlay} k={k} weighted={weighted} />;
   }
-  return <H2hOverlay overlay={overlay} k={k} />;
+  return <H2hOverlay overlay={overlay} k={k} weighted={weighted} />;
 }
 
 /** One full snapshot of the scene chrome — rendered twice during a view
