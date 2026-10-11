@@ -66,7 +66,7 @@ export type KbtConfig = {
    * (aura in the exercise's color + tile shake). */
   milestoneFx: boolean;
   /** When true, every scored rep floats game-style text up the tile
-   * ("SNATCH +3"; incorrect reps show "SNATCH*", or a struck-out name when
+   * ("SNATCH +4"; incorrect reps show "SNATCH*", or a struck-out name when
    * countIncorrectReps is off). */
   repFloatText: boolean;
   /** When false, reps judged 'incorrect' add no reps and no points (they
@@ -78,9 +78,9 @@ export type KbtConfig = {
 /** Defaults: harder lifts pay more; technique is forgiving (easy to play). */
 export const KBT_DEFAULT_CONFIG: KbtConfig = {
   scoring: {
-    swing: { enabled: true, points: 1 },
-    clean: { enabled: true, points: 2 },
-    snatch: { enabled: true, points: 3 },
+    swing: { enabled: true, points: 2 },
+    clean: { enabled: true, points: 3 },
+    snatch: { enabled: true, points: 4 },
   },
   strictTechnique: false,
   heatDurationMs: 60_000,

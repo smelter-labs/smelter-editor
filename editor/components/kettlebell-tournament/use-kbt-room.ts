@@ -28,7 +28,7 @@ export type KbtUiConfig = {
   repScreenshots: boolean;
   /** Every 5th rep of an exercise fires an on-air aura + tile shake. */
   milestoneFx: boolean;
-  /** Every scored rep floats game text up the tile ("SNATCH +3" / "SNATCH*"). */
+  /** Every scored rep floats game text up the tile ("SNATCH +4" / "SNATCH*"). */
   repFloatText: boolean;
   /** Incorrect reps still add reps (asterisk on air); off strikes them out
    * and scores 0. */
@@ -70,9 +70,9 @@ export function sanitizeKbtPerf(
 
 export const DEFAULT_KBT_UI_CONFIG: KbtUiConfig = {
   scoring: {
-    swing: { enabled: true, points: 1 },
-    clean: { enabled: true, points: 2 },
-    snatch: { enabled: true, points: 3 },
+    swing: { enabled: true, points: 2 },
+    clean: { enabled: true, points: 3 },
+    snatch: { enabled: true, points: 4 },
   },
   strictTechnique: false,
   heatDurationSec: 60,

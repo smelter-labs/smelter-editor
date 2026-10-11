@@ -386,8 +386,8 @@ describe('KettlebellTournamentController', () => {
     h.rep(in1, 5, 'snatch');
     h.rep(in1, 6, 'idle' as KettlebellExercise);
     const reps = h.ofType('kbt_rep');
-    expect(reps.map((r) => r.points)).toEqual([1, 2, 3]);
-    expect(reps[2].totalPoints).toBe(6);
+    expect(reps.map((r) => r.points)).toEqual([2, 3, 4]);
+    expect(reps[2].totalPoints).toBe(9);
     h.controller.dispose();
   });
 
@@ -438,14 +438,14 @@ describe('KettlebellTournamentController', () => {
     h.rep(in1, 1, 'snatch');
     h.rep(in1, 2, 'snatch', 'incorrect', ['soft_lockout']);
     const reps = h.ofType('kbt_rep');
-    // Not counting beats strict halving: 0, not floor(3/2).
-    expect(reps.map((r) => r.points)).toEqual([3, 0]);
+    // Not counting beats strict halving: 0, not floor(4/2).
+    expect(reps.map((r) => r.points)).toEqual([4, 0]);
     expect(reps[1].streak).toBe(0);
-    expect(reps[1].totalPoints).toBe(3);
+    expect(reps[1].totalPoints).toBe(4);
     const sheet = Object.values(h.controller.getMatchSnapshot().scores)[0];
     expect(sheet.reps.snatch).toBe(1);
     expect(sheet.incorrectReps).toBe(1);
-    expect(sheet.points).toBe(3);
+    expect(sheet.points).toBe(4);
     // HUD: the rep counter stands still while the attempt clock advances,
     // so the floater still spawns (struck-out style).
     await vi.advanceTimersByTimeAsync(3500);
@@ -461,7 +461,7 @@ describe('KettlebellTournamentController', () => {
     const { in1 } = await playingHeat(h);
     h.rep(in1, 1, 'snatch', 'incorrect', ['soft_lockout']);
     // strictTechnique off → full points despite the verdict.
-    expect(h.ofType('kbt_rep').map((r) => r.points)).toEqual([3]);
+    expect(h.ofType('kbt_rep').map((r) => r.points)).toEqual([4]);
     await vi.advanceTimersByTimeAsync(3500);
     const tile = h.lastHud()!.tiles[in1];
     expect(tile.reps).toBe(1);
@@ -535,14 +535,14 @@ describe('KettlebellTournamentController', () => {
         url: '/kbt-rep-frames/a-r0001.jpg',
         exercise: 'snatch',
         verdict: 'correct',
-        points: 3,
+        points: 4,
       },
       {
         repIndex: 2,
         url: '/kbt-rep-frames/a-r0002.jpg',
         exercise: 'swing',
         verdict: 'incorrect',
-        points: 1,
+        points: 2,
         issues: ['too_low'],
       },
     ]);
@@ -568,7 +568,7 @@ describe('KettlebellTournamentController', () => {
     expect(reps).toHaveLength(2);
     const match = h.controller.getMatchSnapshot();
     expect(match.winner?.name).toBe('ANIA');
-    expect(match.winner?.points).toBe(2);
+    expect(match.winner?.points).toBe(4);
     h.controller.dispose();
   });
 
@@ -580,7 +580,7 @@ describe('KettlebellTournamentController', () => {
     await vi.advanceTimersByTimeAsync(31_000);
     const state = h.controller.stateSnapshot();
     const ania = state.players.find((p) => p.name === 'ANIA')!;
-    expect(ania.bestScore).toBe(2);
+    expect(ania.bestScore).toBe(4);
     h.controller.controlMatch({ action: 'start_final' });
     const after = h.controller.stateSnapshot();
     expect(after.tournamentPhase).toBe('final');
@@ -647,7 +647,7 @@ describe('KettlebellTournamentController', () => {
     expect(adopted?.name).toBe('ANIA');
     const heat = state.heats[state.currentHeatIndex!];
     expect(heat.playerIds).toContain('p1-new-socket');
-    expect(heat.scores['p1-new-socket'].points).toBe(1);
+    expect(heat.scores['p1-new-socket'].points).toBe(2);
     h.controller.dispose();
   });
 
@@ -672,9 +672,9 @@ describe('KettlebellTournamentController', () => {
     await vi.advanceTimersByTimeAsync(31_000);
     const match = h.controller.getMatchSnapshot();
     expect(match.winner?.name).toBe('ANIA');
-    expect(match.winner?.points).toBe(4);
+    expect(match.winner?.points).toBe(6);
     const state = h.controller.stateSnapshot();
-    expect(state.players[0].bestScore).toBe(4);
+    expect(state.players[0].bestScore).toBe(6);
     // A final needs at least two scored players — must be a no-op solo.
     h.controller.controlMatch({ action: 'start_final' });
     const after = h.controller.stateSnapshot();
@@ -768,7 +768,7 @@ describe('KettlebellTournamentController', () => {
     expect(h.controller.simulateRep('p1', 'snatch', 'correct')).toBe(true);
     const reps = h.ofType('kbt_rep');
     expect(reps).toHaveLength(1);
-    expect(reps[0].points).toBe(3);
+    expect(reps[0].points).toBe(4);
     h.controller.dispose();
   });
 
@@ -890,7 +890,7 @@ describe('KettlebellTournamentController', () => {
     expect(hud.board?.rows[0]).toMatchObject({
       rank: 1,
       name: 'ANIA',
-      points: 3,
+      points: 4,
     });
     h.controller.dispose();
   });
@@ -1518,7 +1518,7 @@ describe('resilience: playerKey identity, error channel, host recovery', () => {
     expect(adopted?.name).toBe('ANIA');
     const heat = state.heats[state.currentHeatIndex!];
     expect(heat.playerIds).toContain('p1-refreshed');
-    expect(heat.scores['p1-refreshed'].points).toBe(1);
+    expect(heat.scores['p1-refreshed'].points).toBe(2);
     // The key survives adoption — the next refresh resumes the same entry.
     expect(h.joinedFor('p1-refreshed')!.playerKey).toBe(key);
     // The stale socket's late close hits a missing entry and must not touch
@@ -1819,7 +1819,7 @@ describe('resilience: playerKey identity, error channel, host recovery', () => {
       expect(hud.overlay.side.name).toBe('ANIA');
       expect(hud.overlay.side.reps).toBe(4);
       expect(hud.overlay.side.accuracy).toBeCloseTo(0.75);
-      expect(hud.overlay.side.points).toBe(4);
+      expect(hud.overlay.side.points).toBe(8);
     }
     // Live stats keep flowing through held tick publishes too.
     h.rep(in1, 5, 'swing', 'correct');
@@ -1841,8 +1841,8 @@ describe('resilience: playerKey identity, error channel, host recovery', () => {
     const h = harness();
     const { in1, in2 } = await playingHeat(h);
     h.controller.joinCommentator('c1', 'MAREK');
-    h.rep(in1, 1, 'snatch', 'correct'); // 3 pts
-    h.rep(in2, 1, 'swing', 'correct'); // 1 pt
+    h.rep(in1, 1, 'snatch', 'correct'); // 4 pts
+    h.rep(in2, 1, 'swing', 'correct'); // 2 pts
     h.controller.handleMessage('c1', {
       type: 'kbt_commentator_overlay',
       overlay: { kind: 'h2h', playerIdA: 'p1', playerIdB: 'p2' },
@@ -1851,9 +1851,9 @@ describe('resilience: playerKey identity, error channel, host recovery', () => {
     expect(hud?.overlay).toMatchObject({ kind: 'h2h', live: true });
     if (hud?.overlay?.kind === 'h2h') {
       expect(hud.overlay.a.name).toBe('ANIA');
-      expect(hud.overlay.a.points).toBe(3);
+      expect(hud.overlay.a.points).toBe(4);
       expect(hud.overlay.b.name).toBe('BARTEK');
-      expect(hud.overlay.b.points).toBe(1);
+      expect(hud.overlay.b.points).toBe(2);
     }
     // Same player on both sides is refused.
     h.controller.handleMessage('c1', {
