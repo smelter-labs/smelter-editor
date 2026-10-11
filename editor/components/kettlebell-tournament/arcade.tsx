@@ -73,6 +73,9 @@ function loadConfig(): KbtUiConfig {
       // Old localStorage blobs lack the key → incorrect reps count.
       countIncorrectReps:
         typeof p.countIncorrectReps === 'boolean' ? p.countIncorrectReps : true,
+      // Old localStorage blobs lack the key → classic (unweighted) scoring.
+      weightedScoring:
+        typeof p.weightedScoring === 'boolean' ? p.weightedScoring : false,
       // Old localStorage blobs lack the key → HD (back-compat).
       resolution:
         p.resolution && p.resolution in RESOLUTION_PRESETS
@@ -103,6 +106,9 @@ function serverConfigToUi(cfg: KbtConfig): KbtUiConfig {
     milestoneFx: cfg.milestoneFx !== false,
     repFloatText: cfg.repFloatText !== false,
     countIncorrectReps: cfg.countIncorrectReps !== false,
+    // `=== true`, not `!== false`: the feature defaults off and old servers
+    // lack the key entirely.
+    weightedScoring: cfg.weightedScoring === true,
     // Not part of the server config — resolution is fixed at room creation,
     // so after a refresh keep whatever this browser last picked.
     resolution: loadConfig().resolution,

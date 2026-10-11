@@ -255,6 +255,7 @@ interface SmelterApiClient {
       milestoneFx?: boolean;
       repFloatText?: boolean;
       countIncorrectReps?: boolean;
+      weightedScoring?: boolean;
       /** Performance knobs (live: analysisFps/animTick/hudPublish; next
        * recording: recordingPreset/recordingScale). */
       perf?: Partial<KbtPerfConfig>;

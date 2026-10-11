@@ -33,6 +33,9 @@ export type KbtUiConfig = {
   /** Incorrect reps still add reps (asterisk on air); off strikes them out
    * and scores 0. */
   countIncorrectReps: boolean;
+  /** Every rep's points × the athlete's bell kg / body kg (phone-entered,
+   * defaults 24/80); scores render with one decimal. */
+  weightedScoring: boolean;
   /** Broadcast output size — applied at room creation, fixed afterwards. */
   resolution: ResolutionPreset;
   /** Performance knobs (same units as the server config). */
@@ -82,6 +85,7 @@ export const DEFAULT_KBT_UI_CONFIG: KbtUiConfig = {
   milestoneFx: true,
   repFloatText: true,
   countIncorrectReps: true,
+  weightedScoring: false,
   resolution: '1080p',
   perf: { ...KBT_DEFAULT_CONFIG.perf },
 };
@@ -178,6 +182,7 @@ export function useKbtRoom(initialRoomId?: string): KbtRoom {
         milestoneFx: cfg.milestoneFx,
         repFloatText: cfg.repFloatText,
         countIncorrectReps: cfg.countIncorrectReps,
+        weightedScoring: cfg.weightedScoring,
         perf: cfg.perf,
       });
     },
