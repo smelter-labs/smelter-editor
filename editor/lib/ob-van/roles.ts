@@ -69,6 +69,21 @@ export function customRoleName(role: ObCamRole): string {
   return isCustomRole(role) ? role.slice(CUSTOM_PREFIX.length) : '';
 }
 
+/**
+ * Seat-form preselect for a deep-linked `?role=` param (one-click joins from
+ * the host page, e.g. the laptop webcam as the SPEAKER cam). Null = no or
+ * unusable param; the form then keeps its default.
+ */
+export function roleChoiceFromParam(param: string | null): {
+  choice: ObFixedCamRole | 'custom';
+  customName: string;
+} | null {
+  if (!param || !isObCamRole(param)) return null;
+  return isCustomRole(param)
+    ? { choice: 'custom', customName: customRoleName(param) }
+    : { choice: param, customName: '' };
+}
+
 export function roleLabel(role: ObCamRole): string {
   if (isCustomRole(role)) return customRoleName(role).toUpperCase();
   return ROLE_LABEL[role] ?? String(role).toUpperCase();
