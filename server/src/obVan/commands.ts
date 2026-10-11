@@ -258,6 +258,11 @@ export function parseObCommand(raw: unknown): ObOperatorCommand | null {
       if (tts !== undefined) cmd.tts = tts;
       return auto === undefined && tts === undefined ? null : cmd;
     }
+    case 'finger_frame': {
+      const enabled = bool(raw.enabled);
+      if (enabled === undefined) return null;
+      return { op: 'finger_frame', enabled };
+    }
     default:
       return null;
   }

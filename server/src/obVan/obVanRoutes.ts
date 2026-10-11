@@ -57,6 +57,12 @@ export interface ObRoomApi {
   ): { ruleset: ObRuleset; warnings: string[] } | { errors: string[] };
   simulateObSignal(camId: string, sample: ObSimSample): ObCommandResult;
   simulateObHost(camId: string | null): ObCommandResult;
+  simulateObHandFrame(
+    inputId: string,
+    rect: { x: number; y: number; w: number; h: number } | null,
+    frame?: { frameW?: number; frameH?: number },
+    switchSign?: boolean,
+  ): ObCommandResult;
   attachObMp4Cam(
     role: ObCamRole,
     fileName: string,
@@ -245,6 +251,10 @@ export const ObOperatorCommandSchema = Type.Union([
     auto: Type.Optional(Type.Boolean()),
     tts: Type.Optional(Type.Boolean()),
   }),
+  Type.Object({
+    op: Type.Literal('finger_frame'),
+    enabled: Type.Boolean(),
+  }),
 ]);
 
 const RundownItemSchema = Type.Object({
@@ -294,6 +304,7 @@ const ObConfigPatchSchema = Type.Object({
       tts: Type.Optional(Type.Boolean()),
     }),
   ),
+  fingerFrame: Type.Optional(Type.Boolean()),
   joinUrls: Type.Optional(
     Type.Object({ cam: Type.Optional(Type.String({ maxLength: 2048 })) }),
   ),
@@ -372,6 +383,23 @@ const SimulateSchema = Type.Object({
 
 const SimulateHostSchema = Type.Object({
   camId: Type.Union([CamId, Type.Null()]),
+});
+
+const SimulateHandFrameSchema = Type.Object({
+  inputId: Type.String({ minLength: 1, maxLength: 200 }),
+  rect: Type.Union([
+    Type.Object({
+      x: Type.Number(),
+      y: Type.Number(),
+      w: Type.Number(),
+      h: Type.Number(),
+    }),
+    Type.Null(),
+  ]),
+  frameW: Type.Optional(Type.Number()),
+  frameH: Type.Optional(Type.Number()),
+  // True simulates the pinch shader-switch sign instead of a rect.
+  switch: Type.Optional(Type.Boolean()),
 });
 
 // ── Error mapping ──────────────────────────────────────────────────────────
@@ -497,9 +525,19 @@ function puppetSeedFor(
   cam: ObDemoCam,
   cams: readonly ObDemoCam[],
   mouth: Record<string, PuppetMouthTrack>,
+  presetId?: string,
 ): ObPuppetSeed | null {
   if (!cam.puppet) return null;
   const name = (c: ObDemoCam) => c.talent?.trim() || c.name || c.puppet || '';
+  // The AI PANEL demo gets the aurora studio (animated shader wall, glass
+  // desk, accent per panelist); every other demo keeps the gold quiz set.
+  const theme = (c: ObDemoCam): Partial<ObPuppetSeed> =>
+    presetId === 'panel'
+      ? {
+          studio: 'aurora' as const,
+          ...(c.subtitle ? { subtitle: c.subtitle } : {}),
+        }
+      : {};
   if (cam.puppet === 'studio') {
     const cast: PuppetCastMember[] = cams.flatMap((c) =>
       c.puppet && c.puppet !== 'studio' && isPuppetCharacterId(c.puppet)
@@ -512,13 +550,20 @@ function puppetSeedFor(
           ]
         : [],
     );
-    return { character: 'studio', name: name(cam), mouth: null, cast };
+    return {
+      character: 'studio',
+      name: name(cam),
+      mouth: null,
+      cast,
+      ...theme(cam),
+    };
   }
   if (!isPuppetCharacterId(cam.puppet)) return null;
   return {
     character: cam.puppet,
     name: name(cam),
     mouth: mouth[cam.puppet] ?? null,
+    ...theme(cam),
   };
 }
 
@@ -721,6 +766,30 @@ export function registerObVanRoutes(
     },
   );
 
+  // Dev-only finger-frame injector (OB_SIM=1): push a `hand_frame` rect for
+  // an input exactly as the worker would (null releases it), so the
+  // grayscale frame can be driven end to end without a camera or MediaPipe.
+  routes.post<Body<typeof SimulateHandFrameSchema>>(
+    '/room/:roomId/ob-van/simulate-hand-frame',
+    { schema: { params: RoomIdParamsSchema, body: SimulateHandFrameSchema } },
+    async (req, res) => {
+      if (process.env.OB_SIM !== '1')
+        return res.status(404).send({
+          statusCode: 404,
+          error: STATUS_CODES[404],
+          message: 'Not found',
+        });
+      const r = getRoom(req.params.roomId).simulateObHandFrame(
+        req.body.inputId,
+        req.body.rect,
+        { frameW: req.body.frameW, frameH: req.body.frameH },
+        req.body.switch,
+      );
+      if (!r.ok) return sendError(res, r.code, r.message);
+      return res.status(200).send({ ok: true });
+    },
+  );
+
   // Demo manifests on disk — what the QUICK DEMOS buttons can load.
   routes.get('/ob-van/demos', async (_req, res) => {
     const demos: {
@@ -801,7 +870,7 @@ export function registerObVanRoutes(
         }
         const attached: { camId: string; role: string; file: string }[] = [];
         for (const c of cams) {
-          const puppet = puppetSeedFor(c, cams, mouth);
+          const puppet = puppetSeedFor(c, cams, mouth, m.presetId);
           const { camId } = await room.attachObMp4Cam(
             c.role as ObCamRole,
             c.fileName,

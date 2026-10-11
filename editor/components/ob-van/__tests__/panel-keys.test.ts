@@ -20,6 +20,7 @@ function ctx(over: Partial<PanelKeyContext> = {}): PanelKeyContext {
     preview: { kind: 'solo', cam: 'b' },
     program: { kind: 'solo', cam: 'a' },
     autoOn: false,
+    fingerFrameOn: false,
     transitionType: 'dissolve',
     lowerThirdCamId: null,
     rundownLength: 0,

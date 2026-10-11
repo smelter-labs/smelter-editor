@@ -63,6 +63,8 @@ export function pendingKeyOf(cmd: ObOperatorCommand): string {
       return `quiz_set:${cmd.auto !== undefined ? 'auto' : ''}${cmd.aiHost !== undefined ? 'aiHost' : ''}${cmd.tts !== undefined ? 'tts' : ''}`;
     case 'panel_set':
       return `panel_set:${cmd.auto !== undefined ? 'auto' : ''}${cmd.tts !== undefined ? 'tts' : ''}`;
+    case 'finger_frame':
+      return 'finger_frame';
   }
 }
 
@@ -151,6 +153,8 @@ export function commandEchoed(
         (cmd.auto == null || now.config.panel?.auto === cmd.auto) &&
         (cmd.tts == null || now.config.panel?.tts === cmd.tts)
       );
+    case 'finger_frame':
+      return now.fingerFrame === cmd.enabled;
     default:
       // No visible echo to wait for — clear on the next state.
       return true;

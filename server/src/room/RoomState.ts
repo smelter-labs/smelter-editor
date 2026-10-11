@@ -53,7 +53,11 @@ import {
 import { PeopleTracker } from '../ai-models/people-counter/people-tracker';
 import { jitterBoxes } from '../ai-models/people-counter/box-jitter';
 import { CarTracker } from '../ai-models/car-ads/car-tracker';
-import { kbtParkRect, kettlebellSkeletonMode } from '../app/store';
+import {
+  FINGER_FRAME_MODES,
+  kbtParkRect,
+  kettlebellSkeletonMode,
+} from '../app/store';
 import type { CarAdDetection } from '../app/store';
 import { DuckHunterController } from '../duckHunter/DuckHunterController';
 import type { MatchCommand } from '../duckHunter/DuckHunterController';
@@ -387,6 +391,13 @@ export class RoomState {
    * apply to be no earlier than the previous one keeps the sequence monotonic.
    */
   private readonly kettlebellApplyAt = new Map<string, number>();
+  // OB finger frame: per-input monotonic apply time (kettlebell pattern) and
+  // an epoch that invalidates held rects when the effect is cleared.
+  private readonly fingerFrameApplyAt = new Map<string, number>();
+  private fingerFrameEpoch = 0;
+  // Which look each input's finger frame uses (index into FINGER_FRAME_MODES,
+  // cycled by the pinch sign). Survives toggling the effect off and on.
+  private readonly fingerFrameModes = new Map<string, number>();
 
   private stateChangeListeners = new Set<() => void>();
 
@@ -953,6 +964,15 @@ export class RoomState {
           }),
         configureCamSignals: (inputId, opts) =>
           this.configureObCamSignals(inputId, opts),
+        setFingerFrame: (inputId, data) =>
+          this.output.store.getState().setFingerFrame(inputId, data),
+        clearFingerFrames: () => {
+          // Invalidate rects still held for the side-channel delay — a stale
+          // apply after OFF would stick forever (no more worker messages).
+          this.fingerFrameEpoch++;
+          this.fingerFrameApplyAt.clear();
+          this.output.store.getState().clearFingerFrames();
+        },
         getSideChannelDelayMs: (inputId) =>
           this.inputManager.getInputs().find((i) => i.inputId === inputId)
             ?.registeredSideChannelDelayMs ?? 0,
@@ -1041,6 +1061,16 @@ export class RoomState {
           if (mouth) this.obPuppetLiveMouth.set(character, mouth);
           else this.obPuppetLiveMouth.delete(character);
         },
+        // Panel TTS captions reuse the Whisper subtitle slot; cancelling the
+        // pending clear keeps the two writers from fighting over one input.
+        setCamCaption: (camInputId, text) => {
+          const prev = this.transcriptClearTimers.get(camInputId);
+          if (prev) {
+            clearTimeout(prev);
+            this.transcriptClearTimers.delete(camInputId);
+          }
+          this.output.store.getState().setTranscript(camInputId, text ?? '');
+        },
         getPipelineTimeMs: () => SmelterInstance.getPipelineTimeMs(),
       },
       {
@@ -1052,14 +1082,22 @@ export class RoomState {
         createLlm: (deps, opts) => createObLlm(deps, undefined, opts),
         createQuizAi: () => createObQuizAi(),
         createPanelAi: () => createObPanelAi(),
-        createQuizTts: () => createObQuizTts(process.env, { cacheDir: OB_TTS_DIR }),
+        createQuizTts: () =>
+          createObQuizTts(process.env, { cacheDir: OB_TTS_DIR }),
       },
     );
 
     // OB Van signal worker: audio / video samples keyed by input → the
-    // controller maps them to cameras and the air clock.
+    // controller maps them to cameras and the air clock. Finger-frame rects
+    // bypass the controller: they are picture overlays synced to the output,
+    // not signals (the controller would drop the unknown kind anyway).
     void this.aiController
       .wireSidecarListeners(OB_VAN_MODEL_ID, (event) => {
+        const d = event.data as { kind?: unknown } | null;
+        if (d && (d.kind === 'hand_frame' || d.kind === 'hand_frame_switch')) {
+          this.onObHandFrame(event);
+          return;
+        }
         this.obVan.onWorkerResult(event.inputId, event.data, event.ptsNanos);
       })
       .catch((err) =>
@@ -2986,6 +3024,32 @@ export class RoomState {
     return this.obVan.simulateHost(camId);
   }
 
+  /** Dev-only (OB_SIM=1): a fabricated finger-frame rect (or, with
+   * `switchSign`, the pinch shader-switch sign) for an input. */
+  public simulateObHandFrame(
+    inputId: string,
+    rect: { x: number; y: number; w: number; h: number } | null,
+    frame?: { frameW?: number; frameH?: number },
+    switchSign?: boolean,
+  ): ObCommandResult {
+    if (!this.hasInput(inputId))
+      return { ok: false, code: 'unknown_cam', message: 'No such input.' };
+    this.onObHandFrame({
+      modelId: OB_VAN_MODEL_ID,
+      inputId,
+      data: switchSign
+        ? { kind: 'hand_frame_switch', procMs: 0 }
+        : {
+            kind: 'hand_frame',
+            rect,
+            frameW: frame?.frameW ?? 1280,
+            frameH: frame?.frameH ?? 720,
+            procMs: 0,
+          },
+    });
+    return { ok: true };
+  }
+
   /** Restart every OB Van file cam from `playFromMs` (see syncBbFileCams). */
   /**
    * Wall time at which the OB Van file cams' media 0 is (or was) on air —
@@ -3862,6 +3926,86 @@ export class RoomState {
    */
   public hasInput(inputId: string): boolean {
     return this.getInputs().some((input) => input.inputId === inputId);
+  }
+
+  /**
+   * OB finger frame from the signal worker: hold the rect for the
+   * side-channel delay so the drawn frame lands when its video frame airs
+   * (kettlebell pattern), stepping monotonically per input so a slow pass
+   * never rewinds a newer one. `rect: null` releases the effect; the
+   * `hand_frame_switch` kind (the pinch sign) rides the same hold and cycles
+   * the look used inside the frame instead.
+   */
+  private onObHandFrame(event: ModelResultEvent): void {
+    const input = this.inputManager
+      .getInputs()
+      .find((i) => i.inputId === event.inputId);
+    if (!input) return;
+    const data = event.data as {
+      kind?: string;
+      rect?: { x: number; y: number; w: number; h: number } | null;
+      frameW?: number;
+      frameH?: number;
+      procMs?: number;
+    };
+    const outputDelayMs = input.registeredSideChannelDelayMs ?? 0;
+    const procMs = typeof data.procMs === 'number' ? data.procMs : 0;
+    const holdMs = Math.max(0, outputDelayMs - procMs);
+    const epoch = this.fingerFrameEpoch;
+
+    const applySwitch = () => {
+      if (epoch !== this.fingerFrameEpoch) return;
+      if (!this.hasInput(event.inputId)) return;
+      const mode =
+        ((this.fingerFrameModes.get(event.inputId) ?? 0) + 1) %
+        FINGER_FRAME_MODES.length;
+      this.fingerFrameModes.set(event.inputId, mode);
+      // A frame currently on screen restyles in place; otherwise the new
+      // look simply rides the next rect apply.
+      const store = this.output.store.getState();
+      const cur = store.fingerFrames[event.inputId];
+      if (cur) store.setFingerFrame(event.inputId, { ...cur, mode });
+      this.obVan.noteFingerFrameMode(FINGER_FRAME_MODES[mode]);
+    };
+
+    const applyOverlay = () => {
+      if (epoch !== this.fingerFrameEpoch) return;
+      if (!this.hasInput(event.inputId)) return;
+      const store = this.output.store.getState();
+      const rect = data.rect;
+      if (
+        rect &&
+        typeof rect.x === 'number' &&
+        typeof rect.y === 'number' &&
+        typeof rect.w === 'number' &&
+        typeof rect.h === 'number' &&
+        typeof data.frameW === 'number' &&
+        typeof data.frameH === 'number'
+      ) {
+        store.setFingerFrame(event.inputId, {
+          rect,
+          frameW: data.frameW,
+          frameH: data.frameH,
+          mode: this.fingerFrameModes.get(event.inputId) ?? 0,
+        });
+      } else {
+        store.setFingerFrame(event.inputId, null);
+      }
+    };
+
+    const apply =
+      data.kind === 'hand_frame_switch' ? applySwitch : applyOverlay;
+    const now = Date.now();
+    const applyAt = Math.max(
+      now + holdMs,
+      this.fingerFrameApplyAt.get(event.inputId) ?? 0,
+    );
+    this.fingerFrameApplyAt.set(event.inputId, applyAt);
+    if (applyAt > now) {
+      setTimeout(apply, applyAt - now);
+    } else {
+      apply();
+    }
   }
 
   /**

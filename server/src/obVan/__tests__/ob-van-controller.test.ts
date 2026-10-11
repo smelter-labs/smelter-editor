@@ -15,6 +15,7 @@ import {
   type ObControllerDeps,
   type ObFileClock,
 } from '../ObVanController';
+import { parseObCommand } from '../commands';
 import type { ObBrain, ObBrainContext, ObDecision } from '../contracts';
 import type { ObStageTile } from '../scene';
 
@@ -1295,5 +1296,63 @@ describe('ObVanController · file cam sync and loop', () => {
     expect(h.controller.showsSubtitles('mp4-1')).toBe(false);
     expect(h.controller.showsSubtitles('someone-elses-input')).toBe(true);
     h.controller.dispose();
+  });
+});
+
+describe('ObVanController · finger frame', () => {
+  it('toggles the config, reconfigures every cam, and clears rects on OFF', () => {
+    const h = harness();
+    const configured: { inputId: string; params: Record<string, string> }[] =
+      [];
+    let cleared = 0;
+    h.deps.configureCamSignals = async (inputId, opts) => {
+      configured.push({ inputId, params: { ...opts.params } });
+    };
+    h.deps.clearFingerFrames = () => cleared++;
+    h.attach(1);
+    h.attach(2, 'guest');
+    expect(h.controller.stateSnapshot().fingerFrame).toBe(false);
+
+    configured.length = 0;
+    expect(h.controller.operate({ op: 'finger_frame', enabled: true }).ok).toBe(
+      true,
+    );
+    const on = h.controller.stateSnapshot();
+    expect(on.fingerFrame).toBe(true);
+    expect(on.config.fingerFrame).toBe(true);
+    for (const inputId of ['mp4-1', 'mp4-2'])
+      expect(
+        configured.some(
+          (c) => c.inputId === inputId && c.params.handFrame === '1',
+        ),
+      ).toBe(true);
+    expect(cleared).toBe(0);
+
+    // Re-enabling is a no-op: no reconfigure churn.
+    configured.length = 0;
+    expect(h.controller.operate({ op: 'finger_frame', enabled: true }).ok).toBe(
+      true,
+    );
+    expect(configured.length).toBe(0);
+
+    expect(
+      h.controller.operate({ op: 'finger_frame', enabled: false }).ok,
+    ).toBe(true);
+    expect(h.controller.stateSnapshot().fingerFrame).toBe(false);
+    expect(
+      configured.some(
+        (c) => c.inputId === 'mp4-1' && !('handFrame' in c.params),
+      ),
+    ).toBe(true);
+    expect(cleared).toBe(1);
+    h.controller.dispose();
+  });
+
+  it('parseObCommand round-trips finger_frame and rejects a missing enabled', () => {
+    expect(parseObCommand({ op: 'finger_frame', enabled: true })).toEqual({
+      op: 'finger_frame',
+      enabled: true,
+    });
+    expect(parseObCommand({ op: 'finger_frame' })).toBeNull();
   });
 });

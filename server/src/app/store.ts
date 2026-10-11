@@ -88,6 +88,7 @@ export type RoomStore = {
   buildingBoxes: Record<string, BuildingBoxes>;
   carAdBoxes: Record<string, CarAdBoxes>;
   carHueBoxes: Record<string, CarHueBoxes>;
+  fingerFrames: Record<string, FingerFrameData>;
   kettlebell: Record<string, KettlebellOverlayState>;
   shooter: ShooterOverlay | null;
   kbTournament: KbtHudState | null;
@@ -103,6 +104,8 @@ export type RoomStore = {
   setBuildingBoxes: (inputId: string, boxes: BuildingBoxes | null) => void;
   setCarAdBoxes: (inputId: string, boxes: CarAdBoxes | null) => void;
   setCarHueBoxes: (inputId: string, boxes: CarHueBoxes | null) => void;
+  setFingerFrame: (inputId: string, data: FingerFrameData | null) => void;
+  clearFingerFrames: () => void;
   setKettlebell: (
     inputId: string,
     state: KettlebellOverlayState | null,
@@ -252,6 +255,27 @@ export type CarHueBoxes = {
    * achromatic car, so bright colorless pixels get painted with the hue.
    */
   whiteBoost?: number;
+};
+
+/**
+ * OB Van finger frame: the bbox of both hands' thumb + index fingertips
+ * (normalised 0..1 of the analysed frame), plus the frame dimensions for the
+ * cover mapping. Drives the effect-inside-the-frame shader on the input;
+ * `mode` picks the look (an index into FINGER_FRAME_MODES, cycled by the
+ * pinch sign — all four framing fingertips joined).
+ */
+export const FINGER_FRAME_MODES = [
+  'GRAYSCALE',
+  'SEPIA',
+  'NEGATIVE',
+  'PIXELS',
+] as const;
+
+export type FingerFrameData = {
+  rect: { x: number; y: number; w: number; h: number };
+  frameW: number;
+  frameH: number;
+  mode: number;
 };
 
 /** Boxes plus the frame dimensions they were detected in (for cover mapping). */
@@ -1038,10 +1062,21 @@ export type ObHudState = {
     hostLine: { text: string; atMs: number; untilMs: number } | null;
     /** Title plate while on air before the first question. */
     splash: boolean;
-    /** A stinger clip currently mixed into the output (audio-only mp4). */
+  } | null;
+  /**
+   * Audio-only clips mixed into the output through hidden streams. Lives
+   * outside `quiz` on purpose: the TTS machinery also serves the AI PANEL,
+   * and the keeper must survive HUD crossfades (mounted at the HUD root).
+   */
+  audio: {
+    /** A stinger clip (audio-only mp4). */
     sfx: { inputId: string; startedAtMs: number } | null;
-    /** A TTS line currently mixed into the output (its own slot). */
-    speech: { inputId: string; startedAtMs: number } | null;
+    /**
+     * Every live TTS clip, in register order. A list, not a slot: chained
+     * lines are registered ahead of playback for decode warm-up, and each
+     * one needs its keeper until it has actually finished airing.
+     */
+    speech: { inputId: string; startedAtMs: number }[];
   } | null;
 };
 
@@ -1193,6 +1228,7 @@ export function createRoomStore(
     buildingBoxes: {},
     carAdBoxes: {},
     carHueBoxes: {},
+    fingerFrames: {},
     kettlebell: {},
     shooter: null,
     kbTournament: null,
@@ -1300,6 +1336,33 @@ export function createRoomStore(
         else delete next[inputId];
         return { carHueBoxes: next };
       });
+    },
+    setFingerFrame: (inputId: string, data: FingerFrameData | null) => {
+      set((state) => {
+        const prev = state.fingerFrames[inputId];
+        if (!data && !prev) return state;
+        if (
+          data &&
+          prev &&
+          prev.rect.x === data.rect.x &&
+          prev.rect.y === data.rect.y &&
+          prev.rect.w === data.rect.w &&
+          prev.rect.h === data.rect.h &&
+          prev.frameW === data.frameW &&
+          prev.frameH === data.frameH &&
+          prev.mode === data.mode
+        )
+          return state;
+        const next = { ...state.fingerFrames };
+        if (data) next[inputId] = data;
+        else delete next[inputId];
+        return { fingerFrames: next };
+      });
+    },
+    clearFingerFrames: () => {
+      set((state) =>
+        Object.keys(state.fingerFrames).length ? { fingerFrames: {} } : state,
+      );
     },
     setKettlebell: (inputId: string, state: KettlebellOverlayState | null) => {
       set((prev) => {

@@ -45,6 +45,7 @@ function makeState(patch: Partial<ObState> = {}): ObState {
     },
     quiz: null,
     panel: null,
+    fingerFrame: false,
     llm: {
       available: false,
       model: null,
@@ -157,6 +158,15 @@ describe('echo detection', () => {
     expect(
       commandEchoed({ op: 'segment', action: 'next' }, before, before),
     ).toBe(false);
+  });
+
+  it('finger frame echoes on the state flag', () => {
+    const cmd: ObOperatorCommand = { op: 'finger_frame', enabled: true };
+    expect(commandEchoed(cmd, before, before)).toBe(false);
+    expect(commandEchoed(cmd, before, makeState({ fingerFrame: true }))).toBe(
+      true,
+    );
+    expect(pendingKeyOf(cmd)).toBe('finger_frame');
   });
 
   it('lower third: a new start or a clear', () => {

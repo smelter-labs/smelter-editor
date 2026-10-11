@@ -68,15 +68,18 @@ function fakeTts(durationMs = 1_200): {
   return { tts, synths };
 }
 
-function harness(opts: {
-  panelAi?: ObPanelAiModule;
-  tts?: ObQuizTtsModule;
-} = {}) {
+function harness(
+  opts: {
+    panelAi?: ObPanelAiModule;
+    tts?: ObQuizTtsModule;
+  } = {},
+) {
   const events: RoomEvent[] = [];
   const hud: (ObHudState | null)[] = [];
   const connected = new Set<string>();
   const speechRegs: { file: string; offsetMs: number }[] = [];
   const mouthSets: { camInputId: string; mouth: unknown }[] = [];
+  const captions: { inputId: string; text: string | null }[] = [];
   const signals = new SpySignals();
 
   const deps: ObControllerDeps = {
@@ -107,6 +110,7 @@ function harness(opts: {
     unregisterQuizSpeech: () => {},
     setQuizSpeechMouth: (camInputId, mouth) =>
       mouthSets.push({ camInputId, mouth }),
+    setCamCaption: (inputId, text) => captions.push({ inputId, text }),
     getPipelineTimeMs: () => 50_000,
   };
 
@@ -133,7 +137,7 @@ function harness(opts: {
     return r.camId;
   };
 
-  return { controller, signals, speechRegs, mouthSets, attach };
+  return { controller, signals, speechRegs, mouthSets, captions, hud, attach };
 }
 
 /** Panel preset, live host + OPUS + GPT, on air, roster synced. */
@@ -235,7 +239,10 @@ describe('ObVanController · AI panel', () => {
     await askByVoice(h);
     // Both answers synthesised and both clips registered (serial queue).
     await vi.advanceTimersByTimeAsync(500);
-    expect(synths.map((x) => x.text)).toEqual(['opus hot take', 'gpt hot take']);
+    expect(synths.map((x) => x.text)).toEqual([
+      'opus hot take',
+      'gpt hot take',
+    ]);
     expect(synths.map((x) => x.voiceId)).toEqual(['voice-opus', 'voice-gpt']);
     expect(h.speechRegs).toHaveLength(2);
     // Ride the clips out. The brackets overlap on purpose (GPT's turn rises
@@ -257,7 +264,13 @@ describe('ObVanController · AI panel', () => {
     await onAirPanel(h);
     const now = Date.now();
     // The question airs far in the future (long side-channel delay).
-    h.controller.onRawTranscript('mp4-1', 'a very delayed one?', now + 20_000, 1_000, 100);
+    h.controller.onRawTranscript(
+      'mp4-1',
+      'a very delayed one?',
+      now + 20_000,
+      1_000,
+      100,
+    );
     await vi.advanceTimersByTimeAsync(1_700);
     await vi.advanceTimersByTimeAsync(500);
     expect(h.speechRegs).toHaveLength(2);
@@ -365,5 +378,59 @@ describe('ObVanController · AI panel', () => {
     const turnsAfter = h.signals.quizTurns.length;
     await vi.advanceTimersByTimeAsync(70_000);
     expect(h.signals.quizTurns.length).toBe(turnsAfter);
+  });
+});
+
+describe('ObVanController · panel speech audio + captions', () => {
+  it('mixes the TTS clip via hud.audio (panel preset — quiz hud stays null)', async () => {
+    const { ai } = fakePanelAi();
+    const { tts } = fakeTts(2_000);
+    const h = harness({ panelAi: ai, tts });
+    await onAirPanel(h);
+    await askByVoice(h);
+    await vi.advanceTimersByTimeAsync(6_000); // synth + register + slot
+    expect(h.speechRegs.length).toBeGreaterThan(0);
+    const withSpeech = h.hud.find((s) => s?.audio?.speech.length);
+    expect(withSpeech?.audio?.speech[0]?.inputId).toBe('ob-tts-1');
+    expect(withSpeech?.quiz).toBeNull();
+    // Chained answers: the second clip registers (decode warm-up) while the
+    // first still plays — BOTH keepers must be up, or the first voice dies.
+    const both = h.hud.find((s) => (s?.audio?.speech.length ?? 0) >= 2);
+    expect(both?.audio?.speech.map((c) => c.inputId)).toEqual([
+      'ob-tts-1',
+      'ob-tts-2',
+    ]);
+  });
+
+  it('captions the spoken answer on the panelist tile, then clears it', async () => {
+    const { ai } = fakePanelAi((m) =>
+      m === 'opus'
+        ? 'First point here. Second point that runs a little longer than one line.'
+        : 'Short take.',
+    );
+    const { tts } = fakeTts(2_000);
+    const h = harness({ panelAi: ai, tts });
+    await onAirPanel(h);
+    await askByVoice(h);
+    await vi.advanceTimersByTimeAsync(20_000); // both lines play out fully
+    const opusCaps = h.captions.filter((c) => c.inputId === 'mp4-2');
+    expect(opusCaps.some((c) => c.text?.startsWith('First point here.'))).toBe(
+      true,
+    );
+    expect(opusCaps[opusCaps.length - 1].text).toBeNull();
+    const gptCaps = h.captions.filter((c) => c.inputId === 'mp4-3');
+    expect(gptCaps.some((c) => c.text === 'Short take.')).toBe(true);
+    expect(gptCaps[gptCaps.length - 1].text).toBeNull();
+  });
+
+  it('subtitles off keeps the panel captions off', async () => {
+    const { ai } = fakePanelAi();
+    const { tts } = fakeTts(1_200);
+    const h = harness({ panelAi: ai, tts });
+    await onAirPanel(h);
+    h.controller.setConfig({ subtitles: false });
+    await askByVoice(h);
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(h.captions.length).toBe(0);
   });
 });

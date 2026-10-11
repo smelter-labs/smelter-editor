@@ -437,6 +437,12 @@ export type ObConfig = {
    * desk fires them).
    */
   panel: { tts: boolean; auto: boolean };
+  /**
+   * Finger-frame effect: hands on every camera are scanned for the
+   * director's "finger frame" (thumbs + index fingers forming a rectangle);
+   * the picture inside the frame goes grayscale, tracking the hands live.
+   */
+  fingerFrame: boolean;
   joinUrls?: { cam?: string };
 };
 
@@ -480,6 +486,7 @@ export type ObConfigPatch = {
   host?: Partial<ObConfig["host"]>;
   quiz?: Partial<ObConfig["quiz"]>;
   panel?: Partial<ObConfig["panel"]>;
+  fingerFrame?: boolean;
   joinUrls?: { cam?: string };
 };
 
@@ -503,6 +510,7 @@ export const OB_DEFAULT_CONFIG: ObConfig = {
   host: { enabled: false, description: "wears a GOLD baseball cap" },
   quiz: { bank: "default", aiHost: false, auto: false, tts: false },
   panel: { tts: true, auto: true },
+  fingerFrame: false,
 };
 
 export const OB_CONFIG_LIMITS = {
@@ -659,6 +667,8 @@ export type ObState = {
   quiz: ObQuizState | null;
   /** AI PANEL state — non-null only while the `panel` preset is selected. */
   panel: ObPanelState | null;
+  /** The finger-frame grayscale effect toggle (mirrors `config.fingerFrame`). */
+  fingerFrame: boolean;
   llm: ObLlmStatus;
   stats: ObStats;
   wrapNotes: string | null;
@@ -723,7 +733,9 @@ export type ObOperatorCommand =
   /** Desk toggles for `config.quiz` (the panel is WS-only). */
   | { op: "quiz_set"; auto?: boolean; aiHost?: boolean; tts?: boolean }
   /** Desk toggles for `config.panel` (AI PANEL preset). */
-  | { op: "panel_set"; auto?: boolean; tts?: boolean };
+  | { op: "panel_set"; auto?: boolean; tts?: boolean }
+  /** Toggle the finger-frame grayscale effect (hands scanned on all cams). */
+  | { op: "finger_frame"; enabled: boolean };
 export type ObOperatorOp = ObOperatorCommand["op"];
 
 export type ObControlAction =

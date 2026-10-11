@@ -15,6 +15,8 @@ from analysis import (
     SpeechGate,
     classify_gesture,
     dbfs_from_mean_square,
+    detect_finger_frame,
+    detect_frame_switch,
     motion_score,
     normalise_bands,
     pace_factor,
@@ -196,6 +198,65 @@ check("gate: flicker restarts the hold", gate.update("fist", 3.7) is None and ga
 check("gate: refires after release + hold", gate.update("fist", 4.5) == "fist")
 check("gate: cooldown blocks the next gesture", gate.update("peace", 4.6) is None and gate.update("peace", 5.2) is None)
 check("gate: fires once the cooldown passes", gate.update("peace", 6.6) == "peace")
+
+
+# ── finger frame ─────────────────────────────────────────────────────────────
+def frame_hand() -> list[tuple[float, float]]:
+    """An L-shaped hand: thumb + index extended, the rest curled."""
+    return make_hand([True, False, False, False], "side")
+
+
+rect = detect_finger_frame([frame_hand(), frame_hand()])
+check("frame: two L-hands make a rect", rect is not None and rect["w"] >= 0.03 and rect["h"] >= 0.03, str(rect))
+check(
+    "frame: rect is the four tips' bbox",
+    rect is not None and abs(rect["x"] - 0.15) < 1e-9 and abs(rect["y"] - 0.3) < 1e-9 and abs(rect["w"] - 0.2) < 1e-9 and abs(rect["h"] - 0.45) < 1e-9,
+    str(rect),
+)
+check("frame: one hand is not a frame", detect_finger_frame([frame_hand()]) is None)
+check("frame: no hands / None", detect_finger_frame([]) is None and detect_finger_frame(None) is None)
+check("frame: a fist breaks the frame", detect_finger_frame([frame_hand(), make_hand([False] * 4, "curl")]) is None)
+check("frame: an open palm breaks the frame", detect_finger_frame([frame_hand(), make_hand([True] * 4, "side")]) is None)
+check("frame: a curled thumb breaks the frame", detect_finger_frame([frame_hand(), make_hand([True, False, False, False], "curl")]) is None)
+check("frame: one stray extended finger is tolerated", detect_finger_frame([frame_hand(), make_hand([True, True, False, False], "side")]) is not None)
+check("frame: too few landmarks", detect_finger_frame([frame_hand(), [(0.5, 0.5)] * 10]) is None)
+tiny = frame_hand()
+tiny[4] = (0.35, 0.31)  # thumb tip on the index tip → degenerate bbox
+check("frame: a degenerate rect is noise", detect_finger_frame([tiny, tiny]) is None)
+# Softer extension ratios than the gesture classifier's: a webcam-foreshortened
+# index (ratio between the frame's 1.12 and the gestures' 1.25) and a thumb
+# only just past its IP joint still hold the frame.
+fore = frame_hand()
+fore[8] = (0.35, 0.405)  # index tip pulled toward the camera (ratio ≈ 1.21)
+check("frame: a foreshortened index still frames", detect_finger_frame([fore, frame_hand()]) is not None)
+mid = frame_hand()
+mid[4] = (0.28, 0.72)  # thumb tip-to-wrist ≈ 1.08× its IP (old gate: 1.1)
+check("frame: a mid-way thumb still frames", detect_finger_frame([mid, frame_hand()]) is not None)
+off = frame_hand()
+off[4] = (-0.05, 0.75)  # thumb tip landmarked off picture
+r2 = detect_finger_frame([off, frame_hand()])
+check(
+    "frame: the rect clamps to the picture",
+    r2 is not None and r2["x"] == 0.0 and abs(r2["x"] + r2["w"] - 0.35) < 1e-9,
+    str(r2),
+)
+
+
+# ── finger-frame shader switch (the pinch sign) ──────────────────────────────
+def pinch_hand(dx: float = 0.0, dy: float = 0.0) -> list[tuple[float, float]]:
+    """An L-shaped hand with the thumb + index tips pulled into one cluster
+    (still extended by the wrist-ratio tests)."""
+    h = frame_hand()
+    h[4] = (0.37 + dx, 0.36 + dy)
+    h[8] = (0.38 + dx, 0.35 + dy)
+    return h
+
+
+check("switch: four tips in a cluster fire the sign", detect_frame_switch([pinch_hand(), pinch_hand(-0.005, 0.005)]))
+check("switch: the pinch is no longer a frame", detect_finger_frame([pinch_hand(), pinch_hand(-0.005, 0.005)]) is None)
+check("switch: a spread frame is not the sign", not detect_frame_switch([frame_hand(), frame_hand()]))
+check("switch: a broken pose is not the sign", not detect_frame_switch([pinch_hand(), make_hand([False] * 4, "curl")]))
+check("switch: one hand is not the sign", not detect_frame_switch([pinch_hand()]))
 
 print(f"\n{passed} passed, {failed} failed")
 raise SystemExit(1 if failed else 0)

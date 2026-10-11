@@ -1837,6 +1837,24 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
     shaderFile: 'car-hue.wgsl',
   },
   {
+    id: 'finger-frame',
+    isActive: true,
+    isVisible: false,
+    name: 'Finger Frame',
+    description:
+      'Grayscale inside the director’s finger frame (thumbs + index fingertips of both hands), driven by the OB Van hand tracker.',
+    shaderFile: 'finger-frame.wgsl',
+  },
+  {
+    id: 'panel-studio',
+    isActive: true,
+    isVisible: false,
+    name: 'Panel Studio',
+    description:
+      'AI PANEL puppet-studio backdrop: animated aurora ribbons in the panelist’s accent colour over a graphite-navy wall, with a lit horizon and a dark reflective floor (ObPuppetInput, theme "aurora").',
+    shaderFile: 'panel-studio.wgsl',
+  },
+  {
     id: 'comic-book',
     isActive: true,
     isVisible: true,

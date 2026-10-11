@@ -26,6 +26,7 @@ import { HaunterGhostsInput } from './HaunterGhostsInput';
 import { GhostCityWrapper } from './GhostCityWrapper';
 import { CarAdsInput, CarAdDebugBoxes } from './CarAdsInput';
 import { CarHueWrapper } from './CarHueWrapper';
+import { FingerFrameWrapper } from './FingerFrameWrapper';
 import { BoxConfLabel, SmoothedBoxes } from './SmoothedBoxes';
 import { KettlebellOverlay } from './KettlebellOverlay';
 import { KettlebellSkeletonWrapper } from './KettlebellSkeletonWrapper';
@@ -185,6 +186,12 @@ export function Input({
   const carHueBoxes = useStore(
     store,
     (state) => state.carHueBoxes[input.inputId],
+  );
+  // OB Van finger frame: grayscale inside the hands' framed rect. The store
+  // skips identical writes, so object identity is a sound equality here.
+  const fingerFrame = useStore(
+    store,
+    (state) => state.fingerFrames[input.inputId],
   );
   // Kettlebell Coach: pose skeleton + bell box + reps/verdict badge.
   const kettlebell = useStore(
@@ -384,6 +391,19 @@ export function Input({
     );
   }
 
+  // OB Van finger frame: grayscale inside the rect the hands are framing.
+  // A picture treatment like Car Hue, under ObCamLook so the camera grade
+  // still applies on top.
+  if (fingerFrame) {
+    videoContent = (
+      <FingerFrameWrapper
+        data={fingerFrame}
+        resolution={{ width: contentWidth, height: contentHeight }}>
+        {videoContent}
+      </FingerFrameWrapper>
+    );
+  }
+
   // Blacktop hoop cam: grade it apart from the court view. Sits under the
   // kettlebell rig for the same reason Ghost City does — it is a picture
   // treatment, not an overlay.
@@ -455,6 +475,9 @@ export function Input({
                 <Subtitle
                   text={transcript}
                   parent={{ width: contentWidth, height: contentHeight }}
+                  // Aurora puppet studios carry the nameplate on the desk at
+                  // the bottom of the tile — lift the caption above it.
+                  lift={isPuppet && input.obPuppet?.studio === 'aurora'}
                 />
               ) : null}
               {peopleBoxes?.boxes.length && !peopleBoxes.ghost ? (
@@ -646,9 +669,12 @@ export function Input({
 function Subtitle({
   text,
   parent,
+  lift = false,
 }: {
   text: string;
   parent: { width: number; height: number };
+  /** Raise the box clear of a desk nameplate at the bottom of the tile. */
+  lift?: boolean;
 }) {
   const margin = Math.round(parent.width * 0.04);
   const width = parent.width - 2 * margin;
@@ -660,7 +686,7 @@ function Subtitle({
         borderRadius: 16,
         paddingHorizontal: 32,
         left: margin,
-        bottom: margin,
+        bottom: lift ? Math.round(parent.height * 0.205) : margin,
         width,
         height,
         overflow: 'hidden',

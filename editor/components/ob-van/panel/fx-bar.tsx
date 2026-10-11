@@ -37,6 +37,10 @@ export function FxBar({
     op: 'fx',
     effects: { softBackground: !fx.softBackground },
   };
+  const frameCmd: ObOperatorCommand = {
+    op: 'finger_frame',
+    enabled: !state.fingerFrame,
+  };
   const titleCmd: ObOperatorCommand = {
     op: 'title_bug',
     visible: !state.titleBug.visible,
@@ -91,6 +95,14 @@ export function FxBar({
         pending={pending.isPending(softCmd)}
         onClick={() => pending.send(softCmd)}
         title='Blurred main camera behind split / PiP shots'
+      />
+      <Chip
+        dense
+        label='FRAME'
+        active={state.fingerFrame}
+        pending={pending.isPending(frameCmd)}
+        onClick={() => pending.send(frameCmd)}
+        title='Grayscale inside a hands finger-frame (all cams)'
       />
       <Chip
         dense

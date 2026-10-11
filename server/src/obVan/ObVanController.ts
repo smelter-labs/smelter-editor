@@ -54,7 +54,7 @@ import {
   obShotsEqual,
   parseObRuleset,
 } from '@smelter-editor/types';
-import type { ObHudState } from '../app/store';
+import type { FingerFrameData, ObHudState } from '../app/store';
 import { ObHostTracker } from './host';
 import {
   OB_GESTURE_COOLDOWN_MS,
@@ -132,6 +132,7 @@ import {
 import { QUIZ_QUESTIONS, type QuizQuestion } from './quizQuestions';
 import {
   ObPanelDiscussion,
+  panelCaptionChunks,
   type ObPanelEffect,
   type ObPanelLine,
 } from './panel';
@@ -204,6 +205,10 @@ export type ObControllerDeps = {
     inputId: string,
     opts: ObCamSignalOpts,
   ) => Promise<void>;
+  /** Finger-frame rect for an input's picture (null clears it). */
+  setFingerFrame?: (inputId: string, data: FingerFrameData | null) => void;
+  /** Drop every input's finger-frame rect (effect toggled off / reset). */
+  clearFingerFrames?: () => void;
   /** Side-channel delay the input was registered with (ms). */
   getSideChannelDelayMs?: (inputId: string) => number;
   /**
@@ -241,6 +246,8 @@ export type ObControllerDeps = {
     camInputId: string,
     mouth: PuppetLiveMouth | null,
   ) => void;
+  /** Live caption on a cam's tile (panel TTS lines); null clears it. */
+  setCamCaption?: (camInputId: string, text: string | null) => void;
   getPipelineTimeMs: () => number;
   now?: () => number;
 };
@@ -667,7 +674,14 @@ export class ObVanController {
   /** ElevenLabs voices (null = text-only show). */
   private readonly quizTts: ObQuizTtsModule | null;
   /** The TTS clip on air right now (its own slot — stings must not cut it). */
-  private quizSpeech: { inputId: string; startedAtMs: number } | null = null;
+  /**
+   * Every registered TTS clip that is still live in the engine, in register
+   * order. A MAP, not a single slot: lines are registered ahead of playback
+   * (decode warm-up), so a chained answer registers while the previous one
+   * is still playing — a single slot made the HUD keeper drop the earlier
+   * clip and its voice never reached the mix.
+   */
+  private readonly speechClips = new Map<string, { startedAtMs: number }>();
   private readonly quizSpeechTimers = new Set<ReturnType<typeof setTimeout>>();
   /** Serial speech queue: one voice at a time, with a small on-air gap. */
   private readonly quizSpeechQueue: ObQuizSpeechEntry[] = [];
@@ -676,6 +690,8 @@ export class ObVanController {
   private quizSpeechBusyUntilMs = 0;
   /** Cam whose puppet mouth is being driven, so cleanup clears the right one. */
   private quizSpeechMouthCam: string | null = null;
+  // Panelist whose TTS line is currently captioned on its tile.
+  private panelCaptionCam: string | null = null;
   /** Guards the tidy-up mouth clear against a newer line's takeover. */
   private quizSpeechMouthToken = 0;
   private quizSpeechMouthApplied = 0;
@@ -1047,6 +1063,8 @@ export class ObVanController {
         ...obVanParamsForRole(role, this.config.presetId),
         // Hand tracking runs only on the confirmed host's camera.
         ...(camId && camId === this.gestureCamId ? { hands: '1' } : {}),
+        // The finger frame scans every camera while the effect is on.
+        ...(this.config.fingerFrame ? { handFrame: '1' } : {}),
       },
     };
   }
@@ -1254,6 +1272,7 @@ export class ObVanController {
   }
 
   private removeCam(cam: ObCamRecord, why: string): void {
+    if (cam.inputId) this.deps.setFingerFrame?.(cam.inputId, null);
     this.retireCamInput(cam);
     this.cams.remove(cam.id);
     this.signals.removeCam(cam.id);
@@ -1531,7 +1550,8 @@ export class ObVanController {
       }
     }
     if (patch.panel) {
-      if (typeof patch.panel.auto === 'boolean') c.panel.auto = patch.panel.auto;
+      if (typeof patch.panel.auto === 'boolean')
+        c.panel.auto = patch.panel.auto;
       if (typeof patch.panel.tts === 'boolean') {
         c.panel.tts = patch.panel.tts;
         if (!c.panel.tts && this.panelOn()) this.clearQuizSpeech();
@@ -1549,6 +1569,13 @@ export class ObVanController {
           .slice(0, OB_CONFIG_LIMITS.hostDescription.max);
         if (description) c.host.description = description;
       }
+    }
+    if (
+      typeof patch.fingerFrame === 'boolean' &&
+      patch.fingerFrame !== c.fingerFrame
+    ) {
+      c.fingerFrame = patch.fingerFrame;
+      this.syncFingerFrame();
     }
     if (typeof patch.subtitles === 'boolean') c.subtitles = patch.subtitles;
     if (typeof patch.captions === 'boolean' && patch.captions !== c.captions) {
@@ -1576,6 +1603,42 @@ export class ObVanController {
         this.publishHud();
       })
       .catch((err) => console.error('[ob] join QR registration failed', err));
+  }
+
+  /**
+   * Finger frame toggled: every camera's worker `handFrame` flag follows.
+   * A params-only change (unlike captions, which move the side-channel
+   * delay), so phone cams keep their connection. Off also drops any rect
+   * still on screen.
+   */
+  private syncFingerFrame(): void {
+    for (const cam of this.cams.list()) {
+      if (!cam.inputId) continue;
+      const inputId = cam.inputId;
+      void this.deps
+        .configureCamSignals?.(inputId, this.camSignalOpts(cam.role, cam.id))
+        .catch((err) =>
+          console.warn(
+            `[ob] finger-frame reconfigure failed for ${inputId}`,
+            err,
+          ),
+        );
+    }
+    if (!this.config.fingerFrame) this.deps.clearFingerFrames?.();
+  }
+
+  /**
+   * RoomState applied a finger-frame shader switch (the pinch sign — all
+   * four framing fingertips joined): surface the new look on the desk log.
+   */
+  noteFingerFrameMode(label: string): void {
+    this.pushLog({
+      source: 'system',
+      kind: 'fx',
+      tone: 'chalk',
+      label: 'FRAME',
+      text: `finger frame look → ${label}`,
+    });
   }
 
   /** Captions toggled: every camera needs the other side-channel delay. */
@@ -1744,6 +1807,7 @@ export class ObVanController {
         this.clearQuizSpeech();
         this.panel.reset();
         this.panelTurns.reset();
+        this.deps.clearFingerFrames?.();
         this.closeReplay();
         this.refreshRuleset('reset');
         this.log.clear();
@@ -2094,6 +2158,21 @@ export class ObVanController {
           ]
             .filter(Boolean)
             .join(' · '),
+          ...rs,
+        });
+        return { ok: true };
+      }
+      case 'finger_frame': {
+        if (cmd.enabled === this.config.fingerFrame) return { ok: true };
+        this.setConfig({ fingerFrame: cmd.enabled });
+        this.pushLog({
+          source,
+          kind: 'fx',
+          tone: 'chalk',
+          label: 'FRAME',
+          text: cmd.enabled
+            ? 'finger frame ON — grayscale inside the hands'
+            : 'finger frame OFF',
           ...rs,
         });
         return { ok: true };
@@ -2465,10 +2544,7 @@ export class ObVanController {
             this.quizHostLine = {
               text: canned,
               atMs,
-              untilMs: Math.max(
-                untilMs,
-                startedAtMs + clip.durationMs + 1_500,
-              ),
+              untilMs: Math.max(untilMs, startedAtMs + clip.durationMs + 1_500),
             };
           // The welcome gets the host's face; reveals keep the contestant's
           // celebrate solo and play as voice-over.
@@ -2582,10 +2658,8 @@ export class ObVanController {
       this.quizAudioGarbage.splice(i, 1);
       if (g.kind === 'speech') {
         this.deps.unregisterQuizSpeech?.(g.inputId);
-        if (this.quizSpeech?.inputId === g.inputId) {
-          this.quizSpeech = null;
-          if (!this.disposed) this.publishHud();
-        }
+        if (this.speechClips.delete(g.inputId) && !this.disposed)
+          this.publishHud();
       } else {
         this.deps.unregisterQuizSfx?.(g.inputId);
       }
@@ -2706,9 +2780,7 @@ export class ObVanController {
    * chains behind it in the serial speech queue. Each clip is bracketed by
    * `speechStarted` / `speechEnded`, whose `turn` effects move the big tile.
    */
-  private startPanelAnswers(
-    fx: Extract<ObPanelEffect, { type: 'ask' }>,
-  ): void {
+  private startPanelAnswers(fx: Extract<ObPanelEffect, { type: 'ask' }>): void {
     const answerOf = async (
       model: ObPanelSpeakerId,
     ): Promise<{ model: ObPanelSpeakerId; text: string | null }> => {
@@ -2739,11 +2811,7 @@ export class ObVanController {
         return;
       }
       r.lines.forEach((line, i) =>
-        this.queuePanelLine(
-          fx.seq,
-          line,
-          i === 0 ? fx.notBeforeMs : undefined,
-        ),
+        this.queuePanelLine(fx.seq, line, i === 0 ? fx.notBeforeMs : undefined),
       );
     });
   }
@@ -2791,8 +2859,50 @@ export class ObVanController {
             this.markStateDirty();
           },
         );
+        if (camInputId)
+          this.schedulePanelCaptions(
+            camInputId,
+            line.text,
+            startedAtMs,
+            clip.durationMs,
+          );
       },
     });
+  }
+
+  /**
+   * The spoken answer as live captions on the panelist's tile: the line is
+   * chunked into subtitle-sized pieces paced proportionally across the clip,
+   * then cleared just after the voice ends. Honors the subtitles toggle.
+   */
+  private schedulePanelCaptions(
+    inputId: string,
+    text: string,
+    startMs: number,
+    durationMs: number,
+  ): void {
+    if (!this.config.subtitles || !this.deps.setCamCaption) return;
+    const chunks = panelCaptionChunks(text);
+    if (!chunks.length) return;
+    const totalChars = chunks.reduce((a, c) => a + c.length, 0) || 1;
+    let offset = 0;
+    for (const chunk of chunks) {
+      const atMs = startMs + (offset / totalChars) * durationMs;
+      offset += chunk.length;
+      this.setPanelTimer(Math.max(0, atMs - this.now()), () => {
+        if (!this.panelOn()) return;
+        this.panelCaptionCam = inputId;
+        this.deps.setCamCaption?.(inputId, chunk);
+      });
+    }
+    // The clear always runs — a caption must never outlive its line.
+    this.setPanelTimer(
+      Math.max(0, startMs + durationMs + 600 - this.now()),
+      () => {
+        if (this.panelCaptionCam === inputId) this.panelCaptionCam = null;
+        this.deps.setCamCaption?.(inputId, null);
+      },
+    );
   }
 
   // ── Quiz speech (ElevenLabs voices) ──────────────────────────────────
@@ -2872,7 +2982,7 @@ export class ObVanController {
             offsetMs,
           );
           if (inputId && !this.disposed) {
-            this.quizSpeech = { inputId, startedAtMs: voicedStartMs };
+            this.speechClips.set(inputId, { startedAtMs: voicedStartMs });
             entry.onStart?.(clip, voicedStartMs);
             this.publishHud();
             if (entry.camInputId && this.deps.setQuizSpeechMouth) {
@@ -2933,13 +3043,16 @@ export class ObVanController {
       else this.deps.unregisterQuizSfx?.(g.inputId);
     }
     this.quizAudioGarbage.length = 0;
-    if (this.quizSpeech) {
-      this.deps.unregisterQuizSpeech?.(this.quizSpeech.inputId);
-      this.quizSpeech = null;
-    }
+    for (const inputId of this.speechClips.keys())
+      this.deps.unregisterQuizSpeech?.(inputId);
+    this.speechClips.clear();
     if (this.quizSpeechMouthCam) {
       this.deps.setQuizSpeechMouth?.(this.quizSpeechMouthCam, null);
       this.quizSpeechMouthCam = null;
+    }
+    if (this.panelCaptionCam) {
+      this.deps.setCamCaption?.(this.panelCaptionCam, null);
+      this.panelCaptionCam = null;
     }
     this.quizSpeechPlaying = false;
     this.quizSpeechBusyUntilMs = 0;
@@ -2967,8 +3080,7 @@ export class ObVanController {
     }
     for (const [model, texts] of Object.entries(lines.byModel)) {
       const voiceId = tts.voiceOf(model as ObQuizModelId);
-      if (voiceId)
-        warm.push(...texts.map((text) => ({ text, voiceId })));
+      if (voiceId) warm.push(...texts.map((text) => ({ text, voiceId })));
     }
     tts.warm(warm);
   }
@@ -3143,18 +3255,23 @@ export class ObVanController {
           : null,
       hostLine: this.quizHostLine ? { ...this.quizHostLine } : null,
       splash: c === null && s.players.every((p) => p.answered === 0),
+    };
+  }
+
+  /** Hidden audio streams (stingers / TTS) — preset-agnostic, unlike `quiz`. */
+  private audioClipsHud(): ObHudState['audio'] {
+    if (!this.quizSfx && this.speechClips.size === 0) return null;
+    return {
       sfx: this.quizSfx
         ? {
             inputId: this.quizSfx.inputId,
             startedAtMs: this.quizSfx.startedAtMs,
           }
         : null,
-      speech: this.quizSpeech
-        ? {
-            inputId: this.quizSpeech.inputId,
-            startedAtMs: this.quizSpeech.startedAtMs,
-          }
-        : null,
+      speech: [...this.speechClips].map(([inputId, s]) => ({
+        inputId,
+        startedAtMs: s.startedAtMs,
+      })),
     };
   }
 
@@ -4826,6 +4943,7 @@ export class ObVanController {
       },
       quiz: this.quizOn() ? this.quiz.state() : null,
       panel: this.panelOn() ? this.panel.state() : null,
+      fingerFrame: this.config.fingerFrame,
       llm: this.llmStatus(),
       stats: this.statsSnapshot(now),
       wrapNotes: this.wrapNotes,
@@ -4950,6 +5068,7 @@ export class ObVanController {
           : null,
       wrap: this.phase === 'wrap' ? this.wrapCard() : null,
       quiz: this.quizHud(),
+      audio: this.audioClipsHud(),
     };
   }
 
