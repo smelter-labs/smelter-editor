@@ -28,6 +28,11 @@ import {
   KbtStatusStrip,
 } from '@/components/kettlebell-tournament/kbt-kit';
 import { NameStep } from '@/components/kettlebell-tournament/phone/name-step';
+import {
+  parseBodyKg,
+  parseKettlebellKg,
+  sanitizeKgInput,
+} from '@/components/kettlebell-tournament/kbt-weights';
 import { PhotoStep } from '@/components/kettlebell-tournament/phone/photo-step';
 import { CameraStep } from '@/components/kettlebell-tournament/phone/camera-step';
 import {
@@ -87,6 +92,10 @@ type LifterSession = {
   /** Was publishing a recording — the File itself can't survive a refresh,
    * so resume asks for the source again instead of grabbing the camera. */
   usedFile?: boolean;
+  /** Weighted scoring: bell/body kg last sent to the server, re-sent on the
+   * auto re-join so a reconnect keeps them without re-typing. */
+  kettlebellKg?: number;
+  bodyKg?: number;
 };
 
 const sessionStorageKey = (roomId: string) => `kbt-lifter-${roomId}`;
@@ -109,6 +118,9 @@ export default function LiftControllerPage() {
 
   const [step, setStep] = useState<Step>('connect');
   const [name, setName] = useState('');
+  // Weighted scoring fields as raw strings (blank = 24/80 defaults).
+  const [kbKg, setKbKg] = useState('');
+  const [bwKg, setBwKg] = useState('');
   const [connected, setConnected] = useState(false);
   const [roomStatus, setRoomStatus] = useState<'loading' | 'ok' | 'not-found'>(
     'loading',
@@ -164,6 +176,8 @@ export default function LiftControllerPage() {
   const republishAttemptsRef = useRef(0);
   const noticeTimerRef = useRef<number | null>(null);
   const nameRef = useRef('');
+  const kbKgRef = useRef('');
+  const bwKgRef = useRef('');
   const facingRef = useRef<'user' | 'environment'>('user');
   const myClientIdRef = useRef<string | null>(null);
   const camStreamRef = useRef<MediaStream | null>(null);
@@ -180,6 +194,8 @@ export default function LiftControllerPage() {
   const stepRef = useRef<Step>('connect');
   stepRef.current = step;
   nameRef.current = name;
+  kbKgRef.current = kbKg;
+  bwKgRef.current = bwKg;
   facingRef.current = facing;
   myClientIdRef.current = myClientId;
 
@@ -544,6 +560,14 @@ export default function LiftControllerPage() {
           myClientIdRef.current = event.clientId;
           wantsJoinRef.current = true;
           saveSession({ playerKey: event.playerKey, name: event.name });
+          // Server echo prefills the weight fields when localStorage was
+          // cleared (never clobbers something the athlete is typing).
+          if (event.kettlebellKg != null && !kbKgRef.current.trim()) {
+            setKbKg(`${event.kettlebellKg}`);
+          }
+          if (event.bodyKg != null && !bwKgRef.current.trim()) {
+            setBwKg(`${event.bodyKg}`);
+          }
           if (resumeRef.current === 'pending') {
             resumeRef.current = 'done';
             routeResume(event);
@@ -676,11 +700,16 @@ export default function LiftControllerPage() {
       // hard refresh (kbt_joined then routes the wizard).
       if (wantsJoinRef.current || resumeRef.current === 'pending') {
         const playerKey = sessionRef.current.playerKey;
+        const { kettlebellKg, bodyKg } = sessionRef.current;
         ws.send(
           JSON.stringify({
             type: 'kbt_join',
             name: nameRef.current.trim() || 'Lifter',
             ...(playerKey ? { playerKey } : {}),
+            // Re-assert stored weights — the server keeps old values on a
+            // weightless join anyway, this just covers a reset room.
+            ...(kettlebellKg != null ? { kettlebellKg } : {}),
+            ...(bodyKg != null ? { bodyKg } : {}),
           }),
         );
         setMyClientId(null);
@@ -729,6 +758,8 @@ export default function LiftControllerPage() {
     sessionRef.current = session;
     if (session.playerKey) resumeRef.current = 'pending';
     setName(session.name ?? window.localStorage.getItem(NAME_KEY) ?? '');
+    if (session.kettlebellKg != null) setKbKg(`${session.kettlebellKg}`);
+    if (session.bodyKg != null) setBwKg(`${session.bodyKg}`);
     void getRoomInfo(String(roomId)).then((info) => {
       setRoomStatus(info && info !== 'not-found' ? 'ok' : 'not-found');
     });
@@ -878,7 +909,15 @@ export default function LiftControllerPage() {
     const trimmed = nameRef.current.trim();
     if (!trimmed) return;
     window.localStorage.setItem(NAME_KEY, trimmed);
-    saveSession({ name: trimmed });
+    // Blank fields stay undefined → the server's 24/80 defaults apply. Like
+    // the server, a blank re-register keeps the previously stored weight.
+    const kettlebellKg = parseKettlebellKg(kbKgRef.current);
+    const bodyKg = parseBodyKg(bwKgRef.current);
+    saveSession({
+      name: trimmed,
+      ...(kettlebellKg != null ? { kettlebellKg } : {}),
+      ...(bodyKg != null ? { bodyKg } : {}),
+    });
     wantsJoinRef.current = true;
     const ws = wsRef.current;
     if (ws?.readyState === WebSocket.OPEN) {
@@ -888,6 +927,8 @@ export default function LiftControllerPage() {
           type: 'kbt_join',
           name: trimmed,
           ...(playerKey ? { playerKey } : {}),
+          ...(kettlebellKg != null ? { kettlebellKg } : {}),
+          ...(bodyKg != null ? { bodyKg } : {}),
         }),
       );
     }
@@ -1055,7 +1096,21 @@ export default function LiftControllerPage() {
             onRetry={retryConnect}
           />
         ) : step === 'name' ? (
-          <NameStep name={name} onName={setName} onContinue={join} />
+          <NameStep
+            name={name}
+            onName={setName}
+            onContinue={join}
+            weights={
+              kbtState?.config?.weightedScoring === true
+                ? {
+                    kettlebellKg: kbKg,
+                    bodyKg: bwKg,
+                    onKettlebellKg: (v) => setKbKg(sanitizeKgInput(v)),
+                    onBodyKg: (v) => setBwKg(sanitizeKgInput(v)),
+                  }
+                : null
+            }
+          />
         ) : step === 'photo' ? (
           <PhotoStep
             existingPhoto={!!me?.photoUrl}
