@@ -15,6 +15,7 @@ import {
 } from '../ai-models';
 import { sleep } from '../utils';
 import mp4SuggestionsMonitor from '../mp4/mp4SuggestionMonitor';
+import { uprightMp4Path } from '../mp4/uprightMp4';
 import pictureSuggestionsMonitor from '../pictures/pictureSuggestionMonitor';
 import {
   getMp4DurationMs,
@@ -333,6 +334,9 @@ export class InputManager {
     }
 
     const dims = await getMp4VideoDimensions(mp4Path);
+    // Bake a rotated clip now: the encode can outlast connectInput's wait
+    // for the registration, which then only looks the copy up.
+    if (!isAudio) await uprightMp4Path(mp4Path);
     const titlePrefix = isAudio ? 'AUDIO' : 'MP4';
 
     this.inputs.push({
@@ -424,6 +428,7 @@ export class InputManager {
     }
 
     const dims = await getMp4VideoDimensions(mp4Path);
+    if (!isAudio) await uprightMp4Path(mp4Path);
     const mp4Name = resolvedFileName;
     const titlePrefix = isAudio ? 'AUDIO' : 'MP4';
 

@@ -18,6 +18,7 @@ import {
 import { captionDebug } from './captions/captionsDebug';
 import { config, mp4RecordingPreset, type FfmpegH264Preset } from './config';
 import { DATA_DIR } from './dataDir';
+import { uprightMp4Path } from './mp4/uprightMp4';
 import { ensureDir, pathExists, readFile, readdir } from 'fs-extra';
 import {
   MotionScene,
@@ -618,12 +619,13 @@ class SmelterManager {
       } else if (opts.type === 'mp4') {
         logSideChannelRegistration(inputId, 'mp4', opts.sideChannel);
         const sideChannel = sideChannelSpread(opts.sideChannel);
+        const filePath = await uprightMp4Path(opts.filePath);
         console.log(
-          `[smelter] registerInput MP4 inputId=${inputId} path=${opts.filePath} loop=${opts.loop ?? true} offsetMs=${opts.offsetMs} seekMs=${opts.seekMs}`,
+          `[smelter] registerInput MP4 inputId=${inputId} path=${filePath} loop=${opts.loop ?? true} offsetMs=${opts.offsetMs} seekMs=${opts.seekMs}`,
         );
         await this.instance.registerInput(inputId, {
           type: 'mp4',
-          serverPath: opts.filePath,
+          serverPath: filePath,
           decoderMap: MP4_DECODER_MAP,
           loop: opts.loop ?? true,
           offsetMs: opts.offsetMs,
