@@ -40,6 +40,7 @@ import { useControlPanelEvents } from './hooks/use-control-panel-events';
 import { FxAccordion } from './components/FxAccordion';
 import { useAppMode } from '@/components/app-mode/app-mode-context';
 import { StreamsSection } from './components/StreamsSection';
+import { WhipHandFrame } from './components/WhipHandFrame';
 import { LayersSection } from './components/LayersSection';
 import { LayerPositionPanel } from './components/LayerPositionPanel';
 import { CarouselPanel } from '@/components/dashboard/carousel-panel';
@@ -621,6 +622,8 @@ function ControlPanelWithActions({
   return (
     <ControlPanelProvider value={controlPanelCtx}>
       <WhipConnectionsProvider value={whipConnections}>
+        {/* OB finger frame for this tab's WHIP camera (headless). */}
+        <WhipHandFrame roomId={roomId} />
         <ControlPanelInner
           roomState={roomState}
           inputWrappers={inputWrappers}

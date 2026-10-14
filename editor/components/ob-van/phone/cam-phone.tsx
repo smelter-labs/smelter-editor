@@ -17,6 +17,7 @@ import {
 } from '@/lib/ob-van/roles';
 import { CamLiveHud, type HudStatus } from './cam-live-hud';
 import { CamRigStep } from './cam-rig-step';
+import { useHandFrame } from './use-hand-frame';
 import {
   CamSetupStep,
   NAME_MAX,
@@ -91,6 +92,14 @@ export function CamPhone() {
 
   useTallyVibration(cam.tally);
 
+  // Finger frame: detect the fingertip quad in this browser and stream it
+  // to the server while the operator's FRAME toggle is on and we publish.
+  const hand = useHandFrame(
+    cam.fingerFrameOn && cam.live,
+    media,
+    cam.sendHandFrame,
+  );
+
   const role: ObCamRole | null =
     roleChoice === 'custom' ? customRole(customName) : roleChoice;
   const canContinue = name.trim().length > 0 && role != null;
@@ -131,6 +140,10 @@ export function CamPhone() {
         camErr={media.camErr}
         muted={media.muted}
         micLevel={media.micLevel}
+        fingerFrameOn={cam.fingerFrameOn}
+        handQuad={hand.quad}
+        handStatus={hand.status}
+        lastSwitchAt={hand.lastSwitchAt}
         onToggleMute={media.toggleMute}
         onStopVideo={cam.stopVideo}
         onLeave={cam.leave}

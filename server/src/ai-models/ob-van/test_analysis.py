@@ -206,12 +206,19 @@ def frame_hand() -> list[tuple[float, float]]:
     return make_hand([True, False, False, False], "side")
 
 
-rect = detect_finger_frame([frame_hand(), frame_hand()])
-check("frame: two L-hands make a rect", rect is not None and rect["w"] >= 0.03 and rect["h"] >= 0.03, str(rect))
+def shift_hand(h: list[tuple[float, float]], dx: float, dy: float) -> list[tuple[float, float]]:
+    """The same hand moved rigidly — ratios are translation-invariant."""
+    return [(x + dx, y + dy) for (x, y) in h]
+
+
+quad = detect_finger_frame([frame_hand(), shift_hand(frame_hand(), 0.3, 0.1)])
+check("frame: two L-hands make a quad", quad is not None and len(quad) == 4, str(quad))
+_expected = [(0.15, 0.75), (0.35, 0.3), (0.45, 0.85), (0.65, 0.4)]
 check(
-    "frame: rect is the four tips' bbox",
-    rect is not None and abs(rect["x"] - 0.15) < 1e-9 and abs(rect["y"] - 0.3) < 1e-9 and abs(rect["w"] - 0.2) < 1e-9 and abs(rect["h"] - 0.45) < 1e-9,
-    str(rect),
+    "frame: corners are the tips in cycle order (thumb-A, index-A, thumb-B, index-B)",
+    quad is not None
+    and all(abs(a - e) < 1e-9 for p, q in zip(quad, _expected) for a, e in zip(p, q)),
+    str(quad),
 )
 check("frame: one hand is not a frame", detect_finger_frame([frame_hand()]) is None)
 check("frame: no hands / None", detect_finger_frame([]) is None and detect_finger_frame(None) is None)
@@ -233,13 +240,25 @@ mid = frame_hand()
 mid[4] = (0.28, 0.72)  # thumb tip-to-wrist ≈ 1.08× its IP (old gate: 1.1)
 check("frame: a mid-way thumb still frames", detect_finger_frame([mid, frame_hand()]) is not None)
 off = frame_hand()
-off[4] = (-0.05, 0.75)  # thumb tip landmarked off picture
-r2 = detect_finger_frame([off, frame_hand()])
+off[4] = (-0.05, 0.75)  # thumb tip landmarked just off picture
+r2 = detect_finger_frame([off, shift_hand(frame_hand(), 0.3, 0.1)])
 check(
-    "frame: the rect clamps to the picture",
-    r2 is not None and r2["x"] == 0.0 and abs(r2["x"] + r2["w"] - 0.35) < 1e-9,
+    "frame: an off-picture tip keeps the quad's shape (no clamping)",
+    r2 is not None and r2[0] == (-0.05, 0.75),
     str(r2),
 )
+# Pose hysteresis: ratios between the hold gates (1.02 / 0.96) and the
+# acquire gates (1.12 / 1.04), plus stray extended fingers, keep an already
+# held frame but never start one.
+wob = frame_hand()
+wob[8] = (0.35, 0.468)  # index ratio ≈ 1.07
+wob_pair = [wob, shift_hand(wob, 0.3, 0.1)]
+check("frame: wobble cannot acquire", detect_finger_frame(wob_pair) is None)
+check("frame: wobble keeps a held frame", detect_finger_frame(wob_pair, held=True) is not None)
+splay = make_hand([True, True, True, False], "side")
+splay_pair = [splay, shift_hand(splay, 0.3, 0.1)]
+check("frame: stray fingers cannot acquire", detect_finger_frame(splay_pair) is None)
+check("frame: stray fingers keep a held frame", detect_finger_frame(splay_pair, held=True) is not None)
 
 
 # ── finger-frame shader switch (the pinch sign) ──────────────────────────────

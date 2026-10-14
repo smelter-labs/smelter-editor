@@ -398,6 +398,20 @@ export class RoomState {
   // Which look each input's finger frame uses (index into FINGER_FRAME_MODES,
   // cycled by the pinch sign). Survives toggling the effect off and on.
   private readonly fingerFrameModes = new Map<string, number>();
+  // Wall time of the last browser-side detection per input: while fresh, the
+  // Python worker's hand_frame results for that input are dropped (adopted
+  // cams would otherwise feed two sources at once).
+  private readonly jsHandFrameAt = new Map<string, number>();
+  private static readonly JS_HAND_FRAME_GRACE_MS = 5000;
+  // A browser quad is stamped at capture and arrives over WS near-instantly,
+  // but its VIDEO frame reaches the engine only after webcam→encode→RTP→
+  // jitter-buffer latency — without this extra hold the overlay runs ahead
+  // of the picture by that much. Rough per-setup constant; tune with
+  // OB_HAND_FRAME_LAG_MS if the quad still leads (raise) or trails (lower).
+  private static readonly HAND_FRAME_VIDEO_LAG_MS = (() => {
+    const v = Number(process.env.OB_HAND_FRAME_LAG_MS);
+    return Number.isFinite(v) ? v : 250;
+  })();
 
   private stateChangeListeners = new Set<() => void>();
 
@@ -966,6 +980,31 @@ export class RoomState {
           this.configureObCamSignals(inputId, opts),
         setFingerFrame: (inputId, data) =>
           this.output.store.getState().setFingerFrame(inputId, data),
+        // Browser detections ride the same air-sync hold as worker results:
+        // the quad was computed at capture, which is exactly the
+        // side-channel lead ahead of air (WHIP transport ≈ WS latency). A
+        // live JS detector also silences the Python worker for this input
+        // (adopted cams run both sources otherwise — doubled quads and
+        // double-fired pinches).
+        applyHandFrame: (inputId, d) => {
+          this.jsHandFrameAt.set(inputId, Date.now());
+          // Negative procMs lengthens the hold: the video-pipeline lag the
+          // worker path never sees (its clock IS the side channel).
+          const procMs = (d.procMs ?? 0) - RoomState.HAND_FRAME_VIDEO_LAG_MS;
+          this.onObHandFrame({
+            modelId: OB_VAN_MODEL_ID,
+            inputId,
+            data: d.switch
+              ? { kind: 'hand_frame_switch', procMs }
+              : {
+                  kind: 'hand_frame',
+                  quad: d.quad ?? null,
+                  frameW: d.frameW,
+                  frameH: d.frameH,
+                  procMs,
+                },
+          });
+        },
         clearFingerFrames: () => {
           // Invalidate rects still held for the side-channel delay — a stale
           // apply after OFF would stick forever (no more worker messages).
@@ -1095,7 +1134,10 @@ export class RoomState {
       .wireSidecarListeners(OB_VAN_MODEL_ID, (event) => {
         const d = event.data as { kind?: unknown } | null;
         if (d && (d.kind === 'hand_frame' || d.kind === 'hand_frame_switch')) {
-          this.onObHandFrame(event);
+          // A browser detector heard recently owns this input's frames.
+          const jsAt = this.jsHandFrameAt.get(event.inputId) ?? 0;
+          if (Date.now() - jsAt > RoomState.JS_HAND_FRAME_GRACE_MS)
+            this.onObHandFrame(event);
           return;
         }
         this.obVan.onWorkerResult(event.inputId, event.data, event.ptsNanos);
@@ -3024,16 +3066,38 @@ export class RoomState {
     return this.obVan.simulateHost(camId);
   }
 
-  /** Dev-only (OB_SIM=1): a fabricated finger-frame rect (or, with
-   * `switchSign`, the pinch shader-switch sign) for an input. */
+  /** Finger-frame points detected in a browser that publishes one of this
+   * room's inputs (editor control-panel WHIP camera adopted as an OB cam). */
+  public obClientHandFrame(
+    inputId: string,
+    msg: Record<string, unknown>,
+  ): ObCommandResult {
+    return this.obVan.clientHandFrame(inputId, msg);
+  }
+
+  /** Dev-only (OB_SIM=1): a fabricated finger-frame quad (a rect is turned
+   * into its four corners; with `switchSign`, the pinch shader-switch sign)
+   * for an input. */
   public simulateObHandFrame(
     inputId: string,
     rect: { x: number; y: number; w: number; h: number } | null,
     frame?: { frameW?: number; frameH?: number },
     switchSign?: boolean,
+    quad?: number[][] | null,
   ): ObCommandResult {
     if (!this.hasInput(inputId))
       return { ok: false, code: 'unknown_cam', message: 'No such input.' };
+    const shape =
+      quad !== undefined
+        ? quad
+        : rect
+          ? [
+              [rect.x, rect.y],
+              [rect.x + rect.w, rect.y],
+              [rect.x + rect.w, rect.y + rect.h],
+              [rect.x, rect.y + rect.h],
+            ]
+          : null;
     this.onObHandFrame({
       modelId: OB_VAN_MODEL_ID,
       inputId,
@@ -3041,7 +3105,7 @@ export class RoomState {
         ? { kind: 'hand_frame_switch', procMs: 0 }
         : {
             kind: 'hand_frame',
-            rect,
+            quad: shape,
             frameW: frame?.frameW ?? 1280,
             frameH: frame?.frameH ?? 720,
             procMs: 0,
@@ -3943,7 +4007,7 @@ export class RoomState {
     if (!input) return;
     const data = event.data as {
       kind?: string;
-      rect?: { x: number; y: number; w: number; h: number } | null;
+      quad?: number[][] | null;
       frameW?: number;
       frameH?: number;
       procMs?: number;
@@ -3972,18 +4036,21 @@ export class RoomState {
       if (epoch !== this.fingerFrameEpoch) return;
       if (!this.hasInput(event.inputId)) return;
       const store = this.output.store.getState();
-      const rect = data.rect;
+      const quad = data.quad;
       if (
-        rect &&
-        typeof rect.x === 'number' &&
-        typeof rect.y === 'number' &&
-        typeof rect.w === 'number' &&
-        typeof rect.h === 'number' &&
+        Array.isArray(quad) &&
+        quad.length === 4 &&
+        quad.every(
+          (p) =>
+            Array.isArray(p) &&
+            typeof p[0] === 'number' &&
+            typeof p[1] === 'number',
+        ) &&
         typeof data.frameW === 'number' &&
         typeof data.frameH === 'number'
       ) {
         store.setFingerFrame(event.inputId, {
-          rect,
+          quad: quad.map((p) => [p[0], p[1]]),
           frameW: data.frameW,
           frameH: data.frameH,
           mode: this.fingerFrameModes.get(event.inputId) ?? 0,

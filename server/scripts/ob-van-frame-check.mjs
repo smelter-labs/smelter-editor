@@ -1,17 +1,20 @@
 #!/usr/bin/env node
-// Finger-frame live check: records the program while the dev injector
-// (OB_SIM=1, no worker needed) pushes a `hand_frame` rect onto the solo cam,
-// then samples recorded frames with ffmpeg and asserts the picture is
-// grayscale inside the rect (R≈G≈B), turns sepia after the pinch
-// shader-switch sign (R>G>B), and is colorful outside / after release.
+// Finger-frame live check: records the program while fingertip quads are
+// pushed onto the solo cam through the production browser-detector endpoint
+// (POST /ob-van/hand-frame — no worker or MediaPipe needed), then samples
+// recorded frames with ffmpeg and asserts: a crossed
+// cycle draws as an hourglass (top lobe effected, between the lobes not), a
+// simple quad is grayscale inside (R≈G≈B) and colorful outside, the pinch
+// switch sign turns it sepia (R>G>B), and release restores the color.
 //
 //   OB_API=http://localhost:3121 node scripts/ob-van-frame-check.mjs
 //
 // Timeline (side-channel hold ≈3 s on the mp4 cams delays each apply):
-//   1 s   inject rect        → on screen ≈4 s (mode 0, grayscale)
-//   3.5 s inject switch sign → restyles to SEPIA ≈6.5 s
-//   7.5 s inject null        → released ≈10.5 s
-//   11.5s toggle OFF (state assertion; rects already clear)
+//   1 s   inject crossed quad → hourglass on screen ≈4 s (grayscale)
+//   4.5 s inject simple quad  → rectangle ≈7.5 s (grayscale)
+//   7 s   inject switch sign  → restyles to SEPIA ≈10 s
+//   10.5s inject null         → released ≈13.5 s
+//   14 s  toggle OFF (state assertion; quads already clear)
 
 import { execFileSync } from 'node:child_process';
 import {
@@ -29,6 +32,14 @@ import {
 const W = 1280;
 const H = 720;
 const RECT = { x: 0.55, y: 0.52, w: 0.34, h: 0.36 };
+const TL = [RECT.x, RECT.y];
+const TR = [RECT.x + RECT.w, RECT.y];
+const BR = [RECT.x + RECT.w, RECT.y + RECT.h];
+const BL = [RECT.x, RECT.y + RECT.h];
+// Cycle order TL→TR→BR→BL is a simple quad; swapping the last two crosses
+// the edges — the hourglass (even-odd fill: two lobes, top + bottom).
+const QUAD = [TL, TR, BR, BL];
+const HOURGLASS = [TL, TR, BL, BR];
 
 const log = (...a) =>
   console.log(`[${new Date().toISOString().slice(11, 23)}]`, ...a);
@@ -138,44 +149,77 @@ async function main() {
       const wait = t0 + sec * 1000 - Date.now();
       if (wait > 0) await sleep(wait);
     };
-    const inject = (rect) =>
-      api('POST', `/room/${roomId}/ob-van/simulate-hand-frame`, {
+    const inject = (quad) =>
+      api('POST', `/room/${roomId}/ob-van/hand-frame`, {
         inputId: c1.inputId,
-        rect,
+        quad,
         frameW: W,
         frameH: H,
       });
 
     await at(1);
-    await inject(RECT);
-    log('rect injected');
-    await at(3.5);
-    await api('POST', `/room/${roomId}/ob-van/simulate-hand-frame`, {
+    await inject(HOURGLASS);
+    log('crossed quad injected');
+    await at(4.5);
+    await inject(QUAD);
+    log('simple quad injected');
+    await at(7);
+    await api('POST', `/room/${roomId}/ob-van/hand-frame`, {
       inputId: c1.inputId,
-      rect: null,
+      quad: null,
       switch: true,
     });
     log('switch sign injected');
-    await at(7.5);
+    await at(10.5);
     await inject(null);
-    log('rect released');
-    await at(11.5);
+    log('quad released');
+    await at(14);
     await ob.operate(roomId, { op: 'finger_frame', enabled: false });
     check(
       (await ob.state(roomId)).fingerFrame === false,
       'operate turns it OFF',
     );
-    await at(13);
+    await at(14.6);
     const stopped = await api('POST', `/room/${roomId}/record/stop`, {});
     const file = `data/recordings/${stopped.fileName}`;
     log('recording', file);
 
-    // Inside patch: the middle of the rect; outside patch: top-left corner.
+    // Hourglass phase (crossed cycle, grayscale): the top lobe is effected,
+    // the area beside the crossing point (left-middle) is not.
+    const topOn = patchSpread(
+      file,
+      5.5,
+      Math.round((RECT.x + RECT.w / 2) * W) - 20,
+      Math.round(RECT.y * H) + 26,
+      40,
+      30,
+    );
+    const leftOn = patchSpread(
+      file,
+      5.5,
+      Math.round(RECT.x * W) + 20,
+      Math.round((RECT.y + RECT.h / 2) * H) - 15,
+      30,
+      30,
+    );
+    log(`hourglass spread top=${topOn.toFixed(1)} left=${leftOn.toFixed(1)}`);
+    check(
+      topOn <= 10,
+      'hourglass: the top lobe is grayed',
+      `spread ${topOn.toFixed(1)}`,
+    );
+    check(
+      leftOn > topOn + 2.5,
+      'hourglass: beside the crossing stays colorful',
+      `left ${leftOn.toFixed(1)} vs top ${topOn.toFixed(1)}`,
+    );
+
+    // Inside patch: the middle of the quad; outside patch: top-left corner.
     const ix = Math.round((RECT.x + RECT.w / 2) * W) - 20;
     const iy = Math.round((RECT.y + RECT.h / 2) * H) - 20;
-    const inOn = patchSpread(file, 5.5, ix, iy, 40, 40);
-    const outOn = patchSpread(file, 5.5, 120, 120, 40, 40);
-    const inAfter = patchSpread(file, 12, ix, iy, 40, 40);
+    const inOn = patchSpread(file, 8.7, ix, iy, 40, 40);
+    const outOn = patchSpread(file, 8.7, 120, 120, 40, 40);
+    const inAfter = patchSpread(file, 14.2, ix, iy, 40, 40);
     log(
       `spread inside=${inOn.toFixed(1)} outside=${outOn.toFixed(1)} after=${inAfter.toFixed(1)}`,
     );
@@ -196,7 +240,7 @@ async function main() {
     const by = Math.round(RECT.y * H) + 14;
     const bw = Math.round(RECT.w * W) - 28;
     const bh = Math.round(RECT.h * H) - 28;
-    const [sr, sg, sb] = patchMean(file, 8.5, bx, by, bw, bh);
+    const [sr, sg, sb] = patchMean(file, 12, bx, by, bw, bh);
     log(`sepia rgb=(${sr.toFixed(1)}, ${sg.toFixed(1)}, ${sb.toFixed(1)})`);
     check(
       sr > sg && sg > sb && sr - sb > 4,
@@ -211,7 +255,15 @@ async function main() {
       `after ${inAfter.toFixed(1)} vs during ${inOn.toFixed(1)} (outside ${outOn.toFixed(1)})`,
     );
     console.log(
-      JSON.stringify({ file, inOn, outOn, sepia: [sr, sg, sb], inAfter }),
+      JSON.stringify({
+        file,
+        topOn,
+        leftOn,
+        inOn,
+        outOn,
+        sepia: [sr, sg, sb],
+        inAfter,
+      }),
     );
   } finally {
     await deleteRoom(roomId);

@@ -558,7 +558,7 @@ async def run_video_once(input_id: str) -> int:
             state.last_frame = (int(frame.pts_nanos), snapshot_copy(rgb))
             t0 = time.monotonic()
             if hands_needed:
-                gesture, frame_rect, frame_switch = await loop.run_in_executor(
+                gesture, frame_quad, frame_switch = await loop.run_in_executor(
                     _INFER, detect_hands, state, rgb, t0, hands_on, frame_on
                 )
                 if gesture:
@@ -577,7 +577,7 @@ async def run_video_once(input_id: str) -> int:
                 # Finger frame streams while present; one null on release
                 # (a few missed passes of hysteresis so a single dropped
                 # detection doesn't blink the effect off).
-                if frame_on and frame_rect is not None:
+                if frame_on and frame_quad is not None:
                     state.frame_sent = True
                     state.frame_miss = 0
                     await send_result(
@@ -585,7 +585,7 @@ async def run_video_once(input_id: str) -> int:
                         frame.pts_nanos,
                         {
                             "kind": "hand_frame",
-                            "rect": frame_rect,
+                            "quad": [[x, y] for x, y in frame_quad],
                             "frameW": int(rgb.shape[1]),
                             "frameH": int(rgb.shape[0]),
                             "procMs": round((time.monotonic() - received_at) * 1000.0, 1),
@@ -596,12 +596,12 @@ async def run_video_once(input_id: str) -> int:
                     if not frame_on or state.frame_miss >= FRAME_MISS_LIMIT:
                         state.frame_sent = False
                         state.frame_miss = 0
-                        await send_result(input_id, frame.pts_nanos, {"kind": "hand_frame", "rect": None})
+                        await send_result(input_id, frame.pts_nanos, {"kind": "hand_frame", "quad": None})
             else:
                 if state.frame_sent:
                     state.frame_sent = False
                     state.frame_miss = 0
-                    await send_result(input_id, frame.pts_nanos, {"kind": "hand_frame", "rect": None})
+                    await send_result(input_id, frame.pts_nanos, {"kind": "hand_frame", "quad": None})
                 if state.hands_tracker is not None:
                     release_hands(state)
             # Heavy analysis stays on its own paced clock (0.9: timer jitter
@@ -779,9 +779,10 @@ FRAME_MAX_W = 512
 # (the gate needs a few consecutive identical classifications — at 12 Hz a
 # held gesture fires in ~0.5 s instead of seconds on a throttled loop).
 HANDS_HZ = 12.0
-# Finger frame: consecutive empty passes before the on-screen rect is
-# released (~250 ms at HANDS_HZ — one dropped detection must not blink it).
-FRAME_MISS_LIMIT = 3
+# Finger frame: consecutive empty passes before the on-screen quad is
+# released (~660 ms at HANDS_HZ — a lost hand or a brief pose dip must not
+# blink the effect off; the pose gates are also looser while a frame shows).
+FRAME_MISS_LIMIT = 8
 HAND_MODEL_URL = (
     "https://storage.googleapis.com/mediapipe-models/hand_landmarker/"
     "hand_landmarker/float16/latest/hand_landmarker.task"
@@ -845,13 +846,13 @@ def _ensure_hands(state: InputState):
                     running_mode=vision.RunningMode.VIDEO,
                     # Two for the finger frame; gestures still read hands[0].
                     num_hands=2,
-                    # Softer than the 0.5 defaults: a hand at desk distance on
-                    # a webcam flickers in and out at 0.5, and both consumers
-                    # verify the pose geometrically afterwards anyway (the
-                    # gesture gate's hold, the frame's two-handed L test).
-                    min_hand_detection_confidence=0.4,
-                    min_hand_presence_confidence=0.4,
-                    min_tracking_confidence=0.4,
+                    # Low on purpose: a hand at desk distance on a webcam in
+                    # a dim room flickers in and out at the 0.5 defaults, and
+                    # both consumers verify the pose geometrically afterwards
+                    # (the gesture gate's hold, the frame's two-handed L test).
+                    min_hand_detection_confidence=0.3,
+                    min_hand_presence_confidence=0.3,
+                    min_tracking_confidence=0.3,
                 )
             )
         except Exception as err:  # noqa: BLE001
@@ -880,9 +881,9 @@ def release_hands(state: InputState) -> None:
 
 def detect_hands(
     state: InputState, rgb: np.ndarray, t: float, want_gesture: bool, want_frame: bool
-) -> tuple[str | None, dict | None, bool]:
+) -> tuple[str | None, list[tuple[float, float]] | None, bool]:
     """MediaPipe HandLandmarker on a small copy → (gated gesture, finger-frame
-    rect, gated shader-switch sign). One detect pass serves all consumers.
+    quad, gated shader-switch sign). One detect pass serves all consumers.
     Runs on the inference thread; cost lands in the frame's proc time, so the
     pacer budgets it like any other analysis."""
     tracker = _ensure_hands(state)
@@ -909,7 +910,7 @@ def detect_hands(
     if want_gesture and state.gesture_gate is not None:
         name = classify_gesture(hands[0]) if hands else None
         gesture = state.gesture_gate.update(name, t)
-    frame_rect = None
+    frame_quad = None
     frame_switch = False
     if want_frame:
         # The pinch outranks the frame: in the overlap zone (a tiny but still
@@ -920,8 +921,9 @@ def detect_hands(
         else:
             if state.frame_switch_gate is not None:
                 state.frame_switch_gate.update(None, t)
-            frame_rect = detect_finger_frame(hands)
-    return gesture, frame_rect, frame_switch
+            # Acquire strict, keep loose (frame_sent = a quad is showing).
+            frame_quad = detect_finger_frame(hands, state.frame_sent)
+    return gesture, frame_quad, frame_switch
 
 
 # ── Snapshots (the `capture` command) ────────────────────────────────────────
@@ -1177,15 +1179,15 @@ def _selftest_hands(media: str | None, start: float, count: int) -> dict:
     for i, rgb in enumerate(frames):
         t = i / DEFAULT_VIDEO_HZ
         t0 = time.perf_counter()
-        gesture, frame_rect, frame_switch = detect_hands(state, rgb, t, True, True)
+        gesture, frame_quad, frame_switch = detect_hands(state, rgb, t, True, True)
         timings.append((time.perf_counter() - t0) * 1000.0)
         # The raw classification, for tuning (the gate hides most of it).
         gate = state.gesture_gate
         names.append(gate._candidate if gate else None)  # noqa: SLF001
         if gesture:
             fired.append((round(t, 2), gesture))
-        if frame_rect:
-            framed.append((round(t, 2), frame_rect))
+        if frame_quad:
+            framed.append((round(t, 2), frame_quad))
         if frame_switch:
             switched.append(round(t, 2))
     release_hands(state)

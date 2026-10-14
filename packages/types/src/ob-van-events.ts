@@ -775,6 +775,21 @@ export type ObCamRequestMessage = {
 };
 export type ObCamStopMessage = { type: "ob_cam_stop" };
 export type ObCamLeaveMessage = { type: "ob_cam_leave" };
+/**
+ * Finger-frame points computed in the phone's browser (MediaPipe in JS):
+ * the fingertip quad in the captured frame's normalised coordinates, or
+ * `quad: null` on release; `switch: true` is the pinch shader-switch sign.
+ * `procMs` is the capture→send latency, so the server's air-sync hold can
+ * subtract it like it does for the Python worker.
+ */
+export type ObCamHandFrameMessage = {
+  type: "ob_cam_hand_frame";
+  quad: [number, number][] | null;
+  frameW?: number;
+  frameH?: number;
+  procMs?: number;
+  switch?: boolean;
+};
 export type ObClientMessage =
   | ObSpectateMessage
   | ObOperatorJoinMessage
@@ -783,7 +798,8 @@ export type ObClientMessage =
   | ObCamJoinMessage
   | ObCamRequestMessage
   | ObCamStopMessage
-  | ObCamLeaveMessage;
+  | ObCamLeaveMessage
+  | ObCamHandFrameMessage;
 
 // ── WebSocket: server → client ───────────────────────────────────────────
 
@@ -800,6 +816,8 @@ export type ObCamJoinedEvent = {
   phase: ObPhase;
   /** A camera input already exists for this seat (resume → republish). */
   camInputActive: boolean;
+  /** Finger frame on → the phone runs in-browser hand detection. */
+  fingerFrame: boolean;
 };
 export type ObCamOfferEvent = {
   type: "ob_cam_offer";
@@ -847,6 +865,11 @@ export type ObErrorEvent = {
   code: ObErrorCode;
   message: string;
 };
+/** Finger frame toggled — phones start/stop in-browser hand detection. */
+export type ObFingerFrameEvent = {
+  type: "ob_finger_frame";
+  enabled: boolean;
+};
 export type ObServerEvent =
   | ObStateEvent
   | ObCamJoinedEvent
@@ -855,4 +878,5 @@ export type ObServerEvent =
   | ObOperatorJoinedEvent
   | ObLogEvent
   | ObSignalsEvent
-  | ObErrorEvent;
+  | ObErrorEvent
+  | ObFingerFrameEvent;

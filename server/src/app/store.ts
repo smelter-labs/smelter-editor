@@ -258,11 +258,13 @@ export type CarHueBoxes = {
 };
 
 /**
- * OB Van finger frame: the bbox of both hands' thumb + index fingertips
- * (normalised 0..1 of the analysed frame), plus the frame dimensions for the
- * cover mapping. Drives the effect-inside-the-frame shader on the input;
- * `mode` picks the look (an index into FINGER_FRAME_MODES, cycled by the
- * pinch sign — all four framing fingertips joined).
+ * OB Van finger frame: the quad whose corners are both hands' thumb + index
+ * fingertips (normalised 0..1 of the analysed frame, fixed cycle thumb-A →
+ * index-A → thumb-B → index-B — twisted fingers self-intersect into an
+ * hourglass, by design), plus the frame dimensions for the cover mapping.
+ * Drives the effect-inside-the-frame shader on the input; `mode` picks the
+ * look (an index into FINGER_FRAME_MODES, cycled by the pinch sign — all
+ * four framing fingertips joined).
  */
 export const FINGER_FRAME_MODES = [
   'GRAYSCALE',
@@ -272,7 +274,7 @@ export const FINGER_FRAME_MODES = [
 ] as const;
 
 export type FingerFrameData = {
-  rect: { x: number; y: number; w: number; h: number };
+  quad: [number, number][];
   frameW: number;
   frameH: number;
   mode: number;
@@ -1344,10 +1346,10 @@ export function createRoomStore(
         if (
           data &&
           prev &&
-          prev.rect.x === data.rect.x &&
-          prev.rect.y === data.rect.y &&
-          prev.rect.w === data.rect.w &&
-          prev.rect.h === data.rect.h &&
+          prev.quad.length === data.quad.length &&
+          prev.quad.every(
+            (p, i) => p[0] === data.quad[i][0] && p[1] === data.quad[i][1],
+          ) &&
           prev.frameW === data.frameW &&
           prev.frameH === data.frameH &&
           prev.mode === data.mode

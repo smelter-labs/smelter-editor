@@ -410,7 +410,12 @@ const FOLLOW: ObRuleset = {
   id: "preset-follow",
   name: "FOLLOW · host cam",
   preset: "follow",
-  pacing: { minHoldMs: 2000, maxHoldMs: 60000, transition: "cut" },
+  pacing: {
+    minHoldMs: 2000,
+    maxHoldMs: 60000,
+    transition: "dissolve",
+    transitionMs: 350,
+  },
   weights: {
     speech: 1,
     motion: 0.6,
@@ -431,8 +436,11 @@ const FOLLOW: ObRuleset = {
       when: { signal: "host", cam: "any", op: "==", value: true },
       then: {
         // Host big, every other camera stays visible in the side strip.
+        // Dissolve: everyone is already in the grid, so the host's tile
+        // glides up to the main slot and the rest slide into the strip
+        // instead of teleporting.
         shot: { kind: "featured", main: "trigger", others: [] },
-        transition: { type: "cut" },
+        transition: { type: "dissolve", durationMs: 450 },
       },
     },
     {
@@ -450,8 +458,10 @@ const FOLLOW: ObRuleset = {
         ],
       },
       then: {
+        // The trigger tile glides to full frame while the other grid tiles
+        // fade out under the transition shader.
         shot: { kind: "solo", cam: "trigger" },
-        transition: { type: "cut" },
+        transition: { type: "dissolve", durationMs: 350 },
       },
     },
     {

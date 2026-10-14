@@ -62,6 +62,11 @@ export interface ObRoomApi {
     rect: { x: number; y: number; w: number; h: number } | null,
     frame?: { frameW?: number; frameH?: number },
     switchSign?: boolean,
+    quad?: number[][] | null,
+  ): ObCommandResult;
+  obClientHandFrame(
+    inputId: string,
+    msg: Record<string, unknown>,
   ): ObCommandResult;
   attachObMp4Cam(
     role: ObCamRole,
@@ -385,6 +390,25 @@ const SimulateHostSchema = Type.Object({
   camId: Type.Union([CamId, Type.Null()]),
 });
 
+const HandFrameSchema = Type.Object({
+  inputId: Type.String({ minLength: 1, maxLength: 200 }),
+  // Four [x, y] corners, or null for the one-shot release.
+  quad: Type.Optional(
+    Type.Union([
+      Type.Array(Type.Array(Type.Number(), { minItems: 2, maxItems: 2 }), {
+        minItems: 4,
+        maxItems: 4,
+      }),
+      Type.Null(),
+    ]),
+  ),
+  frameW: Type.Optional(Type.Number()),
+  frameH: Type.Optional(Type.Number()),
+  procMs: Type.Optional(Type.Number()),
+  // True = the pinch shader-switch sign.
+  switch: Type.Optional(Type.Boolean()),
+});
+
 const SimulateHandFrameSchema = Type.Object({
   inputId: Type.String({ minLength: 1, maxLength: 200 }),
   rect: Type.Union([
@@ -398,7 +422,18 @@ const SimulateHandFrameSchema = Type.Object({
   ]),
   frameW: Type.Optional(Type.Number()),
   frameH: Type.Optional(Type.Number()),
-  // True simulates the pinch shader-switch sign instead of a rect.
+  // Four [x, y] corners; takes precedence over `rect` (which is turned into
+  // its corners) — a crossed order simulates the hourglass.
+  quad: Type.Optional(
+    Type.Union([
+      Type.Array(Type.Array(Type.Number(), { minItems: 2, maxItems: 2 }), {
+        minItems: 4,
+        maxItems: 4,
+      }),
+      Type.Null(),
+    ]),
+  ),
+  // True simulates the pinch shader-switch sign instead of a quad.
   switch: Type.Optional(Type.Boolean()),
 });
 
@@ -434,6 +469,8 @@ const LoadDemoSchema = Type.Object({
 type ObDemoManifest = {
   eventName?: string;
   presetId?: string;
+  /** Left out of the QUICK DEMOS listing; still loadable via load-demo. */
+  hidden?: boolean;
   captions?: boolean;
   brief?: string;
   audio?: { mode?: string; cam?: string };
@@ -766,6 +803,20 @@ export function registerObVanRoutes(
     },
   );
 
+  // Finger-frame points from a browser that publishes one of the room's
+  // inputs (editor control-panel WHIP camera adopted as an OB cam) — the
+  // REST flavour of the phone's `ob_cam_hand_frame`, addressed by inputId.
+  routes.post<Body<typeof HandFrameSchema>>(
+    '/room/:roomId/ob-van/hand-frame',
+    { schema: { params: RoomIdParamsSchema, body: HandFrameSchema } },
+    async (req, res) => {
+      const { inputId, ...msg } = req.body;
+      const r = getRoom(req.params.roomId).obClientHandFrame(inputId, msg);
+      if (!r.ok) return sendError(res, r.code, r.message);
+      return res.status(200).send({ ok: true });
+    },
+  );
+
   // Dev-only finger-frame injector (OB_SIM=1): push a `hand_frame` rect for
   // an input exactly as the worker would (null releases it), so the
   // grayscale frame can be driven end to end without a camera or MediaPipe.
@@ -784,6 +835,7 @@ export function registerObVanRoutes(
         req.body.rect,
         { frameW: req.body.frameW, frameH: req.body.frameH },
         req.body.switch,
+        req.body.quad,
       );
       if (!r.ok) return sendError(res, r.code, r.message);
       return res.status(200).send({ ok: true });
@@ -806,6 +858,7 @@ export function registerObVanRoutes(
           const m = JSON.parse(
             readFileSync(camsPath, 'utf8'),
           ) as ObDemoManifest;
+          if (m.hidden) continue;
           demos.push({
             dir: `ob-demo/${name}`,
             eventName: m.eventName ?? name,

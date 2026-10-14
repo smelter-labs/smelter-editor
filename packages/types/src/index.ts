@@ -468,6 +468,7 @@ export type {
   ObCamRequestMessage,
   ObCamStopMessage,
   ObCamLeaveMessage,
+  ObCamHandFrameMessage,
   ObClientMessage,
   ObStateEvent,
   ObCamJoinedEvent,
@@ -478,6 +479,7 @@ export type {
   ObSignalsEvent,
   ObErrorCode,
   ObErrorEvent,
+  ObFingerFrameEvent,
   ObServerEvent,
   ObQuizBank,
 } from "./ob-van-events.js";

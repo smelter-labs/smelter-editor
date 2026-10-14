@@ -23,6 +23,7 @@ import {
   syncObFileCams,
 } from '@/app/actions/actions';
 import type { ObApiError, ObResult } from '@/lib/api-client';
+import { rewriteRoomUrl } from '@/lib/arcade/room-url';
 import { uiConfigToPatch, type ObUiConfig } from '@/lib/ob-van/ui-config';
 
 export type ObRoom = {
@@ -35,12 +36,7 @@ export type ObRoom = {
   lastError: string | null;
   showError: (message: string) => void;
   /** Resolves with the new room id (null when refused or failed). */
-  createRoom(
-    cfg: ObUiConfig,
-    opts?: { deferUrlRewrite?: boolean },
-  ): Promise<string | null>;
-  /** Rewrite the URL to /ob-van/[roomId] (after a deferred create). */
-  commitRoomUrl(room?: string): void;
+  createRoom(cfg: ObUiConfig): Promise<string | null>;
   pushConfig(cfg: ObUiConfig): Promise<void>;
   /** Push only some sections (the live diff). */
   pushPatch(patch: ObConfigPatch): Promise<boolean>;
@@ -176,31 +172,8 @@ export function useObRoom(
     [pushPatch],
   );
 
-  /** Rewrite the URL to /ob-van/[roomId] so a refresh rejoins the room. */
-  const commitRoomUrl = useCallback((room?: string) => {
-    const target = room ?? roomIdRef.current;
-    if (!target) return;
-    window.history.replaceState(
-      null,
-      '',
-      `/ob-van/${encodeURIComponent(target)}`,
-    );
-  }, []);
-
   const createRoom = useCallback(
-    async (
-      cfg: ObUiConfig,
-      opts: {
-        /**
-         * Skip the URL rewrite; the caller commits it later (commitRoomUrl).
-         * The FIRST server action sent after the rewrite triggers the router's
-         * page-segment swap and gets aborted mid-flight (the Duck Hunter
-         * lesson) — a flow that must call another action right after creating
-         * the room (QUICK DEMO's load-demo) defers the rewrite past it.
-         */
-        deferUrlRewrite?: boolean;
-      } = {},
-    ): Promise<string | null> => {
+    async (cfg: ObUiConfig): Promise<string | null> => {
       if (creatingRef.current || roomIdRef.current) return null;
       creatingRef.current = true;
       setCreating(true);
@@ -210,17 +183,13 @@ export function useObRoom(
         await pushConfig(cfg, created.roomId);
         const setup = await controlObShow(created.roomId, 'setup');
         if (!setup.ok) throw new Error(describeObError(setup.error));
+        // Rewrite first: nothing room-bound runs yet, so the router queue is
+        // idle here and stays coherent for everything the room starts next.
+        await rewriteRoomUrl(`/ob-van/${encodeURIComponent(created.roomId)}`);
         onStateRef.current?.(setup.value);
         setWhepUrl(created.whepUrl);
         setRoomId(created.roomId);
         setRoomStatus('ok');
-        if (!opts.deferUrlRewrite) {
-          window.history.replaceState(
-            null,
-            '',
-            `/ob-van/${encodeURIComponent(created.roomId)}`,
-          );
-        }
         return created.roomId;
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Event setup failed');
@@ -369,7 +338,6 @@ export function useObRoom(
     lastError,
     showError,
     createRoom,
-    commitRoomUrl,
     pushConfig,
     pushPatch,
     attachFileCam,

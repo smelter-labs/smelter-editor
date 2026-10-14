@@ -209,6 +209,21 @@ export type ObControllerDeps = {
   setFingerFrame?: (inputId: string, data: FingerFrameData | null) => void;
   /** Drop every input's finger-frame rect (effect toggled off / reset). */
   clearFingerFrames?: () => void;
+  /**
+   * A finger-frame detection from a phone's browser: held for the
+   * side-channel delay and applied like a worker result (quad, one-shot
+   * release, or the pinch shader-switch).
+   */
+  applyHandFrame?: (
+    inputId: string,
+    data: {
+      quad?: number[][] | null;
+      frameW?: number;
+      frameH?: number;
+      procMs?: number;
+      switch?: boolean;
+    },
+  ) => void;
   /** Side-channel delay the input was registered with (ms). */
   getSideChannelDelayMs?: (inputId: string) => number;
   /**
@@ -734,6 +749,8 @@ export class ObVanController {
   private virtualApplying = false;
   private readonly lastVolumes = new Map<string, number>();
   private readonly lastTally = new Map<string, ObTally>();
+  /** Per-cam wall time of the last accepted phone hand-frame message. */
+  private readonly lastHandFrameAt = new Map<string, number>();
 
   // ── replay ──
   private replay: ReplayState | null = null;
@@ -928,9 +945,104 @@ export class ObVanController {
         if (cam) this.removeCam(cam, 'left');
         break;
       }
+      case 'ob_cam_hand_frame':
+        this.onCamHandFrame(clientId, msg);
+        break;
       default:
         break;
     }
+  }
+
+  /**
+   * Finger-frame points detected in the phone's browser (whip cams run
+   * MediaPipe in JS — the Python worker only scans file cams). Validated
+   * and handed to RoomState, which holds them for the side-channel delay so
+   * they land on air with their picture — same path as worker results.
+   */
+  private onCamHandFrame(clientId: string, msg: Record<string, unknown>): void {
+    if (!this.config.fingerFrame) return;
+    const cam = this.cams.byClient(clientId);
+    if (!cam?.inputId) return;
+    this.routeHandFrame(cam.id, cam.inputId, msg);
+  }
+
+  /**
+   * Finger-frame points from a browser that publishes a room input OB uses
+   * as a camera (the editor control panel's WHIP camera, adopted as a cam) —
+   * the REST flavour of `ob_cam_hand_frame`, addressed by inputId since
+   * that tab has no cam socket. RoomState silences the Python worker's
+   * frames for an input while a JS detector is heard on it.
+   */
+  clientHandFrame(
+    inputId: string,
+    msg: Record<string, unknown>,
+  ): ObCommandResult {
+    if (!this.config.fingerFrame)
+      return {
+        ok: false,
+        code: 'bad_action',
+        message: 'The finger frame is off.',
+      };
+    const cam = this.cams.byInput(inputId);
+    if (!cam)
+      return {
+        ok: false,
+        code: 'unknown_cam',
+        message: 'No camera uses this input.',
+      };
+    this.routeHandFrame(cam.id, inputId, msg);
+    return { ok: true };
+  }
+
+  private routeHandFrame(
+    camId: string,
+    inputId: string,
+    msg: Record<string, unknown>,
+  ): void {
+    // A misbehaving sender cannot flood the hold queue: ~40 Hz cap.
+    const now = this.now();
+    const last = this.lastHandFrameAt.get(camId) ?? 0;
+    if (now - last < 25) return;
+    this.lastHandFrameAt.set(camId, now);
+
+    const procMs =
+      typeof msg.procMs === 'number' && msg.procMs >= 0 && msg.procMs <= 2000
+        ? msg.procMs
+        : 0;
+    if (msg.switch === true) {
+      this.deps.applyHandFrame?.(inputId, { switch: true, procMs });
+      return;
+    }
+    const quad = msg.quad;
+    if (quad === null) {
+      this.deps.applyHandFrame?.(inputId, { quad: null, procMs });
+      return;
+    }
+    const valid =
+      Array.isArray(quad) &&
+      quad.length === 4 &&
+      quad.every(
+        (p) =>
+          Array.isArray(p) &&
+          typeof p[0] === 'number' &&
+          typeof p[1] === 'number' &&
+          Number.isFinite(p[0]) &&
+          Number.isFinite(p[1]) &&
+          p[0] > -0.5 &&
+          p[0] < 1.5 &&
+          p[1] > -0.5 &&
+          p[1] < 1.5,
+      );
+    if (!valid) return;
+    const frameW = typeof msg.frameW === 'number' ? msg.frameW : 0;
+    const frameH = typeof msg.frameH === 'number' ? msg.frameH : 0;
+    if (!(frameW > 0 && frameH > 0)) return;
+    this.deps.applyHandFrame?.(inputId, {
+      quad: (quad as number[][]).map((p) => [p[0], p[1]]),
+      frameW,
+      frameH,
+      procMs,
+    });
   }
 
   handleDisconnect(clientId: string): void {
@@ -1038,6 +1150,8 @@ export class ObVanController {
       tally,
       phase: this.phase,
       camInputActive: cam.inputId != null,
+      // Phones run in-browser hand detection while the effect is on.
+      fingerFrame: this.config.fingerFrame,
     });
     this.pushLog({
       source: 'system',
@@ -1063,8 +1177,12 @@ export class ObVanController {
         ...obVanParamsForRole(role, this.config.presetId),
         // Hand tracking runs only on the confirmed host's camera.
         ...(camId && camId === this.gestureCamId ? { hands: '1' } : {}),
-        // The finger frame scans every camera while the effect is on.
-        ...(this.config.fingerFrame ? { handFrame: '1' } : {}),
+        // The finger frame: phones (whip) detect in their own browser, so
+        // the Python worker only scans file / adopted cameras.
+        ...(this.config.fingerFrame &&
+        (!camId || this.cams.get(camId)?.kind !== 'whip')
+          ? { handFrame: '1' }
+          : {}),
       },
     };
   }
@@ -1606,13 +1724,21 @@ export class ObVanController {
   }
 
   /**
-   * Finger frame toggled: every camera's worker `handFrame` flag follows.
-   * A params-only change (unlike captions, which move the side-channel
-   * delay), so phone cams keep their connection. Off also drops any rect
-   * still on screen.
+   * Finger frame toggled: every camera's worker `handFrame` flag follows
+   * (file cams — phones detect in their own browser and get a unicast
+   * toggle instead). A params-only change (unlike captions, which move the
+   * side-channel delay), so phone cams keep their connection. Off also
+   * drops any rect still on screen.
    */
   private syncFingerFrame(): void {
     for (const cam of this.cams.list()) {
+      // Tell every seated phone to start / stop its in-browser detector.
+      if (cam.clientId) {
+        this.deps.sendTo(cam.clientId, {
+          type: 'ob_finger_frame',
+          enabled: this.config.fingerFrame,
+        });
+      }
       if (!cam.inputId) continue;
       const inputId = cam.inputId;
       void this.deps

@@ -230,11 +230,7 @@ export function ObVanArcade({ initialRoomId }: { initialRoomId?: string }) {
   };
 
   /** QUICK DEMO: create the room, then let the server replay the demo's
-   * cams.json (config → rules → file cams → sync) and mirror its config.
-   * The URL rewrite waits until load-demo answers: the first server action
-   * sent after `history.replaceState` is aborted by the router's segment
-   * swap, and here that action would be load-demo itself — the cameras
-   * would silently never attach. */
+   * cams.json (config → rules → file cams → sync) and mirror its config. */
   const newDemoEvent = async (dir: string) => {
     if (room.creating || loadingDemo) return;
     setLoadingDemo(dir);
@@ -242,12 +238,9 @@ export function ObVanArcade({ initialRoomId }: { initialRoomId?: string }) {
       // Thread the fresh room id explicitly: the hook's roomIdRef only syncs
       // on the next render, so the calls right after createRoom would see
       // null and silently no-op.
-      const roomId =
-        room.roomId ??
-        (await room.createRoom(config, { deferUrlRewrite: true }));
+      const roomId = room.roomId ?? (await room.createRoom(config));
       if (!roomId) return;
       const state = await room.loadDemo(dir, roomId);
-      room.commitRoomUrl(roomId);
       if (state) {
         const cfg = serverConfigToUi(state.config, config);
         setConfig(cfg);

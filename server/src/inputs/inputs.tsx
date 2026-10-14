@@ -187,8 +187,8 @@ export function Input({
     store,
     (state) => state.carHueBoxes[input.inputId],
   );
-  // OB Van finger frame: grayscale inside the hands' framed rect. The store
-  // skips identical writes, so object identity is a sound equality here.
+  // OB Van finger frame: an effect inside the hands' fingertip quad. The
+  // store skips identical writes, so object identity is a sound equality.
   const fingerFrame = useStore(
     store,
     (state) => state.fingerFrames[input.inputId],

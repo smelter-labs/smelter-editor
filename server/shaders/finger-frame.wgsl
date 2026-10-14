@@ -17,24 +17,27 @@ struct BaseShaderParameters {
     texture_count: u32,
 };
 
-// An effect inside the director's "finger frame": the rect framed by both
-// hands' thumbs + index fingertips, supplied in tile space (0..1), already
-// mapped through the same rescale 'fill' (cover) transform the video uses.
-// A chalk viewfinder frame is drawn on the rect boundary; pixels outside it
-// pass through untouched, and the feathered inner edge hides detection
-// jitter at the fingertips.
-//   rect_cx, rect_cy - rect center
-//   rect_hw, rect_hh - rect half-width / half-height
-//   feather          - soft-edge width as a fraction of the half-extent
-//   strength         - 0..1 blend of the effect (fade in/out)
-//   mode             - the look inside (0 grayscale, 1 sepia, 2 negative,
-//                      3 pixelate), cycled by the pinch sign
+// An effect inside the director's "finger frame": the quad whose corners
+// are both hands' thumb + index fingertips (p0..p3, cycle order), supplied
+// in tile space (0..1), already mapped through the same rescale 'fill'
+// (cover) transform the video uses. The fill is even-odd, so twisted
+// fingers (a self-intersecting cycle) draw as an hourglass — by design. A
+// chalk viewfinder outline traces the quad's edges; pixels outside pass
+// through untouched, and the feathered inner edge hides detection jitter
+// at the fingertips.
+//   p0x..p3y - the four corners (tile space, cycle order)
+//   strength - 0..1 blend of the effect (fade in/out)
+//   mode     - the look inside (0 grayscale, 1 sepia, 2 negative,
+//              3 pixelate), cycled by the pinch sign
 struct ShaderOptions {
-    rect_cx: f32,
-    rect_cy: f32,
-    rect_hw: f32,
-    rect_hh: f32,
-    feather: f32,
+    p0x: f32,
+    p0y: f32,
+    p1x: f32,
+    p1y: f32,
+    p2x: f32,
+    p2y: f32,
+    p3x: f32,
+    p3y: f32,
     strength: f32,
     mode: f32,
 };
@@ -43,14 +46,18 @@ struct ShaderOptions {
 @group(1) @binding(0) var<uniform> shader_options: ShaderOptions;
 @group(2) @binding(0) var sampler_: sampler;
 
-// The drawn viewfinder frame on the rect boundary (sizes in output pixels):
-// a thin chalk line all around with heavier corner brackets, over a soft
-// dark halo so the line reads on bright pictures too.
+var<immediate> base_params: BaseShaderParameters;
+
+// The drawn viewfinder outline on the quad's edges (sizes in output
+// pixels): a thin chalk line all around with heavier brackets at the
+// fingertip corners, over a soft dark halo so the line reads on bright
+// pictures too. The effect feathers in from the outline.
 const FRAME_AA: f32 = 1.0;
 const FRAME_THIN_W: f32 = 0.9;
 const FRAME_BRACKET_W: f32 = 2.4;
 const FRAME_BRACKET_LEN: f32 = 26.0;
 const FRAME_HALO_W: f32 = 4.0;
+const FRAME_FEATHER_PX: f32 = 10.0;
 // Pixelate mode: mosaic block edge in output pixels.
 const PIXEL_BLOCK_PX: f32 = 14.0;
 
@@ -75,7 +82,11 @@ fn effect_color(mode: i32, color: vec3<f32>, pix: vec3<f32>) -> vec3<f32> {
     return vec3<f32>(gray);
 }
 
-var<immediate> base_params: BaseShaderParameters;
+fn seg_dist(p: vec2<f32>, a: vec2<f32>, b: vec2<f32>) -> f32 {
+    let ab = b - a;
+    let t = clamp(dot(p - a, ab) / max(dot(ab, ab), 1e-6), 0.0, 1.0);
+    return length(p - (a + ab * t));
+}
 
 @vertex
 fn vs_main(input: VertexInput) -> VertexOutput {
@@ -83,23 +94,6 @@ fn vs_main(input: VertexInput) -> VertexOutput {
     out.position = vec4(input.position, 1.0);
     out.tex_coords = input.tex_coords;
     return out;
-}
-
-// Feathered rectangular mask: 1 well inside the rect, fading to 0 across the
-// last `feather` fraction of each half-extent (independently per axis, so the
-// frame keeps its rectangular reading).
-fn rect_mask(uv: vec2<f32>) -> f32 {
-    let hw = shader_options.rect_hw;
-    let hh = shader_options.rect_hh;
-    if (hw <= 0.0 || hh <= 0.0) {
-        return 0.0;
-    }
-    let f = clamp(shader_options.feather, 0.001, 1.0);
-    let dx = abs(uv.x - shader_options.rect_cx) / hw;
-    let dy = abs(uv.y - shader_options.rect_cy) / hh;
-    let mx = 1.0 - smoothstep(1.0 - f, 1.0, dx);
-    let my = 1.0 - smoothstep(1.0 - f, 1.0, dy);
-    return mx * my;
 }
 
 @fragment
@@ -111,10 +105,8 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let uv = input.tex_coords;
     let color = textureSample(textures[0], sampler_, uv);
 
-    let hw = shader_options.rect_hw;
-    let hh = shader_options.rect_hh;
     let strength = clamp(shader_options.strength, 0.0, 1.0);
-    if (hw <= 0.0 || hh <= 0.0 || strength <= 0.001) {
+    if (strength <= 0.001) {
         return color;
     }
 
@@ -125,21 +117,45 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let puv = (floor(uv / block) + 0.5) * block;
     let pix = textureSample(textures[0], sampler_, puv).rgb;
 
-    let amount = rect_mask(uv) * strength;
+    // The quad in output pixels.
+    let p = uv * res;
+    var q = array<vec2<f32>, 4>(
+        vec2<f32>(shader_options.p0x, shader_options.p0y) * res,
+        vec2<f32>(shader_options.p1x, shader_options.p1y) * res,
+        vec2<f32>(shader_options.p2x, shader_options.p2y) * res,
+        vec2<f32>(shader_options.p3x, shader_options.p3y) * res,
+    );
+
+    // Even-odd fill (crossing number) — a self-intersecting cycle reads as
+    // the hourglass's two lobes — plus the distance to the outline and to
+    // the nearest fingertip corner.
+    var inside = false;
+    var edge = 1e9;
+    var corner_d = 1e9;
+    for (var i = 0u; i < 4u; i = i + 1u) {
+        let a = q[i];
+        let b = q[(i + 1u) % 4u];
+        if ((a.y > p.y) != (b.y > p.y)) {
+            let t = (p.y - a.y) / (b.y - a.y);
+            if (p.x < a.x + t * (b.x - a.x)) {
+                inside = !inside;
+            }
+        }
+        edge = min(edge, seg_dist(p, a, b));
+        corner_d = min(corner_d, length(p - a));
+    }
+
+    // Feather the effect in from the outline (inside only).
+    var mask = 0.0;
+    if (inside) {
+        mask = smoothstep(0.0, FRAME_FEATHER_PX, edge);
+    }
+    let amount = mask * strength;
     let mode = i32(round(shader_options.mode));
     var rgb = mix(color.rgb, effect_color(mode, color.rgb, pix), amount);
 
-    // Signed distance (in output pixels) to the rect boundary.
-    let p = (uv - vec2<f32>(shader_options.rect_cx, shader_options.rect_cy)) * res;
-    let he = vec2<f32>(hw, hh) * res;
-    let d = abs(p) - he;
-    let dist = length(max(d, vec2<f32>(0.0))) + min(max(d.x, d.y), 0.0);
-    let edge = abs(dist);
-
-    // Run distance along the boundary to the nearest corner — small there, so
-    // the stroke widens into the viewfinder's corner brackets.
-    let corner_run = max(he.x - abs(p.x), he.y - abs(p.y));
-    let bracket = 1.0 - smoothstep(FRAME_BRACKET_LEN - 4.0, FRAME_BRACKET_LEN, corner_run);
+    // Heavier strokes near the fingertip corners (a director's viewfinder).
+    let bracket = 1.0 - smoothstep(FRAME_BRACKET_LEN - 4.0, FRAME_BRACKET_LEN, corner_d);
     let line_w = mix(FRAME_THIN_W, FRAME_BRACKET_W, bracket);
     let line_alpha = mix(0.55, 0.95, bracket);
 

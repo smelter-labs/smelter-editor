@@ -1356,3 +1356,195 @@ describe('ObVanController · finger frame', () => {
     expect(parseObCommand({ op: 'finger_frame' })).toBeNull();
   });
 });
+
+describe('ObVanController · finger frame from the phone browser', () => {
+  const QUAD = [
+    [0.2, 0.3],
+    [0.6, 0.3],
+    [0.6, 0.7],
+    [0.2, 0.7],
+  ];
+
+  /** Seat a phone and get its WHIP input publishing. */
+  async function phoneCam(h: ReturnType<typeof harness>, clientId = 'p1') {
+    h.controller.handleMessage(clientId, {
+      type: 'ob_cam_join',
+      name: 'Piotr',
+      role: 'speaker',
+    });
+    h.controller.handleMessage(clientId, { type: 'ob_cam_request' });
+    await vi.advanceTimersByTimeAsync(10);
+  }
+
+  it('routes ob_cam_hand_frame to applyHandFrame with the cam input', async () => {
+    const h = harness();
+    const applied: { inputId: string; data: Record<string, unknown> }[] = [];
+    h.deps.applyHandFrame = (inputId, data) => applied.push({ inputId, data });
+    await phoneCam(h);
+    h.controller.operate({ op: 'finger_frame', enabled: true });
+
+    h.controller.handleMessage('p1', {
+      type: 'ob_cam_hand_frame',
+      quad: QUAD,
+      frameW: 1280,
+      frameH: 720,
+      procMs: 12,
+    });
+    expect(applied).toEqual([
+      {
+        inputId: 'whip-1',
+        data: { quad: QUAD, frameW: 1280, frameH: 720, procMs: 12 },
+      },
+    ]);
+
+    // Release and the pinch switch ride the same path (past the rate cap).
+    await vi.advanceTimersByTimeAsync(30);
+    h.controller.handleMessage('p1', { type: 'ob_cam_hand_frame', quad: null });
+    await vi.advanceTimersByTimeAsync(30);
+    h.controller.handleMessage('p1', {
+      type: 'ob_cam_hand_frame',
+      quad: null,
+      switch: true,
+    });
+    expect(applied[1].data).toMatchObject({ quad: null });
+    expect(applied[2].data).toMatchObject({ switch: true });
+    h.controller.dispose();
+  });
+
+  it('drops frames when the effect is off, the quad is bad, or too fast', async () => {
+    const h = harness();
+    const applied: string[] = [];
+    h.deps.applyHandFrame = (inputId) => applied.push(inputId);
+    await phoneCam(h);
+
+    // Effect off → ignored.
+    h.controller.handleMessage('p1', {
+      type: 'ob_cam_hand_frame',
+      quad: QUAD,
+      frameW: 1280,
+      frameH: 720,
+    });
+    expect(applied).toEqual([]);
+
+    h.controller.operate({ op: 'finger_frame', enabled: true });
+    await vi.advanceTimersByTimeAsync(30);
+    // Garbage quads never reach the hold path.
+    h.controller.handleMessage('p1', {
+      type: 'ob_cam_hand_frame',
+      quad: [[0.2, 0.3]],
+      frameW: 1280,
+      frameH: 720,
+    });
+    await vi.advanceTimersByTimeAsync(30);
+    h.controller.handleMessage('p1', {
+      type: 'ob_cam_hand_frame',
+      quad: [
+        [NaN, 0],
+        [0, 0],
+        [1, 1],
+        [0, 1],
+      ],
+      frameW: 1280,
+      frameH: 720,
+    });
+    expect(applied).toEqual([]);
+
+    // Two sends in the same millisecond: the second is rate-capped.
+    await vi.advanceTimersByTimeAsync(30);
+    const good = {
+      type: 'ob_cam_hand_frame',
+      quad: QUAD,
+      frameW: 1280,
+      frameH: 720,
+    };
+    h.controller.handleMessage('p1', good);
+    h.controller.handleMessage('p1', good);
+    expect(applied).toEqual(['whip-1']);
+    h.controller.dispose();
+  });
+
+  it('seats learn the toggle: ob_cam_joined carries it, changes unicast', async () => {
+    const h = harness();
+    await phoneCam(h);
+    const joined = h.sent.find((s) => s.event.type === 'ob_cam_joined')?.event;
+    expect(joined).toMatchObject({ fingerFrame: false });
+
+    h.controller.operate({ op: 'finger_frame', enabled: true });
+    const toggles = () =>
+      h.sent.filter((s) => s.event.type === 'ob_finger_frame');
+    expect(toggles().at(-1)).toMatchObject({
+      clientId: 'p1',
+      event: { enabled: true },
+    });
+
+    // A phone joining mid-effect sees it on immediately.
+    h.controller.handleMessage('p2', {
+      type: 'ob_cam_join',
+      name: 'Gosc',
+      role: 'guest',
+    });
+    const joined2 = h.sent
+      .filter((s) => s.clientId === 'p2' && s.event.type === 'ob_cam_joined')
+      .at(-1)?.event;
+    expect(joined2).toMatchObject({ fingerFrame: true });
+
+    h.controller.operate({ op: 'finger_frame', enabled: false });
+    expect(toggles().at(-1)).toMatchObject({ event: { enabled: false } });
+    h.controller.dispose();
+  });
+
+  it('clientHandFrame (REST, by inputId) routes like the socket path', () => {
+    const h = harness();
+    const applied: { inputId: string; data: Record<string, unknown> }[] = [];
+    h.deps.applyHandFrame = (inputId, data) => applied.push({ inputId, data });
+    h.attach(1); // the editor-published input adopted as a cam → mp4-1
+
+    // Off → refused; the publishing tab polls, so this is a rare race.
+    expect(
+      h.controller.clientHandFrame('mp4-1', {
+        quad: QUAD,
+        frameW: 1280,
+        frameH: 720,
+      }),
+    ).toMatchObject({ ok: false, code: 'bad_action' });
+
+    h.controller.operate({ op: 'finger_frame', enabled: true });
+    expect(
+      h.controller.clientHandFrame('not-a-cam-input', { quad: QUAD }),
+    ).toMatchObject({ ok: false, code: 'unknown_cam' });
+    expect(
+      h.controller.clientHandFrame('mp4-1', {
+        quad: QUAD,
+        frameW: 1280,
+        frameH: 720,
+        procMs: 8,
+      }),
+    ).toEqual({ ok: true });
+    expect(applied).toEqual([
+      {
+        inputId: 'mp4-1',
+        data: { quad: QUAD, frameW: 1280, frameH: 720, procMs: 8 },
+      },
+    ]);
+    h.controller.dispose();
+  });
+
+  it('the worker handFrame param skips whip cams (phones detect in JS)', async () => {
+    const h = harness();
+    const configured: { inputId: string; params: Record<string, string> }[] =
+      [];
+    h.deps.configureCamSignals = async (inputId, opts) => {
+      configured.push({ inputId, params: { ...opts.params } });
+    };
+    h.attach(1); // file cam → mp4-1
+    await phoneCam(h); // whip cam → whip-1
+
+    configured.length = 0;
+    h.controller.operate({ op: 'finger_frame', enabled: true });
+    const of = (inputId: string) =>
+      configured.filter((c) => c.inputId === inputId).at(-1)?.params ?? {};
+    expect(of('mp4-1').handFrame).toBe('1');
+    expect('handFrame' in of('whip-1')).toBe(false);
+    h.controller.dispose();
+  });
+});
