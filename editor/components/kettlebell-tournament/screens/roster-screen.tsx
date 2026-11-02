@@ -27,6 +27,7 @@ import {
 } from '../kbt-kit';
 import { useArcadeKeys } from '../../duck-hunter/use-arcade-input';
 import { KbtAvatar } from '../avatar';
+import { kbtWeightBadge } from '../kbt-weights';
 import type { KbtFeed } from '../use-kbt-feed';
 import type { KbtRoom } from '../use-kbt-room';
 
@@ -44,6 +45,7 @@ function PlayerRow({
   mark,
   kickArmed = false,
   onKick,
+  showWeights = false,
 }: {
   p: KbtPlayer;
   mark?: string;
@@ -51,6 +53,8 @@ function PlayerRow({
   kickArmed?: boolean;
   /** Small ✕ that drops this participant (host recovery control). */
   onKick?: (clientId: string) => void;
+  /** Weighted tournament — show the bell/body badge next to the name. */
+  showWeights?: boolean;
 }) {
   // Absent on older servers = assume connected.
   const offline = p.connected === false;
@@ -80,6 +84,11 @@ function PlayerRow({
         }}>
         {p.name}
       </DisplayText>
+      {showWeights ? (
+        <Label size={10} tracking={1.5} color={KBT.dim}>
+          {kbtWeightBadge(p)}
+        </Label>
+      ) : null}
       {mark ? (
         <Label size={10} tracking={1.5}>
           {mark}
@@ -485,6 +494,7 @@ export function RosterScreen({
               <PlayerRow
                 key={p.clientId}
                 p={p}
+                showWeights={feed.state?.config.weightedScoring === true}
                 mark={
                   p.heatIndex != null ? `HEAT ${p.heatIndex + 1}` : undefined
                 }

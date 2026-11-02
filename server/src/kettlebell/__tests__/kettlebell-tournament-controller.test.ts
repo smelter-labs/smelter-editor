@@ -187,9 +187,15 @@ function harness(opts?: {
 }
 
 /** Join two players, give them cameras, draw heats, and reach 'playing'. */
-async function playingHeat(h: ReturnType<typeof harness>) {
-  h.controller.join('p1', 'ANIA');
-  h.controller.join('p2', 'BARTEK');
+async function playingHeat(
+  h: ReturnType<typeof harness>,
+  weights?: {
+    p1?: { kettlebellKg?: number; bodyKg?: number };
+    p2?: { kettlebellKg?: number; bodyKg?: number };
+  },
+) {
+  h.controller.join('p1', 'ANIA', undefined, weights?.p1);
+  h.controller.join('p2', 'BARTEK', undefined, weights?.p2);
   await h.controller.startCamera('p1');
   await h.controller.startCamera('p2');
   h.controller.setConfig({ heatDurationMs: 30_000, heatSize: 2 });
@@ -386,8 +392,8 @@ describe('KettlebellTournamentController', () => {
     h.rep(in1, 5, 'snatch');
     h.rep(in1, 6, 'idle' as KettlebellExercise);
     const reps = h.ofType('kbt_rep');
-    expect(reps.map((r) => r.points)).toEqual([1, 2, 3]);
-    expect(reps[2].totalPoints).toBe(6);
+    expect(reps.map((r) => r.points)).toEqual([2, 3, 4]);
+    expect(reps[2].totalPoints).toBe(9);
     h.controller.dispose();
   });
 
@@ -438,14 +444,14 @@ describe('KettlebellTournamentController', () => {
     h.rep(in1, 1, 'snatch');
     h.rep(in1, 2, 'snatch', 'incorrect', ['soft_lockout']);
     const reps = h.ofType('kbt_rep');
-    // Not counting beats strict halving: 0, not floor(3/2).
-    expect(reps.map((r) => r.points)).toEqual([3, 0]);
+    // Not counting beats strict halving: 0, not floor(4/2).
+    expect(reps.map((r) => r.points)).toEqual([4, 0]);
     expect(reps[1].streak).toBe(0);
-    expect(reps[1].totalPoints).toBe(3);
+    expect(reps[1].totalPoints).toBe(4);
     const sheet = Object.values(h.controller.getMatchSnapshot().scores)[0];
     expect(sheet.reps.snatch).toBe(1);
     expect(sheet.incorrectReps).toBe(1);
-    expect(sheet.points).toBe(3);
+    expect(sheet.points).toBe(4);
     // HUD: the rep counter stands still while the attempt clock advances,
     // so the floater still spawns (struck-out style).
     await vi.advanceTimersByTimeAsync(3500);
@@ -461,7 +467,7 @@ describe('KettlebellTournamentController', () => {
     const { in1 } = await playingHeat(h);
     h.rep(in1, 1, 'snatch', 'incorrect', ['soft_lockout']);
     // strictTechnique off → full points despite the verdict.
-    expect(h.ofType('kbt_rep').map((r) => r.points)).toEqual([3]);
+    expect(h.ofType('kbt_rep').map((r) => r.points)).toEqual([4]);
     await vi.advanceTimersByTimeAsync(3500);
     const tile = h.lastHud()!.tiles[in1];
     expect(tile.reps).toBe(1);
@@ -528,26 +534,37 @@ describe('KettlebellTournamentController', () => {
       '/kbt-rep-frames/a-r0002.jpg',
       undefined,
     ]);
-    const sheet = Object.values(h.controller.getMatchSnapshot().scores)[0];
+    // While the heat runs, the 1 Hz kbt_match stays lean — the growing shot
+    // lists ride kbt_state (the panel's source) and kbt_rep only.
+    expect(
+      Object.values(h.controller.getMatchSnapshot().scores)[0].repShots,
+    ).toBeUndefined();
+    const sheet = h.controller.stateSnapshot().heats[0].scores.p1;
     expect(sheet.repShots).toEqual([
       {
         repIndex: 1,
         url: '/kbt-rep-frames/a-r0001.jpg',
         exercise: 'snatch',
         verdict: 'correct',
-        points: 3,
+        points: 4,
       },
       {
         repIndex: 2,
         url: '/kbt-rep-frames/a-r0002.jpg',
         exercise: 'swing',
         verdict: 'incorrect',
-        points: 1,
+        points: 2,
         issues: ['too_low'],
       },
     ]);
-    // After the heat ends the shots stick to the player (podium feed).
+    // After the heat ends the shots stick to the player (podium feed) and
+    // the finished heat's kbt_match carries them for the results screen.
     await vi.advanceTimersByTimeAsync(30_000 + 500);
+    expect(
+      h.controller
+        .getMatchSnapshot()
+        .scores.p1.repShots?.map((s) => s.repIndex),
+    ).toEqual([1, 2]);
     const player = h.controller
       .stateSnapshot()
       .players.find((p) => p.clientId === 'p1');
@@ -568,7 +585,7 @@ describe('KettlebellTournamentController', () => {
     expect(reps).toHaveLength(2);
     const match = h.controller.getMatchSnapshot();
     expect(match.winner?.name).toBe('ANIA');
-    expect(match.winner?.points).toBe(2);
+    expect(match.winner?.points).toBe(4);
     h.controller.dispose();
   });
 
@@ -580,7 +597,7 @@ describe('KettlebellTournamentController', () => {
     await vi.advanceTimersByTimeAsync(31_000);
     const state = h.controller.stateSnapshot();
     const ania = state.players.find((p) => p.name === 'ANIA')!;
-    expect(ania.bestScore).toBe(2);
+    expect(ania.bestScore).toBe(4);
     h.controller.controlMatch({ action: 'start_final' });
     const after = h.controller.stateSnapshot();
     expect(after.tournamentPhase).toBe('final');
@@ -647,7 +664,7 @@ describe('KettlebellTournamentController', () => {
     expect(adopted?.name).toBe('ANIA');
     const heat = state.heats[state.currentHeatIndex!];
     expect(heat.playerIds).toContain('p1-new-socket');
-    expect(heat.scores['p1-new-socket'].points).toBe(1);
+    expect(heat.scores['p1-new-socket'].points).toBe(2);
     h.controller.dispose();
   });
 
@@ -672,9 +689,9 @@ describe('KettlebellTournamentController', () => {
     await vi.advanceTimersByTimeAsync(31_000);
     const match = h.controller.getMatchSnapshot();
     expect(match.winner?.name).toBe('ANIA');
-    expect(match.winner?.points).toBe(4);
+    expect(match.winner?.points).toBe(6);
     const state = h.controller.stateSnapshot();
-    expect(state.players[0].bestScore).toBe(4);
+    expect(state.players[0].bestScore).toBe(6);
     // A final needs at least two scored players — must be a no-op solo.
     h.controller.controlMatch({ action: 'start_final' });
     const after = h.controller.stateSnapshot();
@@ -768,8 +785,159 @@ describe('KettlebellTournamentController', () => {
     expect(h.controller.simulateRep('p1', 'snatch', 'correct')).toBe(true);
     const reps = h.ofType('kbt_rep');
     expect(reps).toHaveLength(1);
-    expect(reps[0].points).toBe(3);
+    expect(reps[0].points).toBe(4);
     h.controller.dispose();
+  });
+
+  describe('weighted scoring', () => {
+    it('setConfig accepts the flag, rejects junk, and it reaches state + HUD', async () => {
+      const h = harness();
+      h.controller.setConfig({ weightedScoring: true });
+      const state = h.controller.stateSnapshot();
+      expect(state.config.weightedScoring).toBe(true);
+      h.controller.setConfig({ weightedScoring: 'yes' as never });
+      expect(h.controller.stateSnapshot().config.weightedScoring).toBe(true);
+      await playingHeat(h);
+      await vi.advanceTimersByTimeAsync(3500);
+      expect(h.lastHud()!.weighted).toBe(true);
+      h.controller.dispose();
+    });
+
+    it('kbt_join parses and clamps weights; junk fields are ignored', () => {
+      const h = harness();
+      h.controller.handleMessage('p1', {
+        type: 'kbt_join',
+        name: 'ANIA',
+        kettlebellKg: 200,
+        bodyKg: 10,
+      });
+      h.controller.handleMessage('p2', {
+        type: 'kbt_join',
+        name: 'BARTEK',
+        kettlebellKg: 'abc',
+        bodyKg: 72.44,
+      });
+      const players = h.controller.stateSnapshot().players;
+      const ania = players.find((p) => p.name === 'ANIA')!;
+      const bartek = players.find((p) => p.name === 'BARTEK')!;
+      expect(ania.kettlebellKg).toBe(92);
+      expect(ania.bodyKg).toBe(30);
+      expect(bartek.kettlebellKg).toBeUndefined();
+      expect(bartek.bodyKg).toBe(72.4);
+      // kbt_joined echoes the stored weights for phone prefill.
+      const joined = h.joinedFor('p1')!;
+      expect(joined.kettlebellKg).toBe(92);
+      expect(joined.bodyKg).toBe(30);
+      h.controller.dispose();
+    });
+
+    it('a weightless re-join keeps weights; one with values updates them', () => {
+      const h = harness();
+      h.controller.join('p1', 'ANIA', undefined, {
+        kettlebellKg: 32,
+        bodyKg: 70,
+      });
+      const key = h.joinedFor('p1')!.playerKey;
+      // Auto re-join after a refresh carries no weights.
+      h.controller.join('p1-new', 'ANIA', key);
+      let ania = h.controller
+        .stateSnapshot()
+        .players.find((p) => p.name === 'ANIA')!;
+      expect(ania.kettlebellKg).toBe(32);
+      expect(ania.bodyKg).toBe(70);
+      // Re-registering with new numbers moves them.
+      h.controller.join('p1-new', 'ANIA', key, { bodyKg: 80 });
+      ania = h.controller
+        .stateSnapshot()
+        .players.find((p) => p.name === 'ANIA')!;
+      expect(ania.kettlebellKg).toBe(32);
+      expect(ania.bodyKg).toBe(80);
+      h.controller.dispose();
+    });
+
+    it('multiplies each rep by bell/body and rolls the weighted total up', async () => {
+      const h = harness();
+      h.controller.setConfig({ weightedScoring: true });
+      // 32/80 → ×0.4: snatch pays 4 × 0.4 = 1.6.
+      const { in1 } = await playingHeat(h, {
+        p1: { kettlebellKg: 32, bodyKg: 80 },
+      });
+      h.rep(in1, 1, 'snatch');
+      const reps = h.ofType('kbt_rep');
+      expect(reps[0].points).toBe(1.6);
+      expect(reps[0].totalPoints).toBe(1.6);
+      await vi.advanceTimersByTimeAsync(3500);
+      const tile = h.lastHud()!.tiles[in1];
+      expect(tile.points).toBe(1.6);
+      expect(tile.kettlebellKg).toBe(32);
+      expect(tile.bodyKg).toBe(80);
+      const sheet = h.controller.getMatchSnapshot().scores['p1'];
+      expect(sheet.kettlebellKg).toBe(32);
+      expect(sheet.bodyKg).toBe(80);
+      await vi.advanceTimersByTimeAsync(31_000); // buzzer + grace → finalize
+      const ania = h.controller
+        .stateSnapshot()
+        .players.find((p) => p.name === 'ANIA')!;
+      expect(ania.bestScore).toBe(1.6);
+      h.controller.dispose();
+    });
+
+    it('athletes who never entered weights score with the 24/80 defaults', async () => {
+      const h = harness();
+      h.controller.setConfig({ weightedScoring: true });
+      const { in1 } = await playingHeat(h);
+      h.rep(in1, 1, 'snatch'); // 4 × 24/80 = 1.2
+      expect(h.ofType('kbt_rep')[0].points).toBe(1.2);
+      h.controller.dispose();
+    });
+
+    it('strict halving applies before the weight multiplier', async () => {
+      const h = harness();
+      h.controller.setConfig({ weightedScoring: true, strictTechnique: true });
+      const { in1 } = await playingHeat(h, {
+        p1: { kettlebellKg: 32, bodyKg: 80 },
+      });
+      // floor(4/2) = 2, then × 0.4 = 0.8.
+      h.rep(in1, 1, 'snatch', 'incorrect', ['soft_lockout']);
+      expect(h.ofType('kbt_rep')[0].points).toBe(0.8);
+      h.controller.dispose();
+    });
+
+    it('weights are staged per heat — a mid-heat change waits for the next one', async () => {
+      const h = harness();
+      h.controller.setConfig({ weightedScoring: true });
+      const { in1 } = await playingHeat(h, {
+        p1: { kettlebellKg: 24, bodyKg: 80 },
+      });
+      const key = h.joinedFor('p1')!.playerKey;
+      // New bell mid-heat: the running sheet keeps the staged 24/80.
+      h.controller.join('p1', 'ANIA', key, { kettlebellKg: 48 });
+      h.rep(in1, 1, 'snatch'); // still 4 × 24/80 = 1.2
+      expect(h.ofType('kbt_rep')[0].points).toBe(1.2);
+      const sheet = h.controller.getMatchSnapshot().scores['p1'];
+      expect(sheet.kettlebellKg).toBe(24);
+      // The player record already carries the new bell for the next staging.
+      const ania = h.controller
+        .stateSnapshot()
+        .players.find((p) => p.name === 'ANIA')!;
+      expect(ania.kettlebellKg).toBe(48);
+      h.controller.dispose();
+    });
+
+    it('flag off: weights are stored but reps pay the integer table', async () => {
+      const h = harness();
+      const { in1 } = await playingHeat(h, {
+        p1: { kettlebellKg: 32, bodyKg: 70 },
+      });
+      h.rep(in1, 1, 'snatch');
+      expect(h.ofType('kbt_rep')[0].points).toBe(4);
+      const ania = h.controller
+        .stateSnapshot()
+        .players.find((p) => p.name === 'ANIA')!;
+      expect(ania.kettlebellKg).toBe(32);
+      expect(ania.bodyKg).toBe(70);
+      h.controller.dispose();
+    });
   });
 
   describe('attachExternalCam (KBT_SIM mp4 cams)', () => {
@@ -890,7 +1058,7 @@ describe('KettlebellTournamentController', () => {
     expect(hud.board?.rows[0]).toMatchObject({
       rank: 1,
       name: 'ANIA',
-      points: 3,
+      points: 4,
     });
     h.controller.dispose();
   });
@@ -1518,7 +1686,7 @@ describe('resilience: playerKey identity, error channel, host recovery', () => {
     expect(adopted?.name).toBe('ANIA');
     const heat = state.heats[state.currentHeatIndex!];
     expect(heat.playerIds).toContain('p1-refreshed');
-    expect(heat.scores['p1-refreshed'].points).toBe(1);
+    expect(heat.scores['p1-refreshed'].points).toBe(2);
     // The key survives adoption — the next refresh resumes the same entry.
     expect(h.joinedFor('p1-refreshed')!.playerKey).toBe(key);
     // The stale socket's late close hits a missing entry and must not touch
@@ -1819,7 +1987,7 @@ describe('resilience: playerKey identity, error channel, host recovery', () => {
       expect(hud.overlay.side.name).toBe('ANIA');
       expect(hud.overlay.side.reps).toBe(4);
       expect(hud.overlay.side.accuracy).toBeCloseTo(0.75);
-      expect(hud.overlay.side.points).toBe(4);
+      expect(hud.overlay.side.points).toBe(8);
     }
     // Live stats keep flowing through held tick publishes too.
     h.rep(in1, 5, 'swing', 'correct');
@@ -1841,8 +2009,8 @@ describe('resilience: playerKey identity, error channel, host recovery', () => {
     const h = harness();
     const { in1, in2 } = await playingHeat(h);
     h.controller.joinCommentator('c1', 'MAREK');
-    h.rep(in1, 1, 'snatch', 'correct'); // 3 pts
-    h.rep(in2, 1, 'swing', 'correct'); // 1 pt
+    h.rep(in1, 1, 'snatch', 'correct'); // 4 pts
+    h.rep(in2, 1, 'swing', 'correct'); // 2 pts
     h.controller.handleMessage('c1', {
       type: 'kbt_commentator_overlay',
       overlay: { kind: 'h2h', playerIdA: 'p1', playerIdB: 'p2' },
@@ -1851,9 +2019,9 @@ describe('resilience: playerKey identity, error channel, host recovery', () => {
     expect(hud?.overlay).toMatchObject({ kind: 'h2h', live: true });
     if (hud?.overlay?.kind === 'h2h') {
       expect(hud.overlay.a.name).toBe('ANIA');
-      expect(hud.overlay.a.points).toBe(3);
+      expect(hud.overlay.a.points).toBe(4);
       expect(hud.overlay.b.name).toBe('BARTEK');
-      expect(hud.overlay.b.points).toBe(1);
+      expect(hud.overlay.b.points).toBe(2);
     }
     // Same player on both sides is refused.
     h.controller.handleMessage('c1', {
@@ -1883,8 +2051,9 @@ describe('resilience: playerKey identity, error channel, host recovery', () => {
       ['bent_arms'],
       '/kbt-rep-frames/b.jpg',
     );
-    // Issues ride the persisted shot, not just the live kbt_rep event.
-    const scores = h.controller.getMatchSnapshot().scores;
+    // Issues ride the persisted shot, not just the live kbt_rep event (read
+    // from kbt_state — a running heat's kbt_match carries no shot lists).
+    const scores = h.controller.stateSnapshot().heats[0].scores;
     expect(scores['p1'].repShots).toHaveLength(2);
     expect(scores['p1'].repShots![1].issues).toEqual(['bent_arms']);
     // No shots → refused.
@@ -2006,6 +2175,267 @@ describe('resilience: playerKey identity, error channel, host recovery', () => {
     });
     await vi.advanceTimersByTimeAsync(3500);
     expect(h.lastHud()!.repFloatText).toBe(true);
+    h.controller.dispose();
+  });
+});
+
+describe('pose debounce', () => {
+  it('ignores a single stray sample and lands a change that holds', async () => {
+    const h = harness();
+    h.controller.join('p1', 'ANIA');
+    await h.controller.startCamera('p1');
+    const inputId = h.camOfferFor('p1')!.inputId;
+    const tracked = () => h.controller.stateSnapshot().players[0].poseTracked;
+    const poseMsgs = () =>
+      h.sent.filter((s) => s.event.type === 'kbt_pose').length;
+
+    // Acquire: the value has to hold for the window before it lands.
+    h.controller.onPoseSample(inputId, true);
+    expect(tracked()).toBe(false);
+    await vi.advanceTimersByTimeAsync(800);
+    h.controller.onPoseSample(inputId, true);
+    expect(tracked()).toBe(true);
+    expect(poseMsgs()).toBe(1);
+
+    // One dropped frame in a steady stream: no flip, no message.
+    h.controller.onPoseSample(inputId, false);
+    await vi.advanceTimersByTimeAsync(70);
+    h.controller.onPoseSample(inputId, true);
+    await vi.advanceTimersByTimeAsync(800);
+    h.controller.onPoseSample(inputId, true);
+    expect(tracked()).toBe(true);
+    expect(poseMsgs()).toBe(1);
+
+    // A real loss: consecutive misses across the window.
+    h.controller.onPoseSample(inputId, false);
+    await vi.advanceTimersByTimeAsync(800);
+    h.controller.onPoseSample(inputId, false);
+    expect(tracked()).toBe(false);
+    expect(poseMsgs()).toBe(2);
+    h.controller.dispose();
+  });
+});
+
+describe('standings pace', () => {
+  it('rates a heat cut short by stop_heat over the time it actually ran', async () => {
+    const h = harness();
+    const { in1 } = await playingHeat(h); // 30 s heat, 'playing' for ~100 ms
+    // 10 reps across 20 s of lifting, then the host stops the heat early.
+    for (let i = 1; i <= 10; i++) {
+      h.rep(in1, i, 'swing');
+      await vi.advanceTimersByTimeAsync(2000);
+    }
+    h.controller.controlMatch({ action: 'stop_heat' });
+    // Past the 5 s linger, plus the 3 s hold the board snapshot rides.
+    await vi.advanceTimersByTimeAsync(9000);
+    const board = h.lastHud()?.board;
+    const row = board?.rows.find((r) => r.name === 'ANIA');
+    // ~20.1 s on the clock → ~30 rpm. Dividing by the configured 30 s (the
+    // old math) would have claimed 20.
+    expect(row?.reps).toBe(10);
+    expect(row?.rpm).toBeGreaterThanOrEqual(29);
+    expect(row?.rpm).toBeLessThanOrEqual(31);
+    h.controller.dispose();
+  });
+});
+
+describe('reconnects, leavers and banners', () => {
+  it('keeps the on-air overlay on a player adopted under a new clientId', async () => {
+    const h = harness();
+    const { in1 } = await playingHeat(h);
+    h.controller.joinCommentator('c1', 'MAREK');
+    h.rep(in1, 1, 'snatch');
+    h.controller.handleMessage('c1', {
+      type: 'kbt_commentator_overlay',
+      overlay: { kind: 'h2h', playerIdA: 'p1', playerIdB: 'p2' },
+    });
+    expect(h.lastHud()?.overlay).toMatchObject({ kind: 'h2h' });
+
+    // The phone reconnects: new socket, same resume token.
+    const key = h.joinedFor('p1')!.playerKey;
+    h.controller.handleDisconnect('p1');
+    h.controller.join('p1-new', 'ANIA', key);
+
+    expect(h.controller.stateSnapshot().commentatorOverlay).toEqual({
+      kind: 'h2h',
+      playerIdA: 'p1-new',
+      playerIdB: 'p2',
+    });
+    await vi.advanceTimersByTimeAsync(3200);
+    const hud = h.lastHud();
+    expect(hud?.overlay).toMatchObject({ kind: 'h2h' });
+    if (hud?.overlay?.kind === 'h2h') expect(hud.overlay.a.points).toBe(4);
+    h.controller.dispose();
+  });
+
+  it('a lifter leaving during the intro frees the begin gate', async () => {
+    const h = harness();
+    h.controller.join('p1', 'ANIA');
+    h.controller.join('p2', 'BARTEK');
+    await h.controller.startCamera('p1');
+    await h.controller.startCamera('p2');
+    h.controller.setConfig({ heatDurationMs: 30_000, heatSize: 2 });
+    h.controller.controlMatch({ action: 'assign_heats' });
+    h.controller.controlMatch({ action: 'start_heat' });
+    await vi.advanceTimersByTimeAsync(0);
+    h.controller.handleMessage('p1', { type: 'kbt_briefed' });
+    await vi.advanceTimersByTimeAsync(1100); // cam poll
+    const p2Input = h.camOfferFor('p2')!.inputId;
+
+    h.controller.handleMessage('p2', { type: 'kbt_leave' });
+    await vi.advanceTimersByTimeAsync(0);
+
+    const state = h.controller.stateSnapshot();
+    expect(state.heats[0].playerIds).toEqual(['p1']);
+    expect(Object.keys(state.heats[0].scores)).toEqual(['p1']);
+    // The remaining tile was re-flowed without the leaver's input.
+    const lastLayout = h.layouts[h.layouts.length - 1];
+    expect(lastLayout.some((t) => t.inputId === p2Input)).toBe(false);
+    // No force needed: everyone still in the heat is ready.
+    const { error } = h.controller.controlMatch({ action: 'begin_heat' });
+    expect(error).toBeUndefined();
+    expect(h.controller.getMatchSnapshot().phase).toBe('countdown');
+    h.controller.dispose();
+  });
+
+  it('takes a hype banner off the air outside a heat, where nothing else publishes', async () => {
+    const h = harness();
+    h.controller.join('p1', 'ANIA');
+    h.controller.joinCommentator('c1', 'MAREK');
+    h.controller.handleMessage('c1', {
+      type: 'kbt_commentator_banner',
+      bannerId: 'make_noise',
+    });
+    expect(h.lastHud()?.scene).toBe('lobby');
+    expect(h.lastHud()?.banner).toMatchObject({ kind: 'hype' });
+    // Let every held snapshot from the joins land, then go quiet.
+    await vi.advanceTimersByTimeAsync(3900);
+    expect(h.lastHud()?.banner).toMatchObject({ kind: 'hype' });
+    await vi.advanceTimersByTimeAsync(200); // past BANNER_MS
+    expect(h.lastHud()?.banner).toBeNull();
+    h.controller.dispose();
+  });
+
+  it('refuses banner ids that only exist on Object.prototype', () => {
+    const h = harness();
+    h.controller.joinCommentator('c1', 'MAREK');
+    for (const bannerId of ['constructor', 'toString', '__proto__']) {
+      h.controller.handleMessage('c1', {
+        type: 'kbt_commentator_banner',
+        bannerId,
+      });
+    }
+    expect(
+      h.errorsFor('c1').filter((e) => e.code === 'invalid_overlay'),
+    ).toHaveLength(3);
+    expect(h.hudApplies.every((s) => !s?.banner)).toBe(true);
+    h.controller.dispose();
+  });
+});
+
+describe('match actions never orphan a heat', () => {
+  /** Four lifters, two heats of two; heat 1 is live ('playing'). */
+  async function twoHeatsFirstPlaying(h: ReturnType<typeof harness>) {
+    // Heats are drawn in join order — p1/p2 must come first to land in heat 1
+    // (playingHeat's own join of them is then a harmless re-join).
+    h.controller.join('p1', 'ANIA');
+    h.controller.join('p2', 'BARTEK');
+    h.controller.join('p3', 'CELINA');
+    h.controller.join('p4', 'DAREK');
+    await h.controller.startCamera('p3');
+    await h.controller.startCamera('p4');
+    return playingHeat(h);
+  }
+
+  it.each([
+    ['next_heat', {}],
+    ['start_heat', { heatIndex: 1 }],
+    ['start_final', {}],
+    ['podium', {}],
+    ['roster', {}],
+    ['assign_heats', {}],
+  ] as const)(
+    '%s during a live heat is refused and the heat keeps running',
+    async (action, extra) => {
+      const h = harness();
+      const { in1 } = await twoHeatsFirstPlaying(h);
+      const { error, state, match } = h.controller.controlMatch({
+        action,
+        ...extra,
+      });
+      expect(error?.code).toBe('heat_in_progress');
+      expect(state.currentHeatIndex).toBe(0);
+      expect(state.tournamentPhase).toBe('heats');
+      expect(state.heats).toHaveLength(2);
+      expect(match.phase).toBe('playing');
+      // Still scoring: the heat was not walked away from.
+      h.rep(in1, 1, 'snatch');
+      expect(h.controller.getMatchSnapshot().scores.p1.points).toBe(4);
+      h.controller.dispose();
+    },
+  );
+
+  it('next_heat inside the rep grace finalizes first, so the result is kept', async () => {
+    const h = harness();
+    const { in1 } = await twoHeatsFirstPlaying(h);
+    h.rep(in1, 1, 'snatch');
+    // Run the clock out: 'ended', but the 400 ms grace has not closed yet.
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(h.controller.getMatchSnapshot().phase).toBe('ended');
+    expect(h.controller.getMatchSnapshot().winner).toBeUndefined();
+    const aiBefore = h.aiCalls.length;
+
+    const { error, state } = h.controller.controlMatch({ action: 'next_heat' });
+    expect(error).toBeUndefined();
+    expect(state.currentHeatIndex).toBe(1);
+    const p1 = state.players.find((p) => p.clientId === 'p1')!;
+    expect(p1.bestScore).toBe(4);
+    // The coach was disarmed for the heat we left.
+    expect(
+      h.aiCalls
+        .slice(aiBefore)
+        .filter((c) => c.inputId === in1 && c.enabled === false),
+    ).toHaveLength(1);
+    h.controller.dispose();
+  });
+
+  it('a second start_final reuses the drawn final instead of stacking one', async () => {
+    const h = harness();
+    await playingHeat(h);
+    h.controller.controlMatch({ action: 'stop_heat' });
+    h.controller.controlMatch({ action: 'start_final' });
+    const again = h.controller.controlMatch({ action: 'start_final' });
+    expect(again.error).toBeUndefined();
+    expect(again.state.heats.filter((x) => x.final)).toHaveLength(1);
+    expect(again.state.currentHeatIndex).toBe(1);
+    h.controller.dispose();
+  });
+
+  it('an interleaved two-surface next/start cannot strand a heat in intro', async () => {
+    const h = harness();
+    h.controller.join('p1', 'ANIA');
+    h.controller.join('p2', 'BARTEK');
+    h.controller.join('p3', 'CELINA');
+    h.controller.join('p4', 'DAREK');
+    h.controller.join('p5', 'EWA');
+    h.controller.join('p6', 'FILIP');
+    await playingHeat(h); // three heats of two; heat 1 playing
+    h.controller.controlMatch({ action: 'stop_heat' });
+    // Panel: next + start → heat 2 in intro.
+    h.controller.controlMatch({ action: 'next_heat' });
+    h.controller.controlMatch({ action: 'start_heat' });
+    await vi.advanceTimersByTimeAsync(0);
+    // Host, a beat later, presses the same button.
+    const next = h.controller.controlMatch({ action: 'next_heat' });
+    const start = h.controller.controlMatch({ action: 'start_heat' });
+    expect(next.error?.code).toBe('heat_in_progress');
+    expect(start.error?.code).toBe('heat_not_idle');
+    expect(start.state.currentHeatIndex).toBe(1);
+    expect(start.state.heats.map((x) => x.phase)).toEqual([
+      'ended',
+      'intro',
+      'idle',
+    ]);
     h.controller.dispose();
   });
 });

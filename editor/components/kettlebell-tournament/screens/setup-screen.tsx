@@ -325,6 +325,18 @@ export function SetupScreen({
                 })
               }
             />
+            <TogglePlate
+              label='WEIGHTED SCORING'
+              hint='score = points × bell kg ÷ body weight; athletes enter both on their phones (defaults 24 / 80)'
+              on={config.weightedScoring}
+              accentColor={KBT.amber}
+              onToggle={() =>
+                onConfig({
+                  ...config,
+                  weightedScoring: !config.weightedScoring,
+                })
+              }
+            />
           </div>
         </div>
 

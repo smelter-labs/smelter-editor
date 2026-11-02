@@ -28,11 +28,14 @@ export type KbtUiConfig = {
   repScreenshots: boolean;
   /** Every 5th rep of an exercise fires an on-air aura + tile shake. */
   milestoneFx: boolean;
-  /** Every scored rep floats game text up the tile ("SNATCH +3" / "SNATCH*"). */
+  /** Every scored rep floats game text up the tile ("SNATCH +4" / "SNATCH*"). */
   repFloatText: boolean;
   /** Incorrect reps still add reps (asterisk on air); off strikes them out
    * and scores 0. */
   countIncorrectReps: boolean;
+  /** Every rep's points × the athlete's bell kg / body kg (phone-entered,
+   * defaults 24/80); scores render with one decimal. */
+  weightedScoring: boolean;
   /** Broadcast output size — applied at room creation, fixed afterwards. */
   resolution: ResolutionPreset;
   /** Performance knobs (same units as the server config). */
@@ -70,9 +73,9 @@ export function sanitizeKbtPerf(
 
 export const DEFAULT_KBT_UI_CONFIG: KbtUiConfig = {
   scoring: {
-    swing: { enabled: true, points: 1 },
-    clean: { enabled: true, points: 2 },
-    snatch: { enabled: true, points: 3 },
+    swing: { enabled: true, points: 2 },
+    clean: { enabled: true, points: 3 },
+    snatch: { enabled: true, points: 4 },
   },
   strictTechnique: false,
   heatDurationSec: 60,
@@ -82,6 +85,7 @@ export const DEFAULT_KBT_UI_CONFIG: KbtUiConfig = {
   milestoneFx: true,
   repFloatText: true,
   countIncorrectReps: true,
+  weightedScoring: false,
   resolution: '1080p',
   perf: { ...KBT_DEFAULT_CONFIG.perf },
 };
@@ -148,18 +152,34 @@ export function useKbtRoom(initialRoomId?: string): KbtRoom {
   useEffect(() => {
     if (!initialRoomId) return;
     let cancelled = false;
-    void getRoomInfo(initialRoomId).then((info) => {
-      if (cancelled) return;
-      if (info && info !== 'not-found') {
-        setWhepUrl(info.whepUrl ?? null);
-        setRoomStatus('ok');
-      } else {
-        setRoomId(null);
-        setRoomStatus('gone');
-      }
-    });
+    let retryTimer: number | null = null;
+    let delay = 1000;
+    const check = () => {
+      getRoomInfo(initialRoomId).then(
+        (info) => {
+          if (cancelled) return;
+          if (info && info !== 'not-found') {
+            setWhepUrl(info.whepUrl ?? null);
+            setRoomStatus('ok');
+          } else {
+            setRoomId(null);
+            setRoomStatus('gone');
+          }
+        },
+        () => {
+          // The lookup itself failed (app server restarting, network blip) —
+          // that is not "room gone". Unhandled, it left the host on
+          // RESTORING ARENA… forever; keep trying instead, the label is true.
+          if (cancelled) return;
+          retryTimer = window.setTimeout(check, delay);
+          delay = Math.min(8000, delay * 2);
+        },
+      );
+    };
+    check();
     return () => {
       cancelled = true;
+      if (retryTimer != null) window.clearTimeout(retryTimer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -178,6 +198,7 @@ export function useKbtRoom(initialRoomId?: string): KbtRoom {
         milestoneFx: cfg.milestoneFx,
         repFloatText: cfg.repFloatText,
         countIncorrectReps: cfg.countIncorrectReps,
+        weightedScoring: cfg.weightedScoring,
         perf: cfg.perf,
       });
     },
@@ -190,8 +211,10 @@ export function useKbtRoom(initialRoomId?: string): KbtRoom {
       creatingRef.current = true;
       setCreating(true);
       setError(null);
+      let createdRoomId: string | null = null;
       try {
         const created = await createNewRoom([], true, cfg.resolution);
+        createdRoomId = created.roomId;
         await pushConfig(cfg, created.roomId);
         // Born straight into the roster (registration screen).
         await controlKbtMatch(created.roomId, { action: 'roster' });
@@ -207,6 +230,10 @@ export function useKbtRoom(initialRoomId?: string): KbtRoom {
         );
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Arena setup failed');
+        // The room exists but setup failed after it: nothing in the UI points
+        // at it, so a retry would mint another one. Take it down instead of
+        // leaving it to the idle sweep.
+        if (createdRoomId) void deleteRoom(createdRoomId).catch(() => {});
       } finally {
         creatingRef.current = false;
         setCreating(false);

@@ -89,6 +89,13 @@ export class KettlebellCoachController {
       if (state.session != null) {
         state.lastRepIndex = 0;
         state.recentRepIssues = [];
+        // The fresh analyzer starts at 'idle' and reports only CHANGES, so
+        // nothing would ever tell consumers the old lift is over — they kept
+        // showing it until a different one was detected.
+        state.pendingExercise = null;
+        if (state.exercise !== 'idle') {
+          this.broadcastExercise(state, inputId, 'idle', now);
+        }
       }
       state.session = data.session;
     }
@@ -135,9 +142,9 @@ export class KettlebellCoachController {
     if (index <= state.lastRepIndex) return; // replayed after reconnect
     state.lastRepIndex = index;
 
-    const issues = (Array.isArray(event.issues)
-      ? event.issues
-      : []) as KettlebellIssueCode[];
+    const issues = (
+      Array.isArray(event.issues) ? event.issues : []
+    ) as KettlebellIssueCode[];
     // v1 only counts/judges swings; a future worker can stamp the event.
     const exercise = (
       EXERCISES.includes(event.exercise ?? '') ? event.exercise : 'swing'

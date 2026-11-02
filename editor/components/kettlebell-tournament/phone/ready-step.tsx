@@ -2,6 +2,7 @@
 
 import React from 'react';
 import type { KbtPlayer, KbtStateEvent } from '@smelter-editor/types';
+import { formatKbtPoints } from '@smelter-editor/types';
 import {
   ChipButton,
   DisplayText,
@@ -15,6 +16,7 @@ import {
   kbtMonoFont,
 } from '../kbt-kit';
 import { KbtAvatar } from '../avatar';
+import { kbtWeightBadge } from '../kbt-weights';
 import { UseCameraButton, UseRecordingButton } from './use-recording-button';
 
 function Row({
@@ -183,6 +185,7 @@ export function ReadyStep({
   const poseOk = poseTracked && fullBody;
   // Host-chosen lifter orientation; absent field (older server) = front.
   const sideOn = state?.config?.cameraView === 'side';
+  const weighted = state?.config?.weightedScoring === true;
 
   return (
     <div
@@ -477,7 +480,11 @@ export function ReadyStep({
           {heatMates.map((p) => (
             <Row
               key={p.clientId}
-              left={p.name + (p.clientId === me?.clientId ? ' (YOU)' : '')}
+              left={
+                p.name +
+                (p.clientId === me?.clientId ? ' (YOU)' : '') +
+                (weighted ? ` · ${kbtWeightBadge(p)}` : '')
+              }
               right={p.camConnected ? 'CAM ✓' : 'NO CAM'}
               color={p.color}
               photoUrl={p.photoUrl}
@@ -502,7 +509,7 @@ export function ReadyStep({
             <Row
               key={p.clientId}
               left={`${i + 1}. ${p.name}`}
-              right={`${p.finalScore ?? p.bestScore}`}
+              right={formatKbtPoints(p.finalScore ?? p.bestScore, weighted)}
               color={p.color}
               photoUrl={p.photoUrl}
               dim={p.bestScore === 0 && p.finalScore == null}

@@ -12,6 +12,7 @@ import {
   PlateTitle,
   StatusDot,
   Tab,
+  WarnPlate,
 } from '../kbt-kit';
 import { DevicePickers } from './device-pickers';
 import type { PanelSocket } from './use-panel-socket';
@@ -280,6 +281,9 @@ export function PanelScreen({
             </Label>
           </Plate>
         ) : null}
+        {/* The server's reason for a refused press (or a press that never
+            left a closed socket) — otherwise the button just looks dead. */}
+        {socket.lastError ? <WarnPlate>{socket.lastError}</WarnPlate> : null}
       </div>
 
       {/* Right: the controls. */}

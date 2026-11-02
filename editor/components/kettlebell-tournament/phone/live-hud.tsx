@@ -2,7 +2,10 @@
 
 import React from 'react';
 import type { KbtMatchEvent } from '@smelter-editor/types';
-import { KETTLEBELL_ISSUE_LABELS } from '@smelter-editor/types';
+import {
+  KETTLEBELL_ISSUE_LABELS,
+  formatKbtPoints,
+} from '@smelter-editor/types';
 import {
   Backdrop,
   Bar,
@@ -145,6 +148,7 @@ export function LiveHud({
   onToggleFile,
   onRestartFile,
   onSeekFile,
+  weighted = false,
 }: {
   match: KbtMatchEvent | null;
   points: number;
@@ -164,6 +168,8 @@ export function LiveHud({
   onToggleFile?: () => void;
   onRestartFile?: () => void;
   onSeekFile?: (ms: number) => void;
+  /** Weighted scoring — points render with one decimal. */
+  weighted?: boolean;
 }) {
   const phase = match?.phase ?? 'playing';
   const countdownN =
@@ -254,7 +260,7 @@ export function LiveHud({
               weight={800}
               color={KBT.cream}
               style={{ fontSize: 'min(40vw, 32vh)', lineHeight: 0.9 }}>
-              {points}
+              {formatKbtPoints(points, weighted)}
             </DisplayText>
             {/* Player color as the accent bar under the score. */}
             <div style={{ width: 64, height: 4, background: color }} />

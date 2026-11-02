@@ -24,7 +24,10 @@
 // src/ai-models/kettlebell-coach/worker.py, plus the printed
 // SMELTER_SIDE_CHANNEL_SOCKET_DIR).
 
-const API = 'http://localhost:3001';
+// KBT_E2E_API points the run at a parallel stack (e.g. :3111) when :3001 is
+// taken by another session.
+const API = process.env.KBT_E2E_API || 'http://localhost:3001';
+const WS_API = API.replace(/^http/, 'ws');
 const MP4 = process.env.KBT_E2E_MP4 || '';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const j = (m) => JSON.stringify(m);
@@ -63,7 +66,7 @@ function stopAllAcking() {
 }
 
 function phone(roomId, name) {
-  const ws = new WebSocket(`ws://localhost:3001/room/${roomId}/ws`);
+  const ws = new WebSocket(`${WS_API}/room/${roomId}/ws`);
   const p = { name, ws, clientId: null, playerKey: null, points: 0, reps: [], poses: [], errors: [], types: new Set() };
   ws.addEventListener('message', (msg) => {
     let ev;
@@ -92,7 +95,9 @@ check('room created', !!roomId && !!created.whepUrl);
 
 // ── 2. Config + roster ───────────────────────────────────────────────────────
 const cfgRes = await api('POST', `/room/${roomId}/kettlebell-tournament/config`, {
-  scoring: { snatch: { points: 5 }, clean: { enabled: false } },
+  // swing pinned to 1 so the point math below stays independent of the
+  // server's default scoring table.
+  scoring: { swing: { points: 1 }, snatch: { points: 5 }, clean: { enabled: false } },
   strictTechnique: true,
   heatDurationMs: 45_000,
   heatSize: 2,
@@ -188,7 +193,7 @@ await sleep(3400); // 3s countdown -> playing
 snap = await api('GET', `/room/${roomId}/kettlebell-tournament/state`);
 check('heat playing after countdown', snap.match.phase === 'playing');
 
-// ANIA: 2 swings (1pt) + 1 incorrect snatch (strict: floor(5/2)=2) = 4
+// ANIA: 2 swings (pinned 1pt) + 1 incorrect snatch (strict: floor(5/2)=2) = 4
 await api('POST', `/room/${roomId}/kettlebell-tournament/simulate-rep`, { clientId: a.clientId, exercise: 'swing' });
 await api('POST', `/room/${roomId}/kettlebell-tournament/simulate-rep`, { clientId: a.clientId, exercise: 'swing' });
 await api('POST', `/room/${roomId}/kettlebell-tournament/simulate-rep`, { clientId: a.clientId, exercise: 'snatch', verdict: 'incorrect' });
@@ -311,7 +316,7 @@ await api('POST', `/room/${roomId}/kettlebell-tournament/simulate-rep`, { client
 await api('POST', `/room/${roomId}/kettlebell-tournament/match`, { action: 'stop_heat' });
 await sleep(700);
 snap = await api('GET', `/room/${roomId}/kettlebell-tournament/state`);
-// Config survives reset: swing 1 + snatch 5 (set back in step 2) = 6.
+// Config survives reset: swing 1 (pinned) + snatch 5 (set back in step 2) = 6.
 check('solo winner crowned', snap.match.winner?.name === 'ANIA' && (MP4 ? snap.match.winner?.points >= 6 : snap.match.winner?.points === 6), JSON.stringify(snap.match.winner));
 // start_final must be a no-op with a single scored player.
 await api('POST', `/room/${roomId}/kettlebell-tournament/match`, { action: 'start_final' });

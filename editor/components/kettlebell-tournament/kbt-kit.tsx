@@ -806,6 +806,7 @@ export function KbtTextInput({
   placeholder,
   maxLength,
   autoCapitalize,
+  inputMode,
   style,
 }: {
   value: string;
@@ -813,6 +814,8 @@ export function KbtTextInput({
   placeholder?: string;
   maxLength?: number;
   autoCapitalize?: string;
+  /** Phone keyboard hint (e.g. 'decimal' for the weight fields). */
+  inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode'];
   style?: React.CSSProperties;
 }) {
   return (
@@ -827,6 +830,7 @@ export function KbtTextInput({
       }
       placeholder={placeholder}
       autoCapitalize={autoCapitalize}
+      inputMode={inputMode}
       autoComplete='off'
       spellCheck={false}
       className='kbt-input'
@@ -1219,6 +1223,8 @@ function BootRow({ label, state }: { label: string; state: RowState }) {
   );
 }
 
+export type KbtRoomLookupStatus = 'loading' | 'ok' | 'not-found' | 'error';
+
 /**
  * Step 1 — connection sequence after scanning the QR: room lookup and
  * WebSocket uplink, with failure states. Auto-advances from the page once
@@ -1230,18 +1236,17 @@ export function KbtConnectStep({
   wsError,
   onRetry,
 }: {
-  roomStatus: 'loading' | 'ok' | 'not-found';
+  /** 'error' = the lookup itself failed (app server unreachable), as opposed
+   * to a room that answered "not found". */
+  roomStatus: KbtRoomLookupStatus;
   wsConnected: boolean;
   /** Debug text from the WS layer, shown verbatim on failure. */
   wsError: string;
+  /** Retries whichever row failed. */
   onRetry: () => void;
 }) {
   const roomRow: RowState =
-    roomStatus === 'ok'
-      ? 'ok'
-      : roomStatus === 'not-found'
-        ? 'fail'
-        : 'pending';
+    roomStatus === 'ok' ? 'ok' : roomStatus === 'loading' ? 'pending' : 'fail';
   const wsRow: RowState = wsConnected
     ? 'ok'
     : wsError && !wsError.startsWith('connecting')
@@ -1274,13 +1279,28 @@ export function KbtConnectStep({
         <WarnPlate>ROOM NOT FOUND — scan the QR on the screen again.</WarnPlate>
       ) : null}
 
+      {roomStatus === 'error' ? (
+        <WarnPlate>
+          ROOM LOOKUP FAILED — the app server did not answer.
+        </WarnPlate>
+      ) : null}
+
       {wsRow === 'fail' ? (
-        <>
-          <WarnPlate>
-            <span style={{ wordBreak: 'break-all' }}>{wsError}</span>
-          </WarnPlate>
-          <KbtButton block active label='RETRY UPLINK' onClick={onRetry} />
-        </>
+        <WarnPlate>
+          <span style={{ wordBreak: 'break-all' }}>{wsError}</span>
+        </WarnPlate>
+      ) : null}
+
+      {/* Either row failing gets the button: the uplink can be green while
+          the room lookup is dead (they reach different servers), and that
+          used to leave a spinner with no way out. */}
+      {wsRow === 'fail' || roomStatus === 'error' ? (
+        <KbtButton
+          block
+          active
+          label={wsRow === 'fail' ? 'RETRY UPLINK' : 'RETRY'}
+          onClick={onRetry}
+        />
       ) : null}
 
       <p

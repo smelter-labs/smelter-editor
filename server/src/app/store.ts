@@ -462,6 +462,10 @@ export type KbtHudTile = {
   /** Registered engine image id of the player's profile photo, if any. */
   photoImageId?: string | null;
   points: number;
+  /** Heat-staged athlete weights (kg) — rendered as a plate badge when
+   * weighted scoring is on. Absent on snapshots from older controllers. */
+  kettlebellKg?: number;
+  bodyKg?: number;
   /** Total counted reps this heat (all exercises; excludes no-count
    * no-reps when countIncorrectReps is off). */
   reps: number;
@@ -533,6 +537,8 @@ export type KbtHudScene =
   | 'split';
 
 export type KbtBoardRow = {
+  /** Stable row identity (React key + Smelter id) — names are not unique. */
+  clientId: string;
   rank: number;
   name: string;
   color: string;
@@ -635,6 +641,9 @@ export type KbtHudState = {
       color: string;
       points: number;
       photoImageId?: string | null;
+      /** Athlete weights (kg; defaults resolved) for the weighted badge. */
+      kettlebellKg?: number;
+      bodyKg?: number;
     }[];
   } | null;
   /** Commentator lower-third (null until one joins). */
@@ -663,6 +672,9 @@ export type KbtHudState = {
   /** config.countIncorrectReps; missing means on. Picks the incorrect-rep
    * floater style: asterisk (counted) vs struck-out (not counted). */
   countIncorrectReps?: boolean;
+  /** config.weightedScoring; missing means off. Switches every points
+   * rendering to one decimal and shows the athlete weight badges. */
+  weighted?: boolean;
   /** View-switch animation style (panel toggle; missing means 'fade'). */
   viewTransitionStyle?: KbtViewTransitionStyle;
 };

@@ -59,7 +59,9 @@ describe('KettlebellCoachController', () => {
   it('maps a worker frameFile to a served screenshotUrl', () => {
     const h = harness();
     h.controller.handleResult(INPUT, {
-      events: [{ ...rep(1), topT: 1.02, frameFile: 'room__whip__a-s1-r0001.jpg' }],
+      events: [
+        { ...rep(1), topT: 1.02, frameFile: 'room__whip__a-s1-r0001.jpg' },
+      ],
     });
     const [event] = h.ofType('kettlebell_rep_completed');
     expect(event.screenshotUrl).toBe(
@@ -131,7 +133,31 @@ describe('KettlebellCoachController', () => {
     });
     const changes = h.ofType('kettlebell_exercise_changed');
     expect(changes).toHaveLength(1);
-    expect(changes[0]).toMatchObject({ exercise: 'swing', prevExercise: 'idle' });
+    expect(changes[0]).toMatchObject({
+      exercise: 'swing',
+      prevExercise: 'idle',
+    });
+  });
+
+  it('returns consumers to idle when the worker session restarts', () => {
+    const h = harness();
+    h.advance(10_000);
+    h.controller.handleResult(INPUT, {
+      session: 'a',
+      events: [{ type: 'exercise_changed', exercise: 'swing', prev: 'idle' }],
+    });
+    h.advance(10_000);
+    // Camera reconnect: a fresh analyzer, silently back at 'idle'.
+    h.controller.handleResult(INPUT, { session: 'b', events: [] });
+    h.advance(10_000);
+    // Re-detecting the same lift is a real change again, not a replay.
+    h.controller.handleResult(INPUT, {
+      session: 'b',
+      events: [{ type: 'exercise_changed', exercise: 'swing', prev: 'idle' }],
+    });
+    expect(
+      h.ofType('kettlebell_exercise_changed').map((e) => e.exercise),
+    ).toEqual(['swing', 'idle', 'swing']);
   });
 
   it('parks a too-soon change and flushes it on a later result', () => {
@@ -152,7 +178,10 @@ describe('KettlebellCoachController', () => {
     h.controller.handleResult(INPUT, { events: [] });
     const changes = h.ofType('kettlebell_exercise_changed');
     expect(changes).toHaveLength(2);
-    expect(changes[1]).toMatchObject({ exercise: 'clean', prevExercise: 'swing' });
+    expect(changes[1]).toMatchObject({
+      exercise: 'clean',
+      prevExercise: 'swing',
+    });
   });
 
   it('reset() clears rep dedupe and exercise state for the input', () => {
@@ -202,7 +231,10 @@ describe('KettlebellCoachController', () => {
 
   it('still dedupes replayed indices within one session', () => {
     const h = harness();
-    h.controller.handleResult(INPUT, { session: 'a', events: [rep(1), rep(2)] });
+    h.controller.handleResult(INPUT, {
+      session: 'a',
+      events: [rep(1), rep(2)],
+    });
     h.controller.handleResult(INPUT, {
       session: 'a',
       events: [rep(1), rep(2), rep(3)],

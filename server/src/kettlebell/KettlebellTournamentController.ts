@@ -23,10 +23,16 @@ import type {
   RoomEvent,
 } from '@smelter-editor/types';
 import {
+  KBT_BODY_KG_MAX,
+  KBT_BODY_KG_MIN,
+  KBT_DEFAULT_BODY_KG,
   KBT_DEFAULT_CONFIG,
+  KBT_DEFAULT_KETTLEBELL_KG,
   KBT_EXERCISE_COLORS,
   KBT_EXERCISE_KEYS,
   KBT_HYPE_BANNERS,
+  KBT_KETTLEBELL_KG_MAX,
+  KBT_KETTLEBELL_KG_MIN,
   KETTLEBELL_ISSUE_LABELS,
 } from '@smelter-editor/types';
 import type {
@@ -190,6 +196,12 @@ type PlayerState = {
   bestScore: number;
   finalScore: number | null;
   heatIndex: number | null;
+  /** Bell weight (kg) the athlete entered; null = never entered. Profile
+   * data like the photo — kept across resets, only overwritten by a join
+   * that actually carries a value. */
+  kettlebellKg: number | null;
+  /** Body weight (kg) — same contract as kettlebellKg. */
+  bodyKg: number | null;
   /** Public URL path of the uploaded profile photo (content-hashed). */
   photoUrl: string | null;
   /** Absolute file path of the photo on disk (cleanup + HUD registration). */
@@ -213,6 +225,10 @@ type ScoreState = {
   name: string;
   color: string;
   photoUrl: string | null;
+  /** Weights staged at heat start (defaults resolved) — the heat's multiplier
+   * under weighted scoring. A mid-heat re-join cannot change them. */
+  kettlebellKg: number;
+  bodyKg: number;
   exercise: KettlebellExercise;
   lastRepAt: number | null;
   lastRepVerdict: 'correct' | 'incorrect' | null;
@@ -336,6 +352,14 @@ function analysisFpsFor(playerCount: number): number {
   return 10;
 }
 
+/** Untrusted kg from a kbt_join: finite number clamped to the range and
+ * rounded to 0.1, anything else undefined (= keep the stored value). */
+function parseKg(v: unknown, min: number, max: number): number | undefined {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return undefined;
+  return Math.round(clamp(n, min, max) * 10) / 10;
+}
+
 /** HUD consumers read the heat clock at ≥500 ms granularity (blink phase,
  * whole seconds), so coarser snapshots stay pixel-identical — and identical
  * back-to-back snapshots dedupe in the store instead of re-rendering the
@@ -370,6 +394,8 @@ export class KettlebellTournamentController {
   /** Leader of the running heat (for kbt_lead_change). */
   private leaderId: string | null = null;
   private banner: KbtHudState['banner'] = null;
+  /** Takes an expired banner off the air (see setBanner). */
+  private bannerTimer: ReturnType<typeof setTimeout> | null = null;
   private commentator: CommentatorState | null = null;
   /** Join URL for the lobby QR (pushed down from the host page's config). */
   private joinUrl: string | null = null;
@@ -444,8 +470,11 @@ export class KettlebellTournamentController {
    * publishes (reps, scene flips) bypass it. 100 ms = the historical 10 Hz. */
   private hudMinIntervalMs = 100;
   private lastPeriodicHudAt = 0;
-  /** Pose flip debounce per clientId. */
-  private readonly poseFlipAt = new Map<string, number>();
+  /** Pose flip debounce per clientId: the candidate value and since when. */
+  private readonly posePending = new Map<
+    string,
+    { tracked: boolean; fullBody: boolean; since: number }
+  >();
   private lastCamPoll = 0;
   private simRepSeq = 1_000_000; // simulated reps stay clear of worker indices
   private disposed = false;
@@ -467,6 +496,8 @@ export class KettlebellTournamentController {
       type?: unknown;
       name?: unknown;
       playerKey?: unknown;
+      kettlebellKg?: unknown;
+      bodyKg?: unknown;
       nativeWidth?: unknown;
       nativeHeight?: unknown;
       override?: unknown;
@@ -488,6 +519,14 @@ export class KettlebellTournamentController {
           clientId,
           typeof msg.name === 'string' ? msg.name : 'Lifter',
           playerKey,
+          {
+            kettlebellKg: parseKg(
+              msg.kettlebellKg,
+              KBT_KETTLEBELL_KG_MIN,
+              KBT_KETTLEBELL_KG_MAX,
+            ),
+            bodyKg: parseKg(msg.bodyKg, KBT_BODY_KG_MIN, KBT_BODY_KG_MAX),
+          },
         );
         break;
       case 'kbt_cam_request': {
@@ -592,13 +631,25 @@ export class KettlebellTournamentController {
    * that matches nothing skips name adoption — that phone is a genuinely new
    * entrant, and adopting by name could hijack someone else's slot.
    */
-  join(clientId: string, rawName: string, playerKey?: string): void {
+  join(
+    clientId: string,
+    rawName: string,
+    playerKey?: string,
+    weights?: { kettlebellKg?: number; bodyKg?: number },
+  ): void {
     const name = rawName.slice(0, 20).trim() || 'Lifter';
+    // Weights only move on a join that carries them — the auto re-join after
+    // a reconnect sends none and must not wipe what the athlete entered.
+    const applyWeights = (p: PlayerState) => {
+      if (weights?.kettlebellKg != null) p.kettlebellKg = weights.kettlebellKg;
+      if (weights?.bodyKg != null) p.bodyKg = weights.bodyKg;
+    };
     const existing = this.players.get(clientId);
     if (existing) {
       existing.name = name;
       existing.connected = true;
       existing.disconnectedAt = null;
+      applyWeights(existing);
       this.sendJoined(clientId, existing);
       this.ensureRunning();
       this.broadcastState();
@@ -618,6 +669,7 @@ export class KettlebellTournamentController {
     if (orphan) {
       this.adoptPlayer(orphan, clientId);
       orphan.name = name;
+      applyWeights(orphan);
       player = orphan;
     } else {
       player = {
@@ -638,6 +690,8 @@ export class KettlebellTournamentController {
         bestScore: 0,
         finalScore: null,
         heatIndex: null,
+        kettlebellKg: weights?.kettlebellKg ?? null,
+        bodyKg: weights?.bodyKg ?? null,
         photoUrl: null,
         photoPath: null,
         photoHash: null,
@@ -665,6 +719,8 @@ export class KettlebellTournamentController {
       camInputActive: p.inputId != null,
       photoUrl: p.photoUrl,
       heatIndex: p.heatIndex,
+      kettlebellKg: p.kettlebellKg,
+      bodyKg: p.bodyKg,
       inCurrentHeat: heat != null && heat.playerIds.includes(clientId),
       tournamentPhase: this.phase,
       heatPhase: heat?.phase ?? 'idle',
@@ -695,9 +751,9 @@ export class KettlebellTournamentController {
     orphan.connected = true;
     orphan.disconnectedAt = null;
     this.players.set(clientId, orphan);
-    const pose = this.poseFlipAt.get(oldId);
-    this.poseFlipAt.delete(oldId);
-    if (pose != null) this.poseFlipAt.set(clientId, pose);
+    const pose = this.posePending.get(oldId);
+    this.posePending.delete(oldId);
+    if (pose != null) this.posePending.set(clientId, pose);
     for (const heat of this.heats) {
       heat.playerIds = heat.playerIds.map((id) =>
         id === oldId ? clientId : id,
@@ -716,6 +772,16 @@ export class KettlebellTournamentController {
       o.playerId === oldId
     ) {
       o.playerId = clientId;
+    }
+    // Same for the on-air overlay: left on the old id it silently drops off
+    // the output (overlaySnapshot finds no such player) while kbt_state keeps
+    // echoing it to the panel as live.
+    const ov = this.commentatorOverlay;
+    if (ov?.kind === 'h2h') {
+      if (ov.playerIdA === oldId) ov.playerIdA = clientId;
+      if (ov.playerIdB === oldId) ov.playerIdB = clientId;
+    } else if (ov && ov.playerId === oldId) {
+      ov.playerId = clientId;
     }
   }
 
@@ -1328,8 +1394,11 @@ export class KettlebellTournamentController {
 
   triggerHypeBanner(clientId: string, rawId: unknown): void {
     if (!this.requireCommentator(clientId, 'fire a banner')) return;
+    // Own keys only: 'constructor' / 'toString' would otherwise resolve to
+    // Object.prototype members and put an undefined text on air.
     const entry =
-      typeof rawId === 'string'
+      typeof rawId === 'string' &&
+      Object.prototype.hasOwnProperty.call(KBT_HYPE_BANNERS, rawId)
         ? KBT_HYPE_BANNERS[rawId as KbtHypeBannerId]
         : undefined;
     if (!entry) {
@@ -1539,18 +1608,28 @@ export class KettlebellTournamentController {
   leave(clientId: string): void {
     const p = this.players.get(clientId);
     if (!p) return;
+    const wasOnStage = this.isPlayerInActiveHeat(clientId);
     this.retireCamera(p);
     this.players.delete(clientId);
+    this.posePending.delete(clientId);
     this.clearViewOverrideIfPlayer(clientId);
     this.clearCommentatorOverlayIfPlayer(clientId);
     // Heat score sheets keep their own name/color snapshot, so past results
-    // stay intact; upcoming idle heats just lose the entrant.
+    // stay intact; heats that never got underway just lose the entrant. That
+    // includes a staged 'intro': a leaver kept there wedges the begin gate
+    // for good ("waiting for (gone)") and can no longer even be kicked.
     for (const heat of this.heats) {
-      if (heat.phase === 'idle') {
+      if (heat.phase === 'idle' || heat.phase === 'intro') {
         heat.playerIds = heat.playerIds.filter((id) => id !== clientId);
+        heat.scores.delete(clientId);
       }
     }
-    if (this.phase === 'roster') void this.layoutRosterMosaic();
+    if (wasOnStage) {
+      // Their tile is gone — re-flow the ones that remain.
+      void this.stageActiveHeat();
+    } else if (this.phase === 'roster') {
+      void this.layoutRosterMosaic();
+    }
     this.broadcastState();
     this.maybeStop();
   }
@@ -1605,15 +1684,32 @@ export class KettlebellTournamentController {
 
   /**
    * Live pose visibility from the raw worker results (the coach events carry
-   * no pose). Debounced so a single dropped frame doesn't flicker the check.
+   * no pose). Debounced so a single dropped frame doesn't flicker the check:
+   * a new value only lands once it has held for POSE_DEBOUNCE_MS, and any
+   * sample agreeing with the current state cancels the pending flip. (It used
+   * to be a throttle — the first stray sample flipped at once and the way
+   * back was then blocked for the window, so ONE dropped frame read as 0.7 s
+   * of POSE ✗ and cost two full state broadcasts.)
    */
   onPoseSample(inputId: string, tracked: boolean, fullBody = true): void {
     const p = [...this.players.values()].find((pl) => pl.inputId === inputId);
-    if (!p || (p.poseTracked === tracked && p.fullBody === fullBody)) return;
+    if (!p) return;
+    if (p.poseTracked === tracked && p.fullBody === fullBody) {
+      this.posePending.delete(p.clientId);
+      return;
+    }
     const now = this.now();
-    const since = this.poseFlipAt.get(p.clientId) ?? 0;
-    if (now - since < POSE_DEBOUNCE_MS) return;
-    this.poseFlipAt.set(p.clientId, now);
+    const pending = this.posePending.get(p.clientId);
+    if (
+      !pending ||
+      pending.tracked !== tracked ||
+      pending.fullBody !== fullBody
+    ) {
+      this.posePending.set(p.clientId, { tracked, fullBody, since: now });
+      return;
+    }
+    if (now - pending.since < POSE_DEBOUNCE_MS) return;
+    this.posePending.delete(p.clientId);
     p.poseTracked = tracked;
     p.fullBody = fullBody;
     this.deps.sendTo(p.clientId, {
@@ -1694,6 +1790,12 @@ export class KettlebellTournamentController {
     }
     const counted = this.config.countIncorrectReps || verdict === 'correct';
     if (!counted) points = 0;
+    if (this.config.weightedScoring) {
+      // Per-rep award rounded to 0.1 so the shown reps sum to the shown
+      // total; running totals accumulate these exact one-decimal values.
+      points =
+        Math.round(((points * score.kettlebellKg) / score.bodyKg) * 10) / 10;
+    }
 
     score.attempts += 1;
     if (counted) {
@@ -1807,6 +1909,23 @@ export class KettlebellTournamentController {
     color: string,
   ): void {
     this.banner = { kind, text, color, at: this.now() };
+    // The banner leaves the air only when a later snapshot omits it, and the
+    // tick publishes periodically only while a heat is on — in the lobby, on
+    // the board or the podium it would hang until some unrelated state
+    // change. One publish just past the TTL takes it down — immediately when
+    // no heat is publishing (nothing there is time-aligned to the delayed
+    // video), otherwise left to the regular held snapshots so the queued
+    // scores are not cut short.
+    if (this.bannerTimer) clearTimeout(this.bannerTimer);
+    this.bannerTimer = setTimeout(() => {
+      this.bannerTimer = null;
+      const heat = this.activeHeat();
+      const heatPublishing =
+        heat != null &&
+        (heat.phase !== 'ended' ||
+          (heat.endsAt != null && this.now() - heat.endsAt < ENDED_LINGER_MS));
+      this.publishHud(!heatPublishing);
+    }, BANNER_MS + 1);
   }
 
   // ── Config + match control (REST) ─────────────────────────────────────────
@@ -1830,6 +1949,8 @@ export class KettlebellTournamentController {
     repFloatText?: boolean;
     /** When false, incorrect reps add no reps and no points. */
     countIncorrectReps?: boolean;
+    /** Multiply every rep's points by the athlete's kettlebellKg / bodyKg. */
+    weightedScoring?: boolean;
     /** Performance knobs; live ones apply immediately, recording ones from
      * the next recording start. */
     perf?: Partial<KbtPerfConfig>;
@@ -1907,6 +2028,9 @@ export class KettlebellTournamentController {
     }
     if (typeof cfg.countIncorrectReps === 'boolean') {
       this.config.countIncorrectReps = cfg.countIncorrectReps;
+    }
+    if (typeof cfg.weightedScoring === 'boolean') {
+      this.config.weightedScoring = cfg.weightedScoring;
     }
     if (cfg.perf) this.applyPerfConfig(cfg.perf);
     this.broadcastState();
@@ -1991,11 +2115,15 @@ export class KettlebellTournamentController {
     let error: KbtMatchError | undefined;
     switch (cmd.action) {
       case 'roster':
+        error = this.settleActiveHeat() ?? undefined;
+        if (error) break;
         this.phase = 'roster';
         this.currentHeatIndex = null;
         void this.layoutRosterMosaic();
         break;
       case 'assign_heats':
+        error = this.settleActiveHeat() ?? undefined;
+        if (error) break;
         this.assignHeats();
         break;
       case 'start_heat': {
@@ -2009,7 +2137,8 @@ export class KettlebellTournamentController {
               : `No heat ${index + 1} to start.`,
           };
         } else {
-          void this.startHeat(index);
+          error = this.settleActiveHeat() ?? undefined;
+          if (!error) void this.startHeat(index);
         }
         break;
       }
@@ -2023,13 +2152,15 @@ export class KettlebellTournamentController {
         this.stopHeat();
         break;
       case 'next_heat':
-        this.nextHeat();
+        error = this.settleActiveHeat() ?? undefined;
+        if (!error) this.nextHeat();
         break;
       case 'start_final':
-        error = this.startFinal() ?? undefined;
+        error = this.settleActiveHeat() ?? this.startFinal() ?? undefined;
         break;
       case 'podium':
-        this.phase = 'podium';
+        error = this.settleActiveHeat() ?? undefined;
+        if (!error) this.phase = 'podium';
         break;
       case 'reset':
         this.resetTournament();
@@ -2049,6 +2180,28 @@ export class KettlebellTournamentController {
     const match = this.getMatchSnapshot();
     this.deps.broadcast(match);
     return { state: this.stateSnapshot(), match, error };
+  }
+
+  /**
+   * Gate for every action that moves the show off the current heat. Only the
+   * active heat is ever ticked, so walking away from one that is still live
+   * would orphan it: never finalized (its scores never reach bestScore) and
+   * its coach AI armed for good. A live heat refuses — the host stops it
+   * first; an ended heat still inside the rep grace is finalized right here,
+   * so moving on at the buzzer keeps the result. Two control surfaces (host
+   * page + panel) send these actions, so the UI's own gating is not enough.
+   */
+  private settleActiveHeat(): KbtMatchError | null {
+    const heat = this.activeHeat();
+    if (!heat) return null;
+    if (heat.phase === 'ended') {
+      this.finalizeHeat(heat);
+      return null;
+    }
+    return {
+      code: 'heat_in_progress',
+      message: `${heat.final ? 'The final' : `Heat ${heat.index + 1}`} is still on — stop it first.`,
+    };
   }
 
   /** Chunk the roster (join order) into qualification heats of heatSize. */
@@ -2142,6 +2295,8 @@ export class KettlebellTournamentController {
       name: p.name,
       color: p.color,
       photoUrl: p.photoUrl,
+      kettlebellKg: p.kettlebellKg ?? KBT_DEFAULT_KETTLEBELL_KG,
+      bodyKg: p.bodyKg ?? KBT_DEFAULT_BODY_KG,
       exercise: 'idle',
       lastRepAt: null,
       lastRepVerdict: null,
@@ -2480,6 +2635,7 @@ export class KettlebellTournamentController {
     }
     this.retireCamera(p);
     this.players.delete(clientId);
+    this.posePending.delete(clientId);
     this.clearViewOverrideIfPlayer(clientId);
     this.clearCommentatorOverlayIfPlayer(clientId);
     for (const heat of this.heats) {
@@ -2552,6 +2708,14 @@ export class KettlebellTournamentController {
 
   /** Top heatSize players by best qualification score re-run as the final. */
   private startFinal(): KbtMatchError | null {
+    // A repeated press (double click, second control surface) must not stack
+    // another final behind one that is already drawn and waiting.
+    const drawn = this.heats.find((h) => h.final && h.phase === 'idle');
+    if (drawn) {
+      this.phase = 'final';
+      this.currentHeatIndex = drawn.index;
+      return null;
+    }
     const ranked = [...this.players.values()]
       .filter((p) => p.bestScore > 0 || p.heatIndex != null)
       .sort((a, b) => b.bestScore - a.bestScore)
@@ -2834,6 +2998,8 @@ export class KettlebellTournamentController {
       bestScore: p.bestScore,
       finalScore: p.finalScore,
       heatIndex: p.heatIndex,
+      ...(p.kettlebellKg != null ? { kettlebellKg: p.kettlebellKg } : {}),
+      ...(p.bodyKg != null ? { bodyKg: p.bodyKg } : {}),
       photoUrl: p.photoUrl,
       ...(p.repShots.length ? { repShots: [...p.repShots] } : {}),
     };
@@ -2849,7 +3015,10 @@ export class KettlebellTournamentController {
     };
   }
 
-  private scoresRecord(h: HeatState): Record<string, KbtScoreBreakdown> {
+  private scoresRecord(
+    h: HeatState,
+    withRepShots = true,
+  ): Record<string, KbtScoreBreakdown> {
     const out: Record<string, KbtScoreBreakdown> = {};
     for (const [id, s] of h.scores) {
       out[id] = {
@@ -2860,7 +3029,11 @@ export class KettlebellTournamentController {
         name: s.name,
         color: s.color,
         photoUrl: s.photoUrl,
-        ...(s.repShots.length ? { repShots: [...s.repShots] } : {}),
+        kettlebellKg: s.kettlebellKg,
+        bodyKg: s.bodyKg,
+        ...(withRepShots && s.repShots.length
+          ? { repShots: [...s.repShots] }
+          : {}),
       };
     }
     return out;
@@ -2894,7 +3067,12 @@ export class KettlebellTournamentController {
           : heat.phase === 'playing' && heat.endsAt != null
             ? Math.max(0, heat.endsAt - now)
             : undefined,
-      scores: this.scoresRecord(heat),
+      // The shot lists only ride the snapshots of a finished heat (the results
+      // screen reads them there). kbt_match goes to every phone once a second
+      // while a heat runs, and the lists grow with every rep — live shots
+      // already reach clients incrementally via kbt_rep, and kbt_state keeps
+      // the full lists for the panel.
+      scores: this.scoresRecord(heat, heat.phase === 'ended'),
       winner:
         heat.phase === 'ended' && heat.finalized ? heat.winner : undefined,
     };
@@ -2976,23 +3154,39 @@ export class KettlebellTournamentController {
         // Reps/pace from the player's latest played heat (average over the
         // heat — the board shows results, not a live window).
         let reps = 0;
+        let rpm = 0;
         for (let h = this.heats.length - 1; h >= 0; h--) {
           const s = this.heats[h].scores.get(p.clientId);
           if (s) {
             reps = s.reps.swing + s.reps.clean + s.reps.snatch;
+            rpm = this.averageRpm(this.heats[h], reps);
             break;
           }
         }
         return {
+          clientId: p.clientId,
           rank: i + 1,
           name: p.name,
           color: p.color,
           photoImageId: p.photoImageId,
           points: p.rankPoints,
           reps,
-          rpm: Math.round((reps * 60_000) / this.config.heatDurationMs),
+          rpm,
         };
       });
+  }
+
+  /**
+   * Average pace over the time a heat actually ran, not its configured
+   * length: a heat cut short by stop_heat (or rules edited afterwards) would
+   * otherwise under- or over-report. Floored like the live RPM window.
+   */
+  private averageRpm(heat: HeatState, reps: number): number {
+    const ranMs =
+      heat.startsAt != null && heat.endsAt != null
+        ? heat.endsAt - heat.startsAt
+        : this.config.heatDurationMs;
+    return Math.round((reps * 60_000) / Math.max(15_000, ranMs));
   }
 
   /**
@@ -3033,10 +3227,12 @@ export class KettlebellTournamentController {
       };
     }
     let sheet: ScoreState | null = null;
+    let sheetHeat: HeatState | null = null;
     for (let h = this.heats.length - 1; h >= 0; h--) {
       const s = this.heats[h].scores.get(playerId);
       if (s) {
         sheet = s;
+        sheetHeat = this.heats[h];
         break;
       }
     }
@@ -3050,7 +3246,7 @@ export class KettlebellTournamentController {
         color: p.color,
         photoImageId: p.photoImageId,
         points: p.finalScore ?? p.bestScore,
-        rpm: Math.round((reps * 60_000) / this.config.heatDurationMs),
+        rpm: sheetHeat ? this.averageRpm(sheetHeat, reps) : 0,
         reps,
         streak: 0,
         bestStreak: sheet?.bestStreak ?? 0,
@@ -3161,6 +3357,8 @@ export class KettlebellTournamentController {
           color: s.color,
           photoImageId: p.photoImageId,
           points: s.points,
+          kettlebellKg: s.kettlebellKg,
+          bodyKg: s.bodyKg,
           reps: s.reps.swing + s.reps.clean + s.reps.snatch,
           repSeq: s.attempts,
           repsByExercise: { ...s.reps },
@@ -3251,6 +3449,8 @@ export class KettlebellTournamentController {
                   color: p.color,
                   points: p.rankPoints,
                   photoImageId: p.photoImageId,
+                  kettlebellKg: p.kettlebellKg ?? KBT_DEFAULT_KETTLEBELL_KG,
+                  bodyKg: p.bodyKg ?? KBT_DEFAULT_BODY_KG,
                 })),
             }
           : null,
@@ -3269,6 +3469,7 @@ export class KettlebellTournamentController {
       // reaches the air aligned with the delayed video.
       repFloatText: this.config.repFloatText,
       countIncorrectReps: this.config.countIncorrectReps,
+      weighted: this.config.weightedScoring,
       viewTransitionStyle: this.viewTransitionStyle,
     };
     if (immediate) {
@@ -3303,6 +3504,10 @@ export class KettlebellTournamentController {
     if (this.parkTimer) {
       clearTimeout(this.parkTimer);
       this.parkTimer = null;
+    }
+    if (this.bannerTimer) {
+      clearTimeout(this.bannerTimer);
+      this.bannerTimer = null;
     }
     for (const imageId of this.repShotImageIds.values()) {
       this.deps.unregisterRepShotImage(imageId);
