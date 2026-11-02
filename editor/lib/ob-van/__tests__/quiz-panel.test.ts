@@ -199,7 +199,9 @@ describe('quizBarModel', () => {
     withModel.players[0].model = 'opus';
     const m = quizBarModel(
       state(withModel, {
-        config: { quiz: { bank: 'smelter', aiHost: true, auto: true } },
+        config: {
+          quiz: { bank: 'smelter', aiHost: true, auto: true, tts: true },
+        },
       }),
     )!;
     expect(m.players[0].model).toBe('opus');
