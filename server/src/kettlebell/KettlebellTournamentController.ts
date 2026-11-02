@@ -1793,7 +1793,8 @@ export class KettlebellTournamentController {
     if (this.config.weightedScoring) {
       // Per-rep award rounded to 0.1 so the shown reps sum to the shown
       // total; running totals accumulate these exact one-decimal values.
-      points = Math.round(((points * score.kettlebellKg) / score.bodyKg) * 10) / 10;
+      points =
+        Math.round(((points * score.kettlebellKg) / score.bodyKg) * 10) / 10;
     }
 
     score.attempts += 1;
@@ -2155,8 +2156,7 @@ export class KettlebellTournamentController {
         if (!error) this.nextHeat();
         break;
       case 'start_final':
-        error =
-          this.settleActiveHeat() ?? this.startFinal() ?? undefined;
+        error = this.settleActiveHeat() ?? this.startFinal() ?? undefined;
         break;
       case 'podium':
         error = this.settleActiveHeat() ?? undefined;

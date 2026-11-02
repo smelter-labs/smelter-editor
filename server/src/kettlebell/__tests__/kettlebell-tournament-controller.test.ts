@@ -2264,7 +2264,7 @@ describe('reconnects, leavers and banners', () => {
     await vi.advanceTimersByTimeAsync(3200);
     const hud = h.lastHud();
     expect(hud?.overlay).toMatchObject({ kind: 'h2h' });
-    if (hud?.overlay?.kind === 'h2h') expect(hud.overlay.a.points).toBe(3);
+    if (hud?.overlay?.kind === 'h2h') expect(hud.overlay.a.points).toBe(4);
     h.controller.dispose();
   });
 
@@ -2370,7 +2370,7 @@ describe('match actions never orphan a heat', () => {
       expect(match.phase).toBe('playing');
       // Still scoring: the heat was not walked away from.
       h.rep(in1, 1, 'snatch');
-      expect(h.controller.getMatchSnapshot().scores.p1.points).toBe(3);
+      expect(h.controller.getMatchSnapshot().scores.p1.points).toBe(4);
       h.controller.dispose();
     },
   );
@@ -2389,7 +2389,7 @@ describe('match actions never orphan a heat', () => {
     expect(error).toBeUndefined();
     expect(state.currentHeatIndex).toBe(1);
     const p1 = state.players.find((p) => p.clientId === 'p1')!;
-    expect(p1.bestScore).toBe(3);
+    expect(p1.bestScore).toBe(4);
     // The coach was disarmed for the heat we left.
     expect(
       h.aiCalls

@@ -142,9 +142,9 @@ export class KettlebellCoachController {
     if (index <= state.lastRepIndex) return; // replayed after reconnect
     state.lastRepIndex = index;
 
-    const issues = (Array.isArray(event.issues)
-      ? event.issues
-      : []) as KettlebellIssueCode[];
+    const issues = (
+      Array.isArray(event.issues) ? event.issues : []
+    ) as KettlebellIssueCode[];
     // v1 only counts/judges swings; a future worker can stamp the event.
     const exercise = (
       EXERCISES.includes(event.exercise ?? '') ? event.exercise : 'swing'
