@@ -36,16 +36,25 @@ const base: ShotContext = {
 };
 
 describe('buildShotOptions', () => {
-  it('offers the seven shot kinds in bar order', () => {
+  it('offers the eight shot kinds in bar order', () => {
     expect(buildShotOptions(base).map((o) => o.kind)).toEqual([
       'solo',
       'split',
       'pip',
       'quad',
       'grid',
+      'featured',
       'speaker-slides',
       'virtual',
     ]);
+  });
+  it('FEATURED puts preview big with the rest as the strip', () => {
+    expect(shotOf(base, 'featured')).toEqual({
+      kind: 'featured',
+      main: 's',
+      others: [],
+    });
+    expect(shotOf({ ...base, preview: null }, 'featured')).toBeNull();
   });
   it('SOLO is the preview main camera', () => {
     expect(shotOf(base, 'solo')).toEqual({ kind: 'solo', cam: 's' });

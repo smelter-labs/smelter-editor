@@ -421,6 +421,7 @@ export type {
   ObTransitionType,
   ObTransition,
   ObGrade,
+  ObCamFx,
   ObEffects,
   ObLowerThird,
   ObActiveLowerThird,
@@ -467,6 +468,7 @@ export type {
   ObCamRequestMessage,
   ObCamStopMessage,
   ObCamLeaveMessage,
+  ObCamHandFrameMessage,
   ObClientMessage,
   ObStateEvent,
   ObCamJoinedEvent,
@@ -477,6 +479,7 @@ export type {
   ObSignalsEvent,
   ObErrorCode,
   ObErrorEvent,
+  ObFingerFrameEvent,
   ObServerEvent,
   ObQuizBank,
 } from "./ob-van-events.js";
@@ -546,3 +549,19 @@ export {
   obQuizFormatMoney,
   obQuizFormatDelta,
 } from "./ob-van-quiz.js";
+export type {
+  ObPanelSpeakerId,
+  ObPanelPhase,
+  ObPanelSpeakerStatus,
+  ObPanelSpeaker,
+  ObPanelState,
+  ObPanelHistoryEntry,
+} from "./ob-van-panel.js";
+export {
+  OB_PANEL_SPEAKER_IDS,
+  OB_PANEL_TURN_CLOSE_MS,
+  OB_PANEL_MIN_QUESTION_CHARS,
+  OB_PANEL_ANSWER_TIMEOUT_MS,
+  OB_PANEL_HISTORY_MAX,
+  OB_PANEL_ANSWER_LEAD_MS,
+} from "./ob-van-panel.js";

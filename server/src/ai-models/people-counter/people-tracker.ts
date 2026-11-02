@@ -356,6 +356,7 @@ export class PeopleTracker {
       h: t.box.h,
       id: t.id,
       color: t.color,
+      missed: t.missed,
       conf: t.box.conf,
       src: t.box.src,
     };

@@ -873,32 +873,10 @@ function HostLinePlate({
   );
 }
 
-// ── Splash + stinger ──────────────────────────────────────────────────────
+// ── Splash ────────────────────────────────────────────────────────────────
 
 function QuizSplash({ k }: { k: number }) {
   return <Art id='ob-quiz-logo' x={580} y={340} w={760} h={200} k={k} />;
-}
-
-/**
- * Stinger audio: a bundled mp4 mixed in through a hidden 2×2 stream. No
- * videoState gate: the clip is black anyway, and waiting for 'playing' loses
- * the sting when the reveal cut churns the scene in the same commit window.
- */
-function QuizSfx({ sfx }: { sfx: NonNullable<QuizHud['sfx']> }) {
-  return (
-    <View style={{ top: 0, left: 0, width: 2, height: 2, overflow: 'hidden' }}>
-      <InputStream inputId={sfx.inputId} volume={0.7} />
-    </View>
-  );
-}
-
-/** A TTS line (host / contestant voice) — its own slot so stings can't cut it. */
-function QuizSpeech({ speech }: { speech: NonNullable<QuizHud['speech']> }) {
-  return (
-    <View style={{ top: 0, left: 2, width: 2, height: 2, overflow: 'hidden' }}>
-      <InputStream inputId={speech.inputId} volume={1} />
-    </View>
-  );
 }
 
 // ── Overlay root ──────────────────────────────────────────────────────────
@@ -1006,8 +984,6 @@ export function ObQuizOverlay({
           />
         </Frame>
       ) : null}
-      {quiz.sfx ? <QuizSfx sfx={quiz.sfx} /> : null}
-      {quiz.speech ? <QuizSpeech speech={quiz.speech} /> : null}
     </View>
   );
 }

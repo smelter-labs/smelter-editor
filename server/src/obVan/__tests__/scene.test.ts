@@ -194,6 +194,109 @@ describe('buildStage', () => {
     expectEveryInputOnce(stage, list);
   });
 
+  it('featured: main big on the left, the rest stacked in the right strip', () => {
+    const list = cams(4);
+    const stage = buildStage(
+      { kind: 'featured', main: 'c2', others: [] },
+      list,
+      HD,
+      FX,
+    );
+    expect(stage.onAir).toEqual(['c2', 'c1', 'c3', 'c4']);
+    expectEveryInputOnce(stage, list);
+    const [main, ...strip] = stage.tiles.filter(visible);
+    expect(main.inputId).toBe('in2');
+    expect(strip.map((t) => t.inputId)).toEqual(['in1', 'in3', 'in4']);
+    // Main clearly dominates and the strip sits to its right.
+    for (const t of strip) {
+      expect(main.width).toBeGreaterThan(t.width * 2);
+      expect(t.x).toBeGreaterThan(main.x + main.width);
+    }
+    // Strip cells stack top to bottom without overlap.
+    expect(strip[0].y).toBeLessThan(strip[1].y);
+    expect(strip[1].y).toBeLessThan(strip[2].y);
+    expect(stage.backdrop).toEqual({ inputId: 'in2' });
+  });
+
+  it('featured [] skips dead cameras and never doubles the main', () => {
+    const list = cams(3, [{}, { live: false }, {}]);
+    const stage = buildStage(
+      { kind: 'featured', main: 'c1', others: ['c1', 'c3'] },
+      list,
+      HD,
+      FX,
+    );
+    expect(stage.onAir).toEqual(['c1', 'c3']);
+    const dynamic = buildStage(
+      { kind: 'featured', main: 'c1', others: [] },
+      list,
+      HD,
+      FX,
+    );
+    expect(dynamic.onAir).toEqual(['c1', 'c3']);
+  });
+
+  it('featured with nobody else fills the frame with the main camera', () => {
+    const list = cams(1);
+    const stage = buildStage(
+      { kind: 'featured', main: 'c1', others: [] },
+      list,
+      HD,
+      FX,
+    );
+    expect(stage.onAir).toEqual(['c1']);
+    expect(stage.tiles[0]).toMatchObject({
+      x: 0,
+      y: 0,
+      width: 1920,
+      height: 1080,
+    });
+  });
+
+  it('hostCamId marks the host camera look and nothing else', () => {
+    const list = cams(3);
+    const stage = buildStage(
+      { kind: 'featured', main: 'c2', others: [] },
+      list,
+      HD,
+      FX,
+      null,
+      'c2',
+    );
+    expect(stage.looks.in2.hostTag).toBe(true);
+    expect(stage.looks.in1.hostTag).toBeUndefined();
+    expect(stage.looks.in3.hostTag).toBeUndefined();
+    // The marking is look-only: it follows the host camera on any shot.
+    const onGrid = buildStage(
+      { kind: 'grid', cams: [] },
+      list,
+      HD,
+      FX,
+      null,
+      'c3',
+    );
+    expect(onGrid.looks.in3.hostTag).toBe(true);
+  });
+
+  it('camFx overrides grade / spotlight on that camera only', () => {
+    const list = cams(3);
+    const stage = buildStage(
+      { kind: 'grid', cams: [] },
+      list,
+      HD,
+      { grade: 'warm', spotlight: false, softBackground: false },
+      null,
+      null,
+      new Map([['c2', { grade: 'neon' as const, spotlight: true }]]),
+    );
+    expect(stage.looks.in2).toEqual({
+      grade: 'neon',
+      spotlight: true,
+    });
+    expect(stage.looks.in1).toEqual({ grade: 'warm', spotlight: false });
+    expect(stage.looks.in3).toEqual({ grade: 'warm', spotlight: false });
+  });
+
   it('cameras without an input are neither placed nor parked', () => {
     const list = cams(2, [{ inputId: null }]);
     const stage = buildStage(

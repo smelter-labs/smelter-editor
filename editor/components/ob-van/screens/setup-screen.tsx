@@ -247,7 +247,8 @@ export function SetupScreen({
                         }
                       : {}),
                     // QUIZ rests on the same all-cameras grid between rounds.
-                    ...(presetId === 'quiz'
+                    // PANEL keeps everyone in a featured strip — same deal.
+                    ...(presetId === 'quiz' || presetId === 'panel'
                       ? { audio: { mode: 'mix' as const } }
                       : {}),
                   }))

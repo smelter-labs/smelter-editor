@@ -600,7 +600,11 @@ describe('FOLLOW', () => {
     const hostCut = show.changes.find(
       (c) => c.decision.ruleId === 'host-follow',
     );
-    expect(hostCut?.shot).toEqual(solo('c2'));
+    expect(hostCut?.shot).toEqual({
+      kind: 'featured',
+      main: 'c2',
+      others: [],
+    });
     // p90 ≥ 80 cuts through the fresh grid's min hold. The cut lands on the
     // AIR clock, which runs ~3 s behind the signals (side-channel lookahead),
     // so "immediately" means within lookahead + a few ticks of the confirm.
@@ -626,7 +630,10 @@ describe('FOLLOW', () => {
     const cuts = show.changes.filter(
       (c) => c.decision.ruleId === 'host-follow',
     );
-    expect(cuts.map((c) => c.shot)).toEqual([solo('c2'), solo('c3')]);
+    expect(cuts.map((c) => c.shot)).toEqual([
+      { kind: 'featured', main: 'c2', others: [] },
+      { kind: 'featured', main: 'c3', others: [] },
+    ]);
   });
 
   it('without a host, a motion spike on an off-program camera solos it, then the grid returns', () => {
@@ -1035,5 +1042,91 @@ describe('attention', () => {
     expect(
       attentionFor(sig('c1', T, { people, staleVideo: true }), 'largest'),
     ).toBeNull();
+  });
+});
+
+// ── Now-synced signals (quizTurn / host) land immediately ────────────────
+
+describe('now-synced signal landing', () => {
+  it('a quizTurn cut lands near now, not a side-channel delay later', () => {
+    const panelCams = [
+      cam(1, 'speaker', { name: 'Host' }),
+      cam(2, 'guest', { name: 'OPUS' }),
+      cam(3, 'guest', { name: 'GPT' }),
+    ];
+    const silent: Script = () => ({ audio: { speech: false }, video: {} });
+    const show = new Show(obPresetRuleset('panel'), panelCams, {
+      startAir: T0,
+      lookaheadMs: 8000, // captions-grade delay — the worst case
+      initial: { kind: 'featured', main: 'c1', others: [] },
+    });
+    // Settle the hold gates, then an AI panelist's answer clip starts: the
+    // panel machine flips the turn exactly when the voice airs.
+    show.run(silent, 6_000);
+    const turnSetAt = show.now;
+    show.signals.setQuizTurn('c2');
+    show.run(silent, 3_000);
+    const flip = show.changes.find(
+      (c) => c.shot.kind === 'featured' && c.shot.main === 'c2',
+    );
+    expect(flip).toBeDefined();
+    // Before the fix this landed at turnSetAt + lookahead (≈ +8 s).
+    expect(flip!.atAirMs - turnSetAt).toBeLessThanOrEqual(500);
+    expect(flip!.decision.ruleId).toBe('panel-turn');
+  });
+
+  it('a rest rule (hold-only) lands near now — flips never queue behind it', () => {
+    const panelCams = [
+      cam(1, 'speaker', { name: 'Host' }),
+      cam(2, 'guest', { name: 'OPUS' }),
+      cam(3, 'guest', { name: 'GPT' }),
+    ];
+    const silent: Script = () => ({ audio: { speech: false }, video: {} });
+    // An answer just ended: a panelist is still big, the turn is clear.
+    const show = new Show(obPresetRuleset('panel'), panelCams, {
+      startAir: T0,
+      lookaheadMs: 8000,
+      initial: { kind: 'featured', main: 'c3', others: [] },
+    });
+    show.run(silent, 6_000);
+    const rest = show.changes.find(
+      (c) => c.decision.ruleId === 'panel-host-rest',
+    );
+    expect(rest).toBeDefined();
+    // Before the fix the rest cut parked at T (+8 s), and every turn flip
+    // queued behind it — the "featured panelist who already finished" bug.
+    expect(rest!.atAirMs - T0).toBeLessThanOrEqual(2000);
+    // The next answer's turn flip lands promptly, not behind a parked rest.
+    const turnSetAt = show.now;
+    show.signals.setQuizTurn('c2');
+    show.run(silent, 1_500);
+    const flip = show.changes.find(
+      (c) => c.shot.kind === 'featured' && c.shot.main === 'c2',
+    );
+    expect(flip).toBeDefined();
+    expect(flip!.atAirMs - turnSetAt).toBeLessThanOrEqual(500);
+  });
+
+  it('a host-confirmed cut (FOLLOW) lands near now too', () => {
+    const followCams = [
+      cam(1, 'wide'),
+      cam(2, 'guest', { name: 'Cam A' }),
+      cam(3, 'guest', { name: 'Cam B' }),
+    ];
+    const silent: Script = () => ({ audio: { speech: false }, video: {} });
+    const show = new Show(obPresetRuleset('follow'), followCams, {
+      startAir: T0,
+      lookaheadMs: 3000,
+      initial: { kind: 'grid', cams: [] },
+    });
+    show.run(silent, 6_000);
+    const confirmedAt = show.now;
+    show.signals.setHost('c2', { trackId: 1, confidence: 0.9 });
+    show.run(silent, 3_000);
+    const flip = show.changes.find(
+      (c) => obShotCams(c.shot).includes('c2') && c.atAirMs >= confirmedAt,
+    );
+    expect(flip).toBeDefined();
+    expect(flip!.atAirMs - confirmedAt).toBeLessThanOrEqual(500);
   });
 });

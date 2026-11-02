@@ -194,6 +194,17 @@ export function resolveShot(
       if (template.kind === 'quad' && ids.length === 0) return null;
       return { kind: template.kind, cams: ids };
     }
+    case 'featured': {
+      const main = cam(template.main);
+      if (!main) return null;
+      // `others: []` stays empty — the scene fills in every other live camera.
+      const others = template.others.map(cam);
+      if (others.some((c) => c === null)) return null;
+      const ids = [
+        ...new Set(others.filter((c): c is string => c !== null && c !== main)),
+      ];
+      return { kind: 'featured', main, others: ids };
+    }
   }
 }
 
@@ -206,6 +217,7 @@ export function mainCamOf(shot: ObShot): string | null {
     case 'split':
       return shot.cams[0];
     case 'pip':
+    case 'featured':
       return shot.main;
     case 'speaker-slides':
       return shot.speaker;

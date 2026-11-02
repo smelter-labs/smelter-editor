@@ -13,9 +13,18 @@
  * render only the audio keeper and do not tick at all.
  */
 import React, { useContext, useRef } from 'react';
-import { Image, InputStream, Rescaler, Text, View } from '@swmansion/smelter';
+import {
+  Image,
+  InputStream,
+  Rescaler,
+  Shader,
+  Text,
+  View,
+} from '@swmansion/smelter';
 import { useStoreWithEqualityFn } from 'zustand/traditional';
 import { StoreContext } from '../../app/store';
+import { hexToRgb } from '../../utils/shaderUtils';
+import { defaultPanelAccent, PANEL_ACCENTS, panelPhase } from './theme';
 import {
   advanceFigure,
   clipAirMs,
@@ -41,6 +50,7 @@ import {
 } from './geometry';
 import type {
   ObPuppetConfig,
+  PanelAccentId,
   PuppetCastMember,
   PuppetCharacterId,
   PuppetMouthTrack,
@@ -158,28 +168,100 @@ function PuppetFigure(pose: FigurePose) {
   );
 }
 
-/** Face-centred speaking glow behind a figure. */
+/** Face-centred speaking glow behind a figure (accent-tinted when themed). */
 function FigureGlow({
   level,
   k,
   originX,
   originY,
+  accent,
 }: {
   level: 0 | 1 | 2 | 3;
   k: number;
   originX: number;
   originY: number;
+  accent?: PanelAccentId;
 }) {
   if (level === 0) return null;
   const size = PUPPET_GLOW.w * k * 1.5;
   return (
     <Sprite
-      id={`ob-puppet-glow-${level}`}
+      id={
+        accent
+          ? `ob-puppet-panel-glow-${accent}-${level}`
+          : `ob-puppet-glow-${level}`
+      }
       x={originX + 450 * k - size / 2}
       y={originY + 430 * k - size / 2}
       w={size}
       h={size}
     />
+  );
+}
+
+const AURORA_RES = { width: 640, height: 360 };
+/** Horizon height as a fraction of the tile — floor_y of panel-studio.wgsl. */
+const AURORA_FLOOR_Y = 0.785;
+
+/**
+ * Animated aurora-studio wall (theme `aurora`): panel-studio.wgsl animates on
+ * the engine-supplied `base_params.time`, so the backdrop moves without any
+ * React re-renders. It is rendered small and upscaled by a `fill` Rescaler
+ * (the gradients are soft, and a native 1920×1080 pass per puppet tile would
+ * be wasted work — pose ticks already rebuild the graph ~10×/s). The Shader
+ * sits inside this positioned full-frame View (the flow-layout gotcha, see
+ * ObQuizHud's Frame) with a sized empty child — its texture is ignored.
+ */
+function AuroraWall({
+  width,
+  height,
+  name,
+  accent,
+}: {
+  width: number;
+  height: number;
+  name: string;
+  accent: PanelAccentId;
+}) {
+  const pal = PANEL_ACCENTS[accent];
+  const a1 = hexToRgb(pal.accent);
+  const a2 = hexToRgb(pal.accent2);
+  return (
+    <View style={{ top: 0, left: 0, width, height, overflow: 'hidden' }}>
+      <Rescaler style={{ width, height, rescaleMode: 'fill' }}>
+        <Shader
+          shaderId='panel-studio'
+          resolution={AURORA_RES}
+          shaderParam={{
+            type: 'struct',
+            value: [
+              { type: 'f32', fieldName: 'accent_r', value: a1.r },
+              { type: 'f32', fieldName: 'accent_g', value: a1.g },
+              { type: 'f32', fieldName: 'accent_b', value: a1.b },
+              { type: 'f32', fieldName: 'accent2_r', value: a2.r },
+              { type: 'f32', fieldName: 'accent2_g', value: a2.g },
+              { type: 'f32', fieldName: 'accent2_b', value: a2.b },
+              { type: 'f32', fieldName: 'phase', value: panelPhase(name) },
+              { type: 'f32', fieldName: 'floor_y', value: AURORA_FLOOR_Y },
+            ],
+          }}>
+          <View
+            style={{ width: AURORA_RES.width, height: AURORA_RES.height }}
+          />
+        </Shader>
+      </Rescaler>
+      {/* Crisp accent hairline on the horizon — the shader only adds a soft
+          glow there (640×360 is too coarse for a 2 px line). */}
+      <View
+        style={{
+          top: Math.round(height * AURORA_FLOOR_Y) - 1,
+          left: 0,
+          width,
+          height: 2,
+          backgroundColor: `${pal.accent}66`,
+        }}
+      />
+    </View>
   );
 }
 
@@ -231,6 +313,101 @@ function Desk({
           {name.toUpperCase()}
         </Text>
       </View>
+    </View>
+  );
+}
+
+/**
+ * Aurora-studio desk: dark glass plate, an accent edge light on its top rim,
+ * the name in white and the org subtitle in spaced caps (the engine Text has
+ * no letter-spacing, so the spacing is literal spaces). Same crop as Desk —
+ * only the plate's top band stays in frame.
+ */
+function PanelDesk({
+  cx,
+  topY,
+  w,
+  name,
+  subtitle,
+  accent,
+}: {
+  cx: number;
+  topY: number;
+  w: number;
+  name: string;
+  subtitle?: string;
+  accent: PanelAccentId;
+}) {
+  const h = w * (PUPPET_DESK.h / PUPPET_DESK.w);
+  const kd = w / PUPPET_DESK.w;
+  const fs = Math.round(76 * kd);
+  const sfs = Math.round(26 * kd);
+  const pal = PANEL_ACCENTS[accent];
+  const spaced = (subtitle ?? '').toUpperCase().split('').join(' ');
+  return (
+    <View
+      style={{
+        top: Math.round(topY),
+        left: Math.round(cx - w / 2),
+        width: Math.round(w),
+        height: Math.round(h),
+        overflow: 'hidden',
+      }}>
+      <Sprite id='ob-puppet-panel-desk' x={0} y={0} w={w} h={h} />
+      {/* Accent edge light along the desk's top rim (inset past the plate's
+          rounded corners). */}
+      <View
+        style={{
+          top: Math.round(16 * kd),
+          left: Math.round(36 * kd),
+          width: Math.round(828 * kd),
+          height: Math.max(2, Math.round(6 * kd)),
+          borderRadius: 3,
+          backgroundColor: pal.accent,
+        }}
+      />
+      <View
+        style={{
+          top: Math.round(30 * kd),
+          left: 0,
+          width: Math.round(w),
+          height: Math.round(fs * 1.3),
+          overflow: 'hidden',
+        }}>
+        <Text
+          style={{
+            fontSize: fs,
+            color: '#F4F6FB',
+            width: Math.round(w),
+            align: 'center',
+            fontFamily: 'Big Shoulders Display',
+            fontWeight: 'extra_bold',
+          }}>
+          {name.toUpperCase()}
+        </Text>
+      </View>
+      {spaced ? (
+        <View
+          style={{
+            top: Math.round(126 * kd),
+            left: 0,
+            width: Math.round(w),
+            height: Math.round(sfs * 1.45),
+            overflow: 'hidden',
+          }}>
+          <Text
+            style={{
+              fontSize: sfs,
+              color: pal.accent,
+              width: Math.round(w),
+              align: 'center',
+              fontFamily: 'IBM Plex Mono',
+              fontWeight: 'medium',
+            }}>
+            {spaced}
+          </Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -366,7 +543,8 @@ function figureSlots(
       k,
       cx: width / 2,
       feetY: height + 20 * k,
-      deskW: PUPPET_CANVAS.w * k * 1.3,
+      // Aurora desk is sleeker; it still must cover the torso (~820·k wide).
+      deskW: PUPPET_CANVAS.w * k * (cfg.studio === 'aurora' ? 1.16 : 1.3),
     });
   }
   return figures;
@@ -523,10 +701,12 @@ export function ObPuppetInput({
   // Record what was actually drawn, so a store-driven render (quiz fx) does
   // not earn a redundant forced render on the next tick.
   lastKey.current = key;
+  const themed = cfg.studio === 'aurora';
   const drawn = posed.map(({ f, visual, fx }) => {
     const originX = f.cx - 450 * f.k;
     const originY = f.feetY - PUPPET_CANVAS.h * f.k;
     const deskTop = originY + 985 * f.k;
+    const accent = cfg.accent ?? defaultPanelAccent(f.character);
     return (
       <View
         key={f.character}
@@ -536,6 +716,7 @@ export function ObPuppetInput({
           k={f.k}
           originX={originX}
           originY={originY}
+          {...(themed ? { accent } : {})}
         />
         <PuppetFigure
           character={f.character}
@@ -545,7 +726,18 @@ export function ObPuppetInput({
           visual={visual}
           cheer={fx.cheer}
         />
-        <Desk cx={f.cx} topY={deskTop} w={f.deskW} name={f.name} />
+        {themed ? (
+          <PanelDesk
+            cx={f.cx}
+            topY={deskTop}
+            w={f.deskW}
+            name={f.name}
+            subtitle={cfg.subtitle}
+            accent={accent}
+          />
+        ) : (
+          <Desk cx={f.cx} topY={deskTop} w={f.deskW} name={f.name} />
+        )}
       </View>
     );
   });
@@ -557,7 +749,16 @@ export function ObPuppetInput({
         style={{ top: 0, left: 0, width: 2, height: 2, overflow: 'hidden' }}>
         <InputStream inputId={inputId} volume={volume} />
       </View>
-      <Sprite id='ob-puppet-studio-wall' x={0} y={0} w={width} h={height} />
+      {themed ? (
+        <AuroraWall
+          width={width}
+          height={height}
+          name={cfg.name}
+          accent={cfg.accent ?? defaultPanelAccent(cfg.character)}
+        />
+      ) : (
+        <Sprite id='ob-puppet-studio-wall' x={0} y={0} w={width} h={height} />
+      )}
       {drawn}
       {confetti != null ? (
         <Confetti

@@ -19,6 +19,7 @@ export const SHOT_LABEL: Record<ObShotKind, string> = {
   pip: 'PIP',
   quad: 'QUAD',
   grid: 'GRID',
+  featured: 'FEATURED',
   'speaker-slides': 'SLIDES',
   virtual: 'VIRTUAL',
 };
@@ -111,6 +112,10 @@ export function shotLabel(
         ? `${SHOT_LABEL[shot.kind]} ALL`
         : `${SHOT_LABEL[shot.kind]} ${ids.map(n).join('+')}`;
     }
+    case 'featured':
+      return shot.others.length === 0
+        ? `FEATURED ${n(shot.main)} + ALL`
+        : `FEATURED ${n(shot.main)} + ${shot.others.map(n).join('+')}`;
   }
 }
 

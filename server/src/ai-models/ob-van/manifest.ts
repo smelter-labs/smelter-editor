@@ -207,6 +207,10 @@ export function obVanParamsForRole(
       // Speech decides the cuts, like TALK: host and contestants talk heads.
       if (role === 'speaker' || role === 'guest') return { videoHz: 2 };
       return {};
+    case 'panel':
+      // Speech decides the host emphasis; the AI puppets are silent carriers.
+      if (role === 'speaker' || role === 'guest') return { videoHz: 2 };
+      return {};
     case 'custom':
       return {};
   }

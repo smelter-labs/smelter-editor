@@ -118,8 +118,11 @@ export const OB_SIGNAL_DEFAULTS = {
   burstLoudDb: 4,
   burstOff: 0.2,
   burstOffMs: 800,
-  /** A person track must survive this long before it counts as a NEW person. */
-  newPersonMinAgeMs: 700,
+  /** A person track must survive this long before it counts as a NEW person.
+   * Phantom one-frame boxes are killed by the fresh-detection gate (a
+   * coasted track never announces), so this only needs to beat tracker id
+   * churn — and every ms here delays the first host identify. */
+  newPersonMinAgeMs: 450,
   /** Track identity memory: a dropout shorter than this keeps the same id. */
   personIdentityMs: 4000,
 };
@@ -379,11 +382,16 @@ class CamSignals {
   }
 
   private updatePeople(airMs: number, persons: ObBox[]): void {
-    const tracks: ObTrackedBox[] = this.tracker
-      .update(persons, airMs)
-      .map(({ x, y, w, h, conf, id }) =>
-        conf === undefined ? { x, y, w, h, id } : { x, y, w, h, conf, id },
-      );
+    const raw = this.tracker.update(persons, airMs);
+    // Tracks matched by a detection in THIS sample (not coasted): only they
+    // may be announced as new persons, so a one-frame phantom that the
+    // tracker coasts past the debounce never announces.
+    const fresh = new Set(
+      raw.filter((t) => (t.missed ?? 0) === 0).map((t) => t.id),
+    );
+    const tracks: ObTrackedBox[] = raw.map(({ x, y, w, h, conf, id }) =>
+      conf === undefined ? { x, y, w, h, id } : { x, y, w, h, conf, id },
+    );
     const largest = tracks.reduce<ObTrackedBox | null>(
       (best, t) => (!best || area(t) > area(best) ? t : best),
       null,
@@ -396,16 +404,22 @@ class CamSignals {
             y: tracks.reduce((a, t) => a + center(t).y, 0) / tracks.length,
           };
     this.state.people = { count: tracks.length, largest, centroid, tracks };
-    this.updateNewPersons(airMs, tracks);
+    this.updateNewPersons(airMs, tracks, fresh);
   }
 
   /**
    * Announce a track as a NEW person once it has survived `newPersonMinAgeMs`
-   * (kills one-frame YOLO flicker). Seen ids are remembered a little longer
-   * than the tracker's identity window, so a track that drops out and is
-   * re-adopted under the same id is not announced twice.
+   * AND is matched by a detection in the current sample — a coasted phantom
+   * (one-frame YOLO flicker) ages but is never fresh, so it never announces.
+   * Seen ids are remembered a little longer than the tracker's identity
+   * window, so a track that drops out and is re-adopted under the same id is
+   * not announced twice.
    */
-  private updateNewPersons(airMs: number, tracks: ObTrackedBox[]): void {
+  private updateNewPersons(
+    airMs: number,
+    tracks: ObTrackedBox[],
+    fresh: ReadonlySet<number>,
+  ): void {
     const o = this.opts;
     for (const t of tracks) {
       const seen = this.seenTracks.get(t.id);
@@ -420,6 +434,7 @@ class CamSignals {
       seen.lastSeenAirMs = airMs;
       if (
         !seen.announced &&
+        fresh.has(t.id) &&
         airMs - seen.firstSeenAirMs >= o.newPersonMinAgeMs
       ) {
         seen.announced = true;

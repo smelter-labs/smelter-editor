@@ -17,7 +17,7 @@ import type { ObSignalState } from './contracts';
 import { isObLlmError } from './llm/errors';
 
 /** At most one identify in flight, and per camera no more often than this. */
-export const OB_IDENTIFY_MIN_INTERVAL_PER_CAM_MS = 8000;
+export const OB_IDENTIFY_MIN_INTERVAL_PER_CAM_MS = 5000;
 /** A requested snapshot that never answers frees the slot after this. */
 export const OB_SNAPSHOT_TIMEOUT_MS = 4000;
 /** An identify call that never settles frees the slot after this (belt). */
@@ -29,7 +29,7 @@ export const OB_REBIND_GRACE_MS = 2000;
 /** While confirmed, re-verify the host cam this often. */
 export const OB_REVERIFY_MS = 25_000;
 /** A denied track gets ONE second look this long after the no. */
-export const OB_DENIED_RECHECK_MS = 10_000;
+export const OB_DENIED_RECHECK_MS = 6000;
 /** …and is forgotten entirely after this. */
 export const OB_DENIED_TTL_MS = 30_000;
 /** Candidates wait at most this long for the identify slot. */

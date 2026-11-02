@@ -102,7 +102,10 @@ function torso({ coat, shirt, tie, skin, tieColor = '#5b2d91', lapel = null }) {
   if (tie === 'tie') {
     parts.push(P(`M ${CX - 22} ${topY + 15} h 44 l -10 30 h -24 Z`, tieColor));
     parts.push(
-      P(`M ${CX - 16} ${topY + 45} h 32 l 14 120 l -30 40 l -30 -40 Z`, tieColor),
+      P(
+        `M ${CX - 16} ${topY + 45} h 32 l 14 120 l -30 40 l -30 -40 Z`,
+        tieColor,
+      ),
     );
   } else if (tie === 'bow') {
     parts.push(P(`M ${CX - 14} ${topY + 8} h 28 v 26 h -28 Z`, tieColor));
@@ -111,10 +114,16 @@ function torso({ coat, shirt, tie, skin, tieColor = '#5b2d91', lapel = null }) {
   }
   if (lapel) {
     parts.push(
-      PN(`M ${CX - 60} ${topY - 25} L ${CX} ${topY + 65} L ${CX - 95} ${topY + 120} Z`, lapel),
+      PN(
+        `M ${CX - 60} ${topY - 25} L ${CX} ${topY + 65} L ${CX - 95} ${topY + 120} Z`,
+        lapel,
+      ),
     );
     parts.push(
-      PN(`M ${CX + 60} ${topY - 25} L ${CX} ${topY + 65} L ${CX + 95} ${topY + 120} Z`, lapel),
+      PN(
+        `M ${CX + 60} ${topY - 25} L ${CX} ${topY + 65} L ${CX + 95} ${topY + 120} Z`,
+        lapel,
+      ),
     );
   }
   return parts.join('');
@@ -146,7 +155,9 @@ function headBase(skin) {
       skin,
     ),
   );
-  parts.push(P(`M ${CX - 2} ${EYE_Y + 18} q 34 44 6 64 q -14 10 -26 2`, 'none'));
+  parts.push(
+    P(`M ${CX - 2} ${EYE_Y + 18} q 34 44 6 64 q -14 10 -26 2`, 'none'),
+  );
   parts.push(EN(CX - 120, EYE_Y + 70, 34, 22, '#00000012'));
   parts.push(EN(CX + 120, EYE_Y + 70, 34, 22, '#00000012'));
   return parts.join('');
@@ -295,8 +306,14 @@ const CAST = {
       EN(CX, 950, 9, 9, INK) +
       EN(CX, 1030, 9, 9, INK),
     hair: () =>
-      P(`M ${CX - 196} ${HEAD_CY + 20} q -26 -60 10 -90 q 10 60 30 80 Z`, '#cccccc') +
-      P(`M ${CX + 196} ${HEAD_CY + 20} q 26 -60 -10 -90 q -10 60 -30 80 Z`, '#cccccc') +
+      P(
+        `M ${CX - 196} ${HEAD_CY + 20} q -26 -60 10 -90 q 10 60 30 80 Z`,
+        '#cccccc',
+      ) +
+      P(
+        `M ${CX + 196} ${HEAD_CY + 20} q 26 -60 -10 -90 q -10 60 -30 80 Z`,
+        '#cccccc',
+      ) +
       P(
         `M ${CX - 150} ${HEAD_CY + 120} Q ${CX - 120} ${HEAD_CY + 260} ${CX} ${HEAD_CY + 262} Q ${CX + 120} ${HEAD_CY + 260} ${CX + 150} ${HEAD_CY + 120} Q ${CX + 90} ${HEAD_CY + 180} ${CX} ${HEAD_CY + 180} Q ${CX - 90} ${HEAD_CY + 180} ${CX - 150} ${HEAD_CY + 120} Z`,
         '#d8d8d8',
@@ -346,9 +363,13 @@ function studioWall() {
       const pts = [];
       for (let i = 0; i < 6; i++) {
         const ang = (Math.PI / 3) * i + Math.PI / 6;
-        pts.push(`${(cx + a * 0.92 * Math.cos(ang)).toFixed(1)},${(cy + a * 0.92 * Math.sin(ang)).toFixed(1)}`);
+        pts.push(
+          `${(cx + a * 0.92 * Math.cos(ang)).toFixed(1)},${(cy + a * 0.92 * Math.sin(ang)).toFixed(1)}`,
+        );
       }
-      hexes.push(`<polygon points="${pts.join(' ')}" fill="none" stroke="#FFD166" stroke-width="2.5"/>`);
+      hexes.push(
+        `<polygon points="${pts.join(' ')}" fill="none" stroke="#FFD166" stroke-width="2.5"/>`,
+      );
     }
   }
   return `
@@ -416,6 +437,62 @@ function studioDesk() {
   <rect x="300" y="146" width="300" height="4" fill="url(#goldG)" opacity="0.8"/>`;
 }
 
+/**
+ * 900×330 AI PANEL desk ("aurora" studio): dark glass plate with a top sheen.
+ * The accent edge bar, name and subtitle are drawn live by PuppetInput's
+ * PanelDesk, so the plate is generic — no accent colour is baked in.
+ */
+function panelDesk() {
+  return `
+  <defs>
+    <linearGradient id="pdG" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1a2032"/>
+      <stop offset="22%" stop-color="#11151f"/>
+      <stop offset="100%" stop-color="#0a0d16"/>
+    </linearGradient>
+    <linearGradient id="pdSheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect x="14" y="16" width="872" height="314" rx="22" fill="url(#pdG)"/>
+  <rect x="14" y="16" width="872" height="314" rx="22" fill="none" stroke="#ffffff" stroke-opacity="0.14" stroke-width="2"/>
+  <rect x="16" y="18" width="868" height="56" rx="20" fill="url(#pdSheen)"/>`;
+}
+
+/**
+ * Radial accent speaking glow for the aurora studio. The accent hexes are
+ * duplicated from server/src/obVan/puppets/theme.ts (an .mjs script cannot
+ * import the TS module) — KEEP THEM IN SYNC.
+ */
+function panelGlow(core, edge, strength) {
+  return `
+  <defs>
+    <radialGradient id="g" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="${core}" stop-opacity="${0.34 * strength}"/>
+      <stop offset="55%" stop-color="${edge}" stop-opacity="${0.16 * strength}"/>
+      <stop offset="100%" stop-color="${edge}" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="800" height="800" fill="url(#g)"/>`;
+}
+
+// Lightened cores of theme.ts PANEL_ACCENTS.coral / .teal.
+const PANEL_GLOWS = {
+  coral: ['#FFB9A1', '#E8907A'],
+  teal: ['#8FF0DC', '#4FD6B8'],
+};
+
+function panelGlowAssets() {
+  const out = {};
+  for (const [id, [core, edge]] of Object.entries(PANEL_GLOWS)) {
+    out[`puppet-panel-glow-${id}-1`] = [800, 800, panelGlow(core, edge, 0.45)];
+    out[`puppet-panel-glow-${id}-2`] = [800, 800, panelGlow(core, edge, 0.75)];
+    out[`puppet-panel-glow-${id}-3`] = [800, 800, panelGlow(core, edge, 1)];
+  }
+  return out;
+}
+
 /** Radial gold speaking glow, three intensities. */
 function glow(strength) {
   return `
@@ -432,12 +509,11 @@ function glow(strength) {
 // ── asset table: name → [logicalW, logicalH, scale, svgBody] ───────────────
 function characterAssets() {
   const out = {};
-  const crop = (box, k, body) =>
-    [
-      Math.round(box.w * k),
-      Math.round(box.h * k),
-      `<g transform="scale(${k}) translate(${-box.x}, ${-box.y})">${body}</g>`,
-    ];
+  const crop = (box, k, body) => [
+    Math.round(box.w * k),
+    Math.round(box.h * k),
+    `<g transform="scale(${k}) translate(${-box.x}, ${-box.y})">${body}</g>`,
+  ];
   for (const [key, c] of Object.entries(CAST)) {
     const browThick = c.browThick ?? 16;
     out[`puppet-${key}-body`] = crop(BODY_BOX, 1.5, c.body());
@@ -481,10 +557,20 @@ function characterAssets() {
 const ASSETS = {
   ...characterAssets(),
   'puppet-studio-wall': [1920, 1080, studioWall()],
-  'puppet-studio-desk': [1800, 660, `<g transform="scale(2)">${studioDesk()}</g>`],
+  'puppet-studio-desk': [
+    1800,
+    660,
+    `<g transform="scale(2)">${studioDesk()}</g>`,
+  ],
   'puppet-glow-1': [800, 800, glow(0.45)],
   'puppet-glow-2': [800, 800, glow(0.75)],
   'puppet-glow-3': [800, 800, glow(1)],
+  'puppet-panel-desk': [
+    1800,
+    660,
+    `<g transform="scale(2)">${panelDesk()}</g>`,
+  ],
+  ...panelGlowAssets(),
 };
 
 // ── renderer (ob-render-assets.mjs pattern) ────────────────────────────────

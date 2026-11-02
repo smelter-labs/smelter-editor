@@ -51,7 +51,7 @@ standardowym `record/start` / `record/stop`.
   |---|---|---|---|---|
   | `fb-demo/pano-3x40s/pano.mp4` | **1** · TROMSØ – TOTTENHAM | 4450×2000 @ 25 | 120 s (pętla) | **najlepszy do demo**: 6 strzałów, 3 szanse, 2 rożne, 7 sprintów; pierwszy SHOT już w 4,6 s |
   | `fb-demo/pano-shot-2815/pano.mp4` | — | 4450×2000 @ 25 | 60 s | jedna akcja: celny strzał Tromsø w 19,6 s, szansa 21,0 s, rożny 52,9 s |
-  | `fb-demo/pano-anzhi-goal/pano.mp4` | **2** · TROMSØ – ANZHI | 4450×2000 @ 25 | 118 s | **jedyny prawdziwy gol**: Tromsø–Anzhi 0:1, 90+3' — szansa 62,7 s, celny strzał 65,2 s, **GOAL? (REF CALL) 66,0 s** w prawej bramce, potem cieszynka i wznowienie od środka. Przycisk 2 ustawia drużynę B na `ANZHI` / `ANZ` (ręcznie: w setupie); moderator potwierdza gola klawiszem **B** |
+  | `fb-demo/pano-anzhi-goal/pano.mp4` | **2** · TROMSØ – ANZHI | 4450×2000 @ 25 | 118 s | **jedyny prawdziwy gol**: Tromsø–Anzhi 0:1, 90+3' — szansa 63,0 s, dośrodkowanie z linii końcowej 65,8 s, zgranie głową przy dalszym słupku 68,1 s, piłka przekracza linię 69,0 s, **GOAL? (REF CALL) 69,5 s** (piłka w siatce) w prawej bramce, potem cieszynka i wznowienie od środka. Przycisk 2 ustawia drużynę B na `ANZHI` / `ANZ` (ręcznie: w setupie); moderator potwierdza gola klawiszem **B** |
   | `fb-demo/pano-half-3min/pano-half.mp4` | — | 2224×1000 @ 25 | 180 s | panorama w połowie rozdzielczości — **gdy silnik gubi klatki** na 4450×2000 |
   | `fb-demo/tricam-3min/cam{0,1,2}.mp4` | **3** · TROMSØ – STRØMSGODSET | 1280×960 @ 30 | 180 s | trzy kamery; brak toru piłki → tylko sprinty + reguła cięć |
 
@@ -399,7 +399,7 @@ node scripts/alfheim-telemetry.mjs --clip fb-demo/pano-anzhi-goal/pano.mp4      
 node scripts/fb-ball-keyframes.mjs --clip fb-demo/pano-anzhi-goal/pano.mp4 \
      --keyframes scripts/fb-zones/pano-2013-11-07.ball-keyframes.json             # ręczny tor piłki → ball.json
 node scripts/alfheim-events.mjs --clip fb-demo/pano-anzhi-goal/pano.mp4 \
-     --attacks-left A --period 2 --kickoff-s -2810 --inject goal@66:B
+     --attacks-left A --period 2 --kickoff-s -2810 --inject goal@69.5:B
 ```
 
 Goście na minimapie (czujniki nosili tylko gospodarze, więc drugą drużynę

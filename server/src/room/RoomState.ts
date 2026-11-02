@@ -53,7 +53,11 @@ import {
 import { PeopleTracker } from '../ai-models/people-counter/people-tracker';
 import { jitterBoxes } from '../ai-models/people-counter/box-jitter';
 import { CarTracker } from '../ai-models/car-ads/car-tracker';
-import { kbtParkRect, kettlebellSkeletonMode } from '../app/store';
+import {
+  FINGER_FRAME_MODES,
+  kbtParkRect,
+  kettlebellSkeletonMode,
+} from '../app/store';
 import type { CarAdDetection } from '../app/store';
 import { DuckHunterController } from '../duckHunter/DuckHunterController';
 import type { MatchCommand } from '../duckHunter/DuckHunterController';
@@ -103,6 +107,7 @@ import { createObBrain } from '../obVan/brain';
 import { attentionFor } from '../obVan/attention';
 import { createObLlm } from '../obVan/llm';
 import { createObQuizAi } from '../obVan/llm/quizHost';
+import { createObPanelAi } from '../obVan/llm/panelists';
 import { createObQuizTts } from '../obVan/llm/tts';
 import type { ObBriefResult } from '../obVan/contracts';
 import type {
@@ -386,6 +391,27 @@ export class RoomState {
    * apply to be no earlier than the previous one keeps the sequence monotonic.
    */
   private readonly kettlebellApplyAt = new Map<string, number>();
+  // OB finger frame: per-input monotonic apply time (kettlebell pattern) and
+  // an epoch that invalidates held rects when the effect is cleared.
+  private readonly fingerFrameApplyAt = new Map<string, number>();
+  private fingerFrameEpoch = 0;
+  // Which look each input's finger frame uses (index into FINGER_FRAME_MODES,
+  // cycled by the pinch sign). Survives toggling the effect off and on.
+  private readonly fingerFrameModes = new Map<string, number>();
+  // Wall time of the last browser-side detection per input: while fresh, the
+  // Python worker's hand_frame results for that input are dropped (adopted
+  // cams would otherwise feed two sources at once).
+  private readonly jsHandFrameAt = new Map<string, number>();
+  private static readonly JS_HAND_FRAME_GRACE_MS = 5000;
+  // A browser quad is stamped at capture and arrives over WS near-instantly,
+  // but its VIDEO frame reaches the engine only after webcam→encode→RTP→
+  // jitter-buffer latency — without this extra hold the overlay runs ahead
+  // of the picture by that much. Rough per-setup constant; tune with
+  // OB_HAND_FRAME_LAG_MS if the quad still leads (raise) or trails (lower).
+  private static readonly HAND_FRAME_VIDEO_LAG_MS = (() => {
+    const v = Number(process.env.OB_HAND_FRAME_LAG_MS);
+    return Number.isFinite(v) ? v : 250;
+  })();
 
   private stateChangeListeners = new Set<() => void>();
 
@@ -952,6 +978,40 @@ export class RoomState {
           }),
         configureCamSignals: (inputId, opts) =>
           this.configureObCamSignals(inputId, opts),
+        setFingerFrame: (inputId, data) =>
+          this.output.store.getState().setFingerFrame(inputId, data),
+        // Browser detections ride the same air-sync hold as worker results:
+        // the quad was computed at capture, which is exactly the
+        // side-channel lead ahead of air (WHIP transport ≈ WS latency). A
+        // live JS detector also silences the Python worker for this input
+        // (adopted cams run both sources otherwise — doubled quads and
+        // double-fired pinches).
+        applyHandFrame: (inputId, d) => {
+          this.jsHandFrameAt.set(inputId, Date.now());
+          // Negative procMs lengthens the hold: the video-pipeline lag the
+          // worker path never sees (its clock IS the side channel).
+          const procMs = (d.procMs ?? 0) - RoomState.HAND_FRAME_VIDEO_LAG_MS;
+          this.onObHandFrame({
+            modelId: OB_VAN_MODEL_ID,
+            inputId,
+            data: d.switch
+              ? { kind: 'hand_frame_switch', procMs }
+              : {
+                  kind: 'hand_frame',
+                  quad: d.quad ?? null,
+                  frameW: d.frameW,
+                  frameH: d.frameH,
+                  procMs,
+                },
+          });
+        },
+        clearFingerFrames: () => {
+          // Invalidate rects still held for the side-channel delay — a stale
+          // apply after OFF would stick forever (no more worker messages).
+          this.fingerFrameEpoch++;
+          this.fingerFrameApplyAt.clear();
+          this.output.store.getState().clearFingerFrames();
+        },
         getSideChannelDelayMs: (inputId) =>
           this.inputManager.getInputs().find((i) => i.inputId === inputId)
             ?.registeredSideChannelDelayMs ?? 0,
@@ -1040,6 +1100,16 @@ export class RoomState {
           if (mouth) this.obPuppetLiveMouth.set(character, mouth);
           else this.obPuppetLiveMouth.delete(character);
         },
+        // Panel TTS captions reuse the Whisper subtitle slot; cancelling the
+        // pending clear keeps the two writers from fighting over one input.
+        setCamCaption: (camInputId, text) => {
+          const prev = this.transcriptClearTimers.get(camInputId);
+          if (prev) {
+            clearTimeout(prev);
+            this.transcriptClearTimers.delete(camInputId);
+          }
+          this.output.store.getState().setTranscript(camInputId, text ?? '');
+        },
         getPipelineTimeMs: () => SmelterInstance.getPipelineTimeMs(),
       },
       {
@@ -1050,14 +1120,26 @@ export class RoomState {
         attention: attentionFor,
         createLlm: (deps, opts) => createObLlm(deps, undefined, opts),
         createQuizAi: () => createObQuizAi(),
-        createQuizTts: () => createObQuizTts(process.env, { cacheDir: OB_TTS_DIR }),
+        createPanelAi: () => createObPanelAi(),
+        createQuizTts: () =>
+          createObQuizTts(process.env, { cacheDir: OB_TTS_DIR }),
       },
     );
 
     // OB Van signal worker: audio / video samples keyed by input → the
-    // controller maps them to cameras and the air clock.
+    // controller maps them to cameras and the air clock. Finger-frame rects
+    // bypass the controller: they are picture overlays synced to the output,
+    // not signals (the controller would drop the unknown kind anyway).
     void this.aiController
       .wireSidecarListeners(OB_VAN_MODEL_ID, (event) => {
+        const d = event.data as { kind?: unknown } | null;
+        if (d && (d.kind === 'hand_frame' || d.kind === 'hand_frame_switch')) {
+          // A browser detector heard recently owns this input's frames.
+          const jsAt = this.jsHandFrameAt.get(event.inputId) ?? 0;
+          if (Date.now() - jsAt > RoomState.JS_HAND_FRAME_GRACE_MS)
+            this.onObHandFrame(event);
+          return;
+        }
         this.obVan.onWorkerResult(event.inputId, event.data, event.ptsNanos);
       })
       .catch((err) =>
@@ -2984,6 +3066,54 @@ export class RoomState {
     return this.obVan.simulateHost(camId);
   }
 
+  /** Finger-frame points detected in a browser that publishes one of this
+   * room's inputs (editor control-panel WHIP camera adopted as an OB cam). */
+  public obClientHandFrame(
+    inputId: string,
+    msg: Record<string, unknown>,
+  ): ObCommandResult {
+    return this.obVan.clientHandFrame(inputId, msg);
+  }
+
+  /** Dev-only (OB_SIM=1): a fabricated finger-frame quad (a rect is turned
+   * into its four corners; with `switchSign`, the pinch shader-switch sign)
+   * for an input. */
+  public simulateObHandFrame(
+    inputId: string,
+    rect: { x: number; y: number; w: number; h: number } | null,
+    frame?: { frameW?: number; frameH?: number },
+    switchSign?: boolean,
+    quad?: number[][] | null,
+  ): ObCommandResult {
+    if (!this.hasInput(inputId))
+      return { ok: false, code: 'unknown_cam', message: 'No such input.' };
+    const shape =
+      quad !== undefined
+        ? quad
+        : rect
+          ? [
+              [rect.x, rect.y],
+              [rect.x + rect.w, rect.y],
+              [rect.x + rect.w, rect.y + rect.h],
+              [rect.x, rect.y + rect.h],
+            ]
+          : null;
+    this.onObHandFrame({
+      modelId: OB_VAN_MODEL_ID,
+      inputId,
+      data: switchSign
+        ? { kind: 'hand_frame_switch', procMs: 0 }
+        : {
+            kind: 'hand_frame',
+            quad: shape,
+            frameW: frame?.frameW ?? 1280,
+            frameH: frame?.frameH ?? 720,
+            procMs: 0,
+          },
+    });
+    return { ok: true };
+  }
+
   /** Restart every OB Van file cam from `playFromMs` (see syncBbFileCams). */
   /**
    * Wall time at which the OB Van file cams' media 0 is (or was) on air —
@@ -3860,6 +3990,110 @@ export class RoomState {
    */
   public hasInput(inputId: string): boolean {
     return this.getInputs().some((input) => input.inputId === inputId);
+  }
+
+  /**
+   * OB finger frame from the signal worker: hold the rect for the
+   * side-channel delay so the drawn frame lands when its video frame airs
+   * (kettlebell pattern), stepping monotonically per input so a slow pass
+   * never rewinds a newer one. `rect: null` releases the effect; the
+   * `hand_frame_switch` kind (the pinch sign) rides the same hold and cycles
+   * the look used inside the frame instead.
+   */
+  private onObHandFrame(event: ModelResultEvent): void {
+    const input = this.inputManager
+      .getInputs()
+      .find((i) => i.inputId === event.inputId);
+    if (!input) return;
+    const data = event.data as {
+      kind?: string;
+      quad?: number[][] | null;
+      frameW?: number;
+      frameH?: number;
+      procMs?: number;
+    };
+    const outputDelayMs = input.registeredSideChannelDelayMs ?? 0;
+    const procMs = typeof data.procMs === 'number' ? data.procMs : 0;
+    const holdMs = Math.max(0, outputDelayMs - procMs);
+    const epoch = this.fingerFrameEpoch;
+
+    const applySwitch = () => {
+      if (epoch !== this.fingerFrameEpoch) return;
+      if (!this.hasInput(event.inputId)) return;
+      const mode =
+        ((this.fingerFrameModes.get(event.inputId) ?? 0) + 1) %
+        FINGER_FRAME_MODES.length;
+      this.fingerFrameModes.set(event.inputId, mode);
+      // A frame currently on screen restyles in place; otherwise the new
+      // look simply rides the next rect apply.
+      const store = this.output.store.getState();
+      const cur = store.fingerFrames[event.inputId];
+      if (cur) store.setFingerFrame(event.inputId, { ...cur, mode });
+      this.obVan.noteFingerFrameMode(FINGER_FRAME_MODES[mode]);
+    };
+
+    const applyOverlay = () => {
+      if (epoch !== this.fingerFrameEpoch) return;
+      if (!this.hasInput(event.inputId)) return;
+      const store = this.output.store.getState();
+      const quad = data.quad;
+      if (
+        Array.isArray(quad) &&
+        quad.length === 4 &&
+        quad.every(
+          (p) =>
+            Array.isArray(p) &&
+            typeof p[0] === 'number' &&
+            typeof p[1] === 'number',
+        ) &&
+        typeof data.frameW === 'number' &&
+        typeof data.frameH === 'number'
+      ) {
+        store.setFingerFrame(event.inputId, {
+          quad: quad.map((p) => [p[0], p[1]]),
+          frameW: data.frameW,
+          frameH: data.frameH,
+          mode: this.fingerFrameModes.get(event.inputId) ?? 0,
+        });
+      } else {
+        store.setFingerFrame(event.inputId, null);
+      }
+    };
+
+    const apply =
+      data.kind === 'hand_frame_switch' ? applySwitch : applyOverlay;
+    const now = Date.now();
+    const applyAt = Math.max(
+      now + holdMs,
+      this.fingerFrameApplyAt.get(event.inputId) ?? 0,
+    );
+    this.fingerFrameApplyAt.set(event.inputId, applyAt);
+    if (applyAt > now) {
+      setTimeout(apply, applyAt - now);
+    } else {
+      apply();
+    }
+  }
+
+  /**
+   * A raw transcript segment, seconds BEFORE it airs (the bridge calls this
+   * the moment Whisper delivers). Only the OB Van AI PANEL consumes it; the
+   * on-air path stays `applyTranscript`.
+   */
+  public applyRawTranscript(event: {
+    inputId: string;
+    text: string;
+    ts: number;
+    duration: number;
+    airAtMs: number | null;
+  }): void {
+    this.obVan.onRawTranscript(
+      event.inputId,
+      event.text,
+      event.airAtMs,
+      event.duration,
+      event.ts,
+    );
   }
 
   /** Display a transcript on its input and schedule it to clear after the

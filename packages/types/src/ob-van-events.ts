@@ -7,6 +7,7 @@
 // transcript keywords) through a small rules DSL, and an optional LLM turns a
 // natural-language brief into a ruleset and nudges the show every ~30 s.
 
+import type { ObPanelState } from "./ob-van-panel.js";
 import type {
   ObQuizAction,
   ObQuizLetter,
@@ -104,6 +105,8 @@ export type ObShotOf<C> =
   | { kind: "quad"; cams: C[] }
   /** `cams: []` = every live camera. */
   | { kind: "grid"; cams: C[] }
+  /** `main` big, the rest in a side strip; `others: []` = every other live camera. */
+  | { kind: "featured"; main: C; others: C[] }
   | { kind: "speaker-slides"; speaker: C; slides: C }
   | { kind: "virtual"; cam: C; target?: ObAttentionTarget; zoom?: ObZoom };
 
@@ -116,6 +119,7 @@ export const OB_SHOT_KINDS: readonly ObShotKind[] = [
   "pip",
   "quad",
   "grid",
+  "featured",
   "speaker-slides",
   "virtual",
 ];
@@ -165,6 +169,12 @@ export type ObEffects = {
   softBackground: boolean;
 };
 
+/**
+ * Per-camera effect override (host gestures): only that camera's picture is
+ * graded / spotlit; an absent key falls back to the show-wide effects.
+ */
+export type ObCamFx = { grade?: ObGrade; spotlight?: boolean };
+
 export type ObLowerThird = {
   name: string;
   subtitle: string | null;
@@ -191,7 +201,7 @@ export type ObAudioPolicy =
 export type ObPhase = "setup" | "on-air" | "wrap";
 export type ObActionSource = "operator" | "auto" | "llm" | "system";
 export type ObPresetId =
-  "talk" | "match" | "stage" | "gig" | "follow" | "quiz" | "custom";
+  "talk" | "match" | "stage" | "gig" | "follow" | "quiz" | "panel" | "custom";
 export const OB_PRESET_IDS: readonly Exclude<ObPresetId, "custom">[] = [
   "talk",
   "match",
@@ -199,6 +209,7 @@ export const OB_PRESET_IDS: readonly Exclude<ObPresetId, "custom">[] = [
   "gig",
   "follow",
   "quiz",
+  "panel",
 ];
 /** Operator pacing dial: multiplies the ruleset's min / max hold. */
 export type ObPacingDial = "calm" | "lively" | "frantic";
@@ -419,6 +430,19 @@ export type ObConfig = {
    * whether the host/contestants speak via TTS (needs ELEVENLABS_API_KEY).
    */
   quiz: { bank: ObQuizBank; aiHost: boolean; auto: boolean; tts: boolean };
+  /**
+   * AI PANEL extras: whether the models speak via TTS (needs
+   * ELEVENLABS_API_KEY; off = text-only answers on the desk) and whether a
+   * closed host turn auto-asks the models (off = questions queue up and the
+   * desk fires them).
+   */
+  panel: { tts: boolean; auto: boolean };
+  /**
+   * Finger-frame effect: hands on every camera are scanned for the
+   * director's "finger frame" (thumbs + index fingers forming a rectangle);
+   * the picture inside the frame goes grayscale, tracking the hands live.
+   */
+  fingerFrame: boolean;
   joinUrls?: { cam?: string };
 };
 
@@ -461,6 +485,8 @@ export type ObConfigPatch = {
   llm?: Partial<ObConfig["llm"]>;
   host?: Partial<ObConfig["host"]>;
   quiz?: Partial<ObConfig["quiz"]>;
+  panel?: Partial<ObConfig["panel"]>;
+  fingerFrame?: boolean;
   joinUrls?: { cam?: string };
 };
 
@@ -483,6 +509,8 @@ export const OB_DEFAULT_CONFIG: ObConfig = {
   llm: { analyst: false, analystIntervalS: 15, model: "claude-haiku-4-5" },
   host: { enabled: false, description: "wears a GOLD baseball cap" },
   quiz: { bank: "default", aiHost: false, auto: false, tts: false },
+  panel: { tts: true, auto: true },
+  fingerFrame: false,
 };
 
 export const OB_CONFIG_LIMITS = {
@@ -622,6 +650,8 @@ export type ObState = {
     lastDecisionAtMs: number | null;
   };
   effects: ObEffects;
+  /** Per-camera effect overrides (host gestures), keyed by camId. */
+  camFx?: Record<string, ObCamFx>;
   lowerThird: ObActiveLowerThird | null;
   titleBug: ObTitleBug;
   audio: ObAudioPolicy;
@@ -635,6 +665,10 @@ export type ObState = {
   host: ObHostState;
   /** Quiz layer state — non-null only while the `quiz` preset is selected. */
   quiz: ObQuizState | null;
+  /** AI PANEL state — non-null only while the `panel` preset is selected. */
+  panel: ObPanelState | null;
+  /** The finger-frame grayscale effect toggle (mirrors `config.fingerFrame`). */
+  fingerFrame: boolean;
   llm: ObLlmStatus;
   stats: ObStats;
   wrapNotes: string | null;
@@ -656,7 +690,8 @@ export type ObOperatorCommand =
       holdMs?: number;
     }
   | { op: "transition"; transition: Partial<ObTransition> }
-  | { op: "fx"; effects: Partial<ObEffects> }
+  /** `camId` scopes the patch to that one camera's picture (host gestures). */
+  | { op: "fx"; effects: Partial<ObEffects>; camId?: string }
   | {
       op: "lower_third";
       camId?: string;
@@ -696,7 +731,11 @@ export type ObOperatorCommand =
       verdict?: ObQuizVerdict;
     }
   /** Desk toggles for `config.quiz` (the panel is WS-only). */
-  | { op: "quiz_set"; auto?: boolean; aiHost?: boolean; tts?: boolean };
+  | { op: "quiz_set"; auto?: boolean; aiHost?: boolean; tts?: boolean }
+  /** Desk toggles for `config.panel` (AI PANEL preset). */
+  | { op: "panel_set"; auto?: boolean; tts?: boolean }
+  /** Toggle the finger-frame grayscale effect (hands scanned on all cams). */
+  | { op: "finger_frame"; enabled: boolean };
 export type ObOperatorOp = ObOperatorCommand["op"];
 
 export type ObControlAction =
@@ -736,6 +775,21 @@ export type ObCamRequestMessage = {
 };
 export type ObCamStopMessage = { type: "ob_cam_stop" };
 export type ObCamLeaveMessage = { type: "ob_cam_leave" };
+/**
+ * Finger-frame points computed in the phone's browser (MediaPipe in JS):
+ * the fingertip quad in the captured frame's normalised coordinates, or
+ * `quad: null` on release; `switch: true` is the pinch shader-switch sign.
+ * `procMs` is the capture→send latency, so the server's air-sync hold can
+ * subtract it like it does for the Python worker.
+ */
+export type ObCamHandFrameMessage = {
+  type: "ob_cam_hand_frame";
+  quad: [number, number][] | null;
+  frameW?: number;
+  frameH?: number;
+  procMs?: number;
+  switch?: boolean;
+};
 export type ObClientMessage =
   | ObSpectateMessage
   | ObOperatorJoinMessage
@@ -744,7 +798,8 @@ export type ObClientMessage =
   | ObCamJoinMessage
   | ObCamRequestMessage
   | ObCamStopMessage
-  | ObCamLeaveMessage;
+  | ObCamLeaveMessage
+  | ObCamHandFrameMessage;
 
 // ── WebSocket: server → client ───────────────────────────────────────────
 
@@ -761,6 +816,8 @@ export type ObCamJoinedEvent = {
   phase: ObPhase;
   /** A camera input already exists for this seat (resume → republish). */
   camInputActive: boolean;
+  /** Finger frame on → the phone runs in-browser hand detection. */
+  fingerFrame: boolean;
 };
 export type ObCamOfferEvent = {
   type: "ob_cam_offer";
@@ -808,6 +865,11 @@ export type ObErrorEvent = {
   code: ObErrorCode;
   message: string;
 };
+/** Finger frame toggled — phones start/stop in-browser hand detection. */
+export type ObFingerFrameEvent = {
+  type: "ob_finger_frame";
+  enabled: boolean;
+};
 export type ObServerEvent =
   | ObStateEvent
   | ObCamJoinedEvent
@@ -816,4 +878,5 @@ export type ObServerEvent =
   | ObOperatorJoinedEvent
   | ObLogEvent
   | ObSignalsEvent
-  | ObErrorEvent;
+  | ObErrorEvent
+  | ObFingerFrameEvent;

@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // FOLLOW preset end-to-end, without a worker or an API key: the default grid
-// goes up, a fake host confirmation (OB_SIM simulate-host) cuts to the host
-// camera and holds it, clearing the host restores the grid, and a simulated
-// motion spike solos the action camera. Needs the server started with
+// goes up, a fake host confirmation (OB_SIM simulate-host) cuts to the
+// featured shot (host big, the rest in the strip) and holds it, clearing the
+// host restores the grid, and a simulated motion spike solos the action
+// camera. Needs the server started with
 // OB_SIM=1 and the two demo clips in data/mp4s/ob-demo/ (speaker.mp4,
 // wide.mp4 — see scripts/lib/ob-api.mjs DEMO_CAMS).
 //
@@ -71,11 +72,11 @@ async function main() {
     await ob.simulateHost(roomId, c1);
     const hostOn = await waitForShot(
       roomId,
-      'host solo',
-      (s) => s?.kind === 'solo' && s.cam === c1,
+      'host featured',
+      (s) => s?.kind === 'featured' && s.main === c1,
       15_000,
     );
-    check(true, 'host-follow solo on the host camera');
+    check(true, 'host-follow features the host camera');
     check(
       hostOn.cams.find((c) => c.id === c1) !== undefined,
       'host camera still listed',
@@ -85,7 +86,7 @@ async function main() {
     await sleep(4000);
     const held = await ob.state(roomId);
     check(
-      kindOf(held) === 'solo' && shotOf(held).cam === c1,
+      kindOf(held) === 'featured' && shotOf(held).main === c1,
       'program held on the host while the signal stays',
       kindOf(held),
     );

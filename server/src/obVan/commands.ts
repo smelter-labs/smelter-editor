@@ -116,7 +116,11 @@ export function parseObCommand(raw: unknown): ObOperatorCommand | null {
     }
     case 'fx': {
       const effects = parseEffectsPatch(raw.effects);
-      return effects ? { op: 'fx', effects } : null;
+      if (!effects) return null;
+      const cmd: ObOperatorCommand = { op: 'fx', effects };
+      const camId = str(raw.camId, 80);
+      if (camId) cmd.camId = camId;
+      return cmd;
     }
     case 'lower_third': {
       const cmd: ObOperatorCommand = { op: 'lower_third' };
@@ -245,6 +249,19 @@ export function parseObCommand(raw: unknown): ObOperatorCommand | null {
       return auto === undefined && aiHost === undefined && tts === undefined
         ? null
         : cmd;
+    }
+    case 'panel_set': {
+      const cmd: ObOperatorCommand = { op: 'panel_set' };
+      const auto = bool(raw.auto);
+      if (auto !== undefined) cmd.auto = auto;
+      const tts = bool(raw.tts);
+      if (tts !== undefined) cmd.tts = tts;
+      return auto === undefined && tts === undefined ? null : cmd;
+    }
+    case 'finger_frame': {
+      const enabled = bool(raw.enabled);
+      if (enabled === undefined) return null;
+      return { op: 'finger_frame', enabled };
     }
     default:
       return null;

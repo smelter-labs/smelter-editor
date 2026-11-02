@@ -1,5 +1,6 @@
 'use client';
 
+import { useCallback, useEffect, useRef } from 'react';
 import type { ObTally } from '@smelter-editor/types';
 import {
   Display,
@@ -13,13 +14,15 @@ import {
   useIsLandscape,
 } from '@/components/ob-van/ob-kit';
 import { TALLY_LABEL } from '@/lib/ob-van/tally';
+import type { Quad } from '@/lib/ob-van/finger-frame';
+import type { HandFrameStatus } from './use-hand-frame';
 
 export type HudStatus = { text: string; tone: 'ok' | 'warn' };
 
 const TALLY_BG: Record<ObTally, string> = {
   program: OB.program,
   preview: OB.preview,
-  off: OB.page,
+  off: OB.scrim,
 };
 
 const TALLY_FG: Record<ObTally, string> = {
@@ -29,11 +32,13 @@ const TALLY_FG: Record<ObTally, string> = {
 };
 
 /**
- * The live screen, readable from across the room: the whole phone is the
- * tally light — red ON AIR, green PREVIEW, dark STANDBY — with the camera
- * number huge in the middle. The self-view keeps running underneath at low
- * opacity (the publish track stays warm and framing drift stays visible);
- * the controls sit on a dark dock so they read on any tally colour.
+ * The live screen: a clean full-bleed self-view (the publish track stays
+ * warm and framing stays visible), with the tally as a thick border around
+ * the picture plus a pulsing chip up top — ON AIR red, PREVIEW green,
+ * STANDBY dark — instead of the old full-screen colour wash. When the
+ * finger frame is on, the quad detected in this browser is traced over the
+ * preview (instant feedback — the program shows it after the air delay).
+ * The controls sit on a dark dock so they read over any picture.
  */
 export function CamLiveHud({
   tally,
@@ -47,6 +52,10 @@ export function CamLiveHud({
   camErr,
   muted,
   micLevel,
+  fingerFrameOn,
+  handQuad,
+  handStatus,
+  lastSwitchAt,
   onToggleMute,
   onStopVideo,
   onLeave,
@@ -62,6 +71,13 @@ export function CamLiveHud({
   camErr: string | null;
   muted: boolean;
   micLevel: number;
+  /** Operator's FRAME toggle (drives the in-browser detector). */
+  fingerFrameOn: boolean;
+  /** Latest detected fingertip quad (captured-frame coords) or null. */
+  handQuad: Quad | null;
+  handStatus: HandFrameStatus;
+  /** Wall time of the last pinch shader-switch (flashes a chip). */
+  lastSwitchAt: number | null;
   onToggleMute: () => void;
   /** Stop publishing on purpose and go back to the rig. */
   onStopVideo: () => void;
@@ -70,8 +86,65 @@ export function CamLiveHud({
   const landscape = useIsLandscape();
   const { armed, arm, disarm } = useArmed(4000);
   const t: ObTally = tally ?? 'off';
-  const fg = TALLY_FG[t];
   const lit = t !== 'off';
+
+  const videoElRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const attachBoth = useCallback(
+    (el: HTMLVideoElement | null) => {
+      videoElRef.current = el;
+      attachVideo(el);
+    },
+    [attachVideo],
+  );
+
+  // Trace the detected quad over the cover-fitted preview. The quad is in
+  // the captured (raw, unmirrored) frame's coordinates; the preview of the
+  // front camera is CSS-mirrored, so X flips to match what the eye sees.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const video = videoElRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    if (
+      canvas.width !== Math.round(rect.width * dpr) ||
+      canvas.height !== Math.round(rect.height * dpr)
+    ) {
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
+    }
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (!handQuad || !video || video.videoWidth === 0) return;
+
+    const cw = canvas.width;
+    const ch = canvas.height;
+    const scale = Math.max(cw / video.videoWidth, ch / video.videoHeight);
+    const dispW = video.videoWidth * scale;
+    const dispH = video.videoHeight * scale;
+    const offX = (cw - dispW) / 2;
+    const offY = (ch - dispH) / 2;
+    const pts = handQuad.map(([x, y]) => {
+      const sx = offX + x * dispW;
+      return [facing === 'user' ? cw - sx : sx, offY + y * dispH] as const;
+    });
+
+    ctx.lineWidth = 2 * dpr;
+    ctx.strokeStyle = 'rgba(242, 244, 248, 0.92)';
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
+    ctx.shadowBlur = 3 * dpr;
+    ctx.beginPath();
+    pts.forEach(([x, y], i) => (i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)));
+    ctx.closePath();
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(242, 244, 248, 0.95)';
+    for (const [x, y] of pts) {
+      ctx.fillRect(x - 3.5 * dpr, y - 3.5 * dpr, 7 * dpr, 7 * dpr);
+    }
+  }, [handQuad, facing]);
 
   const press = (id: 'leave' | 'stop', fire: () => void) => {
     if (armed === id) {
@@ -82,79 +155,82 @@ export function CamLiveHud({
     }
   };
 
-  const tallyBlock = (
+  // Freshly switched look (pinch): flash a chip for a moment.
+  const switchFresh = lastSwitchAt != null && Date.now() - lastSwitchAt < 1500;
+
+  const tallyChip = (
     <div
       style={{
-        flex: 1,
-        minWidth: 0,
-        minHeight: 0,
-        display: 'flex',
-        flexDirection: 'column',
+        display: 'inline-flex',
         alignItems: 'center',
-        justifyContent: 'center',
-        gap: landscape ? 4 : 10,
-        textAlign: 'center',
-        padding: '0 12px',
+        gap: 10,
+        padding: '8px 12px',
+        background: TALLY_BG[t],
+        color: TALLY_FG[t],
+        borderRadius: 3,
+        maxWidth: '100%',
+        boxSizing: 'border-box',
+        boxShadow: '0 2px 10px rgba(0,0,0,0.35)',
       }}>
-      <Display
-        size={48}
-        weight={800}
-        tracking={0.12}
-        color={fg}
+      <span
+        aria-hidden
+        className={t === 'program' ? 'ob-pulse' : undefined}
         style={{
-          fontSize: landscape ? 'min(9vh, 7vw)' : 'min(13vw, 7vh)',
-          opacity: lit ? 1 : 0.7,
-        }}>
+          width: 10,
+          height: 10,
+          borderRadius: '50%',
+          flexShrink: 0,
+          background: TALLY_FG[t],
+          opacity: lit ? 1 : 0.45,
+        }}
+      />
+      <Display size={20} weight={800} tracking={0.1} color={TALLY_FG[t]}>
         {TALLY_LABEL[t]}
-      </Display>
-      <Display
-        size={200}
-        weight={800}
-        tracking={0}
-        lineHeight={0.82}
-        color={fg}
-        style={{
-          fontSize: landscape ? 'min(52vh, 34vw)' : 'min(62vw, 38vh)',
-        }}>
-        {camNumber ?? '–'}
-      </Display>
-      <Display
-        size={28}
-        weight={700}
-        tracking={0.04}
-        color={fg}
-        style={{
-          fontSize: landscape ? 'min(7vh, 5vw)' : 'min(8vw, 4.2vh)',
-          maxWidth: '100%',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}>
-        {name || 'CAMERA'}
       </Display>
       <Mono
         size={12}
         weight={600}
-        tracking={0.18}
-        color={fg}
+        tracking={0.12}
+        color={TALLY_FG[t]}
         style={{
-          opacity: 0.8,
-          maxWidth: '100%',
+          minWidth: 0,
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           whiteSpace: 'nowrap',
+          opacity: 0.92,
         }}>
-        {roleText}
-        {talent ? ` · ${talent}` : ''}
+        CAM {camNumber ?? '–'} · {(name || 'CAMERA').toUpperCase()}
+        {talent ? ` · ${talent.toUpperCase()}` : ''}
       </Mono>
     </div>
+  );
+
+  const frameNote = !fingerFrameOn ? null : handStatus === 'unavailable' ? (
+    <Mono size={9.5} weight={600} tracking={0.14} color={OB.amber}>
+      FRAME · DETECTION UNAVAILABLE ON THIS DEVICE
+    </Mono>
+  ) : (
+    <Mono
+      size={9.5}
+      weight={600}
+      tracking={0.14}
+      color={switchFresh ? OB.amber : OB.chalk}
+      style={{ background: OB.scrim, padding: '3px 7px', borderRadius: 2 }}>
+      {switchFresh
+        ? 'FRAME · LOOK SWITCHED'
+        : handStatus === 'loading'
+          ? 'FRAME · LOADING…'
+          : handQuad
+            ? 'FRAME · TRACKING'
+            : 'FRAME · SHOW BOTH HANDS'}
+    </Mono>
   );
 
   const dock = (
     <div
       style={{
         position: 'relative',
-        zIndex: 1,
+        zIndex: 2,
         flex: landscape ? '0 0 min(300px, 42vw)' : undefined,
         alignSelf: landscape ? 'stretch' : undefined,
         display: 'flex',
@@ -213,90 +289,130 @@ export function CamLiveHud({
       style={{
         position: 'fixed',
         inset: 0,
-        background: TALLY_BG[t],
-        color: fg,
+        background: OB.page,
+        color: OB.chalk,
         overflow: 'hidden',
         display: 'flex',
         flexDirection: landscape ? 'row' : 'column',
-        transition: 'background-color .15s ease',
       }}>
-      {/* Dim self-view: keeps the camera pipeline warm + shows framing. */}
-      <video
-        ref={attachVideo}
-        autoPlay
-        playsInline
-        muted
-        style={{
-          position: 'absolute',
-          inset: 0,
-          width: '100%',
-          height: '100%',
-          objectFit: 'cover',
-          opacity: lit ? 0.16 : 0.22,
-          mixBlendMode: lit ? 'luminosity' : undefined,
-          transform: facing === 'user' ? 'scaleX(-1)' : undefined,
-          pointerEvents: 'none',
-        }}
-      />
       <div
         style={{
           position: 'relative',
-          zIndex: 1,
           flex: 1,
           minWidth: 0,
           minHeight: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          padding: landscape
-            ? 'calc(env(safe-area-inset-top, 0px) + 8px) 8px calc(env(safe-area-inset-bottom, 0px) + 8px) calc(env(safe-area-inset-left, 0px) + 12px)'
-            : 'calc(env(safe-area-inset-top, 0px) + 12px) calc(env(safe-area-inset-right, 0px) + 14px) 8px calc(env(safe-area-inset-left, 0px) + 14px)',
+          overflow: 'hidden',
         }}>
+        {/* Clean self-view — the tally lives on the border + chip now. */}
+        <video
+          ref={attachBoth}
+          autoPlay
+          playsInline
+          muted
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            transform: facing === 'user' ? 'scaleX(-1)' : undefined,
+            pointerEvents: 'none',
+          }}
+        />
+        <canvas
+          ref={canvasRef}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            pointerEvents: 'none',
+          }}
+        />
+        {/* Tally border: the picture is framed in the tally colour. */}
+        {lit ? (
+          <div
+            aria-hidden
+            className={t === 'program' ? 'ob-pulse' : undefined}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              border: `6px solid ${TALLY_BG[t]}`,
+              pointerEvents: 'none',
+            }}
+          />
+        ) : null}
         <div
           style={{
+            position: 'absolute',
+            inset: 0,
             display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 10,
+            flexDirection: 'column',
+            alignItems: 'flex-start',
+            gap: 8,
+            padding: landscape
+              ? 'calc(env(safe-area-inset-top, 0px) + 14px) 14px 14px calc(env(safe-area-inset-left, 0px) + 16px)'
+              : 'calc(env(safe-area-inset-top, 0px) + 16px) calc(env(safe-area-inset-right, 0px) + 16px) 14px calc(env(safe-area-inset-left, 0px) + 16px)',
+            pointerEvents: 'none',
           }}>
-          <span
+          <div
             style={{
-              display: 'inline-flex',
+              display: 'flex',
               alignItems: 'center',
-              gap: 7,
-              padding: '4px 8px',
-              background: OB.scrim,
-              borderRadius: 2,
-              minWidth: 0,
+              justifyContent: 'space-between',
+              gap: 10,
+              alignSelf: 'stretch',
             }}>
             <span
-              aria-hidden
-              className={status.tone === 'warn' ? 'ob-pulse' : undefined}
               style={{
-                width: 7,
-                height: 7,
-                borderRadius: '50%',
-                flexShrink: 0,
-                background: status.tone === 'warn' ? OB.amber : OB.chalk,
-              }}
-            />
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 7,
+                padding: '4px 8px',
+                background: OB.scrim,
+                borderRadius: 2,
+                minWidth: 0,
+              }}>
+              <span
+                aria-hidden
+                className={status.tone === 'warn' ? 'ob-pulse' : undefined}
+                style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: '50%',
+                  flexShrink: 0,
+                  background: status.tone === 'warn' ? OB.amber : OB.chalk,
+                }}
+              />
+              <Mono
+                size={10}
+                weight={600}
+                tracking={0.16}
+                color={status.tone === 'warn' ? OB.amber : OB.chalk}
+                style={{
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}>
+                {status.text}
+              </Mono>
+            </span>
             <Mono
               size={10}
               weight={600}
-              tracking={0.16}
-              color={status.tone === 'warn' ? OB.amber : OB.chalk}
+              tracking={0.2}
+              color={OB.chalk}
               style={{
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
+                background: OB.scrim,
+                padding: '4px 8px',
+                borderRadius: 2,
               }}>
-              {status.text}
+              OB · CAMERA · {roleText}
             </Mono>
-          </span>
-          <Mono size={10} weight={600} tracking={0.2} color={fg}>
-            OB · CAMERA
-          </Mono>
+          </div>
+          {tallyChip}
+          {frameNote}
         </div>
-        {tallyBlock}
       </div>
       {dock}
     </div>

@@ -66,6 +66,7 @@ async function run() {
     port: Number(process.env.CAPTIONS_WS_PORT) || 8082,
     socketDir: captionSocketDir,
     onTranscript: (event) => state.applyTranscript(event),
+    onRawTranscript: (event) => state.applyRawTranscript(event),
   });
   setCaptionBridge(captionBridge);
   await captionBridge.start();

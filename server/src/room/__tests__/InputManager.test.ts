@@ -112,6 +112,7 @@ vi.mock('../../mp4/mp4SuggestionMonitor', () => ({
 vi.mock('../../routing/mp4Duration', () => ({
   getMp4DurationMs: mocks.getMp4DurationMs,
   getMp4VideoDimensions: mocks.getMp4VideoDimensions,
+  getMp4Rotation: vi.fn().mockResolvedValue(0),
 }));
 vi.mock('../../snakeGame/snakeGameState', () => ({
   createDefaultSnakeGameInputState: mocks.createDefaultSnakeGameInputState,
@@ -478,9 +479,7 @@ describe('InputManager', () => {
       }))!;
       manager.getInput(inputId).status = 'connected';
       await manager.removeStaleWhipInputs(15_000);
-      expect(manager.getInputs().some((i) => i.inputId === inputId)).toBe(
-        true,
-      );
+      expect(manager.getInputs().some((i) => i.inputId === inputId)).toBe(true);
     });
 
     it('never removes a recently-acked input', async () => {
@@ -496,9 +495,7 @@ describe('InputManager', () => {
       }))!;
       manager.getInput(inputId).status = 'connected';
       await manager.removeStaleWhipInputs(15_000);
-      expect(manager.getInputs().some((i) => i.inputId === inputId)).toBe(
-        true,
-      );
+      expect(manager.getInputs().some((i) => i.inputId === inputId)).toBe(true);
     });
 
     it('isWhipInputLive reads the monitor for whip and engine status otherwise', async () => {
@@ -582,7 +579,9 @@ describe('InputManager', () => {
           sideChannel: { audio: true, delayMs: 8000 },
         }),
       );
-      expect(mocks.captionsController.setTranscriptionPull).toHaveBeenCalledWith(
+      expect(
+        mocks.captionsController.setTranscriptionPull,
+      ).toHaveBeenCalledWith(
         expect.objectContaining({ inputId, transcription: true }),
         true,
       );

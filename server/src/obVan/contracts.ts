@@ -342,6 +342,12 @@ export interface ObLlmModule {
     camLabel: string;
   }): Promise<{ isHost: boolean; confidence: number; reason: string } | null>;
   /**
+   * Fire-and-forget warm-up of the identify path (TLS + API + prompt cache),
+   * so the first real identify does not pay the cold start. Quietly does
+   * nothing when the LLM is off, busy or over budget.
+   */
+  warmupHost(): void;
+  /**
    * The "Ask the AI" quiz lifeline: the model answers the question BLIND
    * (it is never told the correct letter — a confidently wrong hint is part
    * of the show). Null when the model refused / answered without the tool.

@@ -410,7 +410,12 @@ const FOLLOW: ObRuleset = {
   id: "preset-follow",
   name: "FOLLOW · host cam",
   preset: "follow",
-  pacing: { minHoldMs: 2000, maxHoldMs: 60000, transition: "cut" },
+  pacing: {
+    minHoldMs: 2000,
+    maxHoldMs: 60000,
+    transition: "dissolve",
+    transitionMs: 350,
+  },
   weights: {
     speech: 1,
     motion: 0.6,
@@ -430,8 +435,12 @@ const FOLLOW: ObRuleset = {
       holdMs: 4000,
       when: { signal: "host", cam: "any", op: "==", value: true },
       then: {
-        shot: { kind: "solo", cam: "trigger" },
-        transition: { type: "cut" },
+        // Host big, every other camera stays visible in the side strip.
+        // Dissolve: everyone is already in the grid, so the host's tile
+        // glides up to the main slot and the rest slide into the strip
+        // instead of teleporting.
+        shot: { kind: "featured", main: "trigger", others: [] },
+        transition: { type: "dissolve", durationMs: 450 },
       },
     },
     {
@@ -449,8 +458,10 @@ const FOLLOW: ObRuleset = {
         ],
       },
       then: {
+        // The trigger tile glides to full frame while the other grid tiles
+        // fade out under the transition shader.
         shot: { kind: "solo", cam: "trigger" },
-        transition: { type: "cut" },
+        transition: { type: "dissolve", durationMs: 350 },
       },
     },
     {
@@ -583,6 +594,89 @@ const QUIZ: ObRuleset = {
   ],
 };
 
+const PANEL: ObRuleset = {
+  id: "preset-panel",
+  name: "PANEL · AI discussion",
+  preset: "panel",
+  // Everyone stays on screen; emphasis moves by re-laying `featured`, so
+  // transitions are dissolves (a pure animated resize, nobody enters/leaves).
+  pacing: {
+    minHoldMs: 1500,
+    maxHoldMs: 60000,
+    transition: "dissolve",
+    transitionMs: 400,
+  },
+  weights: {
+    speech: 1.2,
+    motion: 0.2,
+    people: 0.2,
+    ball: 0,
+    novelty: 0.2,
+    stay: 1,
+    roleBias: { speaker: 0.3, guest: 0.2 },
+  },
+  // Deterministic segment: the panel machine sets `quizTurn` on the model
+  // whose answer clip is on air, the rules do the rest. No behaviour magic.
+  behaviours: {},
+  rules: [
+    {
+      // ≥80 pierces min-hold, so the flip to an answering model is prompt;
+      // while the turn is set this shot re-resolves as "held", so host
+      // interjections cannot steal the frame mid-answer.
+      id: "panel-turn",
+      name: "AI panelist answering, big",
+      priority: 85,
+      cooldownMs: 1000,
+      holdMs: 2500,
+      when: { signal: "quizTurn", cam: "any", op: "==", value: true },
+      then: {
+        shot: { kind: "featured", main: "trigger", others: [] },
+        transition: { type: "dissolve", durationMs: 400 },
+      },
+    },
+    {
+      id: "panel-host-speaking",
+      name: "Host speaking, big",
+      priority: 70,
+      cooldownMs: 2000,
+      holdMs: 2500,
+      when: { signal: "speech", cam: "speaker", forMs: 700 },
+      then: {
+        shot: { kind: "featured", main: "trigger", others: [] },
+        transition: { type: "dissolve", durationMs: 400 },
+      },
+    },
+    {
+      // Same `hold >= 0` trick as FOLLOW: reliably true — at rest the host
+      // keeps the big tile. Requires audio mix (featured others:[] resolves
+      // only the main cam on air, so `follow` would mute the strip).
+      id: "panel-host-rest",
+      name: "Host at rest",
+      priority: 10,
+      cooldownMs: 3000,
+      holdMs: 4000,
+      when: { signal: "hold", op: ">=", value: 0 },
+      then: {
+        shot: { kind: "featured", main: "speaker", others: [] },
+        transition: { type: "dissolve", durationMs: 400 },
+      },
+    },
+    {
+      // No live speaker cam (host not joined yet) → even grid of the rest.
+      id: "panel-grid-fallback",
+      name: "Grid until the host joins",
+      priority: 5,
+      cooldownMs: 3000,
+      holdMs: 4000,
+      when: { signal: "hold", op: ">=", value: 0 },
+      then: {
+        shot: { kind: "grid", cams: [] },
+        transition: { type: "dissolve", durationMs: 300 },
+      },
+    },
+  ],
+};
+
 export const OB_PRESET_RULESETS: Readonly<
   Record<Exclude<ObPresetId, "custom">, ObRuleset>
 > = {
@@ -592,6 +686,7 @@ export const OB_PRESET_RULESETS: Readonly<
   gig: GIG,
   follow: FOLLOW,
   quiz: QUIZ,
+  panel: PANEL,
 };
 
 export type ObPresetMeta = {
@@ -640,6 +735,13 @@ export const OB_PRESET_META: readonly ObPresetMeta[] = [
     sub: "smelterionaire",
     blurb:
       "Millionaire board, split on the contestant answering, solo reveals; the operator judges from the desk.",
+  },
+  {
+    id: "panel",
+    label: "PANEL",
+    sub: "AI discussion",
+    blurb:
+      "Live host asks, two AI panelists answer out loud in turn; everyone stays on screen, the speaker gets the big tile.",
   },
 ];
 

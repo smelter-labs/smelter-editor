@@ -44,3 +44,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# in-browser hand tracking assets (staged by scripts/fetch-hand-landmarker.mjs)
+/public/hand-tracking/

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   OB_MAX_CAMS,
   WS_CLOSE_ROOM_NOT_FOUND,
+  type ObCamHandFrameMessage,
   type ObCamJoinMessage,
   type ObCamRole,
   type ObClientMessage,
@@ -26,7 +27,9 @@ import {
 import {
   type CamSession,
   clearCamSession,
+  readCamPrefs,
   readCamSession,
+  writeCamPrefs,
   writeCamSession,
 } from './cam-session';
 import { useCamMedia } from './use-cam-media';
@@ -71,6 +74,9 @@ export function useCamSocket(roomId: string, serverParam: string | null) {
   const [live, setLive] = useState(false);
   const [wantsCam, setWantsCam] = useState(false);
   const [camInputId, setCamInputId] = useState<string | null>(null);
+  // Finger frame on → this phone runs in-browser hand detection. Seeded by
+  // ob_cam_joined (phones get no ob_state on join), toggled by ob_finger_frame.
+  const [fingerFrameOn, setFingerFrameOn] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectDelayRef = useRef(1000);
@@ -256,6 +262,7 @@ export function useCamSocket(roomId: string, serverParam: string | null) {
           setRoomStatus('ok');
           setSeat({ ...info, camId: event.camId, number: event.number });
           setTally(event.tally);
+          setFingerFrameOn(event.fingerFrame);
           saveSession({
             camKey: event.camKey,
             name: event.name,
@@ -271,6 +278,9 @@ export function useCamSocket(roomId: string, serverParam: string | null) {
         case 'ob_tally':
           setTally(event.tally);
           setSeat((prev) => (prev ? { ...prev, number: event.number } : prev));
+          break;
+        case 'ob_finger_frame':
+          setFingerFrameOn(event.enabled);
           break;
         case 'ob_error':
           if (event.code === 'unknown_cam' || event.code === 'not_joined') {
@@ -428,8 +438,11 @@ export function useCamSocket(roomId: string, serverParam: string | null) {
     }
     const session = readCamSession(roomId);
     sessionRef.current = session;
-    setRestored(session);
-    if (session.facing) media.presetFacing(session.facing);
+    // Prefill from the room session, falling back to this phone's last-used
+    // settings — a fresh room (new event) still gets name/role/talent back.
+    const restoredSession = { ...readCamPrefs(), ...session };
+    setRestored(restoredSession);
+    if (restoredSession.facing) media.presetFacing(restoredSession.facing);
     if (session.camKey) resumeRef.current = 'pending';
     checkRoom();
     // Re-arm after a StrictMode unmount/remount — the cleanup below set the
@@ -467,11 +480,13 @@ export function useCamSocket(roomId: string, serverParam: string | null) {
   const join = useCallback(
     (info: CamJoinInfo) => {
       joinInfoRef.current = info;
-      saveSession({
+      const seat = {
         name: info.name,
         role: info.role,
         talent: info.talent ?? undefined,
-      });
+      };
+      saveSession(seat);
+      writeCamPrefs(seat);
       wantsJoinRef.current = true;
       const msg = joinMessage();
       if (msg) send(wsRef.current, msg);
@@ -483,6 +498,7 @@ export function useCamSocket(roomId: string, serverParam: string | null) {
   const requestCam = useCallback(() => {
     requestCamSilent();
     saveSession({ wantsCam: true, facing: facingRef.current });
+    writeCamPrefs({ facing: facingRef.current });
   }, [facingRef, requestCamSilent, saveSession]);
 
   /** Stop publishing on purpose; the camera stays on for re-framing. */
@@ -511,6 +527,14 @@ export function useCamSocket(roomId: string, serverParam: string | null) {
 
   const editSeat = useCallback(() => setStep('setup'), []);
 
+  /** Finger-frame points from the in-browser detector (fire and forget). */
+  const sendHandFrame = useCallback(
+    (msg: Omit<ObCamHandFrameMessage, 'type'>) => {
+      send(wsRef.current, { type: 'ob_cam_hand_frame', ...msg });
+    },
+    [],
+  );
+
   const retryConnect = useCallback(() => {
     if (!roomId) return;
     setWsDbg('');
@@ -535,6 +559,8 @@ export function useCamSocket(roomId: string, serverParam: string | null) {
     sendFps,
     restored,
     media,
+    fingerFrameOn,
+    sendHandFrame,
     join,
     requestCam,
     stopVideo,

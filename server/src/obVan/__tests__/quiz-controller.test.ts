@@ -106,6 +106,15 @@ function harness(
     return null;
   };
 
+  // Audio-only clips live beside `quiz` on the HUD (shared with the panel).
+  const lastHudAudio = () => {
+    for (let i = hud.length - 1; i >= 0; i--) {
+      const h = hud[i];
+      if (h) return h.audio;
+    }
+    return null;
+  };
+
   return {
     controller,
     signals,
@@ -117,6 +126,7 @@ function harness(
     mouthSets,
     attach,
     lastHudQuiz,
+    lastHudAudio,
   };
 }
 
@@ -604,7 +614,7 @@ describe('ObVanController · quiz voices', () => {
     expect(warmed.length).toBeGreaterThan(0);
     expect(synths[0]).toEqual({ text: 'canned-intro', voiceId: 'voice-host' });
     expect(h.speechRegs).toHaveLength(1);
-    expect(h.lastHudQuiz()?.speech?.inputId).toBe('ob-tts-1');
+    expect(h.lastHudAudio()?.speech?.[0]?.inputId).toBe('ob-tts-1');
     // The host cam's puppet mouth follows the clip (armed just before the
     // scheduled voice start — the 4 s warm-up headroom).
     await vi.advanceTimersByTimeAsync(4_000);
@@ -618,7 +628,7 @@ describe('ObVanController · quiz voices', () => {
       camInputId: 'mp4-1',
       mouth: null,
     });
-    expect(h.lastHudQuiz()?.speech).toBeNull();
+    expect(h.lastHudAudio()?.speech?.length ?? 0).toBe(0);
   });
 
   it('plays a murmur on ask, then the spoken quip with the lock — serially', async () => {
@@ -717,7 +727,7 @@ describe('ObVanController · quiz voices', () => {
     h.controller.operate({ op: 'quiz_set', tts: false });
     expect(h.controller.stateSnapshot().config.quiz.tts).toBe(false);
     expect(h.speechUnregs).toContain('ob-tts-1');
-    expect(h.lastHudQuiz()?.speech).toBeNull();
+    expect(h.lastHudAudio()?.speech?.length ?? 0).toBe(0);
     const after = synths.length;
     h.controller.operate({ op: 'quiz', action: 'show_board' });
     await vi.advanceTimersByTimeAsync(1_000);

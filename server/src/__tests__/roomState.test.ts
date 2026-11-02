@@ -81,6 +81,7 @@ vi.mock('fs-extra', () => ({
 vi.mock('../routing/mp4Duration', () => ({
   getMp4DurationMs: mocks.getMp4DurationMs,
   getMp4VideoDimensions: mocks.getMp4VideoDimensions,
+  getMp4Rotation: vi.fn().mockResolvedValue(0),
 }));
 vi.mock('../captions/captionBridgeRegistry', () => ({
   getCaptionBridge: vi.fn(() => ({

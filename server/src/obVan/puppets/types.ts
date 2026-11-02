@@ -43,11 +43,24 @@ export type PuppetLiveMouth = {
   durationMs: number;
 };
 
+/** Named accent palettes for the aurora studio (see theme.ts). */
+export type PanelAccentId = 'coral' | 'teal';
+
 export type ObPuppetConfig = {
   /** `studio` renders the whole set (every cast member at a desk). */
   character: PuppetCharacterId | 'studio';
   name: string;
   mouth: PuppetMouthTrack | null;
+  /**
+   * Studio look: `classic` (default) is the gold Smelterionaire set;
+   * `aurora` is the AI PANEL set — animated shader wall, glass desk and an
+   * accent colour per panelist.
+   */
+  studio?: 'classic' | 'aurora';
+  /** Small desk subtitle under the name (aurora only), e.g. "Anthropic". */
+  subtitle?: string;
+  /** Accent palette for the aurora studio; defaults per character. */
+  accent?: PanelAccentId;
   /**
    * Live clock of the carrier mp4; null while it is (re)starting — the
    * renderer then idles with a resting mouth. A closure into RoomState so

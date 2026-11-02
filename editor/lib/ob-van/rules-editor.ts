@@ -207,6 +207,10 @@ export function shotTemplateSummary(shot: ObShotTemplate): string {
       return shot.cams.length === 0
         ? `${SHOT_LABEL[shot.kind]} ALL`
         : `${SHOT_LABEL[shot.kind]} ${shot.cams.map(s).join(' + ')}`;
+    case 'featured':
+      return shot.others.length === 0
+        ? `FEATURED ${s(shot.main)} + ALL`
+        : `FEATURED ${s(shot.main)} + ${shot.others.map(s).join(' + ')}`;
   }
 }
 

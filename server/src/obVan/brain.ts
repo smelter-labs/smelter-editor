@@ -205,8 +205,10 @@ function jitter(seed: number, camId: string): number {
 function programCamsOf(ctx: ObBrainContext): string[] {
   const shot = ctx.program.shot;
   if (!shot) return [];
-  if (shot.kind === 'grid' && shot.cams.length === 0)
-    return ctx.cams.filter((c) => c.live).map((c) => c.camId);
+  const allLive = () => ctx.cams.filter((c) => c.live).map((c) => c.camId);
+  if (shot.kind === 'grid' && shot.cams.length === 0) return allLive();
+  if (shot.kind === 'featured' && shot.others.length === 0)
+    return [...new Set([shot.main, ...allLive()])];
   return obShotCams(shot);
 }
 
@@ -374,6 +376,8 @@ function describeTemplate(t: ObShotTemplate): string {
     case 'quad':
     case 'grid':
       return `${t.kind} ${t.cams.join(' + ') || 'all'}`;
+    case 'featured':
+      return `featured ${t.main} + ${t.others.join(' + ') || 'all'}`;
   }
 }
 
@@ -455,15 +459,19 @@ class BrainTick {
     if (this.gated()) return null;
     let held = false;
     for (const { rule, result } of evaluated) {
-      if (!result.ok || this.cooling(rule)) continue;
+      if (!result.ok) continue;
       const outcome = this.planRule(rule, result.trigger);
-      if (outcome.kind === 'fire') return this.fire(outcome.draft, rule);
-      if (outcome.kind === 'skip' && outcome.note)
-        this.note(`rule:${rule.id}`, outcome.note);
+      // A cooling rule may not fire, but one whose shot is already on
+      // program still holds the frame — otherwise an always-true fallback
+      // below it (grid / rest) steals the picture during the cooldown.
       if (outcome.kind === 'held') {
         held = true;
         break;
       }
+      if (this.cooling(rule)) continue;
+      if (outcome.kind === 'fire') return this.fire(outcome.draft, rule);
+      if (outcome.kind === 'skip' && outcome.note)
+        this.note(`rule:${rule.id}`, outcome.note);
     }
     const behaviour =
       this.burstReplay() ?? this.dialogueEnd() ?? this.dialogueStart();
@@ -541,7 +549,7 @@ class BrainTick {
         extraReasons: [rule.name],
         triggerAirMs: usesSignal(rule, 'keyword')
           ? (latestKeywordAirMs(this.env) ?? undefined)
-          : undefined,
+          : this.nowSyncedTriggerAirMs(rule, trigger),
         shot,
         transition:
           shot || replay
@@ -561,6 +569,38 @@ class BrainTick {
         cutThrough,
       },
     };
+  }
+
+  /**
+   * Node-owned signals (`quizTurn`, `host`) are stamped at the moment they
+   * apply ON AIR (wall clock) — the quiz/panel machines and the host
+   * lifecycle already time them air-synced. A rule they trigger must land
+   * now: the default landing (T = nowAir + lookahead) would run the
+   * featured flip a whole side-channel delay (3–8 s) behind the voice it
+   * reacts to.
+   *
+   * Rules reading only show state (`hold` / `segment`) land now too: a rest
+   * shot reacts to nothing in the delayed footage, and parking it at the
+   * lookahead edge queues every later decision behind it (`lastApplyAtMs`),
+   * so a turn flip would land seconds after its speaker already finished.
+   */
+  private nowSyncedTriggerAirMs(
+    rule: ObRule,
+    trigger: string | null,
+  ): number | undefined {
+    const quizTurn = usesSignal(rule, 'quizTurn');
+    const host = usesSignal(rule, 'host');
+    if (!quizTurn && !host) {
+      const leaves = conditionLeaves(rule.when);
+      return leaves.every((l) => l.signal === 'hold' || l.signal === 'segment')
+        ? this.ctx.nowAir
+        : undefined;
+    }
+    const s = trigger ? this.ctx.signals[trigger] : undefined;
+    const since = quizTurn
+      ? (s?.quizTurn.sinceAirMs ?? null)
+      : (s?.host.sinceAirMs ?? null);
+    return since ?? this.ctx.nowAir;
   }
 
   private ruleReplay(

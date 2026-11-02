@@ -27,9 +27,14 @@ function CopyChip({ text }: { text: string }) {
 
 /**
  * How cameras and the operator get in: the phone QR (also burned into the
- * on-air setup slate by the server) and the operator panel link.
+ * on-air setup slate by the server), the operator panel link, and a
+ * one-click seat for THIS device's webcam as the SPEAKER cam (the deep-link
+ * params preselect the seat form; everything stays editable there).
  */
 export function JoinPlate({ links }: { links: ObJoinLinks }) {
+  const speakerHref = links.cam
+    ? `${links.cam}${links.cam.includes('?') ? '&' : '?'}role=speaker&facing=user`
+    : '';
   return (
     <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
       {links.cam ? (
@@ -91,6 +96,22 @@ export function JoinPlate({ links }: { links: ObJoinLinks }) {
             <ChipLink dense label='OPEN' href={links.panel} />
           ) : null}
           <CopyChip text={links.panel} />
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            gap: 6,
+            alignItems: 'center',
+            borderTop: `1px solid ${OB.rule}`,
+            paddingTop: 8,
+          }}>
+          <Meta size={9} style={{ flex: 1 }}>
+            THIS DEVICE → SPEAKER CAM
+          </Meta>
+          {speakerHref ? (
+            <ChipLink dense label='OPEN' href={speakerHref} />
+          ) : null}
+          <CopyChip text={speakerHref} />
         </div>
       </div>
     </div>

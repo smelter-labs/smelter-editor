@@ -20,6 +20,8 @@ export function shotCamIds(
 ): string[] {
   if (!shot) return [];
   if (shot.kind === 'grid' && shot.cams.length === 0) return [...liveCamIds];
+  if (shot.kind === 'featured' && shot.others.length === 0)
+    return [...new Set([shot.main, ...liveCamIds])];
   return obShotCams(shot);
 }
 
@@ -72,6 +74,7 @@ export function mainCamOf(shot: ObShot | null | undefined): string | null {
     case 'virtual':
       return shot.cam;
     case 'pip':
+    case 'featured':
       return shot.main;
     case 'speaker-slides':
       return shot.speaker;

@@ -97,9 +97,9 @@ export function TitleScreen({
         aria-hidden
         style={{
           position: 'absolute',
-          right: -120,
+          right: 72,
           top: 70,
-          width: 620,
+          width: 560,
           height: 360,
           borderRadius: 6,
           border: `2px solid ${OB.program}`,
@@ -223,16 +223,17 @@ export function TitleScreen({
           style={{
             position: 'absolute',
             left: 72,
-            // The stage is a fixed 1280×720: md buttons at the old top (652)
-            // ran under the footer bar, which swallowed their clicks.
-            top: 628,
+            // The stage is a fixed 1280×720 with a 30px footer bar: anchor to
+            // the bottom so a wrapped row grows upward instead of getting
+            // clipped at the stage edge or running under the footer.
+            bottom: 42,
             display: 'flex',
             flexDirection: 'column',
             gap: 8,
           }}>
           <Meta size={9}>QUICK DEMOS · ROOM + PRESET + FILE CAMS + SYNC</Meta>
           <div
-            style={{ display: 'flex', gap: 10, flexWrap: 'wrap', width: 960 }}>
+            style={{ display: 'flex', gap: 10, flexWrap: 'wrap', width: 1136 }}>
             {demos.map((d) => (
               <ObButton
                 key={d.dir}

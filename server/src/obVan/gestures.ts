@@ -1,23 +1,24 @@
 /**
  * OB Van — the host's hand gestures → operator commands (the `follow`
  * preset). The worker recognises a static gesture on the host's camera (hold
- * ½ s, 2 s cooldown); the controller maps it here and applies it through the
- * ordinary `operate()` path, so gesture effects behave exactly like an
- * operator pressing the FX buttons (and never pause the auto pilot — only
- * shot changes do).
+ * ½ s, 1.2 s cooldown); the controller maps it here and applies it through the
+ * ordinary `operate()` path. The command carries the camera id, so the effect
+ * touches ONLY the picture the gesture was seen on — the show-wide FX buttons
+ * stay untouched (and gestures never pause the auto pilot — only shot
+ * changes do).
  *
  * One obvious place to tweak the mapping; a per-show override in
  * `config.host` can come later if the demo wants it.
  */
 import type {
-  ObEffects,
+  ObCamFx,
   ObGestureName,
   ObOperatorCommand,
 } from '@smelter-editor/types';
 import { OB_GESTURE_NAMES } from '@smelter-editor/types';
 
 /** Node-side guard on top of the worker's own gate (belt and braces). */
-export const OB_GESTURE_COOLDOWN_MS = 2000;
+export const OB_GESTURE_COOLDOWN_MS = 1200;
 
 export function isObGestureName(v: unknown): v is ObGestureName {
   return (
@@ -26,23 +27,25 @@ export function isObGestureName(v: unknown): v is ObGestureName {
 }
 
 /**
- * The command a gesture triggers, given the effects currently on air:
- * open palm toggles the spotlight, thumbs-up grades neon, peace grades vhs,
- * a fist clears everything.
+ * The command a gesture triggers, scoped to the camera it was seen on (the
+ * `camId` on the fx op): open palm toggles that camera's spotlight, thumbs-up
+ * grades it neon, peace grades it vhs, a fist clears the camera's overrides.
+ * `camFx` is the camera's current override state, for the spotlight toggle.
  */
 export function obGestureCommand(
   name: ObGestureName,
-  effects: ObEffects,
+  camId: string,
+  camFx: ObCamFx,
 ): ObOperatorCommand {
   switch (name) {
     case 'open_palm':
-      return { op: 'fx', effects: { spotlight: !effects.spotlight } };
+      return { op: 'fx', camId, effects: { spotlight: !camFx.spotlight } };
     case 'thumbs_up':
-      return { op: 'fx', effects: { grade: 'neon' } };
+      return { op: 'fx', camId, effects: { grade: 'neon' } };
     case 'peace':
-      return { op: 'fx', effects: { grade: 'vhs' } };
+      return { op: 'fx', camId, effects: { grade: 'vhs' } };
     case 'fist':
-      return { op: 'fx', effects: { grade: 'none', spotlight: false } };
+      return { op: 'fx', camId, effects: { grade: 'none', spotlight: false } };
   }
 }
 

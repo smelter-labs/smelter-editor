@@ -3,10 +3,21 @@ import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 const durationCache = new Map<string, number>();
-const dimensionsCache = new Map<
-  string,
-  { width: number; height: number } | null
->();
+const videoProbeCache = new Map<string, VideoProbe | null>();
+
+type VideoProbe = {
+  /** Coded frame size, before the display matrix is applied. */
+  width: number;
+  height: number;
+  /** Degrees the display matrix turns the coded frames: 0, 90, 180 or 270. */
+  rotation: number;
+};
+
+type FfprobeVideoStream = {
+  width?: number;
+  height?: number;
+  side_data_list?: { rotation?: number }[];
+};
 
 export async function getMp4DurationMs(filePath: string): Promise<number> {
   const cached = durationCache.get(filePath);
@@ -29,10 +40,8 @@ export async function getMp4DurationMs(filePath: string): Promise<number> {
   return ms;
 }
 
-export async function getMp4VideoDimensions(
-  filePath: string,
-): Promise<{ width: number; height: number } | null> {
-  if (dimensionsCache.has(filePath)) return dimensionsCache.get(filePath)!;
+async function probeMp4Video(filePath: string): Promise<VideoProbe | null> {
+  if (videoProbeCache.has(filePath)) return videoProbeCache.get(filePath)!;
 
   try {
     const { stdout } = await execFileAsync('ffprobe', [
@@ -48,25 +57,41 @@ export async function getMp4VideoDimensions(
       'json',
       filePath,
     ]);
-    const parsed = JSON.parse(stdout);
+    const parsed: { streams?: FfprobeVideoStream[] } = JSON.parse(stdout);
     const stream = parsed.streams?.[0];
     if (!stream || !stream.width || !stream.height) {
-      dimensionsCache.set(filePath, null);
+      videoProbeCache.set(filePath, null);
       return null;
     }
-    let { width, height } = stream;
-    const rotation = stream.side_data_list?.find(
-      (d: any) => d.rotation !== undefined,
-    )?.rotation;
-    if (rotation && (Math.abs(rotation) === 90 || Math.abs(rotation) === 270)) {
-      [width, height] = [height, width];
-    }
-    const result = { width, height };
-    dimensionsCache.set(filePath, result);
+    const rawRotation =
+      stream.side_data_list?.find((d) => d.rotation !== undefined)?.rotation ??
+      0;
+    const result = {
+      width: stream.width,
+      height: stream.height,
+      rotation: ((Math.round(rawRotation) % 360) + 360) % 360,
+    };
+    videoProbeCache.set(filePath, result);
     return result;
   } catch (err) {
     console.warn(`[mp4] Failed to probe dimensions: ${filePath}`, err);
-    dimensionsCache.set(filePath, null);
+    videoProbeCache.set(filePath, null);
     return null;
   }
+}
+
+/** Frame size as displayed, i.e. with the display-matrix rotation applied. */
+export async function getMp4VideoDimensions(
+  filePath: string,
+): Promise<{ width: number; height: number } | null> {
+  const probe = await probeMp4Video(filePath);
+  if (!probe) return null;
+  return probe.rotation === 90 || probe.rotation === 270
+    ? { width: probe.height, height: probe.width }
+    : { width: probe.width, height: probe.height };
+}
+
+/** Degrees the display matrix turns the coded frames (0 = upright as coded). */
+export async function getMp4Rotation(filePath: string): Promise<number> {
+  return (await probeMp4Video(filePath))?.rotation ?? 0;
 }

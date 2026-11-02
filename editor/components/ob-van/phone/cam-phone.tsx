@@ -12,11 +12,18 @@ import {
   customRole,
   customRoleName,
   isCustomRole,
+  roleChoiceFromParam,
   roleLabel,
 } from '@/lib/ob-van/roles';
 import { CamLiveHud, type HudStatus } from './cam-live-hud';
 import { CamRigStep } from './cam-rig-step';
-import { CamSetupStep, type RoleChoice } from './cam-setup-step';
+import { useHandFrame } from './use-hand-frame';
+import {
+  CamSetupStep,
+  NAME_MAX,
+  TALENT_MAX,
+  type RoleChoice,
+} from './cam-setup-step';
 import { type CamStep, useCamSocket } from './use-cam-socket';
 import { useTallyVibration } from './use-tally-vibration';
 import '@/components/ob-van/ob-kit.css';
@@ -38,10 +45,32 @@ export function CamPhone() {
   const cam = useCamSocket(roomId, searchParams.get('server'));
   const { media } = cam;
 
-  const [name, setName] = useState('');
-  const [roleChoice, setRoleChoice] = useState<RoleChoice>('wide');
-  const [customName, setCustomName] = useState('');
-  const [talent, setTalent] = useState('');
+  // Deep-link prefills (?role=speaker&facing=user&name=…&talent=…): the host
+  // page uses them for one-click "this device as a camera" joins, e.g. the
+  // laptop's webcam as the SPEAKER cam. An explicit param wins over the
+  // stored session; everything stays editable on the seat form.
+  const paramRole = searchParams.get('role');
+  const paramName = searchParams.get('name');
+  const paramTalent = searchParams.get('talent');
+
+  const [name, setName] = useState(() => (paramName ?? '').slice(0, NAME_MAX));
+  const [roleChoice, setRoleChoice] = useState<RoleChoice>(
+    () => roleChoiceFromParam(paramRole)?.choice ?? 'wide',
+  );
+  const [customName, setCustomName] = useState(
+    () => roleChoiceFromParam(paramRole)?.customName ?? '',
+  );
+  const [talent, setTalent] = useState(() =>
+    (paramTalent ?? '').slice(0, TALENT_MAX),
+  );
+
+  // A deep-linked facing ('user' = front/webcam) replaces the phone default.
+  useEffect(() => {
+    const f = searchParams.get('facing');
+    if (f === 'user' || f === 'environment') media.presetFacing(f);
+    // Mount-only: the param cannot change without a full page load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Prefill the seat form once from the stored session.
   const prefilledRef = useRef(false);
@@ -49,9 +78,9 @@ export function CamPhone() {
     const s = cam.restored;
     if (!s || prefilledRef.current) return;
     prefilledRef.current = true;
-    if (s.name) setName(s.name);
-    if (s.talent) setTalent(s.talent);
-    if (s.role) {
+    if (s.name && !paramName) setName(s.name);
+    if (s.talent && !paramTalent) setTalent(s.talent);
+    if (s.role && !roleChoiceFromParam(paramRole)) {
       if (isCustomRole(s.role)) {
         setRoleChoice('custom');
         setCustomName(customRoleName(s.role));
@@ -59,9 +88,17 @@ export function CamPhone() {
         setRoleChoice(s.role);
       }
     }
-  }, [cam.restored]);
+  }, [cam.restored, paramName, paramRole, paramTalent]);
 
   useTallyVibration(cam.tally);
+
+  // Finger frame: detect the fingertip quad in this browser and stream it
+  // to the server while the operator's FRAME toggle is on and we publish.
+  const hand = useHandFrame(
+    cam.fingerFrameOn && cam.live,
+    media,
+    cam.sendHandFrame,
+  );
 
   const role: ObCamRole | null =
     roleChoice === 'custom' ? customRole(customName) : roleChoice;
@@ -103,6 +140,10 @@ export function CamPhone() {
         camErr={media.camErr}
         muted={media.muted}
         micLevel={media.micLevel}
+        fingerFrameOn={cam.fingerFrameOn}
+        handQuad={hand.quad}
+        handStatus={hand.status}
+        lastSwitchAt={hand.lastSwitchAt}
         onToggleMute={media.toggleMute}
         onStopVideo={cam.stopVideo}
         onLeave={cam.leave}

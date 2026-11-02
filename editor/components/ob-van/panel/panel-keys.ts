@@ -16,6 +16,7 @@ import { mainCamOf } from '@/lib/ob-van/tally';
 //   Space  CUT (also `.`)            A      auto pilot on / off
 //   L      lower third on preview    T      next transition type
 //   N      next rundown segment      R      replay (when the preset has it)
+//   F      finger frame on / off (grayscale inside the hands)
 //
 // With the QUIZ board up, the letters take over (A stops being AUTO):
 //   Q      board on / off            A B C D  lock that letter
@@ -35,6 +36,7 @@ export type PanelKeyContext = {
   preview: ObShot | null;
   program: ObShot | null;
   autoOn: boolean;
+  fingerFrameOn: boolean;
   transitionType: ObTransitionType;
   /** Camera the active lower third sits on (null = none on air). */
   lowerThirdCamId: string | null;
@@ -52,6 +54,7 @@ export const PANEL_KEY_HINTS: { key: string; label: string }[] = [
   { key: 'L', label: 'LOWER THIRD' },
   { key: 'T', label: 'TRANSITION' },
   { key: 'N', label: 'NEXT' },
+  { key: 'F', label: 'FRAME' },
 ];
 
 export const QUIZ_KEY_HINTS: { key: string; label: string }[] = [
@@ -132,6 +135,9 @@ export function panelKeyToCommand(
     case 'a':
     case 'A':
       return { op: 'auto', enabled: !ctx.autoOn };
+    case 'f':
+    case 'F':
+      return { op: 'finger_frame', enabled: !ctx.fingerFrameOn };
     case 'l':
     case 'L': {
       const camId = mainCamOf(ctx.preview) ?? mainCamOf(ctx.program);

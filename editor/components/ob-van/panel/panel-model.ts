@@ -24,6 +24,7 @@ export function panelKeyContextOf(state: ObState): PanelKeyContext {
     preview: state.preview,
     program: state.program.shot,
     autoOn: state.autoPilot.on,
+    fingerFrameOn: state.fingerFrame,
     transitionType: state.config.transition.type,
     lowerThirdCamId: state.lowerThird?.camId ?? null,
     rundownLength: state.rundown.items.length,

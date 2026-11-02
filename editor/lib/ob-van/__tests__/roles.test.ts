@@ -7,6 +7,7 @@ import {
   roleLabel,
   sanitizeCustomRoleName,
   toRole,
+  roleChoiceFromParam,
 } from '../roles';
 
 describe('roles', () => {
@@ -35,5 +36,24 @@ describe('roles', () => {
     expect(isTranscribedRole('speaker')).toBe(true);
     expect(isTranscribedRole('wide')).toBe(true);
     expect(isTranscribedRole('audience')).toBe(false);
+  });
+});
+
+describe('roleChoiceFromParam', () => {
+  it('preselects a fixed role', () => {
+    expect(roleChoiceFromParam('speaker')).toEqual({
+      choice: 'speaker',
+      customName: '',
+    });
+  });
+  it('preselects a custom role with its name', () => {
+    expect(roleChoiceFromParam('custom:drone')).toEqual({
+      choice: 'custom',
+      customName: 'drone',
+    });
+  });
+  it('ignores a missing or unknown param', () => {
+    expect(roleChoiceFromParam(null)).toBeNull();
+    expect(roleChoiceFromParam('director')).toBeNull();
   });
 });

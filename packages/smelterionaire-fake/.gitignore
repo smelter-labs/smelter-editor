@@ -1,0 +1,4 @@
+node_modules/
+# Fonts and show PNGs are copied in from server/ by smelterionaire-fake.mjs.
+public/
+out/

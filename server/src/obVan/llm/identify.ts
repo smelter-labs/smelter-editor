@@ -94,6 +94,28 @@ export function parseIdentifyResult(raw: unknown): ObIdentifyResult | null {
 }
 
 /**
+ * Tiny no-image identify that warms the whole path (TLS + API session +
+ * the cached system prompt), so the first real identify after go-live does
+ * not pay a cold start bigger than the side-channel headroom.
+ */
+export async function warmupIdentify(
+  client: ObLlmClient,
+  opts: ObIdentifyOptions = {},
+): Promise<void> {
+  const result = await client.call({
+    system: OB_IDENTIFY_SYSTEM,
+    user: 'Warm-up ping, no frame attached. Call identify_host with isHost=false, confidence 0, reason "warmup".',
+    tool: OB_IDENTIFY_HOST_TOOL,
+    toolChoice: 'required',
+    maxTokens: 100,
+    effort: 'low',
+    timeoutMs: 15_000,
+    signal: opts.signal,
+  });
+  opts.onUsage?.(result.usage);
+}
+
+/**
  * One identify call; `null` when the model refused or answered without the
  * tool (usage was still spent and reported through `onUsage`).
  */

@@ -342,6 +342,103 @@ def classify_gesture(landmarks) -> str | None:
     return None
 
 
+# The classic director's "finger frame": both hands in an L shape (thumb and
+# index extended, the rest curled); the frame is the QUAD whose corners are
+# the four fingertips, in the fixed cycle thumb-A → index-A → thumb-B →
+# index-B. Holding the hands mirrored (one upside down, the natural frame)
+# traces a simple quad; same-way-up or twisted fingers cross the edges and
+# the frame becomes an hourglass — by design. Degenerate spans (hands nearly
+# touching) are noise, not a frame.
+FINGER_FRAME_MIN_SIZE = 0.03
+# Pose hysteresis: ACQUIRING the frame demands the proper two-handed L
+# (softer than the gesture classifier even so — a webcam foreshortens the
+# index and the thumb sits mid-way), but KEEPING it accepts far more wobble:
+# per-frame ratio dips and stray "extended" reads were dropping a held frame
+# every few hundred ms. A held frame only lets go when the pose is clearly
+# gone (fingers curled in / a hand lost) for a while.
+_FRAME_INDEX_RATIO = 1.12
+_FRAME_THUMB_RATIO = 1.04
+_FRAME_HOLD_INDEX_RATIO = 1.02
+_FRAME_HOLD_THUMB_RATIO = 0.96
+
+
+def _wrist_ratio(landmarks, joint: int, tip: int) -> float:
+    """Tip-to-wrist over joint-to-wrist distance — >1 when the segment past
+    `joint` points away from the palm."""
+    wrist = landmarks[_WRIST]
+    base = _dist(landmarks[joint], wrist)
+    return _dist(landmarks[tip], wrist) / base if base > 1e-6 else 0.0
+
+
+def _frame_hand_tips(hands, held: bool = False) -> list[tuple[float, float]] | None:
+    """Thumb + index fingertips of both hands when each holds the L pose
+    (thumb + index extended, the rest curled), else None. ``held`` switches
+    to the loose keep-the-frame gates (pose hysteresis)."""
+    if hands is None or len(hands) < 2:
+        return None
+    index_ratio = _FRAME_HOLD_INDEX_RATIO if held else _FRAME_INDEX_RATIO
+    thumb_ratio = _FRAME_HOLD_THUMB_RATIO if held else _FRAME_THUMB_RATIO
+    tips: list[tuple[float, float]] = []
+    for landmarks in hands[:2]:
+        if landmarks is None or len(landmarks) < 21:
+            return None
+        if _wrist_ratio(landmarks, _FINGERS[0][0], _FINGERS[0][1]) < index_ratio:
+            return None
+        if _wrist_ratio(landmarks, _THUMB_IP, _THUMB_TIP) < thumb_ratio:
+            return None
+        if not held and sum(_extended_fingers(landmarks)[1:]) > 1:
+            return None
+        tips.append(landmarks[_THUMB_TIP])
+        tips.append(landmarks[_FINGERS[0][1]])
+    return tips
+
+
+def detect_finger_frame(hands, held: bool = False) -> list[tuple[float, float]] | None:
+    """The quad framed by both hands' fingertips — four ``(x, y)`` corners
+    (normalised 0..1, origin top-left) in the fixed cycle thumb-A → index-A →
+    thumb-B → index-B — or None when the two-handed L pose is not there
+    (``held`` = a frame is already showing, so the loose gates apply).
+    The cycle is deliberately tied to finger identity, not sorted: twisted
+    fingers self-intersect into an hourglass. A MediaPipe hand-order swap
+    only rotates the cycle by two, which is the same polygon. Softer on the
+    thumb + index extension than the gesture classifier (foreshortening),
+    still strict about the curled fingers — one may read as extended
+    mid-movement."""
+    tips = _frame_hand_tips(hands, held)
+    if tips is None:
+        return None
+    xs = [t[0] for t in tips]
+    ys = [t[1] for t in tips]
+    if max(xs) - min(xs) < FINGER_FRAME_MIN_SIZE or max(ys) - min(ys) < FINGER_FRAME_MIN_SIZE:
+        return None
+    return [(t[0], t[1]) for t in tips]
+
+
+# Gathering all four framing fingertips into one cluster (thumbs + indexes
+# touching) is the "switch" sign: the effect inside the frame cycles to the
+# next look. The cluster size is judged against the index-finger length, so
+# the sign works at any distance from the camera; the worker gives the sign
+# priority over the frame, so the overlap zone never double-fires.
+_INDEX_MCP = 5
+_FRAME_SWITCH_SPREAD = 0.45
+
+
+def detect_frame_switch(hands) -> bool:
+    """True when both hands hold the L pose with all four framing fingertips
+    gathered in one cluster (the shader-switch sign)."""
+    tips = _frame_hand_tips(hands)
+    if tips is None:
+        return False
+    spread = max(
+        max(t[0] for t in tips) - min(t[0] for t in tips),
+        max(t[1] for t in tips) - min(t[1] for t in tips),
+    )
+    index_len = sum(
+        _dist(landmarks[_FINGERS[0][1]], landmarks[_INDEX_MCP]) for landmarks in hands[:2]
+    ) / 2.0
+    return spread < _FRAME_SWITCH_SPREAD * index_len
+
+
 @dataclass
 class GestureGate:
     """Fire a gesture only after it is held steadily, then cool down.
@@ -353,7 +450,7 @@ class GestureGate:
     None / different name resets the hold."""
 
     hold_s: float = 0.5
-    cooldown_s: float = 2.0
+    cooldown_s: float = 1.2
     _candidate: str | None = None
     _candidate_since: float = 0.0
     _blocked_until: float = 0.0
