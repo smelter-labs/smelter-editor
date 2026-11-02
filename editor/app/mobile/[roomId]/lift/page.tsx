@@ -26,6 +26,7 @@ import {
   KbtConnectStep,
   KbtPhoneShell,
   KbtStatusStrip,
+  type KbtRoomLookupStatus,
 } from '@/components/kettlebell-tournament/kbt-kit';
 import { NameStep } from '@/components/kettlebell-tournament/phone/name-step';
 import { PhotoStep } from '@/components/kettlebell-tournament/phone/photo-step';
@@ -110,9 +111,18 @@ export default function LiftControllerPage() {
   const [step, setStep] = useState<Step>('connect');
   const [name, setName] = useState('');
   const [connected, setConnected] = useState(false);
-  const [roomStatus, setRoomStatus] = useState<'loading' | 'ok' | 'not-found'>(
-    'loading',
-  );
+  const [roomStatus, setRoomStatus] = useState<KbtRoomLookupStatus>('loading');
+  // A rejected lookup (app server unreachable) is NOT "room not found": the
+  // uplink can be green while this fails, so it gets its own retryable state.
+  const lookupRoom = useCallback(async () => {
+    setRoomStatus('loading');
+    try {
+      const info = await getRoomInfo(String(roomId));
+      setRoomStatus(info && info !== 'not-found' ? 'ok' : 'not-found');
+    } catch {
+      setRoomStatus('error');
+    }
+  }, [roomId]);
   const [wsDbg, setWsDbg] = useState('');
 
   const [kbtState, setKbtState] = useState<KbtStateEvent | null>(null);
@@ -272,6 +282,17 @@ export default function LiftControllerPage() {
           'CAMERA BLOCKED — allow camera access for this site (HTTPS required) and try again.',
         );
         setCamOn(false);
+        // The old tracks were stopped above (iOS allows one open camera, so
+        // acquiring first is not an option). A publish that was live is now
+        // sending nothing, and nothing will ever say so: stop() fires no
+        // 'ended', the pc stays 'connected'. Tear it down and hand over to
+        // the self-heal loop, which re-acquires the camera and republishes.
+        if (camPcRef.current) {
+          camPcRef.current.close();
+          camPcRef.current = null;
+          setLive(false);
+          scheduleRepublishRef.current?.();
+        }
       }
     },
     [saveSession, syncPreviews],
@@ -446,15 +467,29 @@ export default function LiftControllerPage() {
 
   // ── Source swap (camera ↔ recording), including mid-publish ──────────────
 
+  /**
+   * A manual (re)publish supersedes the self-heal loop — including its armed
+   * timer. Left behind, that timer fired a SECOND cam request while the first
+   * offer was still in flight (camPcRef is null in between): two overlapping
+   * publishes, a leaked peer connection and live=false on the healthy one.
+   */
+  const resetRepublish = useCallback(() => {
+    if (republishTimerRef.current != null) {
+      window.clearTimeout(republishTimerRef.current);
+      republishTimerRef.current = null;
+    }
+    republishAttemptsRef.current = 0;
+    republishDelayRef.current = 1000;
+    setPublishStuck(false);
+  }, []);
+
   /** Republish the freshly-swapped source; before the first GO LIVE the
    * wizard's explicit button stays the one publish trigger. */
   const swapPublish = useCallback(() => {
     if (!wantsCamRef.current) return;
-    republishAttemptsRef.current = 0;
-    republishDelayRef.current = 1000;
-    setPublishStuck(false);
+    resetRepublish();
     requestCam();
-  }, [requestCam]);
+  }, [resetRepublish, requestCam]);
 
   const swapToFile = useCallback(
     async (file: File) => {
@@ -729,9 +764,7 @@ export default function LiftControllerPage() {
     sessionRef.current = session;
     if (session.playerKey) resumeRef.current = 'pending';
     setName(session.name ?? window.localStorage.getItem(NAME_KEY) ?? '');
-    void getRoomInfo(String(roomId)).then((info) => {
-      setRoomStatus(info && info !== 'not-found' ? 'ok' : 'not-found');
-    });
+    void lookupRoom();
     // Re-arm after a StrictMode unmount/remount — the cleanup below set the
     // flag, and without the reset auto-reconnect would stay off for good.
     closedByUsRef.current = false;
@@ -928,26 +961,21 @@ export default function LiftControllerPage() {
   );
 
   const retryConnect = useCallback(() => {
+    if (roomStatus !== 'ok') void lookupRoom();
+    // A lookup-only failure must not bounce a healthy uplink.
+    if (connected) return;
     setWsDbg('');
     closedByUsRef.current = false;
     wsRef.current?.close();
-    if (roomStatus !== 'ok') {
-      setRoomStatus('loading');
-      void getRoomInfo(String(roomId)).then((info) => {
-        setRoomStatus(info && info !== 'not-found' ? 'ok' : 'not-found');
-      });
-    }
     connectWs();
-  }, [roomId, roomStatus, connectWs]);
+  }, [roomStatus, connected, lookupRoom, connectWs]);
 
   const fontClass = `${bigShoulders.variable} ${plexMono.variable}`;
 
   // One honest strip for whatever is being repaired right now, everywhere
   // past the boot screen (the boot screen has its own status rows).
   const retryPublishNow = () => {
-    republishAttemptsRef.current = 0;
-    republishDelayRef.current = 1000;
-    setPublishStuck(false);
+    resetRepublish();
     requestCam();
   };
   const unlockAudio = () => {

@@ -89,6 +89,13 @@ export class KettlebellCoachController {
       if (state.session != null) {
         state.lastRepIndex = 0;
         state.recentRepIssues = [];
+        // The fresh analyzer starts at 'idle' and reports only CHANGES, so
+        // nothing would ever tell consumers the old lift is over — they kept
+        // showing it until a different one was detected.
+        state.pendingExercise = null;
+        if (state.exercise !== 'idle') {
+          this.broadcastExercise(state, inputId, 'idle', now);
+        }
       }
       state.session = data.session;
     }

@@ -255,7 +255,9 @@ export function KettlebellTournamentArcade({
   const exitToTitle = async () => {
     // Save the show before the room dies — teardown would silently unregister
     // the recording with no download. The 1.5s download timer survives the
-    // screen change (the arcade itself stays mounted).
+    // screen change and the room's deletion: the arcade is hosted by the
+    // route-group layout (no remount on the URL rewrite), the timer is not
+    // cancelled on unmount, and the file is fetched by name, not by room.
     if (rec.effectiveIsRecording) await rec.stopAndDownload();
     setScreen('title');
     await room.exitAndDelete();

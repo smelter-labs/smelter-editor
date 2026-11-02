@@ -11,6 +11,7 @@ import {
   Frame,
   KBT,
   KbtConnectStep,
+  type KbtRoomLookupStatus,
   Label,
   Stage,
   StatusDot,
@@ -67,9 +68,7 @@ export function CommentatorPanel({ roomId }: { roomId: string }) {
 
   const [step, setStep] = useState<Step>('connect');
   const [name, setName] = useState('');
-  const [roomStatus, setRoomStatus] = useState<'loading' | 'ok' | 'not-found'>(
-    'loading',
-  );
+  const [roomStatus, setRoomStatus] = useState<KbtRoomLookupStatus>('loading');
   const [whepUrl, setWhepUrl] = useState<string | null>(null);
 
   const rig = useCommentatorRig(roomId);
@@ -82,16 +81,20 @@ export function CommentatorPanel({ roomId }: { roomId: string }) {
 
   const loadRoom = useCallback(() => {
     setRoomStatus('loading');
-    void getRoomInfo(roomId).then((info) => {
-      if (info && info !== 'not-found') {
-        setRoomStatus('ok');
-        // The server action reports the address the Next server knows —
-        // graft it so an off-host panel still reaches the WHEP endpoint.
-        setWhepUrl(info.whepUrl ? resolveMediaUrl(info.whepUrl) : null);
-      } else {
-        setRoomStatus('not-found');
-      }
-    });
+    void getRoomInfo(roomId)
+      .then((info) => {
+        if (info && info !== 'not-found') {
+          setRoomStatus('ok');
+          // The server action reports the address the Next server knows —
+          // graft it so an off-host panel still reaches the WHEP endpoint.
+          setWhepUrl(info.whepUrl ? resolveMediaUrl(info.whepUrl) : null);
+        } else {
+          setRoomStatus('not-found');
+        }
+      })
+      // A rejected lookup is not "room not found" — without this the panel
+      // sat on the connect step forever, with no retry.
+      .catch(() => setRoomStatus('error'));
   }, [roomId]);
 
   useEffect(() => {
@@ -141,7 +144,8 @@ export function CommentatorPanel({ roomId }: { roomId: string }) {
 
   const retryConnect = useCallback(() => {
     if (roomStatus !== 'ok') loadRoom();
-    socket.retry();
+    // A lookup-only failure must not bounce a healthy uplink.
+    if (!socket.connected) socket.retry();
   }, [roomStatus, loadRoom, socket]);
 
   const onAir = rig.live && (socket.state?.commentator?.camConnected ?? false);

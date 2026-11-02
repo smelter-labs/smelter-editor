@@ -148,18 +148,34 @@ export function useKbtRoom(initialRoomId?: string): KbtRoom {
   useEffect(() => {
     if (!initialRoomId) return;
     let cancelled = false;
-    void getRoomInfo(initialRoomId).then((info) => {
-      if (cancelled) return;
-      if (info && info !== 'not-found') {
-        setWhepUrl(info.whepUrl ?? null);
-        setRoomStatus('ok');
-      } else {
-        setRoomId(null);
-        setRoomStatus('gone');
-      }
-    });
+    let retryTimer: number | null = null;
+    let delay = 1000;
+    const check = () => {
+      getRoomInfo(initialRoomId).then(
+        (info) => {
+          if (cancelled) return;
+          if (info && info !== 'not-found') {
+            setWhepUrl(info.whepUrl ?? null);
+            setRoomStatus('ok');
+          } else {
+            setRoomId(null);
+            setRoomStatus('gone');
+          }
+        },
+        () => {
+          // The lookup itself failed (app server restarting, network blip) —
+          // that is not "room gone". Unhandled, it left the host on
+          // RESTORING ARENA… forever; keep trying instead, the label is true.
+          if (cancelled) return;
+          retryTimer = window.setTimeout(check, delay);
+          delay = Math.min(8000, delay * 2);
+        },
+      );
+    };
+    check();
     return () => {
       cancelled = true;
+      if (retryTimer != null) window.clearTimeout(retryTimer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -190,8 +206,10 @@ export function useKbtRoom(initialRoomId?: string): KbtRoom {
       creatingRef.current = true;
       setCreating(true);
       setError(null);
+      let createdRoomId: string | null = null;
       try {
         const created = await createNewRoom([], true, cfg.resolution);
+        createdRoomId = created.roomId;
         await pushConfig(cfg, created.roomId);
         // Born straight into the roster (registration screen).
         await controlKbtMatch(created.roomId, { action: 'roster' });
@@ -207,6 +225,10 @@ export function useKbtRoom(initialRoomId?: string): KbtRoom {
         );
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Arena setup failed');
+        // The room exists but setup failed after it: nothing in the UI points
+        // at it, so a retry would mint another one. Take it down instead of
+        // leaving it to the idle sweep.
+        if (createdRoomId) void deleteRoom(createdRoomId).catch(() => {});
       } finally {
         creatingRef.current = false;
         setCreating(false);

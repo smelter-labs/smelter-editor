@@ -46,7 +46,9 @@ export function useKbtRecording(
 
   useEffect(() => {
     return () => {
-      if (downloadTimerRef.current) clearTimeout(downloadTimerRef.current);
+      // The armed download is deliberately NOT cancelled: the recording is
+      // already stopped server-side and the anchor click needs no component,
+      // so an unmount in that 1.5 s window must not cost the host the file.
       if (optimisticTimerRef.current) clearTimeout(optimisticTimerRef.current);
     };
   }, []);

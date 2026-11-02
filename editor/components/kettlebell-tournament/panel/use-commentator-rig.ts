@@ -175,6 +175,16 @@ export function useCommentatorRig(roomId: string): CommentatorRig {
           'CAMERA/MIC BLOCKED — allow camera and microphone access for this site (HTTPS required) and try again.',
         );
         setCamOn(false);
+        // The old tracks were stopped above, so a publish that was live now
+        // sends nothing (a failed device swap: unplugged cam, exact-deviceId
+        // miss) — and neither 'ended' nor the pc state will say so. Tear the
+        // pc down so recovery runs: it re-acquires with default devices.
+        if (camPcRef.current) {
+          camPcRef.current.close();
+          camPcRef.current = null;
+          setLive(false);
+          onPublishDeadRef.current?.();
+        }
       }
     },
     [syncPreviews, refreshDevices],
