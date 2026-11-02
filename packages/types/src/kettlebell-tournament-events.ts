@@ -66,21 +66,26 @@ export type KbtConfig = {
    * (aura in the exercise's color + tile shake). */
   milestoneFx: boolean;
   /** When true, every scored rep floats game-style text up the tile
-   * ("SNATCH +3"; incorrect reps show "SNATCH*", or a struck-out name when
+   * ("SNATCH +4"; incorrect reps show "SNATCH*", or a struck-out name when
    * countIncorrectReps is off). */
   repFloatText: boolean;
   /** When false, reps judged 'incorrect' add no reps and no points (they
    * still reset the streak and show struck-out on air). */
   countIncorrectReps: boolean;
+  /** When true, every rep's points are multiplied by the athlete's
+   * kettlebellKg / bodyKg (entered on the phone; defaults 24 / 80), so the
+   * standings reward heavy bells and light lifters. Scores become fractional
+   * and render with one decimal. */
+  weightedScoring: boolean;
   perf: KbtPerfConfig;
 };
 
 /** Defaults: harder lifts pay more; technique is forgiving (easy to play). */
 export const KBT_DEFAULT_CONFIG: KbtConfig = {
   scoring: {
-    swing: { enabled: true, points: 1 },
-    clean: { enabled: true, points: 2 },
-    snatch: { enabled: true, points: 3 },
+    swing: { enabled: true, points: 2 },
+    clean: { enabled: true, points: 3 },
+    snatch: { enabled: true, points: 4 },
   },
   strictTechnique: false,
   heatDurationMs: 60_000,
@@ -90,6 +95,7 @@ export const KBT_DEFAULT_CONFIG: KbtConfig = {
   milestoneFx: true,
   repFloatText: true,
   countIncorrectReps: true,
+  weightedScoring: false,
   perf: {
     analysisFpsOverride: null,
     animTickHz: 60,
@@ -98,6 +104,28 @@ export const KBT_DEFAULT_CONFIG: KbtConfig = {
     recordingScale: 1,
   },
 };
+
+// ── Weighted scoring (optional, per-tournament) ──────────────────────────────
+
+/** Bell weight assumed for athletes who never entered one. */
+export const KBT_DEFAULT_KETTLEBELL_KG = 24;
+/** Body weight assumed for athletes who never entered one. */
+export const KBT_DEFAULT_BODY_KG = 80;
+/** Accepted bell weights (kg) — joins outside the range are clamped. */
+export const KBT_KETTLEBELL_KG_MIN = 4;
+export const KBT_KETTLEBELL_KG_MAX = 92;
+/** Accepted body weights (kg) — joins outside the range are clamped. */
+export const KBT_BODY_KG_MIN = 30;
+export const KBT_BODY_KG_MAX = 250;
+
+/**
+ * Points for display: one decimal under weighted scoring ("12.3", "18.0"),
+ * the legacy integer rendering otherwise. The single source of truth for
+ * both the broadcast HUD and the editor screens.
+ */
+export function formatKbtPoints(points: number, weighted: boolean): string {
+  return weighted ? (Math.round(points * 10) / 10).toFixed(1) : `${points}`;
+}
 
 /**
  * Tournament flow: 'roster' = registration open (QR screen); 'heats' =
@@ -231,6 +259,12 @@ export type KbtPlayer = {
   finalScore: number | null;
   /** Qualification heat this player is assigned to, if heats were drawn. */
   heatIndex: number | null;
+  /** Bell weight the athlete entered (kg). Absent = never entered (24 assumed
+   * under weighted scoring). */
+  kettlebellKg?: number;
+  /** Body weight the athlete entered (kg). Absent = never entered (80 assumed
+   * under weighted scoring). */
+  bodyKg?: number;
   /**
    * Server-relative profile photo path (`/kbt-photos/…`), content-hashed so
    * the URL changes whenever the photo does. Absent on older servers.
@@ -265,6 +299,9 @@ export type KbtScoreBreakdown = {
   name: string;
   color: string;
   photoUrl?: string | null;
+  /** Weights staged into this heat (defaults resolved). Absent on old servers. */
+  kettlebellKg?: number;
+  bodyKg?: number;
   /** Apex stills of this heat's counted reps, when rep screenshots are on. */
   repShots?: KbtRepShot[];
 };
@@ -285,7 +322,15 @@ export type KbtHeatSummary = {
  * socket still looks open (a fast refresh beats the stale socket's close) —
  * so scores and the heat slot follow the phone across refreshes.
  */
-export type KbtJoinMessage = { type: "kbt_join"; name: string; playerKey?: string };
+export type KbtJoinMessage = {
+  type: "kbt_join";
+  name: string;
+  playerKey?: string;
+  /** Bell weight in kg (weighted scoring). Omitted = keep the stored value. */
+  kettlebellKg?: number;
+  /** Body weight in kg (weighted scoring). Omitted = keep the stored value. */
+  bodyKg?: number;
+};
 /**
  * (Re)request a camera slot: the server registers a fresh WHIP input for this
  * client (retiring any previous one) and replies with `kbt_cam_offer`.
@@ -453,6 +498,11 @@ export type KbtJoinedEvent = {
   camInputActive: boolean;
   photoUrl: string | null;
   heatIndex: number | null;
+  /** Stored bell weight (kg), echoed so a phone that lost localStorage can
+   * prefill its inputs. Absent on older servers. */
+  kettlebellKg?: number | null;
+  /** Stored body weight (kg) — same contract as kettlebellKg. */
+  bodyKg?: number | null;
   /** This participant is in the currently selected heat. */
   inCurrentHeat: boolean;
   tournamentPhase: KbtTournamentPhase;

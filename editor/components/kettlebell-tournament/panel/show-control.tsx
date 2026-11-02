@@ -218,6 +218,7 @@ export function ShowControl({
               color={r.color}
               photoUrl={r.photoUrl}
               points={r.points}
+              weighted={state?.config.weightedScoring === true}
             />
           ))}
         </div>

@@ -251,6 +251,13 @@ export {
   KBT_EXERCISE_COLORS,
   KBT_DEFAULT_CONFIG,
   KBT_HYPE_BANNERS,
+  KBT_DEFAULT_KETTLEBELL_KG,
+  KBT_DEFAULT_BODY_KG,
+  KBT_KETTLEBELL_KG_MIN,
+  KBT_KETTLEBELL_KG_MAX,
+  KBT_BODY_KG_MIN,
+  KBT_BODY_KG_MAX,
+  formatKbtPoints,
 } from "./kettlebell-tournament-events.js";
 
 export type {

@@ -806,6 +806,7 @@ export function KbtTextInput({
   placeholder,
   maxLength,
   autoCapitalize,
+  inputMode,
   style,
 }: {
   value: string;
@@ -813,6 +814,8 @@ export function KbtTextInput({
   placeholder?: string;
   maxLength?: number;
   autoCapitalize?: string;
+  /** Phone keyboard hint (e.g. 'decimal' for the weight fields). */
+  inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode'];
   style?: React.CSSProperties;
 }) {
   return (
@@ -827,6 +830,7 @@ export function KbtTextInput({
       }
       placeholder={placeholder}
       autoCapitalize={autoCapitalize}
+      inputMode={inputMode}
       autoComplete='off'
       spellCheck={false}
       className='kbt-input'

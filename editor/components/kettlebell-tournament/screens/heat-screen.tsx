@@ -237,6 +237,7 @@ export function HeatScreen({
             color={r.color}
             photoUrl={r.photoUrl}
             points={r.points}
+            weighted={feed.state?.config.weightedScoring === true}
           />
         ))}
       </div>

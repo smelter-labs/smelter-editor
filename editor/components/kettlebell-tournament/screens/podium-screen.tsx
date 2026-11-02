@@ -2,6 +2,7 @@
 
 import React, { useMemo } from 'react';
 import type { KbtPlayer } from '@smelter-editor/types';
+import { formatKbtPoints } from '@smelter-editor/types';
 import {
   Backdrop,
   DisplayText,
@@ -14,6 +15,7 @@ import {
 } from '../kbt-kit';
 import { useArcadeKeys } from '../../duck-hunter/use-arcade-input';
 import { KbtAvatar } from '../avatar';
+import { kbtWeightBadge } from '../kbt-weights';
 import { RepShotStrip } from '../rep-shots';
 import type { KbtFeed } from '../use-kbt-feed';
 
@@ -70,10 +72,12 @@ function PodiumSpot({
   p,
   place,
   height,
+  weighted = false,
 }: {
   p: KbtPlayer | null;
   place: 1 | 2 | 3;
   height: number;
+  weighted?: boolean;
 }) {
   return (
     <div
@@ -102,8 +106,13 @@ function PodiumSpot({
             {p.name}
           </DisplayText>
           <Num size={place === 1 ? 34 : 26}>
-            {`${p.finalScore ?? p.bestScore}`}
+            {formatKbtPoints(p.finalScore ?? p.bestScore, weighted)}
           </Num>
+          {weighted ? (
+            <Label size={10} tracking={1.5} color={KBT.dim}>
+              {kbtWeightBadge(p)}
+            </Label>
+          ) : null}
           {place === 1 && p.repShots?.length ? (
             <RepShotStrip
               shots={p.repShots}
@@ -150,6 +159,7 @@ export function PodiumScreen({
     ranked[1] ?? null,
     ranked[2] ?? null,
   ];
+  const weighted = feed.state?.config.weightedScoring === true;
 
   useArcadeKeys({ confirm: onPlayAgain, back: onExit });
 
@@ -192,16 +202,20 @@ export function PodiumScreen({
             gap: 18,
             marginTop: 8,
           }}>
-          <PodiumSpot p={second} place={2} height={110} />
-          <PodiumSpot p={first} place={1} height={160} />
-          <PodiumSpot p={third} place={3} height={80} />
+          <PodiumSpot p={second} place={2} height={110} weighted={weighted} />
+          <PodiumSpot p={first} place={1} height={160} weighted={weighted} />
+          <PodiumSpot p={third} place={3} height={80} weighted={weighted} />
         </div>
         {ranked.length > 3 ? (
           <Label size={11} tracking={1.5}>
             {ranked
               .slice(3, 8)
               .map(
-                (p, i) => `${i + 4}. ${p.name} ${p.finalScore ?? p.bestScore}`,
+                (p, i) =>
+                  `${i + 4}. ${p.name} ${formatKbtPoints(
+                    p.finalScore ?? p.bestScore,
+                    weighted,
+                  )}`,
               )
               .join('   ·   ')}
           </Label>

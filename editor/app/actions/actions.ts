@@ -617,6 +617,7 @@ export async function setKbtConfig(
     milestoneFx?: boolean;
     repFloatText?: boolean;
     countIncorrectReps?: boolean;
+    weightedScoring?: boolean;
     perf?: Partial<import('@smelter-editor/types').KbtPerfConfig>;
     joinUrl?: string;
     joinLabel?: string;

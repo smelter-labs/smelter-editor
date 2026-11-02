@@ -2498,6 +2498,7 @@ export class RoomState {
     milestoneFx?: boolean;
     repFloatText?: boolean;
     countIncorrectReps?: boolean;
+    weightedScoring?: boolean;
     perf?: Partial<KbtPerfConfig>;
     joinUrl?: string;
     joinLabel?: string;

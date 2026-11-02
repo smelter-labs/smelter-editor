@@ -2922,6 +2922,7 @@ const KbtConfigSchema = Type.Object({
   milestoneFx: Type.Optional(Type.Boolean()),
   repFloatText: Type.Optional(Type.Boolean()),
   countIncorrectReps: Type.Optional(Type.Boolean()),
+  weightedScoring: Type.Optional(Type.Boolean()),
   perf: Type.Optional(
     Type.Object({
       analysisFpsOverride: Type.Optional(
@@ -2976,6 +2977,7 @@ routes.post<RoomIdParams & { Body: Static<typeof KbtConfigSchema> }>(
       milestoneFx: req.body.milestoneFx,
       repFloatText: req.body.repFloatText,
       countIncorrectReps: req.body.countIncorrectReps,
+      weightedScoring: req.body.weightedScoring,
       perf: req.body.perf,
       joinUrl: req.body.joinUrl,
       joinLabel: req.body.joinLabel,

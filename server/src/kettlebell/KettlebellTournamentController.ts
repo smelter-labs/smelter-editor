@@ -23,10 +23,16 @@ import type {
   RoomEvent,
 } from '@smelter-editor/types';
 import {
+  KBT_BODY_KG_MAX,
+  KBT_BODY_KG_MIN,
+  KBT_DEFAULT_BODY_KG,
   KBT_DEFAULT_CONFIG,
+  KBT_DEFAULT_KETTLEBELL_KG,
   KBT_EXERCISE_COLORS,
   KBT_EXERCISE_KEYS,
   KBT_HYPE_BANNERS,
+  KBT_KETTLEBELL_KG_MAX,
+  KBT_KETTLEBELL_KG_MIN,
   KETTLEBELL_ISSUE_LABELS,
 } from '@smelter-editor/types';
 import type {
@@ -190,6 +196,12 @@ type PlayerState = {
   bestScore: number;
   finalScore: number | null;
   heatIndex: number | null;
+  /** Bell weight (kg) the athlete entered; null = never entered. Profile
+   * data like the photo — kept across resets, only overwritten by a join
+   * that actually carries a value. */
+  kettlebellKg: number | null;
+  /** Body weight (kg) — same contract as kettlebellKg. */
+  bodyKg: number | null;
   /** Public URL path of the uploaded profile photo (content-hashed). */
   photoUrl: string | null;
   /** Absolute file path of the photo on disk (cleanup + HUD registration). */
@@ -213,6 +225,10 @@ type ScoreState = {
   name: string;
   color: string;
   photoUrl: string | null;
+  /** Weights staged at heat start (defaults resolved) — the heat's multiplier
+   * under weighted scoring. A mid-heat re-join cannot change them. */
+  kettlebellKg: number;
+  bodyKg: number;
   exercise: KettlebellExercise;
   lastRepAt: number | null;
   lastRepVerdict: 'correct' | 'incorrect' | null;
@@ -334,6 +350,14 @@ function analysisFpsFor(playerCount: number): number {
   if (playerCount <= 2) return 14;
   if (playerCount === 3) return 12;
   return 10;
+}
+
+/** Untrusted kg from a kbt_join: finite number clamped to the range and
+ * rounded to 0.1, anything else undefined (= keep the stored value). */
+function parseKg(v: unknown, min: number, max: number): number | undefined {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return undefined;
+  return Math.round(clamp(n, min, max) * 10) / 10;
 }
 
 /** HUD consumers read the heat clock at ≥500 ms granularity (blink phase,
@@ -472,6 +496,8 @@ export class KettlebellTournamentController {
       type?: unknown;
       name?: unknown;
       playerKey?: unknown;
+      kettlebellKg?: unknown;
+      bodyKg?: unknown;
       nativeWidth?: unknown;
       nativeHeight?: unknown;
       override?: unknown;
@@ -493,6 +519,14 @@ export class KettlebellTournamentController {
           clientId,
           typeof msg.name === 'string' ? msg.name : 'Lifter',
           playerKey,
+          {
+            kettlebellKg: parseKg(
+              msg.kettlebellKg,
+              KBT_KETTLEBELL_KG_MIN,
+              KBT_KETTLEBELL_KG_MAX,
+            ),
+            bodyKg: parseKg(msg.bodyKg, KBT_BODY_KG_MIN, KBT_BODY_KG_MAX),
+          },
         );
         break;
       case 'kbt_cam_request': {
@@ -597,13 +631,25 @@ export class KettlebellTournamentController {
    * that matches nothing skips name adoption — that phone is a genuinely new
    * entrant, and adopting by name could hijack someone else's slot.
    */
-  join(clientId: string, rawName: string, playerKey?: string): void {
+  join(
+    clientId: string,
+    rawName: string,
+    playerKey?: string,
+    weights?: { kettlebellKg?: number; bodyKg?: number },
+  ): void {
     const name = rawName.slice(0, 20).trim() || 'Lifter';
+    // Weights only move on a join that carries them — the auto re-join after
+    // a reconnect sends none and must not wipe what the athlete entered.
+    const applyWeights = (p: PlayerState) => {
+      if (weights?.kettlebellKg != null) p.kettlebellKg = weights.kettlebellKg;
+      if (weights?.bodyKg != null) p.bodyKg = weights.bodyKg;
+    };
     const existing = this.players.get(clientId);
     if (existing) {
       existing.name = name;
       existing.connected = true;
       existing.disconnectedAt = null;
+      applyWeights(existing);
       this.sendJoined(clientId, existing);
       this.ensureRunning();
       this.broadcastState();
@@ -623,6 +669,7 @@ export class KettlebellTournamentController {
     if (orphan) {
       this.adoptPlayer(orphan, clientId);
       orphan.name = name;
+      applyWeights(orphan);
       player = orphan;
     } else {
       player = {
@@ -643,6 +690,8 @@ export class KettlebellTournamentController {
         bestScore: 0,
         finalScore: null,
         heatIndex: null,
+        kettlebellKg: weights?.kettlebellKg ?? null,
+        bodyKg: weights?.bodyKg ?? null,
         photoUrl: null,
         photoPath: null,
         photoHash: null,
@@ -670,6 +719,8 @@ export class KettlebellTournamentController {
       camInputActive: p.inputId != null,
       photoUrl: p.photoUrl,
       heatIndex: p.heatIndex,
+      kettlebellKg: p.kettlebellKg,
+      bodyKg: p.bodyKg,
       inCurrentHeat: heat != null && heat.playerIds.includes(clientId),
       tournamentPhase: this.phase,
       heatPhase: heat?.phase ?? 'idle',
@@ -1739,6 +1790,11 @@ export class KettlebellTournamentController {
     }
     const counted = this.config.countIncorrectReps || verdict === 'correct';
     if (!counted) points = 0;
+    if (this.config.weightedScoring) {
+      // Per-rep award rounded to 0.1 so the shown reps sum to the shown
+      // total; running totals accumulate these exact one-decimal values.
+      points = Math.round(((points * score.kettlebellKg) / score.bodyKg) * 10) / 10;
+    }
 
     score.attempts += 1;
     if (counted) {
@@ -1892,6 +1948,8 @@ export class KettlebellTournamentController {
     repFloatText?: boolean;
     /** When false, incorrect reps add no reps and no points. */
     countIncorrectReps?: boolean;
+    /** Multiply every rep's points by the athlete's kettlebellKg / bodyKg. */
+    weightedScoring?: boolean;
     /** Performance knobs; live ones apply immediately, recording ones from
      * the next recording start. */
     perf?: Partial<KbtPerfConfig>;
@@ -1969,6 +2027,9 @@ export class KettlebellTournamentController {
     }
     if (typeof cfg.countIncorrectReps === 'boolean') {
       this.config.countIncorrectReps = cfg.countIncorrectReps;
+    }
+    if (typeof cfg.weightedScoring === 'boolean') {
+      this.config.weightedScoring = cfg.weightedScoring;
     }
     if (cfg.perf) this.applyPerfConfig(cfg.perf);
     this.broadcastState();
@@ -2234,6 +2295,8 @@ export class KettlebellTournamentController {
       name: p.name,
       color: p.color,
       photoUrl: p.photoUrl,
+      kettlebellKg: p.kettlebellKg ?? KBT_DEFAULT_KETTLEBELL_KG,
+      bodyKg: p.bodyKg ?? KBT_DEFAULT_BODY_KG,
       exercise: 'idle',
       lastRepAt: null,
       lastRepVerdict: null,
@@ -2935,6 +2998,8 @@ export class KettlebellTournamentController {
       bestScore: p.bestScore,
       finalScore: p.finalScore,
       heatIndex: p.heatIndex,
+      ...(p.kettlebellKg != null ? { kettlebellKg: p.kettlebellKg } : {}),
+      ...(p.bodyKg != null ? { bodyKg: p.bodyKg } : {}),
       photoUrl: p.photoUrl,
       ...(p.repShots.length ? { repShots: [...p.repShots] } : {}),
     };
@@ -2964,6 +3029,8 @@ export class KettlebellTournamentController {
         name: s.name,
         color: s.color,
         photoUrl: s.photoUrl,
+        kettlebellKg: s.kettlebellKg,
+        bodyKg: s.bodyKg,
         ...(withRepShots && s.repShots.length
           ? { repShots: [...s.repShots] }
           : {}),
@@ -3290,6 +3357,8 @@ export class KettlebellTournamentController {
           color: s.color,
           photoImageId: p.photoImageId,
           points: s.points,
+          kettlebellKg: s.kettlebellKg,
+          bodyKg: s.bodyKg,
           reps: s.reps.swing + s.reps.clean + s.reps.snatch,
           repSeq: s.attempts,
           repsByExercise: { ...s.reps },
@@ -3380,6 +3449,8 @@ export class KettlebellTournamentController {
                   color: p.color,
                   points: p.rankPoints,
                   photoImageId: p.photoImageId,
+                  kettlebellKg: p.kettlebellKg ?? KBT_DEFAULT_KETTLEBELL_KG,
+                  bodyKg: p.bodyKg ?? KBT_DEFAULT_BODY_KG,
                 })),
             }
           : null,
@@ -3398,6 +3469,7 @@ export class KettlebellTournamentController {
       // reaches the air aligned with the delayed video.
       repFloatText: this.config.repFloatText,
       countIncorrectReps: this.config.countIncorrectReps,
+      weighted: this.config.weightedScoring,
       viewTransitionStyle: this.viewTransitionStyle,
     };
     if (immediate) {

@@ -95,7 +95,9 @@ check('room created', !!roomId && !!created.whepUrl);
 
 // ── 2. Config + roster ───────────────────────────────────────────────────────
 const cfgRes = await api('POST', `/room/${roomId}/kettlebell-tournament/config`, {
-  scoring: { snatch: { points: 5 }, clean: { enabled: false } },
+  // swing pinned to 1 so the point math below stays independent of the
+  // server's default scoring table.
+  scoring: { swing: { points: 1 }, snatch: { points: 5 }, clean: { enabled: false } },
   strictTechnique: true,
   heatDurationMs: 45_000,
   heatSize: 2,
@@ -191,7 +193,7 @@ await sleep(3400); // 3s countdown -> playing
 snap = await api('GET', `/room/${roomId}/kettlebell-tournament/state`);
 check('heat playing after countdown', snap.match.phase === 'playing');
 
-// ANIA: 2 swings (1pt) + 1 incorrect snatch (strict: floor(5/2)=2) = 4
+// ANIA: 2 swings (pinned 1pt) + 1 incorrect snatch (strict: floor(5/2)=2) = 4
 await api('POST', `/room/${roomId}/kettlebell-tournament/simulate-rep`, { clientId: a.clientId, exercise: 'swing' });
 await api('POST', `/room/${roomId}/kettlebell-tournament/simulate-rep`, { clientId: a.clientId, exercise: 'swing' });
 await api('POST', `/room/${roomId}/kettlebell-tournament/simulate-rep`, { clientId: a.clientId, exercise: 'snatch', verdict: 'incorrect' });
@@ -314,7 +316,7 @@ await api('POST', `/room/${roomId}/kettlebell-tournament/simulate-rep`, { client
 await api('POST', `/room/${roomId}/kettlebell-tournament/match`, { action: 'stop_heat' });
 await sleep(700);
 snap = await api('GET', `/room/${roomId}/kettlebell-tournament/state`);
-// Config survives reset: swing 1 + snatch 5 (set back in step 2) = 6.
+// Config survives reset: swing 1 (pinned) + snatch 5 (set back in step 2) = 6.
 check('solo winner crowned', snap.match.winner?.name === 'ANIA' && (MP4 ? snap.match.winner?.points >= 6 : snap.match.winner?.points === 6), JSON.stringify(snap.match.winner));
 // start_final must be a no-op with a single scored player.
 await api('POST', `/room/${roomId}/kettlebell-tournament/match`, { action: 'start_final' });
